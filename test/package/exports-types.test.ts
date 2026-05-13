@@ -1,7 +1,9 @@
 import type {
 	BuildContextInput,
 	ContextFormat,
+	DuplicatePair,
 	Embedder,
+	FindDuplicatesInput,
 	MnemocyteClient,
 	MnemocyteConfig,
 	RecallInput,
@@ -60,9 +62,57 @@ const explanation: RetrievalExplanation = {
 	finalScore: 1,
 };
 
+const findDuplicates: FindDuplicatesInput = {
+	entityId: "entity",
+	threshold: 0.95,
+};
+const duplicatePair: DuplicatePair = {
+	a: {
+		id: "mem_a",
+		entityId: "entity",
+		content: "a",
+		type: "fact",
+		importance: "normal",
+		tags: [],
+		source: null,
+		metadata: {},
+		confidence: 1,
+		embeddingModel: "exports-types",
+		embeddingDimensions: 1,
+		supersededBy: null,
+		expiresAt: null,
+		lastAccessedAt: null,
+		accessCount: 0,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	},
+	b: {
+		id: "mem_b",
+		entityId: "entity",
+		content: "b",
+		type: "fact",
+		importance: "normal",
+		tags: [],
+		source: null,
+		metadata: {},
+		confidence: 1,
+		embeddingModel: "exports-types",
+		embeddingDimensions: 1,
+		supersededBy: null,
+		expiresAt: null,
+		lastAccessedAt: null,
+		accessCount: 0,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	},
+	similarity: 0.99,
+};
+
 void client;
 void remember;
 void recall;
 void context;
 void explanation;
+void findDuplicates;
+void duplicatePair;
 void MnemocyteError;

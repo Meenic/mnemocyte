@@ -181,6 +181,143 @@ export async function pruneMemories(
 	return result.length;
 }
 
+export interface DuplicateSearchInput {
+	entityId: string;
+	threshold: number;
+	limit: number;
+	types?: readonly string[];
+	tags?: readonly string[];
+	includeSuperseded?: boolean;
+	includeExpired?: boolean;
+}
+
+export async function findDuplicatePairs(
+	db: MnemocyteDatabase,
+	input: DuplicateSearchInput,
+): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
+	const rows = await db.execute(sql`
+		SELECT
+			a.id AS "aId",
+			a.entity_id AS "aEntityId",
+			a.content AS "aContent",
+			a.type AS "aType",
+			a.importance AS "aImportance",
+			a.tags AS "aTags",
+			a.source AS "aSource",
+			a.metadata AS "aMetadata",
+			a.confidence AS "aConfidence",
+			a.embedding AS "aEmbedding",
+			a.embedding_model AS "aEmbeddingModel",
+			a.embedding_dimensions AS "aEmbeddingDimensions",
+			a.superseded_by AS "aSupersededBy",
+			a.superseded_at AS "aSupersededAt",
+			a.expires_at AS "aExpiresAt",
+			a.last_accessed_at AS "aLastAccessedAt",
+			a.access_count AS "aAccessCount",
+			a.created_at AS "aCreatedAt",
+			a.updated_at AS "aUpdatedAt",
+			b.id AS "bId",
+			b.entity_id AS "bEntityId",
+			b.content AS "bContent",
+			b.type AS "bType",
+			b.importance AS "bImportance",
+			b.tags AS "bTags",
+			b.source AS "bSource",
+			b.metadata AS "bMetadata",
+			b.confidence AS "bConfidence",
+			b.embedding AS "bEmbedding",
+			b.embedding_model AS "bEmbeddingModel",
+			b.embedding_dimensions AS "bEmbeddingDimensions",
+			b.superseded_by AS "bSupersededBy",
+			b.superseded_at AS "bSupersededAt",
+			b.expires_at AS "bExpiresAt",
+			b.last_accessed_at AS "bLastAccessedAt",
+			b.access_count AS "bAccessCount",
+			b.created_at AS "bCreatedAt",
+			b.updated_at AS "bUpdatedAt",
+			1 - (a.embedding <=> b.embedding) AS "similarity"
+		FROM mnemocyte_memories a
+		JOIN mnemocyte_memories b
+			ON b.entity_id = a.entity_id
+			AND a.id < b.id
+			AND a.embedding IS NOT NULL
+			AND b.embedding IS NOT NULL
+		WHERE
+			a.entity_id = ${input.entityId}
+			${input.includeSuperseded ? sql`` : sql`AND a.superseded_by IS NULL AND b.superseded_by IS NULL`}
+			${input.includeExpired ? sql`` : sql`AND (a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())`}
+			${
+				input.types && input.types.length > 0
+					? sql`AND a.type IN (${sql.join(
+							input.types.map((type) => sql`${type}`),
+							sql`, `,
+						)}) AND b.type IN (${sql.join(
+							input.types.map((type) => sql`${type}`),
+							sql`, `,
+						)})`
+					: sql``
+			}
+			${
+				input.tags && input.tags.length > 0
+					? sql`AND a.tags @> ${input.tags} AND b.tags @> ${input.tags}`
+					: sql``
+			}
+			AND 1 - (a.embedding <=> b.embedding) >= ${input.threshold}
+		ORDER BY "similarity" DESC
+		LIMIT ${input.limit}
+	`);
+	const records = rows as unknown as Array<Record<string, unknown>>;
+	return records.map((row) => {
+		const a = {
+			id: row.aId,
+			entityId: row.aEntityId,
+			content: row.aContent,
+			type: row.aType,
+			importance: row.aImportance,
+			tags: row.aTags,
+			source: row.aSource,
+			metadata: row.aMetadata,
+			confidence: row.aConfidence,
+			embedding: row.aEmbedding,
+			embeddingModel: row.aEmbeddingModel,
+			embeddingDimensions: row.aEmbeddingDimensions,
+			supersededBy: row.aSupersededBy,
+			supersededAt: row.aSupersededAt,
+			expiresAt: row.aExpiresAt,
+			lastAccessedAt: row.aLastAccessedAt,
+			accessCount: row.aAccessCount,
+			createdAt: row.aCreatedAt,
+			updatedAt: row.aUpdatedAt,
+		} as unknown as MemoryRow;
+		const b = {
+			id: row.bId,
+			entityId: row.bEntityId,
+			content: row.bContent,
+			type: row.bType,
+			importance: row.bImportance,
+			tags: row.bTags,
+			source: row.bSource,
+			metadata: row.bMetadata,
+			confidence: row.bConfidence,
+			embedding: row.bEmbedding,
+			embeddingModel: row.bEmbeddingModel,
+			embeddingDimensions: row.bEmbeddingDimensions,
+			supersededBy: row.bSupersededBy,
+			supersededAt: row.bSupersededAt,
+			expiresAt: row.bExpiresAt,
+			lastAccessedAt: row.bLastAccessedAt,
+			accessCount: row.bAccessCount,
+			createdAt: row.bCreatedAt,
+			updatedAt: row.bUpdatedAt,
+		} as unknown as MemoryRow;
+		return {
+			a,
+			b,
+			similarity: Number(row.similarity) || 0,
+		};
+	});
+}
+
 export async function markMemoryAccessed(
 	db: MnemocyteDatabase,
 	memoryIds: readonly string[],

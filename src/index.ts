@@ -41,8 +41,10 @@ export { isMnemocyteError, MnemocyteError } from "./errors.js";
 export type {
 	BuildContextInput,
 	ContextFormat,
+	DuplicatePair,
 	Embedder,
 	EntityStats,
+	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
 	Memory,

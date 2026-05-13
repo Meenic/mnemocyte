@@ -57,6 +57,7 @@ export type MnemocyteOperation =
 	| "forget"
 	| "forgetAll"
 	| "prune"
+	| "findDuplicates"
 	| "stats"
 	| "close";
 
@@ -517,6 +518,58 @@ export interface PruneResult {
 }
 
 /**
+ * Input for {@link MnemocyteClient.findDuplicates}.
+ *
+ * Performs a pairwise cosine-similarity scan of stored memories for a
+ * single entity and returns pairs whose similarity meets
+ * {@link FindDuplicatesInput.threshold}. The scan is read-only — no
+ * memories are modified or deleted.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling). API may change.
+ */
+export interface FindDuplicatesInput {
+	/** Entity whose memories should be scanned for duplicates. */
+	entityId: string;
+	/**
+	 * Cosine-similarity cutoff in `[0, 1]`. Pairs whose similarity is at
+	 * or above this value are returned. @defaultValue `0.95`
+	 */
+	threshold?: number;
+	/**
+	 * Maximum number of duplicate pairs to return, ordered by descending
+	 * similarity. @defaultValue `100`
+	 */
+	limit?: number;
+	/** Restrict the scan to these memory types. */
+	types?: readonly MemoryType[];
+	/** Require both memories in the pair to include all of these tags. */
+	tags?: readonly string[];
+	/** Include superseded memories in the scan. @defaultValue `false` */
+	includeSuperseded?: boolean;
+	/** Include expired memories in the scan. @defaultValue `false` */
+	includeExpired?: boolean;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/**
+ * A pair of memories that are likely duplicates.
+ *
+ * The pair is unordered (i.e. `{a, b}` is the same logical result as
+ * `{b, a}`); Mnemocyte returns each pair only once.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling). Shape may change.
+ */
+export interface DuplicatePair {
+	/** One of the two memories in the duplicate pair. */
+	a: Memory;
+	/** The other memory in the duplicate pair. */
+	b: Memory;
+	/** Cosine similarity between the two embeddings, in `[0, 1]`. */
+	similarity: number;
+}
+
+/**
  * Stats for a single entity, returned by
  * {@link MnemocyteClient.stats} when an `entityId` is provided.
  */
@@ -609,6 +662,26 @@ export interface MnemocyteClient {
 	 * ```
 	 */
 	prune(input: PruneInput): Promise<PruneResult>;
+	/**
+	 * Scan an entity's memories for likely duplicates by pairwise cosine
+	 * similarity and return matching pairs, ordered by descending
+	 * similarity. Read-only — no memories are modified.
+	 *
+	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
+	 *
+	 * @example
+	 * ```ts
+	 * const pairs = await client.findDuplicates({
+	 *   entityId: "user_123",
+	 *   threshold: 0.95,
+	 *   limit: 50,
+	 * });
+	 * for (const { a, b, similarity } of pairs) {
+	 *   console.log(similarity, a.content, "<>", b.content);
+	 * }
+	 * ```
+	 */
+	findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]>;
 	/**
 	 * Return statistics. With an `entityId`, returns {@link EntityStats};
 	 * without one, returns {@link GlobalStats}.

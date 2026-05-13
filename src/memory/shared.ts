@@ -4,6 +4,7 @@ import { withResilience } from "../resilience.js";
 import type {
 	BuildContextInput,
 	Embedder,
+	FindDuplicatesInput,
 	ImportanceLevel,
 	Memory,
 	MemoryType,
@@ -289,6 +290,65 @@ export function matchesPruneFilter(
 	if (
 		input.maxImportance !== undefined &&
 		IMPORTANCE_RANK[memory.importance] > IMPORTANCE_RANK[input.maxImportance]
+	) {
+		return false;
+	}
+	return true;
+}
+
+/** Default cosine-similarity threshold for {@link FindDuplicatesInput}. */
+export const DEFAULT_DUPLICATE_THRESHOLD = 0.95;
+/** Default cap on the number of duplicate pairs returned. */
+export const DEFAULT_DUPLICATE_LIMIT = 100;
+
+/**
+ * Validate a {@link FindDuplicatesInput} and throw a `"VALIDATION"`
+ * {@link MnemocyteError} for malformed `threshold` / `limit` values.
+ */
+export function validateFindDuplicatesInput(input: FindDuplicatesInput): void {
+	assertNonEmptyString(input.entityId, "entityId");
+	if (input.threshold !== undefined) {
+		if (
+			!Number.isFinite(input.threshold) ||
+			input.threshold < 0 ||
+			input.threshold > 1
+		) {
+			throw new MnemocyteError(
+				"threshold must be a number between 0 and 1.",
+				"VALIDATION",
+			);
+		}
+	}
+	if (input.limit !== undefined) {
+		assertLimit(input.limit);
+	}
+}
+
+/**
+ * Return `true` when a memory should participate in a duplicate scan,
+ * given the filters on `input` and a shared `now` timestamp.
+ */
+export function matchesDuplicateFilter(
+	memory: Memory,
+	input: FindDuplicatesInput,
+	now: Date,
+): boolean {
+	if (memory.entityId !== input.entityId) {
+		return false;
+	}
+	if (input.includeSuperseded !== true && memory.supersededBy !== null) {
+		return false;
+	}
+	if (input.includeExpired !== true && isExpired(memory, now)) {
+		return false;
+	}
+	if (input.types !== undefined && !input.types.includes(memory.type)) {
+		return false;
+	}
+	if (
+		input.tags !== undefined &&
+		input.tags.length > 0 &&
+		!input.tags.every((tag) => memory.tags.includes(tag))
 	) {
 		return false;
 	}

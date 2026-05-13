@@ -127,6 +127,32 @@ console.log(preview.matchedCount);
 Available selectors: `entityId`, `expired`, `superseded`, `createdBefore`,
 `notAccessedSince`, `types`, `tags`, `maxImportance`. They AND together.
 
+## Finding duplicates (experimental)
+
+`findDuplicates` is a **read-only** scan that surfaces near-identical
+memories for one entity using pairwise cosine similarity. It is
+intentionally passive — nothing is deleted or modified — so callers can
+decide their own consolidation policy.
+
+```ts
+const pairs = await client.findDuplicates({
+entityId: "user_123",
+threshold: 0.95, // default 0.95
+limit: 50, // default 100, ordered by similarity desc
+});
+
+for (const { a, b, similarity } of pairs) {
+console.log(similarity.toFixed(3), a.content, "<>", b.content);
+}
+```
+
+Optional selectors: `types`, `tags` (both required on each pair member),
+`includeSuperseded`, `includeExpired`. Superseded and expired memories
+are excluded by default.
+
+> Part of Phase 6 (consolidation tooling). The API surface may change in
+> follow-up releases as conflict detection and active dedup land.
+
 ## Retrieval tuning
 
 ```ts

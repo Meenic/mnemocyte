@@ -7,7 +7,9 @@ import {
 	toScoredMemory,
 } from "../retrieval/scorer.js";
 import type {
+	DuplicatePair,
 	EntityStats,
+	FindDuplicatesInput,
 	GlobalStats,
 	Memory,
 	MnemocyteClient,
@@ -23,16 +25,20 @@ import {
 	cloneMemory,
 	contextInputToRecallInput,
 	createId,
+	DEFAULT_DUPLICATE_LIMIT,
+	DEFAULT_DUPLICATE_THRESHOLD,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_LIMIT,
 	DEFAULT_MIN_SCORE,
 	DEFAULT_TYPE,
 	embedOne,
 	isExpired,
+	matchesDuplicateFilter,
 	matchesPruneFilter,
 	matchesRecallFilter,
 	normalizeTags,
 	type StoredMemory,
+	validateFindDuplicatesInput,
 	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
@@ -248,6 +254,51 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					};
 				},
 				(result) => ({ count: result.deletedCount }),
+			);
+		},
+		async findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]> {
+			return observe(
+				config,
+				"in-memory",
+				"findDuplicates",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateFindDuplicatesInput(input);
+					const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
+					const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
+					const now = new Date();
+					const candidates = Array.from(memories.values()).filter((memory) =>
+						matchesDuplicateFilter(memory, input, now),
+					);
+					const pairs: DuplicatePair[] = [];
+					for (let i = 0; i < candidates.length; i += 1) {
+						const a = candidates[i];
+						if (a === undefined) {
+							continue;
+						}
+						for (let j = i + 1; j < candidates.length; j += 1) {
+							const b = candidates[j];
+							if (b === undefined) {
+								continue;
+							}
+							const similarity = Math.max(
+								0,
+								Math.min(1, cosineSimilarity(a.embedding, b.embedding)),
+							);
+							if (similarity >= threshold) {
+								pairs.push({
+									a: cloneMemory(a),
+									b: cloneMemory(b),
+									similarity,
+								});
+							}
+						}
+					}
+					pairs.sort((x, y) => y.similarity - x.similarity);
+					return pairs.slice(0, limit);
+				},
+				(result) => ({ count: result.length }),
 			);
 		},
 		async stats(input) {

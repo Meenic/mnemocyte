@@ -5,6 +5,7 @@ import {
 	countPruneMatches,
 	deleteMemoriesForEntity,
 	deleteMemory,
+	findDuplicatePairs,
 	insertMemory,
 	listMemories,
 	type PruneFilter,
@@ -15,7 +16,9 @@ import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
 import { hybridRecall } from "../retrieval/index.js";
 import type {
+	DuplicatePair,
 	EntityStats,
+	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
 	Memory,
@@ -31,6 +34,8 @@ import {
 	assertNonEmptyString,
 	contextInputToRecallInput,
 	createId,
+	DEFAULT_DUPLICATE_LIMIT,
+	DEFAULT_DUPLICATE_THRESHOLD,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_LIMIT,
 	DEFAULT_MIN_SCORE,
@@ -40,6 +45,7 @@ import {
 	isExpired,
 	normalizeTags,
 	rowToMemory,
+	validateFindDuplicatesInput,
 	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
@@ -277,6 +283,39 @@ export function createPostgresClient(
 					};
 				},
 				(result) => ({ count: result.deletedCount }),
+			);
+		},
+		async findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]> {
+			return observe(
+				config,
+				"postgres",
+				"findDuplicates",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateFindDuplicatesInput(input);
+					const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
+					const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
+					const rows = await findDuplicatePairs(handle.db, {
+						entityId: input.entityId,
+						threshold,
+						limit,
+						...(input.types === undefined ? {} : { types: input.types }),
+						...(input.tags === undefined ? {} : { tags: input.tags }),
+						...(input.includeSuperseded === undefined
+							? {}
+							: { includeSuperseded: input.includeSuperseded }),
+						...(input.includeExpired === undefined
+							? {}
+							: { includeExpired: input.includeExpired }),
+					});
+					return rows.map((row) => ({
+						a: rowToMemory(row.a),
+						b: rowToMemory(row.b),
+						similarity: Math.max(0, Math.min(1, row.similarity)),
+					}));
+				},
+				(result) => ({ count: result.length }),
 			);
 		},
 		async stats(input) {

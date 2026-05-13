@@ -26,33 +26,12 @@ The package is ESM-only for now. CommonJS is intentionally not advertised unless
 
 ## Package Strategy
 
-Mnemocyte should remain ESM-only until there is a strong reason to dual-publish.
+Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The package ships:
 
-```json
-{
-  "type": "module",
-  "files": ["dist", "migrations"],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    }
-  },
-  "types": "./dist/index.d.mts",
-  "scripts": {
-    "build": "tsdown src/index.ts",
-    "dev": "tsdown src/index.ts --watch",
-    "checktypes": "tsc --noEmit",
-    "lint": "biome lint --write",
-    "format": "biome format --write",
-    "test:retrieval": "pnpm build && node test/retrieval/quality.test.mjs",
-    "test:integration": "pnpm build && node test/integration/postgres.test.mjs",
-    "bench:retrieval": "pnpm build && node test/benchmarks/retrieval.bench.mjs",
-    "pack:dry": "pnpm pack --dry-run",
-    "prepublishOnly": "pnpm build && pnpm checktypes && pnpm pack:dry"
-  }
-}
-```
+- `dist/` — built `index.mjs` + `index.d.mts` (and source maps) produced by `tsdown`.
+- `migrations/0000_initial.sql` — the only supported way to provision the Postgres schema.
+
+The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, etc.). CI runs `test:exports` to enforce that the built `.d.mts` keeps every public type reachable from `mnemocyte`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -96,41 +75,36 @@ Before production, choose a stable Node target policy. `nodenext` is acceptable 
 
 ```text
 src/
-├── index.ts                  # public API exports only
-├── client.ts                 # createMnemocyte() factory
+├── index.ts                  # public API re-exports only
+├── client.ts                 # createMnemocyte() factory + Postgres dim validation
 ├── types.ts                  # public types
-├── errors.ts                 # typed error hierarchy
+├── errors.ts                 # MnemocyteError + isMnemocyteError
+├── observability.ts          # observe() helper that emits start/success/error events
+├── resilience.ts             # withResilience helper (timeout + retry + abort)
 │
 ├── db/
-│   ├── index.ts              # postgres.js + drizzle setup
-│   ├── schema.ts             # drizzle table definitions
+│   ├── index.ts              # postgres.js + drizzle setup (createDatabase)
+│   ├── schema.ts             # drizzle table definitions (memories + events)
 │   └── queries/
-│       ├── memories.ts       # memory CRUD and retrieval filters
-│       └── events.ts         # event CRUD
-│
-├── embed/
-│   ├── types.ts              # Embedder interface
-│   ├── index.ts              # provider factory
-│   └── providers/
-│       ├── openai.ts         # OpenAI-compatible embeddings
-│       └── ollama.ts         # local Ollama embeddings
+│       ├── memories.ts       # memory CRUD, recall, prune, dedup, consolidate SQL
+│       └── events.ts         # audit-event CRUD
 │
 ├── retrieval/
-│   ├── index.ts              # retrieval orchestration
-│   ├── vector.ts             # pgvector search
-│   ├── lexical.ts            # PostgreSQL full-text search
-│   └── scorer.ts             # score fusion
+│   ├── index.ts              # hybridRecall orchestration
+│   └── scorer.ts             # cosineSimilarity, lexical score, fused ranker
 │
 ├── memory/
 │   ├── shared.ts             # validation, mapping, embedding helpers
-│   ├── in-memory.ts          # in-memory MVP backend
-│   └── postgres.ts           # Postgres-backed production backend
+│   ├── in-memory.ts          # in-memory backend (with audit log array)
+│   └── postgres.ts           # Postgres-backed backend
 │
 └── context/
     ├── builder.ts            # buildContext()
     ├── formatter.ts          # safe markdown/plain/xml formatting
     └── tokens.ts             # token counting abstraction
 ```
+
+Embedder providers (OpenAI, Ollama, …) are deliberately **not** bundled into the core. Callers pass an `Embedder` implementation explicitly. The MCP adapter package (planned, separate workspace) is the right place to ship a small set of out-of-the-box providers.
 
 Layering rule: lower-level modules must not import higher-level modules. For example, `db/` must not import from `memory/`, and `retrieval/` must not import from `context/`.
 
@@ -170,87 +144,43 @@ types: ["preference", "instruction"],
 await client.close();
 ```
 
-## Core Public Types
+## Public Surface (0.1.0)
 
-```ts
-export type MemoryType = "fact" | "preference" | "instruction" | "backstory" | "episode" | "session";
-export type ImportanceLevel = "low" | "normal" | "high" | "critical";
-export type ContextFormat = "markdown" | "plain" | "xml";
+The source of truth is `dist/index.d.mts`; this section is a fast index.
 
-export interface MnemocyteConfig {
-databaseUrl?: string;
-embedder: Embedder;
-defaults?: {
-limit?: number;
-minScore?: number;
-};
-retrieval?: RetrievalConfig;
-}
+**Factory**
+- `createMnemocyte(config: MnemocyteConfig): MnemocyteClient` — stable.
 
-export interface Embedder {
-readonly model: string;
-readonly dimensions: number;
-embed(texts: readonly string[]): Promise<number[][]>;
-}
+**Errors**
+- `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
 
-export interface Memory {
-id: string;
-entityId: string;
-content: string;
-type: MemoryType;
-importance: ImportanceLevel;
-tags: string[];
-source: string | null;
-metadata: Record<string, unknown>;
-confidence: number;
-embeddingModel: string;
-embeddingDimensions: number;
-supersededBy: string | null;
-expiresAt: Date | null;
-lastAccessedAt: Date | null;
-accessCount: number;
-createdAt: Date;
-updatedAt: Date;
-}
+**Client (stable)**
+- `remember(input)` / `rememberMany(inputs)`
+- `recall(input)` — hybrid vector + lexical, with `RetrievalExplanation` when `explain: true`.
+- `buildContext(input)` — markdown / plain / xml with token-budget trimming.
+- `forget({ entityId, memoryId })`, `forgetAll({ entityId })`
+- `prune(input: PruneInput)` — bulk-delete by `entityId` / `expired` / `superseded` / `createdBefore` / `notAccessedSince` / `types` / `tags` / `maxImportance` with `dryRun`.
+- `findDuplicates(input)` — read-only pairwise scan returning `DuplicatePair[]`.
+- `listAuditLog(input)` — newest-first, entity-scoped, with `before` / `after` / `limit`.
+- `stats(input?)` — `EntityStats` or `GlobalStats`.
+- `close()` — idempotent; further calls throw `"DB"`.
 
-export interface RememberInput {
-entityId: string;
-content: string;
-type?: MemoryType;
-importance?: ImportanceLevel;
-tags?: string[];
-source?: string;
-metadata?: Record<string, unknown>;
-confidence?: number;
-expiresAt?: Date;
-}
+**Client (experimental, gated under `client.experimental.*`)**
+- `experimental.consolidate(input)` — mark one or more memories as superseded by a survivor, with optional tag merge, idempotent for already-superseded losers, audited as `"memory.superseded"`.
 
-export interface RecallInput {
-entityId: string;
-query: string;
-limit?: number;
-minScore?: number;
-types?: MemoryType[];
-tags?: string[];
-before?: Date;
-after?: Date;
-includeSuperseded?: boolean;
-includeExpired?: boolean;
-explain?: boolean;
-}
+**Config**
+- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required, must be 1536-d for Postgres), `defaults?`, `retrieval?`, `observability?`, `provider?` (resilience), `audit?` (`{ enabled }`).
 
-export interface MnemocyteClient {
-remember(input: RememberInput): Promise<Memory>;
-rememberMany(inputs: RememberInput[]): Promise<Memory[]>;
-recall(input: RecallInput): Promise<MemoryWithScore[]>;
-forget(input: { entityId: string; memoryId: string }): Promise<void>;
-forgetAll(input: { entityId: string }): Promise<void>;
-stats(input?: { entityId?: string }): Promise<EntityStats | GlobalStats>;
-close(): Promise<void>;
-}
-```
+**Types**
+- `Memory` (canonical record, includes `supersededBy` and `supersededAt`), `MemoryWithScore`, `RetrievalScores`, `RetrievalExplanation`, `EntityStats`, `GlobalStats`.
+- Input types: `RememberInput`, `RecallInput`, `BuildContextInput`, `PruneInput`, `FindDuplicatesInput`, `ListAuditLogInput`, `ConsolidateInput`.
+- Result types: `PruneResult`, `ConsolidateResult`.
+- Observability: `MnemocyteObservation`, `MnemocyteOperation`, `MnemocyteObservationPhase`, `MnemocyteBackend`, `ObservabilityConfig`.
+- Resilience: `ProviderResilienceConfig`.
+- Audit: `AuditConfig`, `AuditEvent`.
 
-Do not expose `$db` or `$config` as stable public API. If an escape hatch becomes necessary, expose it under an explicitly unstable namespace.
+**Escape hatches**
+- None. Internal helpers (`useDatabase`, `schema`, query builders) are not re-exported. If an unstable hatch is ever needed, expose it under `client.experimental.*`, never as a top-level export.
 
 ## Error Model
 
@@ -260,7 +190,15 @@ Use typed errors so consumers can recover from expected failures.
 export class MnemocyteError extends Error {
 constructor(
 message: string,
-readonly code: "CONFIG" | "VALIDATION" | "DB" | "EMBEDDING" | "NOT_FOUND" | "MIGRATION",
+readonly code:
+| "CONFIG"
+| "VALIDATION"
+| "DB"
+| "EMBEDDING"
+| "NOT_FOUND"
+| "MIGRATION"
+| "TIMEOUT"
+| "ABORTED",
 readonly cause?: unknown,
 ) {
 super(message);
@@ -268,6 +206,8 @@ this.name = "MnemocyteError";
 }
 }
 ```
+
+`"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"` covers both invalid embedder configuration and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call argument errors (including the explicit guard in `prune({})` and `consolidate({ supersededIds: [] })`).
 
 ## Database Architecture
 
@@ -478,7 +418,15 @@ Before a production release, add:
 - Add consolidation only under an experimental namespace. ✅
 - Add conflict detection and deduplication. ✅ (passive: `findDuplicates`)
 - Add audit logs for merges and deletes. ✅
-- Add MCP/adapters after the core package is stable.
+- Add MCP/adapters after the core package is stable. (planned: separate `packages/mcp` workspace, post-0.1.0)
+
+## Known limitations
+
+- **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` now validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterised. Making this configurable is a future enhancement.
+- **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
+- **Hybrid recall on Postgres approximates score fusion.** The vector and lexical top-K candidates are fused by ID; a row appearing only in the lexical top-K gets `vectorScore = 0` (and vice versa). `candidateMultiplier` widens the candidate set to mitigate this. The in-memory backend computes both components for every memory.
+- **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
+- **`experimental.consolidate` is gated under `client.experimental.*`.** Members of that namespace may change between minor releases.
 
 ## Issue Checklist
 

@@ -52,6 +52,12 @@ explain: true,
 await client.close();
 ```
 
+See also: [Provider resilience](#provider-resilience),
+[Pruning memories](#pruning-memories),
+[Finding duplicates](#finding-duplicates-experimental),
+[Audit log](#audit-log-experimental), and
+[Consolidating duplicates](#consolidating-duplicates-experimental).
+
 ## Postgres usage
 
 Run the included migration against a Postgres database with pgvector enabled, then pass `databaseUrl`:
@@ -59,11 +65,17 @@ Run the included migration against a Postgres database with pgvector enabled, th
 ```ts
 const client = createMnemocyte({
 databaseUrl: process.env.DATABASE_URL,
-embedder,
+embedder, // embedder.dimensions MUST be 1536 — see below
 });
 ```
 
 The published package includes `migrations/0000_initial.sql`.
+
+> **Embedding dimensionality is pinned to 1536 on the Postgres backend.**
+> The bundled migration creates `embedding vector(1536)`. If
+> `embedder.dimensions` is anything else, `createMnemocyte` throws a
+> `MnemocyteError` with code `"CONFIG"` *before* opening the connection
+> pool. The in-memory backend has no such constraint.
 
 ## Provider resilience
 

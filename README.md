@@ -93,7 +93,7 @@ pnpm checktypes
 pnpm lint
 pnpm run test:retrieval
 pnpm run test:integration
-pnpm pack --dry-run
+pnpm run pack:check
 ```
 
 `test:integration` skips cleanly when `DATABASE_URL` is not set.

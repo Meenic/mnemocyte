@@ -3,7 +3,7 @@
 	"version": "0.0.7",
 	"description": "Persistent memory for TypeScript AI apps.",
 	"type": "module",
-	"packageManager": "pnpm@10.18.3",
+	"packageManager": "pnpm@11.1.1",
 	"sideEffects": false,
 	"files": [
 		"dist",

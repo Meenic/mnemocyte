@@ -9,6 +9,7 @@ import {
 } from "../db/queries/memories.js";
 import { memoriesTable } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
+import { observe } from "../observability.js";
 import { hybridRecall } from "../retrieval/index.js";
 import type {
 	EntityStats,
@@ -49,135 +50,197 @@ export function createPostgresClient(
 	}
 
 	async function remember(input: RememberInput): Promise<Memory> {
-		assertOpen();
-		validateRememberInput(input);
-		const embedding = await embedOne(config.embedder, input.content);
-		const now = new Date();
-		const row = await insertMemory(handle.db, {
-			id: createId(),
-			entityId: input.entityId,
-			content: input.content,
-			type: input.type ?? DEFAULT_TYPE,
-			importance: input.importance ?? DEFAULT_IMPORTANCE,
-			tags: normalizeTags(input.tags),
-			source: input.source ?? null,
-			metadata: input.metadata ?? {},
-			confidence: input.confidence ?? 1,
-			embedding,
-			embeddingModel: config.embedder.model,
-			embeddingDimensions: config.embedder.dimensions,
-			supersededBy: null,
-			supersededAt: null,
-			expiresAt: input.expiresAt ?? null,
-			lastAccessedAt: null,
-			accessCount: 0,
-			createdAt: now,
-			updatedAt: now,
-		});
-		return rowToMemory(row);
+		return observe(
+			config,
+			"postgres",
+			"remember",
+			{ entityId: input.entityId },
+			async () => {
+				assertOpen();
+				validateRememberInput(input);
+				const embedding = await embedOne(config.embedder, input.content);
+				const now = new Date();
+				const row = await insertMemory(handle.db, {
+					id: createId(),
+					entityId: input.entityId,
+					content: input.content,
+					type: input.type ?? DEFAULT_TYPE,
+					importance: input.importance ?? DEFAULT_IMPORTANCE,
+					tags: normalizeTags(input.tags),
+					source: input.source ?? null,
+					metadata: input.metadata ?? {},
+					confidence: input.confidence ?? 1,
+					embedding,
+					embeddingModel: config.embedder.model,
+					embeddingDimensions: config.embedder.dimensions,
+					supersededBy: null,
+					supersededAt: null,
+					expiresAt: input.expiresAt ?? null,
+					lastAccessedAt: null,
+					accessCount: 0,
+					createdAt: now,
+					updatedAt: now,
+				});
+				return rowToMemory(row);
+			},
+			(memory) => ({ memoryId: memory.id, count: 1 }),
+		);
 	}
 
 	return {
 		remember,
 		async rememberMany(inputs) {
-			assertOpen();
-			const result: Memory[] = [];
-			for (const input of inputs) {
-				result.push(await remember(input));
-			}
-			return result;
+			return observe(
+				config,
+				"postgres",
+				"rememberMany",
+				{ count: inputs.length },
+				async () => {
+					assertOpen();
+					const result: Memory[] = [];
+					for (const input of inputs) {
+						result.push(await remember(input));
+					}
+					return result;
+				},
+				(result) => ({ count: result.length }),
+			);
 		},
 		async recall(input) {
-			assertOpen();
-			validateRecallInput(input);
-			const limit = input.limit ?? config.defaults?.limit ?? DEFAULT_LIMIT;
-			const minScore =
-				input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
-			assertLimit(limit);
-			assertMinScore(minScore);
-			return hybridRecall({
-				db: handle.db,
-				embedder: config.embedder,
-				input,
-				limit,
-				minScore,
-				retrieval: config.retrieval,
-			});
+			return observe(
+				config,
+				"postgres",
+				"recall",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateRecallInput(input);
+					const limit = input.limit ?? config.defaults?.limit ?? DEFAULT_LIMIT;
+					const minScore =
+						input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
+					assertLimit(limit);
+					assertMinScore(minScore);
+					return hybridRecall({
+						db: handle.db,
+						embedder: config.embedder,
+						input,
+						limit,
+						minScore,
+						retrieval: config.retrieval,
+					});
+				},
+				(result) => ({ count: result.length }),
+			);
 		},
 		async buildContext(input) {
-			assertOpen();
-			return buildContext({
-				input,
-				recall: (contextInput) =>
-					this.recall(contextInputToRecallInput(contextInput)),
-			});
+			return observe(
+				config,
+				"postgres",
+				"buildContext",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					return buildContext({
+						input,
+						recall: (contextInput) =>
+							this.recall(contextInputToRecallInput(contextInput)),
+					});
+				},
+			);
 		},
 		async forget(input) {
-			assertOpen();
-			assertNonEmptyString(input.entityId, "entityId");
-			assertNonEmptyString(input.memoryId, "memoryId");
-			const deleted = await deleteMemory(
-				handle.db,
-				input.entityId,
-				input.memoryId,
+			return observe(
+				config,
+				"postgres",
+				"forget",
+				{ entityId: input.entityId, memoryId: input.memoryId },
+				async () => {
+					assertOpen();
+					assertNonEmptyString(input.entityId, "entityId");
+					assertNonEmptyString(input.memoryId, "memoryId");
+					const deleted = await deleteMemory(
+						handle.db,
+						input.entityId,
+						input.memoryId,
+					);
+					if (!deleted) {
+						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+					}
+				},
 			);
-			if (!deleted) {
-				throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
-			}
 		},
 		async forgetAll(input) {
-			assertOpen();
-			assertNonEmptyString(input.entityId, "entityId");
-			await Promise.all([
-				deleteMemoriesForEntity(handle.db, input.entityId),
-				deleteEventsForEntity(handle.db, input.entityId),
-			]);
+			return observe(
+				config,
+				"postgres",
+				"forgetAll",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					assertNonEmptyString(input.entityId, "entityId");
+					await Promise.all([
+						deleteMemoriesForEntity(handle.db, input.entityId),
+						deleteEventsForEntity(handle.db, input.entityId),
+					]);
+				},
+			);
 		},
 		async stats(input) {
-			assertOpen();
-			const now = new Date();
-			if (input?.entityId) {
-				const selected = await listMemories(handle.db, {
-					entityId: input.entityId,
-					includeExpired: true,
-					includeSuperseded: true,
-				});
-				return {
-					entityId: input.entityId,
-					memoryCount: selected.length,
-					activeMemoryCount: selected.filter(
-						(memory) =>
-							!isExpired(rowToMemory(memory), now) &&
-							memory.supersededBy === null,
-					).length,
-					expiredMemoryCount: selected.filter((memory) =>
-						isExpired(rowToMemory(memory), now),
-					).length,
-					supersededMemoryCount: selected.filter(
-						(memory) => memory.supersededBy !== null,
-					).length,
-				} satisfies EntityStats;
-			}
-			const allMemories = await handle.db.select().from(memoriesTable);
-			return {
-				entityCount: new Set(allMemories.map((memory) => memory.entityId)).size,
-				memoryCount: allMemories.length,
-				activeMemoryCount: allMemories.filter(
-					(memory) =>
-						!isExpired(rowToMemory(memory), now) &&
-						memory.supersededBy === null,
-				).length,
-				expiredMemoryCount: allMemories.filter((memory) =>
-					isExpired(rowToMemory(memory), now),
-				).length,
-				supersededMemoryCount: allMemories.filter(
-					(memory) => memory.supersededBy !== null,
-				).length,
-			} satisfies GlobalStats;
+			return observe(
+				config,
+				"postgres",
+				"stats",
+				input?.entityId ? { entityId: input.entityId } : {},
+				async () => {
+					assertOpen();
+					const now = new Date();
+					if (input?.entityId) {
+						const selected = await listMemories(handle.db, {
+							entityId: input.entityId,
+							includeExpired: true,
+							includeSuperseded: true,
+						});
+						return {
+							entityId: input.entityId,
+							memoryCount: selected.length,
+							activeMemoryCount: selected.filter(
+								(memory) =>
+									!isExpired(rowToMemory(memory), now) &&
+									memory.supersededBy === null,
+							).length,
+							expiredMemoryCount: selected.filter((memory) =>
+								isExpired(rowToMemory(memory), now),
+							).length,
+							supersededMemoryCount: selected.filter(
+								(memory) => memory.supersededBy !== null,
+							).length,
+						} satisfies EntityStats;
+					}
+					const allMemories = await handle.db.select().from(memoriesTable);
+					return {
+						entityCount: new Set(allMemories.map((memory) => memory.entityId))
+							.size,
+						memoryCount: allMemories.length,
+						activeMemoryCount: allMemories.filter(
+							(memory) =>
+								!isExpired(rowToMemory(memory), now) &&
+								memory.supersededBy === null,
+						).length,
+						expiredMemoryCount: allMemories.filter((memory) =>
+							isExpired(rowToMemory(memory), now),
+						).length,
+						supersededMemoryCount: allMemories.filter(
+							(memory) => memory.supersededBy !== null,
+						).length,
+					} satisfies GlobalStats;
+				},
+			);
 		},
 		async close() {
-			closed = true;
-			await handle.close();
+			return observe(config, "postgres", "close", {}, async () => {
+				closed = true;
+				await handle.close();
+			});
 		},
 	};
 }

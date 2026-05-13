@@ -1,6 +1,6 @@
 export { createMnemocyte } from "./client.js";
 export type { MnemocyteErrorCode } from "./errors.js";
-export { MnemocyteError } from "./errors.js";
+export { isMnemocyteError, MnemocyteError } from "./errors.js";
 export type {
 	BuildContextInput,
 	ContextFormat,
@@ -11,8 +11,13 @@ export type {
 	Memory,
 	MemoryType,
 	MemoryWithScore,
+	MnemocyteBackend,
 	MnemocyteClient,
 	MnemocyteConfig,
+	MnemocyteObservation,
+	MnemocyteObservationPhase,
+	MnemocyteOperation,
+	ObservabilityConfig,
 	RecallInput,
 	RememberInput,
 	RetrievalConfig,

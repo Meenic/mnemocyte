@@ -419,8 +419,8 @@ Before a production release, add:
 - CI across supported Node versions ✅
 - provider timeouts and abort signals
 - retry/rate-limit handling for embedding providers
-- observability hooks
-- typed errors
+- observability hooks ✅
+- typed errors ✅
 - safe deletion and pruning policy
 - retrieval evaluation fixtures
 - npm provenance or trusted publishing workflow
@@ -468,7 +468,7 @@ Before a production release, add:
 ### Phase 5 — Production Hardening
 
 - Add provider retries, timeouts, and abort signals.
-- Add observability hooks.
+- Add observability hooks. ✅
 - Add pruning policies.
 - Add release CI with provenance or trusted publishing. ✅
 - Add Node compatibility matrix. ✅
@@ -490,7 +490,7 @@ Before a production release, add:
 - [ ] Add client `close()`.
 - [x] Apply one canonical retrieval filter to all retrieval paths.
 - [ ] Use `lexical` / `fts` terminology instead of BM25 for `ts_rank`.
-- [ ] Add typed errors.
+- [x] Add typed errors.
 - [x] Keep `client.ts` as a thin backend wiring layer.
 - [x] Add package export smoke tests.
 - [x] Add Postgres + pgvector integration tests.

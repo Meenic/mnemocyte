@@ -10,6 +10,36 @@ export type ImportanceLevel = "low" | "normal" | "high" | "critical";
 
 export type ContextFormat = "markdown" | "plain" | "xml";
 
+export type MnemocyteBackend = "in-memory" | "postgres";
+
+export type MnemocyteOperation =
+	| "remember"
+	| "rememberMany"
+	| "recall"
+	| "buildContext"
+	| "forget"
+	| "forgetAll"
+	| "stats"
+	| "close";
+
+export type MnemocyteObservationPhase = "start" | "success" | "error";
+
+export interface MnemocyteObservation {
+	operation: MnemocyteOperation;
+	phase: MnemocyteObservationPhase;
+	backend: MnemocyteBackend;
+	timestamp: Date;
+	durationMs?: number;
+	entityId?: string;
+	memoryId?: string;
+	count?: number;
+	error?: unknown;
+}
+
+export interface ObservabilityConfig {
+	onEvent?: (event: MnemocyteObservation) => void | Promise<void>;
+}
+
 export interface MnemocyteConfig {
 	databaseUrl?: string;
 	embedder: Embedder;
@@ -18,6 +48,7 @@ export interface MnemocyteConfig {
 		minScore?: number;
 	};
 	retrieval?: RetrievalConfig;
+	observability?: ObservabilityConfig;
 }
 
 export interface Embedder {

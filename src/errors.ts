@@ -17,3 +17,7 @@ export class MnemocyteError extends Error {
 		this.cause = cause;
 	}
 }
+
+export function isMnemocyteError(error: unknown): error is MnemocyteError {
+	return error instanceof MnemocyteError;
+}

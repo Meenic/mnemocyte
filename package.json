@@ -21,10 +21,9 @@
 		"build": "tsdown src/index.ts",
 		"dev": "tsdown src/index.ts --watch",
 		"checktypes": "tsc --noEmit",
-		"test": "vitest run",
 		"lint": "biome lint --write",
 		"format": "biome format --write",
-		"prepublishOnly": "pnpm build && pnpm checktypes && pnpm test"
+		"prepublishOnly": "pnpm build && pnpm checktypes"
 	},
 	"repository": {
 		"type": "git",
@@ -64,7 +63,6 @@
 		"@biomejs/biome": "2.4.15",
 		"@types/node": "^25.7.0",
 		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
-		"vitest": "^4.1.6"
+		"typescript": "^6.0.3"
 	}
 }

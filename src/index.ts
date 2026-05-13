@@ -56,6 +56,8 @@ export type {
 	MnemocyteOperation,
 	ObservabilityConfig,
 	ProviderResilienceConfig,
+	PruneInput,
+	PruneResult,
 	RecallInput,
 	RememberInput,
 	RetrievalConfig,

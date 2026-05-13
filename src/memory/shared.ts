@@ -8,6 +8,7 @@ import type {
 	Memory,
 	MemoryType,
 	ProviderResilienceConfig,
+	PruneInput,
 	RecallInput,
 	RememberInput,
 } from "../types.js";
@@ -16,6 +17,18 @@ export const DEFAULT_LIMIT = 10;
 export const DEFAULT_MIN_SCORE = 0;
 export const DEFAULT_TYPE: MemoryType = "fact";
 export const DEFAULT_IMPORTANCE: ImportanceLevel = "normal";
+
+/**
+ * Ordering of {@link ImportanceLevel} from least to most important. Used
+ * by `prune({ maxImportance })` to compare a memory's importance against
+ * the caller-supplied ceiling.
+ */
+export const IMPORTANCE_RANK: Record<ImportanceLevel, number> = {
+	low: 0,
+	normal: 1,
+	high: 2,
+	critical: 3,
+};
 
 export interface StoredMemory extends Memory {
 	embedding: number[];
@@ -202,6 +215,84 @@ export function contextInputToRecallInput(
 			? {}
 			: { includeExpired: input.includeExpired }),
 	};
+}
+
+/**
+ * Validate a {@link PruneInput} and throw a `"VALIDATION"`
+ * {@link MnemocyteError} when no selector is supplied. Mnemocyte
+ * deliberately rejects `prune({})` to avoid surprise full-table deletes.
+ */
+export function validatePruneInput(input: PruneInput): void {
+	if (input.entityId !== undefined) {
+		assertNonEmptyString(input.entityId, "entityId");
+	}
+	const hasSelector =
+		input.entityId !== undefined ||
+		input.expired === true ||
+		input.superseded === true ||
+		input.createdBefore !== undefined ||
+		input.notAccessedSince !== undefined ||
+		(input.types !== undefined && input.types.length > 0) ||
+		(input.tags !== undefined && input.tags.length > 0) ||
+		input.maxImportance !== undefined;
+	if (!hasSelector) {
+		throw new MnemocyteError(
+			"prune requires at least one selector (entityId, expired, superseded, createdBefore, notAccessedSince, types, tags, or maxImportance).",
+			"VALIDATION",
+		);
+	}
+}
+
+/**
+ * Test whether `memory` matches a {@link PruneInput}. All specified
+ * selectors are AND-combined; unspecified selectors do not restrict.
+ *
+ * `now` is supplied by the caller so callers can share a consistent
+ * timestamp across a batch.
+ */
+export function matchesPruneFilter(
+	memory: Memory,
+	input: PruneInput,
+	now: Date,
+): boolean {
+	if (input.entityId !== undefined && memory.entityId !== input.entityId) {
+		return false;
+	}
+	if (input.expired === true && !isExpired(memory, now)) {
+		return false;
+	}
+	if (input.superseded === true && memory.supersededBy === null) {
+		return false;
+	}
+	if (
+		input.createdBefore !== undefined &&
+		memory.createdAt.getTime() >= input.createdBefore.getTime()
+	) {
+		return false;
+	}
+	if (input.notAccessedSince !== undefined) {
+		const last = memory.lastAccessedAt;
+		if (last !== null && last.getTime() >= input.notAccessedSince.getTime()) {
+			return false;
+		}
+	}
+	if (input.types !== undefined && !input.types.includes(memory.type)) {
+		return false;
+	}
+	if (
+		input.tags !== undefined &&
+		input.tags.length > 0 &&
+		!input.tags.every((tag) => memory.tags.includes(tag))
+	) {
+		return false;
+	}
+	if (
+		input.maxImportance !== undefined &&
+		IMPORTANCE_RANK[memory.importance] > IMPORTANCE_RANK[input.maxImportance]
+	) {
+		return false;
+	}
+	return true;
 }
 
 export function matchesRecallFilter(

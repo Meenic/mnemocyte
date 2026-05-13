@@ -1,5 +1,15 @@
-import { and, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
-import type { MemoryType } from "../../types.js";
+import {
+	and,
+	eq,
+	gt,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	or,
+	sql,
+} from "drizzle-orm";
+import type { ImportanceLevel, MemoryType } from "../../types.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
 
@@ -101,6 +111,72 @@ export async function deleteMemoriesForEntity(
 	const result = await db
 		.delete(memoriesTable)
 		.where(eq(memoriesTable.entityId, entityId))
+		.returning({ id: memoriesTable.id });
+	return result.length;
+}
+
+export interface PruneFilter {
+	entityId?: string;
+	expired?: boolean;
+	superseded?: boolean;
+	createdBefore?: Date;
+	notAccessedSince?: Date;
+	types?: readonly MemoryType[];
+	tags?: readonly string[];
+	maxImportanceLevels?: readonly ImportanceLevel[];
+}
+
+function pruneConditions(filter: PruneFilter) {
+	return and(
+		filter.entityId !== undefined
+			? eq(memoriesTable.entityId, filter.entityId)
+			: undefined,
+		filter.expired
+			? and(
+					isNotNull(memoriesTable.expiresAt),
+					sql`${memoriesTable.expiresAt} <= now()`,
+				)
+			: undefined,
+		filter.superseded ? isNotNull(memoriesTable.supersededBy) : undefined,
+		filter.createdBefore
+			? lt(memoriesTable.createdAt, filter.createdBefore)
+			: undefined,
+		filter.notAccessedSince
+			? or(
+					isNull(memoriesTable.lastAccessedAt),
+					lt(memoriesTable.lastAccessedAt, filter.notAccessedSince),
+				)
+			: undefined,
+		filter.types && filter.types.length > 0
+			? inArray(memoriesTable.type, [...filter.types])
+			: undefined,
+		filter.tags && filter.tags.length > 0
+			? sql`${memoriesTable.tags} @> ${filter.tags}`
+			: undefined,
+		filter.maxImportanceLevels && filter.maxImportanceLevels.length > 0
+			? inArray(memoriesTable.importance, [...filter.maxImportanceLevels])
+			: undefined,
+	);
+}
+
+export async function countPruneMatches(
+	db: MnemocyteDatabase,
+	filter: PruneFilter,
+): Promise<number> {
+	const result = await db
+		.select({ count: sql<number>`count(*)::int` })
+		.from(memoriesTable)
+		.where(pruneConditions(filter));
+	return result[0]?.count ?? 0;
+}
+
+export async function pruneMemories(
+	db: MnemocyteDatabase,
+	filter: PruneFilter,
+): Promise<number> {
+	const result = await db
+		.delete(memoriesTable)
+		.where(pruneConditions(filter))
 		.returning({ id: memoriesTable.id });
 	return result.length;
 }

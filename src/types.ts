@@ -56,6 +56,7 @@ export type MnemocyteOperation =
 	| "buildContext"
 	| "forget"
 	| "forgetAll"
+	| "prune"
 	| "stats"
 	| "close";
 
@@ -459,6 +460,63 @@ export interface BuildContextInput {
 }
 
 /**
+ * Input for {@link MnemocyteClient.prune}. All fields are optional, but
+ * at least one selector must be set; calling `prune({})` is rejected with
+ * a `"VALIDATION"` {@link MnemocyteError} so memories cannot be deleted
+ * accidentally. Specified filters are combined with AND semantics.
+ */
+export interface PruneInput {
+	/** Restrict pruning to a single entity. */
+	entityId?: string;
+	/** Match memories whose `expiresAt` is in the past. */
+	expired?: boolean;
+	/** Match memories that have been superseded (`supersededBy !== null`). */
+	superseded?: boolean;
+	/** Match memories created strictly before this date. */
+	createdBefore?: Date;
+	/**
+	 * Match memories whose `lastAccessedAt` is `null` or strictly before
+	 * this date. Useful for evicting "cold" memories.
+	 */
+	notAccessedSince?: Date;
+	/** Restrict pruning to these memory types. */
+	types?: MemoryType[];
+	/**
+	 * Require memories to include all of these tags. Empty array is
+	 * treated as no tag filter.
+	 */
+	tags?: string[];
+	/**
+	 * Match memories whose `importance` is at or below this level. For
+	 * example, `"normal"` prunes `"low"` and `"normal"` but never `"high"`
+	 * or `"critical"`. Useful for evicting low-value memories first.
+	 */
+	maxImportance?: ImportanceLevel;
+	/**
+	 * If `true`, count what would be pruned without deleting anything.
+	 * @defaultValue `false`
+	 */
+	dryRun?: boolean;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/**
+ * Result returned by {@link MnemocyteClient.prune}.
+ */
+export interface PruneResult {
+	/** Number of memories that matched the prune filter. */
+	matchedCount: number;
+	/**
+	 * Number of memories actually deleted. Equals `matchedCount` for
+	 * normal runs and `0` for `dryRun` runs.
+	 */
+	deletedCount: number;
+	/** `true` when {@link PruneInput.dryRun} was set. */
+	dryRun: boolean;
+}
+
+/**
  * Stats for a single entity, returned by
  * {@link MnemocyteClient.stats} when an `entityId` is provided.
  */
@@ -530,6 +588,27 @@ export interface MnemocyteClient {
 	forget(input: { entityId: string; memoryId: string }): Promise<void>;
 	/** Delete every memory belonging to `entityId`. */
 	forgetAll(input: { entityId: string }): Promise<void>;
+	/**
+	 * Bulk-delete memories matching the filters on {@link PruneInput}.
+	 *
+	 * At least one filter must be specified; an empty input throws a
+	 * `"VALIDATION"` {@link MnemocyteError} to avoid accidental full
+	 * deletion. Pass `dryRun: true` to count without deleting.
+	 *
+	 * @example Evict expired or stale memories for an entity
+	 * ```ts
+	 * await client.prune({
+	 *   entityId: "user_123",
+	 *   expired: true,
+	 * });
+	 *
+	 * await client.prune({
+	 *   notAccessedSince: new Date(Date.now() - 30 * 24 * 3600 * 1000),
+	 *   maxImportance: "normal",
+	 * });
+	 * ```
+	 */
+	prune(input: PruneInput): Promise<PruneResult>;
 	/**
 	 * Return statistics. With an `entityId`, returns {@link EntityStats};
 	 * without one, returns {@link GlobalStats}.

@@ -99,6 +99,34 @@ Failures surface as `MnemocyteError` with stable `code`s:
 - `"ABORTED"` — the operation was cancelled via `signal` (never retried).
 - `"EMBEDDING"` — the embedder failed after all retries are exhausted.
 
+## Pruning memories
+
+`prune` bulk-deletes memories matching a filter. At least one selector
+is required; `prune({})` is rejected to avoid accidental full deletion.
+
+```ts
+// Drop expired memories for one entity.
+await client.prune({ entityId: "user_123", expired: true });
+
+// Evict memories not accessed in the last 30 days, but never drop
+// "high" or "critical" memories.
+await client.prune({
+notAccessedSince: new Date(Date.now() - 30 * 24 * 3600 * 1000),
+maxImportance: "normal",
+});
+
+// Count what would be deleted without touching the store.
+const preview = await client.prune({
+entityId: "user_123",
+superseded: true,
+dryRun: true,
+});
+console.log(preview.matchedCount);
+```
+
+Available selectors: `entityId`, `expired`, `superseded`, `createdBefore`,
+`notAccessedSince`, `types`, `tags`, `maxImportance`. They AND together.
+
 ## Retrieval tuning
 
 ```ts

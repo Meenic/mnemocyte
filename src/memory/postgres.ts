@@ -2,10 +2,13 @@ import { buildContext } from "../context/builder.js";
 import type { DatabaseHandle } from "../db/index.js";
 import { deleteEventsForEntity } from "../db/queries/events.js";
 import {
+	countPruneMatches,
 	deleteMemoriesForEntity,
 	deleteMemory,
 	insertMemory,
 	listMemories,
+	type PruneFilter,
+	pruneMemories,
 } from "../db/queries/memories.js";
 import { memoriesTable } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
@@ -14,9 +17,12 @@ import { hybridRecall } from "../retrieval/index.js";
 import type {
 	EntityStats,
 	GlobalStats,
+	ImportanceLevel,
 	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
+	PruneInput,
+	PruneResult,
 	RememberInput,
 } from "../types.js";
 import {
@@ -30,12 +36,58 @@ import {
 	DEFAULT_MIN_SCORE,
 	DEFAULT_TYPE,
 	embedOne,
+	IMPORTANCE_RANK,
 	isExpired,
 	normalizeTags,
 	rowToMemory,
+	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
 } from "./shared.js";
+
+const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
+	"low",
+	"normal",
+	"high",
+	"critical",
+];
+
+function importanceCeilingLevels(
+	max: ImportanceLevel,
+): readonly ImportanceLevel[] {
+	return IMPORTANCE_LEVELS.filter(
+		(level) => IMPORTANCE_RANK[level] <= IMPORTANCE_RANK[max],
+	);
+}
+
+function toPruneFilter(input: PruneInput): PruneFilter {
+	const filter: PruneFilter = {};
+	if (input.entityId !== undefined) {
+		filter.entityId = input.entityId;
+	}
+	if (input.expired === true) {
+		filter.expired = true;
+	}
+	if (input.superseded === true) {
+		filter.superseded = true;
+	}
+	if (input.createdBefore !== undefined) {
+		filter.createdBefore = input.createdBefore;
+	}
+	if (input.notAccessedSince !== undefined) {
+		filter.notAccessedSince = input.notAccessedSince;
+	}
+	if (input.types !== undefined && input.types.length > 0) {
+		filter.types = input.types;
+	}
+	if (input.tags !== undefined && input.tags.length > 0) {
+		filter.tags = input.tags;
+	}
+	if (input.maxImportance !== undefined) {
+		filter.maxImportanceLevels = importanceCeilingLevels(input.maxImportance);
+	}
+	return filter;
+}
 
 export function createPostgresClient(
 	config: MnemocyteConfig,
@@ -198,6 +250,31 @@ export function createPostgresClient(
 						deleteEventsForEntity(handle.db, input.entityId),
 					]);
 				},
+			);
+		},
+		async prune(input: PruneInput): Promise<PruneResult> {
+			return observe(
+				config,
+				"postgres",
+				"prune",
+				input.entityId === undefined ? {} : { entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validatePruneInput(input);
+					const filter = toPruneFilter(input);
+					const dryRun = input.dryRun === true;
+					if (dryRun) {
+						const matchedCount = await countPruneMatches(handle.db, filter);
+						return { matchedCount, deletedCount: 0, dryRun: true };
+					}
+					const deletedCount = await pruneMemories(handle.db, filter);
+					return {
+						matchedCount: deletedCount,
+						deletedCount,
+						dryRun: false,
+					};
+				},
+				(result) => ({ count: result.deletedCount }),
 			);
 		},
 		async stats(input) {

@@ -23,6 +23,7 @@
 		"test:exports": "tsdown src/index.ts && node test/package/exports.test.mjs && tsc -p test/package/tsconfig.json",
 		"test:observability": "tsdown src/index.ts && node test/observability/hooks.test.mjs",
 		"test:resilience": "tsdown src/index.ts && node test/resilience/resilience.test.mjs",
+		"test:prune": "tsdown src/index.ts && node test/prune/prune.test.mjs",
 		"test:retrieval": "tsdown src/index.ts && node test/retrieval/quality.test.mjs",
 		"test:context": "tsdown src/index.ts && node test/context/builder.test.mjs",
 		"test:integration": "tsdown src/index.ts && node test/integration/postgres.test.mjs",

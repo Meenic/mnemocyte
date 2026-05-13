@@ -50,6 +50,9 @@ jobs:
       - name: Test resilience
         run: pnpm run test:resilience
 
+      - name: Test prune
+        run: pnpm run test:prune
+
       - name: Test retrieval
         run: pnpm run test:retrieval
 

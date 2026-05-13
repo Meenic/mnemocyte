@@ -469,7 +469,7 @@ Before a production release, add:
 
 - Add provider retries, timeouts, and abort signals. ✅
 - Add observability hooks. ✅
-- Add pruning policies.
+- Add pruning policies. ✅
 - Add release CI with provenance or trusted publishing. ✅
 - Add Node compatibility matrix. ✅
 

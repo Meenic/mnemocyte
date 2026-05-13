@@ -12,6 +12,8 @@ import type {
 	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
+	PruneInput,
+	PruneResult,
 	RememberInput,
 } from "../types.js";
 import {
@@ -27,9 +29,11 @@ import {
 	DEFAULT_TYPE,
 	embedOne,
 	isExpired,
+	matchesPruneFilter,
 	matchesRecallFilter,
 	normalizeTags,
 	type StoredMemory,
+	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
 } from "./shared.js";
@@ -214,6 +218,37 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 				},
 				(count) => ({ count }),
 			).then(() => undefined);
+		},
+		async prune(input: PruneInput): Promise<PruneResult> {
+			return observe(
+				config,
+				"in-memory",
+				"prune",
+				input.entityId === undefined ? {} : { entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validatePruneInput(input);
+					const now = new Date();
+					const matched: string[] = [];
+					for (const memory of memories.values()) {
+						if (matchesPruneFilter(memory, input, now)) {
+							matched.push(memory.id);
+						}
+					}
+					const dryRun = input.dryRun === true;
+					if (!dryRun) {
+						for (const id of matched) {
+							memories.delete(id);
+						}
+					}
+					return {
+						matchedCount: matched.length,
+						deletedCount: dryRun ? 0 : matched.length,
+						dryRun,
+					};
+				},
+				(result) => ({ count: result.deletedCount }),
+			);
 		},
 		async stats(input) {
 			return observe(

@@ -1,6 +1,7 @@
 import type { MemoryRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
 import type {
+	BuildContextInput,
 	Embedder,
 	ImportanceLevel,
 	Memory,
@@ -159,6 +160,25 @@ export function validateRecallInput(input: RecallInput): void {
 	if (input.minScore !== undefined) {
 		assertMinScore(input.minScore);
 	}
+}
+
+export function contextInputToRecallInput(
+	input: BuildContextInput,
+): RecallInput {
+	return {
+		entityId: input.entityId,
+		query: input.query,
+		...(input.limit === undefined ? {} : { limit: input.limit }),
+		...(input.minScore === undefined ? {} : { minScore: input.minScore }),
+		...(input.types === undefined ? {} : { types: input.types }),
+		...(input.tags === undefined ? {} : { tags: input.tags }),
+		...(input.includeSuperseded === undefined
+			? {}
+			: { includeSuperseded: input.includeSuperseded }),
+		...(input.includeExpired === undefined
+			? {}
+			: { includeExpired: input.includeExpired }),
+	};
 }
 
 export function matchesRecallFilter(

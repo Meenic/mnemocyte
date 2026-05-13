@@ -20,6 +20,7 @@
 		"dev": "tsdown src/index.ts --watch",
 		"checktypes": "tsc --noEmit",
 		"test:retrieval": "pnpm build && node test/retrieval/quality.test.mjs",
+		"test:context": "pnpm build && node test/context/builder.test.mjs",
 		"test:integration": "pnpm build && node test/integration/postgres.test.mjs",
 		"bench:retrieval": "pnpm build && node test/benchmarks/retrieval.bench.mjs",
 		"lint": "biome lint --write",

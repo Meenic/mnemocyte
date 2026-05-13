@@ -456,14 +456,14 @@ Before a production release, add:
 - Add PostgreSQL full-text lexical retrieval. ✅
 - Add score fusion and optional explanations. ✅
 - Add recency, confidence, and access-count signals. ✅
-- Add retrieval quality fixtures and benchmarks.
+- Add retrieval quality fixtures and benchmarks. ✅
 
 ### Phase 4 — Context Builder
 
-- Add markdown/plain/XML formatting.
-- Add XML escaping and safe untrusted-content boundaries.
-- Add pluggable token counter.
-- Add deterministic token-budget trimming.
+- Add markdown/plain/XML formatting. ✅
+- Add XML escaping and safe untrusted-content boundaries. ✅
+- Add pluggable token counter. ✅
+- Add deterministic token-budget trimming. ✅
 
 ### Phase 5 — Production Hardening
 
@@ -494,5 +494,5 @@ Before a production release, add:
 - [x] Keep `client.ts` as a thin backend wiring layer.
 - [ ] Add package export smoke tests.
 - [x] Add Postgres + pgvector integration tests.
-- [ ] Add safe context formatting and token counting.
+- [x] Add safe context formatting and token counting.
 - [ ] Keep consolidation out of stable API until implemented.

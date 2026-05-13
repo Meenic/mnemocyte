@@ -115,6 +115,24 @@ export interface RecallInput {
 	explain?: boolean;
 }
 
+export interface TokenCounter {
+	count(text: string): number;
+}
+
+export interface BuildContextInput {
+	entityId: string;
+	query: string;
+	format?: ContextFormat;
+	maxTokens?: number;
+	limit?: number;
+	minScore?: number;
+	types?: MemoryType[];
+	tags?: string[];
+	includeSuperseded?: boolean;
+	includeExpired?: boolean;
+	tokenCounter?: TokenCounter;
+}
+
 export interface EntityStats {
 	entityId: string;
 	memoryCount: number;
@@ -135,6 +153,7 @@ export interface MnemocyteClient {
 	remember(input: RememberInput): Promise<Memory>;
 	rememberMany(inputs: readonly RememberInput[]): Promise<Memory[]>;
 	recall(input: RecallInput): Promise<MemoryWithScore[]>;
+	buildContext(input: BuildContextInput): Promise<string>;
 	forget(input: { entityId: string; memoryId: string }): Promise<void>;
 	forgetAll(input: { entityId: string }): Promise<void>;
 	stats(input?: { entityId?: string }): Promise<EntityStats | GlobalStats>;

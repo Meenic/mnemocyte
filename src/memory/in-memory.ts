@@ -1,3 +1,4 @@
+import { buildContext } from "../context/builder.js";
 import { MnemocyteError } from "../errors.js";
 import {
 	cosineSimilarity,
@@ -17,6 +18,7 @@ import {
 	assertMinScore,
 	assertNonEmptyString,
 	cloneMemory,
+	contextInputToRecallInput,
 	createId,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_LIMIT,
@@ -112,6 +114,14 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 				}
 			}
 			return scored;
+		},
+		async buildContext(input) {
+			assertOpen();
+			return buildContext({
+				input,
+				recall: (contextInput) =>
+					this.recall(contextInputToRecallInput(contextInput)),
+			});
 		},
 		async forget(input) {
 			assertOpen();

@@ -1,3 +1,4 @@
+import { buildContext } from "../context/builder.js";
 import type { DatabaseHandle } from "../db/index.js";
 import { deleteEventsForEntity } from "../db/queries/events.js";
 import {
@@ -21,6 +22,7 @@ import {
 	assertLimit,
 	assertMinScore,
 	assertNonEmptyString,
+	contextInputToRecallInput,
 	createId,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_LIMIT,
@@ -100,6 +102,14 @@ export function createPostgresClient(
 				limit,
 				minScore,
 				retrieval: config.retrieval,
+			});
+		},
+		async buildContext(input) {
+			assertOpen();
+			return buildContext({
+				input,
+				recall: (contextInput) =>
+					this.recall(contextInputToRecallInput(contextInput)),
 			});
 		},
 		async forget(input) {

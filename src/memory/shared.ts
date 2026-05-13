@@ -104,6 +104,7 @@ export function cloneMemory(memory: Memory): Memory {
 		...memory,
 		tags: [...memory.tags],
 		metadata: { ...memory.metadata },
+		supersededAt: memory.supersededAt ? new Date(memory.supersededAt) : null,
 		expiresAt: memory.expiresAt ? new Date(memory.expiresAt) : null,
 		lastAccessedAt: memory.lastAccessedAt
 			? new Date(memory.lastAccessedAt)
@@ -127,6 +128,7 @@ export function rowToMemory(row: MemoryRow): Memory {
 		embeddingModel: row.embeddingModel,
 		embeddingDimensions: row.embeddingDimensions,
 		supersededBy: row.supersededBy,
+		supersededAt: row.supersededAt,
 		expiresAt: row.expiresAt,
 		lastAccessedAt: row.lastAccessedAt,
 		accessCount: row.accessCount,

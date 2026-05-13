@@ -119,6 +119,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					embeddingModel: config.embedder.model,
 					embeddingDimensions: config.embedder.dimensions,
 					supersededBy: null,
+					supersededAt: null,
 					expiresAt: input.expiresAt ?? null,
 					lastAccessedAt: null,
 					accessCount: 0,
@@ -492,6 +493,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 						const newSupersededIds: string[] = [];
 						for (const loser of losers) {
 							loser.supersededBy = survivor.id;
+							loser.supersededAt = now;
 							loser.updatedAt = now;
 							newSupersededIds.push(loser.id);
 							recordAudit(input.entityId, "memory.superseded", {

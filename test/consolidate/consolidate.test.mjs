@@ -110,7 +110,7 @@ async function expectError(code, action) {
 	}
 }
 
-// 5. Successful merge: losers get supersededBy, survivor unchanged otherwise.
+// 5. Successful merge: losers get supersededBy + supersededAt, survivor unchanged.
 {
 	const client = createClient();
 	try {
@@ -122,6 +122,8 @@ async function expectError(code, action) {
 			entityId: "alice",
 			content: "coffee early",
 		});
+		assert.equal(survivor.supersededAt, null);
+		assert.equal(loser.supersededAt, null);
 		const result = await client.experimental.consolidate({
 			entityId: "alice",
 			survivorId: survivor.id,
@@ -138,6 +140,16 @@ async function expectError(code, action) {
 		const ids = recalled.map((memory) => memory.id);
 		assert.ok(ids.includes(survivor.id));
 		assert.ok(!ids.includes(loser.id));
+		// Including superseded surfaces the loser with supersededAt set.
+		const all = await client.recall({
+			entityId: "alice",
+			query: "coffee",
+			includeSuperseded: true,
+		});
+		const loserAfter = all.find((memory) => memory.id === loser.id);
+		assert.ok(loserAfter);
+		assert.equal(loserAfter.supersededBy, survivor.id);
+		assert.ok(loserAfter.supersededAt instanceof Date);
 		const stats = await client.stats({ entityId: "alice" });
 		assert.equal(stats.supersededMemoryCount, 1);
 		assert.equal(stats.activeMemoryCount, 1);

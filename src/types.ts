@@ -264,6 +264,13 @@ export interface Memory {
 	embeddingDimensions: number;
 	/** ID of the memory that supersedes this one, or `null` if active. */
 	supersededBy: string | null;
+	/**
+	 * Wall-clock time when this memory was superseded, or `null` if it
+	 * has not been superseded. Set together with
+	 * {@link Memory.supersededBy} by
+	 * {@link ExperimentalMnemocyteClient.consolidate}.
+	 */
+	supersededAt: Date | null;
 	/** Optional expiry; expired memories are filtered out by default. */
 	expiresAt: Date | null;
 	/** Last time this memory was returned by {@link MnemocyteClient.recall}. */

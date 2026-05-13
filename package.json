@@ -5,25 +5,27 @@
 	"type": "module",
 	"sideEffects": false,
 	"files": [
-		"dist"
+		"dist",
+		"migrations"
 	],
 	"exports": {
 		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
 		}
 	},
-	"types": "./dist/index.d.ts",
-	"main": "./dist/index.js",
+	"types": "./dist/index.d.mts",
 	"scripts": {
 		"build": "tsdown src/index.ts",
 		"dev": "tsdown src/index.ts --watch",
 		"checktypes": "tsc --noEmit",
+		"test:integration": "pnpm build && node test/integration/postgres.test.mjs",
 		"lint": "biome lint --write",
 		"format": "biome format --write",
-		"prepublishOnly": "pnpm build && pnpm checktypes"
+		"db:generate": "drizzle-kit generate",
+		"db:migrate": "drizzle-kit migrate",
+		"pack:dry": "pnpm pack --dry-run",
+		"prepublishOnly": "pnpm build && pnpm checktypes && pnpm pack:dry"
 	},
 	"repository": {
 		"type": "git",
@@ -50,7 +52,7 @@
 		"provenance": true
 	},
 	"engines": {
-		"node": ">=22.18.0"
+		"node": ">=18"
 	},
 	"devEngines": {
 		"packageManager": {
@@ -59,9 +61,14 @@
 			"onFail": "download"
 		}
 	},
+	"dependencies": {
+		"drizzle-orm": "^0.45.2",
+		"postgres": "^3.4.7"
+	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.15",
 		"@types/node": "^25.7.0",
+		"drizzle-kit": "^0.31.0",
 		"tsdown": "^0.22.0",
 		"typescript": "^6.0.3"
 	}

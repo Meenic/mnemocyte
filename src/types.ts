@@ -17,6 +17,7 @@ export interface MnemocyteConfig {
 		limit?: number;
 		minScore?: number;
 	};
+	retrieval?: RetrievalConfig;
 }
 
 export interface Embedder {
@@ -49,13 +50,36 @@ export interface RetrievalScores {
 	vector: number;
 	lexical: number;
 	recency: number;
+	confidence: number;
+	access: number;
+	importance: number;
+}
+
+export interface RetrievalScoreWeights {
+	vector?: number;
+	lexical?: number;
+	recency?: number;
+	confidence?: number;
+	access?: number;
+	importance?: number;
+}
+
+export interface RetrievalConfig {
+	weights?: RetrievalScoreWeights;
+	recencyHalfLifeDays?: number;
+	accessSaturation?: number;
+	candidateMultiplier?: number;
 }
 
 export interface RetrievalExplanation {
 	vectorScore: number;
 	lexicalScore: number;
 	recencyScore: number;
+	confidenceScore: number;
+	accessScore: number;
+	importanceScore: number;
 	importanceBoost: number;
+	weights: Required<RetrievalScoreWeights>;
 	finalScore: number;
 }
 

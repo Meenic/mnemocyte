@@ -4,14 +4,11 @@ import {
 	deleteMemoriesForEntity,
 	deleteMemory,
 	insertMemory,
-	lexicalSearch,
 	listMemories,
-	markMemoryAccessed,
-	vectorSearch,
 } from "../db/queries/memories.js";
-import { type MemoryRow, memoriesTable } from "../db/schema.js";
+import { memoriesTable } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
-import { toScoredMemory } from "../retrieval/scorer.js";
+import { hybridRecall } from "../retrieval/index.js";
 import type {
 	EntityStats,
 	GlobalStats,
@@ -36,12 +33,6 @@ import {
 	validateRecallInput,
 	validateRememberInput,
 } from "./shared.js";
-
-interface ScoredRow {
-	row: MemoryRow;
-	vectorScore: number;
-	lexicalScore: number;
-}
 
 export function createPostgresClient(
 	config: MnemocyteConfig,
@@ -102,53 +93,14 @@ export function createPostgresClient(
 				input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
 			assertLimit(limit);
 			assertMinScore(minScore);
-			const queryEmbedding = await embedOne(config.embedder, input.query);
-			const [vectorRows, lexicalRows] = await Promise.all([
-				vectorSearch(handle.db, {
-					...input,
-					embedding: queryEmbedding,
-					limit: limit * 2,
-					minScore: 0,
-				}),
-				lexicalSearch(handle.db, { ...input, limit: limit * 2 }),
-			]);
-			const merged = new Map<string, ScoredRow>();
-			for (const row of vectorRows) {
-				merged.set(row.id, {
-					row,
-					vectorScore: row.vectorScore,
-					lexicalScore: 0,
-				});
-			}
-			for (const row of lexicalRows) {
-				const existing = merged.get(row.id);
-				if (existing) {
-					existing.lexicalScore = row.lexicalScore;
-				} else {
-					merged.set(row.id, {
-						row,
-						vectorScore: 0,
-						lexicalScore: row.lexicalScore,
-					});
-				}
-			}
-			const scored = Array.from(merged.values())
-				.map((entry) =>
-					toScoredMemory(
-						rowToMemory(entry.row),
-						Math.max(0, entry.vectorScore),
-						Math.max(0, entry.lexicalScore),
-						input,
-					),
-				)
-				.filter((memory) => memory.score >= minScore)
-				.sort((a, b) => b.score - a.score)
-				.slice(0, limit);
-			await markMemoryAccessed(
-				handle.db,
-				scored.map((memory) => memory.id),
-			);
-			return scored;
+			return hybridRecall({
+				db: handle.db,
+				embedder: config.embedder,
+				input,
+				limit,
+				minScore,
+				retrieval: config.retrieval,
+			});
 		},
 		async forget(input) {
 			assertOpen();

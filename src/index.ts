@@ -1,6 +1,6 @@
 export { createMnemocyte } from "./client.js";
-export { MnemocyteError } from "./errors.js";
 export type { MnemocyteErrorCode } from "./errors.js";
+export { MnemocyteError } from "./errors.js";
 export type {
 	ContextFormat,
 	Embedder,

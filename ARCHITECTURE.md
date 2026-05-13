@@ -1,16 +1,10 @@
 ﻿# Mnemocyte Architecture
 
-> This is the canonical architecture document for Mnemocyte. It describes the planned implementation, not the current package state. The current package is still an early-development stub.
+> This is the canonical architecture document for Mnemocyte. It describes the current MVP architecture and the planned path toward a production-ready package.
 
 ## Current Status
 
-Mnemocyte currently exposes a minimal public entry point:
-
-```ts
-export function createMnemocyte() {
-throw new Error("Mnemocyte is currently in early development.");
-}
-```
+Mnemocyte currently exposes an MVP public API through `createMnemocyte()`. The client supports an in-memory backend when `databaseUrl` is omitted and a Postgres/pgvector backend when `databaseUrl` is provided.
 
 The package is ESM-only for now. CommonJS is intentionally not advertised unless the build later emits and tests a real CJS artifact.
 
@@ -37,7 +31,7 @@ Mnemocyte should remain ESM-only until there is a strong reason to dual-publish.
 ```json
 {
   "type": "module",
-  "files": ["dist"],
+  "files": ["dist", "migrations"],
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -51,6 +45,9 @@ Mnemocyte should remain ESM-only until there is a strong reason to dual-publish.
     "checktypes": "tsc --noEmit",
     "lint": "biome lint --write",
     "format": "biome format --write",
+    "test:retrieval": "pnpm build && node test/retrieval/quality.test.mjs",
+    "test:integration": "pnpm build && node test/integration/postgres.test.mjs",
+    "bench:retrieval": "pnpm build && node test/benchmarks/retrieval.bench.mjs",
     "pack:dry": "pnpm pack --dry-run",
     "prepublishOnly": "pnpm build && pnpm checktypes && pnpm pack:dry"
   }
@@ -181,12 +178,13 @@ export type ImportanceLevel = "low" | "normal" | "high" | "critical";
 export type ContextFormat = "markdown" | "plain" | "xml";
 
 export interface MnemocyteConfig {
-databaseUrl: string;
+databaseUrl?: string;
 embedder: Embedder;
 defaults?: {
 limit?: number;
 minScore?: number;
 };
+retrieval?: RetrievalConfig;
 }
 
 export interface Embedder {
@@ -385,7 +383,7 @@ LIMIT $3;
 
 ### Score Fusion
 
-Initial fusion can combine vector, lexical, recency, importance, confidence, and access signals. Keep the weights configurable and expose explanations only when requested.
+Fusion combines vector, lexical, recency, importance, confidence, and access-count signals. Weights are configurable through `MnemocyteConfig.retrieval`, and detailed explanations are only returned when requested.
 
 ## Context Builder
 
@@ -455,9 +453,9 @@ Before a production release, add:
 
 ### Phase 3 — Retrieval Quality
 
-- Add PostgreSQL full-text lexical retrieval.
-- Add score fusion and optional explanations.
-- Add recency, confidence, and access-count signals.
+- Add PostgreSQL full-text lexical retrieval. ✅
+- Add score fusion and optional explanations. ✅
+- Add recency, confidence, and access-count signals. ✅
 - Add retrieval quality fixtures and benchmarks.
 
 ### Phase 4 — Context Builder

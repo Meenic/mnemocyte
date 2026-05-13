@@ -4,14 +4,29 @@ import type {
 	Memory,
 	MemoryWithScore,
 	RecallInput,
+	RetrievalConfig,
+	RetrievalScoreWeights,
 } from "../types.js";
 
-const IMPORTANCE_BOOSTS: Record<ImportanceLevel, number> = {
-	low: -0.05,
-	normal: 0,
-	high: 0.08,
-	critical: 0.15,
+const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
+	low: 0,
+	normal: 0.5,
+	high: 0.8,
+	critical: 1,
 };
+
+const DEFAULT_WEIGHTS: Required<RetrievalScoreWeights> = {
+	vector: 0.55,
+	lexical: 0.2,
+	recency: 0.1,
+	confidence: 0.05,
+	access: 0.05,
+	importance: 0.05,
+};
+
+const DEFAULT_RECENCY_HALF_LIFE_DAYS = 90;
+const DEFAULT_ACCESS_SATURATION = 10;
+export const DEFAULT_CANDIDATE_MULTIPLIER = 3;
 
 export function cosineSimilarity(
 	a: readonly number[],
@@ -43,10 +58,48 @@ export function lexicalScore(content: string, query: string): number {
 	return matches / terms.length;
 }
 
-function recencyScore(createdAt: Date): number {
+function clampScore(value: number): number {
+	if (!Number.isFinite(value)) {
+		return 0;
+	}
+	return Math.max(0, Math.min(1, value));
+}
+
+function normalizeWeights(
+	weights: RetrievalScoreWeights | undefined,
+): Required<RetrievalScoreWeights> {
+	const merged = { ...DEFAULT_WEIGHTS, ...weights };
+	const total =
+		merged.vector +
+		merged.lexical +
+		merged.recency +
+		merged.confidence +
+		merged.access +
+		merged.importance;
+	if (total <= 0) {
+		return DEFAULT_WEIGHTS;
+	}
+	return {
+		vector: merged.vector / total,
+		lexical: merged.lexical / total,
+		recency: merged.recency / total,
+		confidence: merged.confidence / total,
+		access: merged.access / total,
+		importance: merged.importance / total,
+	};
+}
+
+function recencyScore(createdAt: Date, halfLifeDays: number): number {
 	const ageMs = Date.now() - createdAt.getTime();
 	const ageDays = Math.max(0, ageMs / 86_400_000);
-	return Math.exp((-Math.LN2 * ageDays) / 90);
+	return Math.exp((-Math.LN2 * ageDays) / halfLifeDays);
+}
+
+function accessScore(accessCount: number, saturation: number): number {
+	if (accessCount <= 0) {
+		return 0;
+	}
+	return Math.min(1, Math.log1p(accessCount) / Math.log1p(saturation));
 }
 
 export function toScoredMemory(
@@ -54,23 +107,52 @@ export function toScoredMemory(
 	vector: number,
 	lexical: number,
 	input: RecallInput,
+	config?: RetrievalConfig,
 ): MemoryWithScore {
-	const recency = recencyScore(memory.createdAt);
-	const importanceBoost = IMPORTANCE_BOOSTS[memory.importance];
+	const weights = normalizeWeights(config?.weights);
+	const recency = recencyScore(
+		memory.createdAt,
+		config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
+	);
+	const confidence = clampScore(memory.confidence);
+	const access = accessScore(
+		memory.accessCount,
+		config?.accessSaturation ?? DEFAULT_ACCESS_SATURATION,
+	);
+	const importance = IMPORTANCE_SCORES[memory.importance];
 	const score = Math.max(
 		0,
-		Math.min(1, vector * 0.7 + lexical * 0.2 + recency * 0.1 + importanceBoost),
+		Math.min(
+			1,
+			clampScore(vector) * weights.vector +
+				clampScore(lexical) * weights.lexical +
+				recency * weights.recency +
+				confidence * weights.confidence +
+				access * weights.access +
+				importance * weights.importance,
+		),
 	);
 	return {
 		...cloneMemory(memory),
 		score,
-		scores: { vector, lexical, recency },
+		scores: {
+			vector: clampScore(vector),
+			lexical: clampScore(lexical),
+			recency,
+			confidence,
+			access,
+			importance,
+		},
 		explanation: input.explain
 			? {
-					vectorScore: vector,
-					lexicalScore: lexical,
+					vectorScore: clampScore(vector),
+					lexicalScore: clampScore(lexical),
 					recencyScore: recency,
-					importanceBoost,
+					confidenceScore: confidence,
+					accessScore: access,
+					importanceScore: importance,
+					importanceBoost: importance * weights.importance,
+					weights,
 					finalScore: score,
 				}
 			: null,

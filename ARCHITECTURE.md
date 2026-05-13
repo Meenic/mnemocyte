@@ -1,4 +1,4 @@
-﻿# Mnemocyte Architecture
+# Mnemocyte Architecture
 
 > This is the canonical architecture document for Mnemocyte. It describes the current MVP architecture and the planned path toward a production-ready package.
 

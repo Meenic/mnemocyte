@@ -7,10 +7,12 @@ import {
 	toScoredMemory,
 } from "../retrieval/scorer.js";
 import type {
+	AuditEvent,
 	DuplicatePair,
 	EntityStats,
 	FindDuplicatesInput,
 	GlobalStats,
+	ListAuditLogInput,
 	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
@@ -24,6 +26,7 @@ import {
 	assertNonEmptyString,
 	cloneMemory,
 	contextInputToRecallInput,
+	createEventId,
 	createId,
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
@@ -39,6 +42,7 @@ import {
 	normalizeTags,
 	type StoredMemory,
 	validateFindDuplicatesInput,
+	validateListAuditLogInput,
 	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
@@ -46,12 +50,40 @@ import {
 
 export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 	const memories = new Map<string, StoredMemory>();
+	const auditLog: AuditEvent[] = [];
 	let closed = false;
 
 	function assertOpen(): void {
 		if (closed) {
 			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
 		}
+	}
+
+	function recordAudit(
+		entityId: string,
+		description: string,
+		metadata: Record<string, unknown>,
+	): void {
+		if (config.audit?.enabled !== true) {
+			return;
+		}
+		auditLog.push({
+			id: createEventId(),
+			entityId,
+			description,
+			metadata,
+			timestamp: new Date(),
+		});
+	}
+
+	function cloneAuditEvent(event: AuditEvent): AuditEvent {
+		return {
+			id: event.id,
+			entityId: event.entityId,
+			description: event.description,
+			metadata: { ...event.metadata },
+			timestamp: new Date(event.timestamp),
+		};
 	}
 
 	async function remember(input: RememberInput): Promise<Memory> {
@@ -91,6 +123,11 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					embedding,
 				};
 				memories.set(memory.id, memory);
+				recordAudit(memory.entityId, "memory.created", {
+					memoryId: memory.id,
+					type: memory.type,
+					importance: memory.importance,
+				});
 				return cloneMemory(memory);
 			},
 			(memory) => ({ memoryId: memory.id, count: 1 }),
@@ -201,6 +238,9 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
 					}
 					memories.delete(input.memoryId);
+					recordAudit(memory.entityId, "memory.deleted", {
+						memoryId: memory.id,
+					});
 				},
 			);
 		},
@@ -220,6 +260,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 							deleted += 1;
 						}
 					}
+					recordAudit(input.entityId, "entity.cleared", { count: deleted });
 					return deleted;
 				},
 				(count) => ({ count }),
@@ -245,6 +286,11 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					if (!dryRun) {
 						for (const id of matched) {
 							memories.delete(id);
+						}
+						if (matched.length > 0 && input.entityId !== undefined) {
+							recordAudit(input.entityId, "memory.pruned", {
+								count: matched.length,
+							});
 						}
 					}
 					return {
@@ -297,6 +343,53 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					}
 					pairs.sort((x, y) => y.similarity - x.similarity);
 					return pairs.slice(0, limit);
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]> {
+			return observe(
+				config,
+				"in-memory",
+				"listAuditLog",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateListAuditLogInput(input);
+					const limit = input.limit ?? 50;
+					// Tag with the insertion index so events sharing a millisecond
+					// timestamp still sort in causal (insertion) order.
+					const indexed = auditLog.map((event, idx) => ({ event, idx }));
+					const filtered = indexed
+						.filter(({ event }) => {
+							if (event.entityId !== input.entityId) {
+								return false;
+							}
+							if (
+								input.before !== undefined &&
+								event.timestamp.getTime() >= input.before.getTime()
+							) {
+								return false;
+							}
+							if (
+								input.after !== undefined &&
+								event.timestamp.getTime() <= input.after.getTime()
+							) {
+								return false;
+							}
+							return true;
+						})
+						.sort((a, b) => {
+							const dt =
+								b.event.timestamp.getTime() - a.event.timestamp.getTime();
+							if (dt !== 0) {
+								return dt;
+							}
+							return b.idx - a.idx;
+						})
+						.slice(0, limit)
+						.map(({ event }) => cloneAuditEvent(event));
+					return filtered;
 				},
 				(result) => ({ count: result.length }),
 			);

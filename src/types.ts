@@ -58,6 +58,7 @@ export type MnemocyteOperation =
 	| "forgetAll"
 	| "prune"
 	| "findDuplicates"
+	| "listAuditLog"
 	| "stats"
 	| "close";
 
@@ -175,6 +176,31 @@ export interface MnemocyteConfig {
 	 * {@link ProviderResilienceConfig}.
 	 */
 	provider?: ProviderResilienceConfig;
+	/**
+	 * Audit-log configuration. When enabled, Mnemocyte records an
+	 * {@link AuditEvent} for every state-changing operation
+	 * (`remember`, `forget`, `forgetAll`, `prune`). Read with
+	 * {@link MnemocyteClient.listAuditLog}.
+	 *
+	 * @experimental Part of Phase 6 (consolidation tooling).
+	 */
+	audit?: AuditConfig;
+}
+
+/**
+ * Audit-log configuration. See {@link MnemocyteConfig.audit}.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling).
+ */
+export interface AuditConfig {
+	/**
+	 * Master switch for audit logging. When `false` (default), Mnemocyte
+	 * neither writes nor relies on the audit log; existing log entries
+	 * remain readable via {@link MnemocyteClient.listAuditLog}.
+	 *
+	 * @defaultValue `false`
+	 */
+	enabled?: boolean;
 }
 
 /**
@@ -570,6 +596,49 @@ export interface DuplicatePair {
 }
 
 /**
+ * A single audit-log entry recording a state-changing operation.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling).
+ */
+export interface AuditEvent {
+	/** Unique identifier (`evt_*` prefixed string). */
+	id: string;
+	/** Entity whose state was changed. */
+	entityId: string;
+	/**
+	 * Stable, dotted slug describing the change. Examples:
+	 * `"memory.created"`, `"memory.deleted"`, `"memory.pruned"`,
+	 * `"entity.cleared"`.
+	 */
+	description: string;
+	/** Free-form structured details about the change. */
+	metadata: Record<string, unknown>;
+	/** When the change was recorded. */
+	timestamp: Date;
+}
+
+/**
+ * Input for {@link MnemocyteClient.listAuditLog}.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling).
+ */
+export interface ListAuditLogInput {
+	/** Entity whose audit log should be returned. */
+	entityId: string;
+	/**
+	 * Maximum number of entries to return, ordered newest first.
+	 * @defaultValue `50`
+	 */
+	limit?: number;
+	/** Only return entries strictly before this timestamp. */
+	before?: Date;
+	/** Only return entries strictly after this timestamp. */
+	after?: Date;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/**
  * Stats for a single entity, returned by
  * {@link MnemocyteClient.stats} when an `entityId` is provided.
  */
@@ -682,6 +751,27 @@ export interface MnemocyteClient {
 	 * ```
 	 */
 	findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]>;
+	/**
+	 * Return audit-log entries for `entityId`, newest first.
+	 *
+	 * Entries are recorded automatically when
+	 * {@link MnemocyteConfig.audit}.`enabled` is `true`. Historic entries
+	 * remain readable even after toggling `enabled` back to `false`.
+	 *
+	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
+	 *
+	 * @example
+	 * ```ts
+	 * const log = await client.listAuditLog({
+	 *   entityId: "user_123",
+	 *   limit: 100,
+	 * });
+	 * for (const event of log) {
+	 *   console.log(event.timestamp, event.description, event.metadata);
+	 * }
+	 * ```
+	 */
+	listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]>;
 	/**
 	 * Return statistics. With an `entityId`, returns {@link EntityStats};
 	 * without one, returns {@link GlobalStats}.

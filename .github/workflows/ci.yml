@@ -59,6 +59,9 @@ jobs:
       - name: Test dedup
         run: pnpm run test:dedup
 
+      - name: Test audit
+        run: pnpm run test:audit
+
       - name: Test retrieval
         run: pnpm run test:retrieval
 

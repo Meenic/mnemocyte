@@ -6,6 +6,7 @@ import type {
 	Embedder,
 	FindDuplicatesInput,
 	ImportanceLevel,
+	ListAuditLogInput,
 	Memory,
 	MemoryType,
 	ProviderResilienceConfig,
@@ -84,6 +85,11 @@ export function normalizeTags(tags: readonly string[] | undefined): string[] {
 
 export function createId(): string {
 	return `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Generate a unique audit-event id (`evt_*`). */
+export function createEventId(): string {
+	return `evt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function isExpired(memory: Memory, now: Date): boolean {
@@ -353,6 +359,20 @@ export function matchesDuplicateFilter(
 		return false;
 	}
 	return true;
+}
+
+/** Default cap on audit-log entries returned per `listAuditLog`. */
+export const DEFAULT_AUDIT_LOG_LIMIT = 50;
+
+/**
+ * Validate a {@link ListAuditLogInput} and throw a `"VALIDATION"`
+ * {@link MnemocyteError} when malformed.
+ */
+export function validateListAuditLogInput(input: ListAuditLogInput): void {
+	assertNonEmptyString(input.entityId, "entityId");
+	if (input.limit !== undefined) {
+		assertLimit(input.limit);
+	}
 }
 
 export function matchesRecallFilter(

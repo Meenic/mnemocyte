@@ -39,6 +39,8 @@ export { createMnemocyte } from "./client.js";
 export type { MnemocyteErrorCode } from "./errors.js";
 export { isMnemocyteError, MnemocyteError } from "./errors.js";
 export type {
+	AuditConfig,
+	AuditEvent,
 	BuildContextInput,
 	ContextFormat,
 	DuplicatePair,
@@ -47,6 +49,7 @@ export type {
 	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
+	ListAuditLogInput,
 	Memory,
 	MemoryType,
 	MemoryWithScore,

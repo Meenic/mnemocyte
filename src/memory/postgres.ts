@@ -1,6 +1,6 @@
 import { buildContext } from "../context/builder.js";
 import type { DatabaseHandle } from "../db/index.js";
-import { deleteEventsForEntity } from "../db/queries/events.js";
+import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
 	countPruneMatches,
 	deleteMemoriesForEntity,
@@ -11,16 +11,18 @@ import {
 	type PruneFilter,
 	pruneMemories,
 } from "../db/queries/memories.js";
-import { memoriesTable } from "../db/schema.js";
+import { type EventRow, memoriesTable } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
 import { hybridRecall } from "../retrieval/index.js";
 import type {
+	AuditEvent,
 	DuplicatePair,
 	EntityStats,
 	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
+	ListAuditLogInput,
 	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
@@ -33,7 +35,9 @@ import {
 	assertMinScore,
 	assertNonEmptyString,
 	contextInputToRecallInput,
+	createEventId,
 	createId,
+	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
 	DEFAULT_IMPORTANCE,
@@ -46,10 +50,21 @@ import {
 	normalizeTags,
 	rowToMemory,
 	validateFindDuplicatesInput,
+	validateListAuditLogInput,
 	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
 } from "./shared.js";
+
+function rowToAuditEvent(row: EventRow): AuditEvent {
+	return {
+		id: row.id,
+		entityId: row.entityId,
+		description: row.description,
+		metadata: row.metadata as Record<string, unknown>,
+		timestamp: row.timestamp,
+	};
+}
 
 const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 	"low",
@@ -107,6 +122,27 @@ export function createPostgresClient(
 		}
 	}
 
+	async function recordAudit(
+		entityId: string,
+		description: string,
+		metadata: Record<string, unknown>,
+	): Promise<void> {
+		if (config.audit?.enabled !== true) {
+			return;
+		}
+		try {
+			await insertEvent(handle.db, {
+				id: createEventId(),
+				entityId,
+				description,
+				metadata,
+				timestamp: new Date(),
+			});
+		} catch {
+			// Audit writes must not break the primary operation.
+		}
+	}
+
 	async function remember(input: RememberInput): Promise<Memory> {
 		return observe(
 			config,
@@ -144,7 +180,13 @@ export function createPostgresClient(
 					createdAt: now,
 					updatedAt: now,
 				});
-				return rowToMemory(row);
+				const memory = rowToMemory(row);
+				await recordAudit(memory.entityId, "memory.created", {
+					memoryId: memory.id,
+					type: memory.type,
+					importance: memory.importance,
+				});
+				return memory;
 			},
 			(memory) => ({ memoryId: memory.id, count: 1 }),
 		);
@@ -239,6 +281,9 @@ export function createPostgresClient(
 					if (!deleted) {
 						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
 					}
+					await recordAudit(input.entityId, "memory.deleted", {
+						memoryId: input.memoryId,
+					});
 				},
 			);
 		},
@@ -251,10 +296,13 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					assertNonEmptyString(input.entityId, "entityId");
-					const [deletedCount] = await Promise.all([
-						deleteMemoriesForEntity(handle.db, input.entityId),
-						deleteEventsForEntity(handle.db, input.entityId),
-					]);
+					const deletedCount = await deleteMemoriesForEntity(
+						handle.db,
+						input.entityId,
+					);
+					await recordAudit(input.entityId, "entity.cleared", {
+						count: deletedCount,
+					});
 					return deletedCount;
 				},
 				(count) => ({ count }),
@@ -276,6 +324,11 @@ export function createPostgresClient(
 						return { matchedCount, deletedCount: 0, dryRun: true };
 					}
 					const deletedCount = await pruneMemories(handle.db, filter);
+					if (deletedCount > 0 && input.entityId !== undefined) {
+						await recordAudit(input.entityId, "memory.pruned", {
+							count: deletedCount,
+						});
+					}
 					return {
 						matchedCount: deletedCount,
 						deletedCount,
@@ -314,6 +367,26 @@ export function createPostgresClient(
 						b: rowToMemory(row.b),
 						similarity: Math.max(0, Math.min(1, row.similarity)),
 					}));
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]> {
+			return observe(
+				config,
+				"postgres",
+				"listAuditLog",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateListAuditLogInput(input);
+					const rows = await listEvents(handle.db, {
+						entityId: input.entityId,
+						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
+						...(input.before === undefined ? {} : { before: input.before }),
+						...(input.after === undefined ? {} : { after: input.after }),
+					});
+					return rows.map(rowToAuditEvent);
 				},
 				(result) => ({ count: result.length }),
 			);

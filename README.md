@@ -153,6 +153,45 @@ are excluded by default.
 > Part of Phase 6 (consolidation tooling). The API surface may change in
 > follow-up releases as conflict detection and active dedup land.
 
+## Audit log (experimental)
+
+When `audit.enabled` is `true`, Mnemocyte records an entry on every
+state-changing operation (`remember`, `forget`, `forgetAll`, `prune`).
+Read with `client.listAuditLog()`.
+
+```ts
+const client = createMnemocyte({
+embedder,
+audit: { enabled: true },
+});
+
+await client.remember({ entityId: "user_123", content: "Likes tea." });
+await client.prune({ entityId: "user_123", expired: true });
+
+const log = await client.listAuditLog({
+entityId: "user_123",
+limit: 100,
+});
+for (const event of log) {
+console.log(event.timestamp, event.description, event.metadata);
+}
+```
+
+Recorded `description` slugs:
+
+- `"memory.created"` — single insert; metadata: `{ memoryId, type, importance }`
+- `"memory.deleted"` — single `forget`; metadata: `{ memoryId }`
+- `"entity.cleared"` — `forgetAll`; metadata: `{ count }`
+- `"memory.pruned"` — real (non-dryRun) `prune` with an `entityId` selector; metadata: `{ count }`
+
+Audit entries are **sticky**: `forgetAll` no longer erases prior log
+entries — wiping an entity is itself a recorded `"entity.cleared"`
+event. Disable audit by leaving `audit.enabled` unset (the default);
+historical entries remain readable.
+
+> Part of Phase 6 (consolidation tooling). The API surface may change
+> as conflict detection and consolidation land.
+
 ## Retrieval tuning
 
 ```ts

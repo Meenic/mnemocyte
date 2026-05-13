@@ -1,9 +1,12 @@
 import type {
+	AuditConfig,
+	AuditEvent,
 	BuildContextInput,
 	ContextFormat,
 	DuplicatePair,
 	Embedder,
 	FindDuplicatesInput,
+	ListAuditLogInput,
 	MnemocyteClient,
 	MnemocyteConfig,
 	RecallInput,
@@ -108,6 +111,16 @@ const duplicatePair: DuplicatePair = {
 	similarity: 0.99,
 };
 
+const auditConfig: AuditConfig = { enabled: true };
+const listAudit: ListAuditLogInput = { entityId: "entity", limit: 50 };
+const auditEvent: AuditEvent = {
+	id: "evt_x",
+	entityId: "entity",
+	description: "memory.created",
+	metadata: {},
+	timestamp: new Date(),
+};
+
 void client;
 void remember;
 void recall;
@@ -115,4 +128,7 @@ void context;
 void explanation;
 void findDuplicates;
 void duplicatePair;
+void auditConfig;
+void listAudit;
+void auditEvent;
 void MnemocyteError;

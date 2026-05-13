@@ -66,6 +66,19 @@ async function expectClosed(label, action) {
 		client.forgetAll({ entityId: "alice" }),
 	);
 	await expectClosed("prune", () => client.prune({ entityId: "alice" }));
+	await expectClosed("findDuplicates", () =>
+		client.findDuplicates({ entityId: "alice" }),
+	);
+	await expectClosed("listAuditLog", () =>
+		client.listAuditLog({ entityId: "alice" }),
+	);
+	await expectClosed("experimental.consolidate", () =>
+		client.experimental.consolidate({
+			entityId: "alice",
+			survivorId: "mem_nope",
+			supersededIds: ["mem_other"],
+		}),
+	);
 	await expectClosed("stats", () => client.stats());
 }
 

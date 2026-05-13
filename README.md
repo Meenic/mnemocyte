@@ -192,6 +192,37 @@ historical entries remain readable.
 > Part of Phase 6 (consolidation tooling). The API surface may change
 > as conflict detection and consolidation land.
 
+## Consolidating duplicates (experimental)
+
+`client.experimental.consolidate()` merges likely-duplicate memories
+into a single survivor. Each loser is marked `supersededBy = survivor.id`
+and excluded from `recall` by default. Tags are unioned onto the
+survivor unless `mergeTags: false`. Idempotent — already-superseded
+memories are skipped.
+
+Pair it with `findDuplicates` to build a complete dedup pipeline:
+
+```ts
+const pairs = await client.findDuplicates({
+entityId: "user_123",
+threshold: 0.97,
+});
+
+for (const { a, b } of pairs) {
+await client.experimental.consolidate({
+entityId: "user_123",
+survivorId: a.id,
+supersededIds: [b.id],
+});
+}
+```
+
+When `audit.enabled` is `true`, each newly superseded memory writes a
+`"memory.superseded"` audit event with metadata `{ memoryId, supersededBy }`.
+
+> The `experimental` namespace is intentionally unstable. Members may
+> change or move to the main client surface in future releases.
+
 ## Retrieval tuning
 
 ```ts

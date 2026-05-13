@@ -318,6 +318,85 @@ export async function findDuplicatePairs(
 	});
 }
 
+export interface SupersedeRow {
+	id: string;
+	tags: string[];
+}
+
+export async function loadConsolidationTargets(
+	db: MnemocyteDatabase,
+	entityId: string,
+	ids: readonly string[],
+): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
+	if (ids.length === 0) {
+		return [];
+	}
+	const rows = await db
+		.select({
+			id: memoriesTable.id,
+			tags: memoriesTable.tags,
+			supersededBy: memoriesTable.supersededBy,
+		})
+		.from(memoriesTable)
+		.where(
+			and(
+				eq(memoriesTable.entityId, entityId),
+				inArray(memoriesTable.id, [...ids]),
+			),
+		);
+	return rows;
+}
+
+export async function markMemoriesSuperseded(
+	db: MnemocyteDatabase,
+	params: {
+		survivorId: string;
+		entityId: string;
+		ids: readonly string[];
+		now: Date;
+	},
+): Promise<SupersedeRow[]> {
+	if (params.ids.length === 0) {
+		return [];
+	}
+	const result = await db
+		.update(memoriesTable)
+		.set({
+			supersededBy: params.survivorId,
+			supersededAt: params.now,
+			updatedAt: params.now,
+		})
+		.where(
+			and(
+				eq(memoriesTable.entityId, params.entityId),
+				inArray(memoriesTable.id, [...params.ids]),
+				isNull(memoriesTable.supersededBy),
+			),
+		)
+		.returning({ id: memoriesTable.id, tags: memoriesTable.tags });
+	return result;
+}
+
+export async function setMemoryTags(
+	db: MnemocyteDatabase,
+	params: {
+		entityId: string;
+		memoryId: string;
+		tags: readonly string[];
+		now: Date;
+	},
+): Promise<void> {
+	await db
+		.update(memoriesTable)
+		.set({ tags: [...params.tags], updatedAt: params.now })
+		.where(
+			and(
+				eq(memoriesTable.entityId, params.entityId),
+				eq(memoriesTable.id, params.memoryId),
+			),
+		);
+}
+
 export async function markMemoryAccessed(
 	db: MnemocyteDatabase,
 	memoryIds: readonly string[],

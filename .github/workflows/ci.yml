@@ -62,6 +62,9 @@ jobs:
       - name: Test audit
         run: pnpm run test:audit
 
+      - name: Test consolidate
+        run: pnpm run test:consolidate
+
       - name: Test retrieval
         run: pnpm run test:retrieval
 

@@ -27,6 +27,7 @@
 		"test:lifecycle": "tsdown src/index.ts && node test/lifecycle/close.test.mjs",
 		"test:dedup": "tsdown src/index.ts && node test/dedup/find-duplicates.test.mjs",
 		"test:audit": "tsdown src/index.ts && node test/audit/audit-log.test.mjs",
+		"test:consolidate": "tsdown src/index.ts && node test/consolidate/consolidate.test.mjs",
 		"test:retrieval": "tsdown src/index.ts && node test/retrieval/quality.test.mjs",
 		"test:context": "tsdown src/index.ts && node test/context/builder.test.mjs",
 		"test:integration": "tsdown src/index.ts && node test/integration/postgres.test.mjs",

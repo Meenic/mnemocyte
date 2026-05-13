@@ -475,9 +475,9 @@ Before a production release, add:
 
 ### Phase 6 — Experimental Maintenance
 
-- Add consolidation only under an experimental namespace.
-- Add conflict detection and deduplication.
-- Add audit logs for merges and deletes.
+- Add consolidation only under an experimental namespace. ✅
+- Add conflict detection and deduplication. ✅ (passive: `findDuplicates`)
+- Add audit logs for merges and deletes. ✅
 - Add MCP/adapters after the core package is stable.
 
 ## Issue Checklist

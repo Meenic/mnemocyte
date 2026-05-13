@@ -8,8 +8,11 @@ import {
 } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
+	ConsolidateInput,
+	ConsolidateResult,
 	DuplicatePair,
 	EntityStats,
+	ExperimentalMnemocyteClient,
 	FindDuplicatesInput,
 	GlobalStats,
 	ListAuditLogInput,
@@ -41,6 +44,7 @@ import {
 	matchesRecallFilter,
 	normalizeTags,
 	type StoredMemory,
+	validateConsolidateInput,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
 	validatePruneInput,
@@ -436,6 +440,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 				},
 			);
 		},
+		experimental: createExperimental(),
 		async close() {
 			return observe(config, "in-memory", "close", {}, async () => {
 				closed = true;
@@ -443,4 +448,80 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 			});
 		},
 	};
+
+	function createExperimental(): ExperimentalMnemocyteClient {
+		return {
+			async consolidate(input: ConsolidateInput): Promise<ConsolidateResult> {
+				return observe(
+					config,
+					"in-memory",
+					"consolidate",
+					{ entityId: input.entityId, memoryId: input.survivorId },
+					async () => {
+						assertOpen();
+						validateConsolidateInput(input);
+						const survivor = memories.get(input.survivorId);
+						if (!survivor || survivor.entityId !== input.entityId) {
+							throw new MnemocyteError(
+								"Survivor memory was not found.",
+								"NOT_FOUND",
+							);
+						}
+						if (survivor.supersededBy !== null) {
+							throw new MnemocyteError(
+								"Survivor memory is itself superseded.",
+								"VALIDATION",
+							);
+						}
+						const losers: StoredMemory[] = [];
+						for (const id of input.supersededIds) {
+							const memory = memories.get(id);
+							if (!memory || memory.entityId !== input.entityId) {
+								throw new MnemocyteError(
+									"Superseded memory was not found.",
+									"NOT_FOUND",
+								);
+							}
+							if (memory.supersededBy !== null) {
+								// Idempotent skip: already superseded.
+								continue;
+							}
+							losers.push(memory);
+						}
+						const now = new Date();
+						const newSupersededIds: string[] = [];
+						for (const loser of losers) {
+							loser.supersededBy = survivor.id;
+							loser.updatedAt = now;
+							newSupersededIds.push(loser.id);
+							recordAudit(input.entityId, "memory.superseded", {
+								memoryId: loser.id,
+								supersededBy: survivor.id,
+							});
+						}
+						const shouldMergeTags =
+							input.mergeTags !== false && losers.length > 0;
+						if (shouldMergeTags) {
+							const mergedTags = new Set(survivor.tags);
+							for (const loser of losers) {
+								for (const tag of loser.tags) {
+									mergedTags.add(tag);
+								}
+							}
+							if (mergedTags.size !== survivor.tags.length) {
+								survivor.tags = [...mergedTags];
+								survivor.updatedAt = now;
+							}
+						}
+						return {
+							survivorId: survivor.id,
+							supersededCount: newSupersededIds.length,
+							supersededIds: newSupersededIds,
+						} satisfies ConsolidateResult;
+					},
+					(result) => ({ count: result.supersededCount }),
+				);
+			},
+		};
+	}
 }

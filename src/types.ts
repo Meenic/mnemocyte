@@ -59,6 +59,7 @@ export type MnemocyteOperation =
 	| "prune"
 	| "findDuplicates"
 	| "listAuditLog"
+	| "consolidate"
 	| "stats"
 	| "close";
 
@@ -639,6 +640,53 @@ export interface ListAuditLogInput {
 }
 
 /**
+ * Input for {@link ExperimentalMnemocyteClient.consolidate}.
+ *
+ * Marks each memory in {@link ConsolidateInput.supersededIds} as
+ * superseded by {@link ConsolidateInput.survivorId}. Optionally
+ * unions the losers' tags into the survivor.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling).
+ */
+export interface ConsolidateInput {
+	/** Entity that owns every memory referenced. */
+	entityId: string;
+	/** Memory that should win the merge. Must not itself be superseded. */
+	survivorId: string;
+	/**
+	 * Memories to mark as superseded by the survivor. Already-superseded
+	 * entries in this list are skipped silently for idempotency. Must
+	 * not contain {@link ConsolidateInput.survivorId}.
+	 */
+	supersededIds: readonly string[];
+	/**
+	 * When `true`, the survivor's `tags` becomes the union of its own
+	 * tags and the tags of every memory that was actually superseded.
+	 * @defaultValue `true`
+	 */
+	mergeTags?: boolean;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/**
+ * Result returned by {@link ExperimentalMnemocyteClient.consolidate}.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling).
+ */
+export interface ConsolidateResult {
+	/** Echoes {@link ConsolidateInput.survivorId}. */
+	survivorId: string;
+	/**
+	 * Number of memories actually marked as superseded. Excludes entries
+	 * that were already superseded (idempotent skip).
+	 */
+	supersededCount: number;
+	/** The IDs that were newly superseded during this call. */
+	supersededIds: readonly string[];
+}
+
+/**
  * Stats for a single entity, returned by
  * {@link MnemocyteClient.stats} when an `entityId` is provided.
  */
@@ -773,6 +821,14 @@ export interface MnemocyteClient {
 	 */
 	listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]>;
 	/**
+	 * Unstable, opt-in extension surface. Members may change or be
+	 * removed without a semver bump until they graduate to the main
+	 * client interface.
+	 *
+	 * @experimental Part of Phase 6 (consolidation tooling).
+	 */
+	experimental: ExperimentalMnemocyteClient;
+	/**
 	 * Return statistics. With an `entityId`, returns {@link EntityStats};
 	 * without one, returns {@link GlobalStats}.
 	 */
@@ -782,4 +838,44 @@ export interface MnemocyteClient {
 	 * Safe to call multiple times. The client must not be used afterward.
 	 */
 	close(): Promise<void>;
+}
+
+/**
+ * Extension surface for unstable Phase 6 operations. Reached via
+ * {@link MnemocyteClient.experimental}.
+ *
+ * @experimental Members may change or be removed without a semver bump.
+ */
+export interface ExperimentalMnemocyteClient {
+	/**
+	 * Consolidate likely-duplicate memories into a single survivor by
+	 * marking the others as superseded. Optionally unions their tags
+	 * onto the survivor. Idempotent for memories that are already
+	 * superseded.
+	 *
+	 * Emits one `"memory.superseded"` audit event per newly superseded
+	 * memory when {@link MnemocyteConfig.audit}.`enabled` is `true`.
+	 *
+	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` for empty `supersededIds`,
+	 * a `survivorId` that also appears in `supersededIds`, or a survivor
+	 * that is itself already superseded.
+	 * @throws {MnemocyteError} `"NOT_FOUND"` if the survivor or any
+	 * non-already-superseded memory in `supersededIds` does not belong
+	 * to `entityId`.
+	 *
+	 * @example
+	 * ```ts
+	 * const pairs = await client.findDuplicates({ entityId: "user_123" });
+	 * for (const { a, b } of pairs) {
+	 *   await client.experimental.consolidate({
+	 *     entityId: "user_123",
+	 *     survivorId: a.id,
+	 *     supersededIds: [b.id],
+	 *   });
+	 * }
+	 * ```
+	 */
+	consolidate(input: ConsolidateInput): Promise<ConsolidateResult>;
 }

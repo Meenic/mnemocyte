@@ -2,9 +2,12 @@ import type {
 	AuditConfig,
 	AuditEvent,
 	BuildContextInput,
+	ConsolidateInput,
+	ConsolidateResult,
 	ContextFormat,
 	DuplicatePair,
 	Embedder,
+	ExperimentalMnemocyteClient,
 	FindDuplicatesInput,
 	ListAuditLogInput,
 	MnemocyteClient,
@@ -121,6 +124,18 @@ const auditEvent: AuditEvent = {
 	timestamp: new Date(),
 };
 
+const consolidate: ConsolidateInput = {
+	entityId: "entity",
+	survivorId: "mem_a",
+	supersededIds: ["mem_b"],
+};
+const consolidateResult: ConsolidateResult = {
+	survivorId: "mem_a",
+	supersededCount: 1,
+	supersededIds: ["mem_b"],
+};
+const experimental: ExperimentalMnemocyteClient = client.experimental;
+
 void client;
 void remember;
 void recall;
@@ -131,4 +146,7 @@ void duplicatePair;
 void auditConfig;
 void listAudit;
 void auditEvent;
+void consolidate;
+void consolidateResult;
+void experimental;
 void MnemocyteError;

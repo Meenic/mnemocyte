@@ -6,10 +6,14 @@ import {
 	deleteMemoriesForEntity,
 	deleteMemory,
 	findDuplicatePairs,
+	getMemoryById,
 	insertMemory,
 	listMemories,
+	loadConsolidationTargets,
+	markMemoriesSuperseded,
 	type PruneFilter,
 	pruneMemories,
+	setMemoryTags,
 } from "../db/queries/memories.js";
 import { type EventRow, memoriesTable } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
@@ -17,8 +21,11 @@ import { observe } from "../observability.js";
 import { hybridRecall } from "../retrieval/index.js";
 import type {
 	AuditEvent,
+	ConsolidateInput,
+	ConsolidateResult,
 	DuplicatePair,
 	EntityStats,
+	ExperimentalMnemocyteClient,
 	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
@@ -49,6 +56,7 @@ import {
 	isExpired,
 	normalizeTags,
 	rowToMemory,
+	validateConsolidateInput,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
 	validatePruneInput,
@@ -442,6 +450,7 @@ export function createPostgresClient(
 				},
 			);
 		},
+		experimental: createExperimental(),
 		async close() {
 			return observe(config, "postgres", "close", {}, async () => {
 				closed = true;
@@ -449,4 +458,98 @@ export function createPostgresClient(
 			});
 		},
 	};
+
+	function createExperimental(): ExperimentalMnemocyteClient {
+		return {
+			async consolidate(input: ConsolidateInput): Promise<ConsolidateResult> {
+				return observe(
+					config,
+					"postgres",
+					"consolidate",
+					{ entityId: input.entityId, memoryId: input.survivorId },
+					async () => {
+						assertOpen();
+						validateConsolidateInput(input);
+						const survivor = await getMemoryById(
+							handle.db,
+							input.entityId,
+							input.survivorId,
+						);
+						if (!survivor) {
+							throw new MnemocyteError(
+								"Survivor memory was not found.",
+								"NOT_FOUND",
+							);
+						}
+						if (survivor.supersededBy !== null) {
+							throw new MnemocyteError(
+								"Survivor memory is itself superseded.",
+								"VALIDATION",
+							);
+						}
+						const targets = await loadConsolidationTargets(
+							handle.db,
+							input.entityId,
+							input.supersededIds,
+						);
+						const foundIds = new Set(targets.map((t) => t.id));
+						for (const id of input.supersededIds) {
+							if (!foundIds.has(id)) {
+								throw new MnemocyteError(
+									"Superseded memory was not found.",
+									"NOT_FOUND",
+								);
+							}
+						}
+						const losers = targets.filter(
+							(target) => target.supersededBy === null,
+						);
+						if (losers.length === 0) {
+							return {
+								survivorId: survivor.id,
+								supersededCount: 0,
+								supersededIds: [],
+							} satisfies ConsolidateResult;
+						}
+						const now = new Date();
+						const updated = await markMemoriesSuperseded(handle.db, {
+							survivorId: survivor.id,
+							entityId: input.entityId,
+							ids: losers.map((loser) => loser.id),
+							now,
+						});
+						const newSupersededIds = updated.map((row) => row.id);
+						for (const id of newSupersededIds) {
+							await recordAudit(input.entityId, "memory.superseded", {
+								memoryId: id,
+								supersededBy: survivor.id,
+							});
+						}
+						if (input.mergeTags !== false && updated.length > 0) {
+							const mergedTags = new Set(survivor.tags);
+							for (const row of updated) {
+								for (const tag of row.tags) {
+									mergedTags.add(tag);
+								}
+							}
+							if (mergedTags.size !== survivor.tags.length) {
+								await setMemoryTags(handle.db, {
+									entityId: input.entityId,
+									memoryId: survivor.id,
+									tags: [...mergedTags],
+									now,
+								});
+							}
+						}
+						return {
+							survivorId: survivor.id,
+							supersededCount: newSupersededIds.length,
+							supersededIds: newSupersededIds,
+						} satisfies ConsolidateResult;
+					},
+					(result) => ({ count: result.supersededCount }),
+				);
+			},
+		};
+	}
 }

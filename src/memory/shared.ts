@@ -3,6 +3,7 @@ import { MnemocyteError } from "../errors.js";
 import { withResilience } from "../resilience.js";
 import type {
 	BuildContextInput,
+	ConsolidateInput,
 	Embedder,
 	FindDuplicatesInput,
 	ImportanceLevel,
@@ -363,6 +364,31 @@ export function matchesDuplicateFilter(
 
 /** Default cap on audit-log entries returned per `listAuditLog`. */
 export const DEFAULT_AUDIT_LOG_LIMIT = 50;
+
+/**
+ * Validate a {@link ConsolidateInput} and throw a `"VALIDATION"`
+ * {@link MnemocyteError} for malformed inputs (empty `supersededIds`
+ * or a `survivorId` appearing in `supersededIds`).
+ */
+export function validateConsolidateInput(input: ConsolidateInput): void {
+	assertNonEmptyString(input.entityId, "entityId");
+	assertNonEmptyString(input.survivorId, "survivorId");
+	if (input.supersededIds.length === 0) {
+		throw new MnemocyteError(
+			"supersededIds must contain at least one memory id.",
+			"VALIDATION",
+		);
+	}
+	if (input.supersededIds.includes(input.survivorId)) {
+		throw new MnemocyteError(
+			"survivorId must not appear in supersededIds.",
+			"VALIDATION",
+		);
+	}
+	for (const id of input.supersededIds) {
+		assertNonEmptyString(id, "supersededIds[*]");
+	}
+}
 
 /**
  * Validate a {@link ListAuditLogInput} and throw a `"VALIDATION"`

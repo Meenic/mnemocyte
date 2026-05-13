@@ -82,7 +82,30 @@ async function expectClosed(label, action) {
 	await expectClosed("stats", () => client.stats());
 }
 
-// 3. Observability still fires for close() and is then quiet for the rejected calls.
+// 3. createMnemocyte rejects a Postgres config with non-1536 embedder dims.
+{
+	let thrown;
+	try {
+		createMnemocyte({
+			databaseUrl: "postgres://invalid:invalid@127.0.0.1:1/none",
+			embedder: {
+				model: "wrong-dims",
+				dimensions: 768,
+				async embed(texts) {
+					return texts.map(() => [0]);
+				},
+			},
+		});
+	} catch (error) {
+		thrown = error;
+	}
+	assert.ok(thrown, "expected createMnemocyte to throw");
+	assert.equal(isMnemocyteError(thrown), true);
+	assert.equal(thrown.code, "CONFIG");
+	assert.ok(/1536/.test(thrown.message));
+}
+
+// 4. Observability still fires for close() and is then quiet for the rejected calls.
 {
 	const events = [];
 	const client = createMnemocyte({

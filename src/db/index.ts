@@ -1,5 +1,5 @@
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres, { type Sql } from "postgres";
+import postgres from "postgres";
 import * as schema from "./schema.js";
 
 export type MnemocyteDatabase = PostgresJsDatabase<typeof schema>;
@@ -23,12 +23,3 @@ export function createDatabase(databaseUrl: string): DatabaseHandle {
 		},
 	};
 }
-
-export function useDatabase(client: Sql): DatabaseHandle {
-	return {
-		db: drizzle(client, { schema }),
-		async close() {},
-	};
-}
-
-export { schema };

@@ -1,0 +1,11 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": ".",
+		"noEmit": true,
+		"paths": {
+			"mnemocyte": ["../../dist/index.d.mts"]
+		}
+	},
+	"include": ["./exports-types.test.ts"]
+}

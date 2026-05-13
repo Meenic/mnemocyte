@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 18
+          - 20
+          - 22
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check types
+        run: pnpm checktypes
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test package exports
+        run: pnpm run test:exports
+
+      - name: Test retrieval
+        run: pnpm run test:retrieval
+
+      - name: Test context
+        run: pnpm run test:context
+
+      - name: Test integration skip path
+        run: pnpm run test:integration
+
+      - name: Pack dry run
+        run: pnpm pack --dry-run

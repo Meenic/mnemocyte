@@ -415,8 +415,8 @@ Before a production release, add:
 
 - migration documentation
 - integration tests against Postgres + pgvector
-- package export smoke tests
-- CI across supported Node versions
+- package export smoke tests ✅
+- CI across supported Node versions ✅
 - provider timeouts and abort signals
 - retry/rate-limit handling for embedding providers
 - observability hooks
@@ -470,8 +470,8 @@ Before a production release, add:
 - Add provider retries, timeouts, and abort signals.
 - Add observability hooks.
 - Add pruning policies.
-- Add release CI with provenance or trusted publishing.
-- Add Node compatibility matrix.
+- Add release CI with provenance or trusted publishing. ✅
+- Add Node compatibility matrix. ✅
 
 ### Phase 6 — Experimental Maintenance
 
@@ -492,7 +492,7 @@ Before a production release, add:
 - [ ] Use `lexical` / `fts` terminology instead of BM25 for `ts_rank`.
 - [ ] Add typed errors.
 - [x] Keep `client.ts` as a thin backend wiring layer.
-- [ ] Add package export smoke tests.
+- [x] Add package export smoke tests.
 - [x] Add Postgres + pgvector integration tests.
 - [x] Add safe context formatting and token counting.
 - [ ] Keep consolidation out of stable API until implemented.

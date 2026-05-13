@@ -19,6 +19,7 @@
 		"build": "tsdown src/index.ts",
 		"dev": "tsdown src/index.ts --watch",
 		"checktypes": "tsc --noEmit",
+		"test:exports": "pnpm build && node test/package/exports.test.mjs && tsc -p test/package/tsconfig.json",
 		"test:retrieval": "pnpm build && node test/retrieval/quality.test.mjs",
 		"test:context": "pnpm build && node test/context/builder.test.mjs",
 		"test:integration": "pnpm build && node test/integration/postgres.test.mjs",

@@ -1,0 +1,118 @@
+export type MemoryType =
+	| "fact"
+	| "preference"
+	| "instruction"
+	| "backstory"
+	| "episode"
+	| "session";
+
+export type ImportanceLevel = "low" | "normal" | "high" | "critical";
+
+export type ContextFormat = "markdown" | "plain" | "xml";
+
+export interface MnemocyteConfig {
+	databaseUrl?: string;
+	embedder: Embedder;
+	defaults?: {
+		limit?: number;
+		minScore?: number;
+	};
+}
+
+export interface Embedder {
+	readonly model: string;
+	readonly dimensions: number;
+	embed(texts: readonly string[]): Promise<number[][]>;
+}
+
+export interface Memory {
+	id: string;
+	entityId: string;
+	content: string;
+	type: MemoryType;
+	importance: ImportanceLevel;
+	tags: string[];
+	source: string | null;
+	metadata: Record<string, unknown>;
+	confidence: number;
+	embeddingModel: string;
+	embeddingDimensions: number;
+	supersededBy: string | null;
+	expiresAt: Date | null;
+	lastAccessedAt: Date | null;
+	accessCount: number;
+	createdAt: Date;
+	updatedAt: Date;
+}
+
+export interface RetrievalScores {
+	vector: number;
+	lexical: number;
+	recency: number;
+}
+
+export interface RetrievalExplanation {
+	vectorScore: number;
+	lexicalScore: number;
+	recencyScore: number;
+	importanceBoost: number;
+	finalScore: number;
+}
+
+export interface MemoryWithScore extends Memory {
+	score: number;
+	scores: RetrievalScores;
+	explanation: RetrievalExplanation | null;
+}
+
+export interface RememberInput {
+	entityId: string;
+	content: string;
+	type?: MemoryType;
+	importance?: ImportanceLevel;
+	tags?: string[];
+	source?: string;
+	metadata?: Record<string, unknown>;
+	confidence?: number;
+	expiresAt?: Date;
+}
+
+export interface RecallInput {
+	entityId: string;
+	query: string;
+	limit?: number;
+	minScore?: number;
+	types?: MemoryType[];
+	tags?: string[];
+	before?: Date;
+	after?: Date;
+	includeSuperseded?: boolean;
+	includeExpired?: boolean;
+	explain?: boolean;
+}
+
+export interface EntityStats {
+	entityId: string;
+	memoryCount: number;
+	activeMemoryCount: number;
+	expiredMemoryCount: number;
+	supersededMemoryCount: number;
+}
+
+export interface GlobalStats {
+	entityCount: number;
+	memoryCount: number;
+	activeMemoryCount: number;
+	expiredMemoryCount: number;
+	supersededMemoryCount: number;
+}
+
+export interface MnemocyteClient {
+	remember(input: RememberInput): Promise<Memory>;
+	rememberMany(inputs: readonly RememberInput[]): Promise<Memory[]>;
+	recall(input: RecallInput): Promise<MemoryWithScore[]>;
+	forget(input: { entityId: string; memoryId: string }): Promise<void>;
+	forgetAll(input: { entityId: string }): Promise<void>;
+	stats(input?: { entityId?: string }): Promise<EntityStats | GlobalStats>;
+	close(): Promise<void>;
+}

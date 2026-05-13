@@ -30,8 +30,8 @@
 		"format": "biome format --write",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
-		"pack:dry": "pnpm pack --dry-run",
-		"prepublishOnly": "tsdown src/index.ts && tsc --noEmit && pnpm pack --dry-run"
+		"pack:check": "pnpm pack --pack-destination .pack-check",
+		"prepublishOnly": "tsdown src/index.ts && tsc --noEmit && pnpm pack --pack-destination .pack-check"
 	},
 	"repository": {
 		"type": "git",
@@ -58,7 +58,7 @@
 		"provenance": true
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=22.18"
 	},
 	"dependencies": {
 		"drizzle-orm": "^0.45.2",

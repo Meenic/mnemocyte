@@ -14,9 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         node-version:
-          - 18
-          - 20
-          - 22
+          - 22.18
 
     steps:
       - name: Checkout
@@ -54,5 +52,5 @@ jobs:
       - name: Test integration skip path
         run: pnpm run test:integration
 
-      - name: Pack dry run
-        run: pnpm pack --dry-run
+      - name: Pack check
+        run: pnpm pack --pack-destination .pack-check

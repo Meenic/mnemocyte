@@ -482,14 +482,14 @@ Before a production release, add:
 
 ## Issue Checklist
 
-- [ ] Fix exports whenever build outputs change.
-- [ ] Keep package ESM-only until CJS is emitted and tested.
-- [ ] Implement object-parameter public API.
+- [x] Fix exports whenever build outputs change.
+- [x] Keep package ESM-only until CJS is emitted and tested.
+- [x] Implement object-parameter public API.
 - [x] Add explicit migrations and document setup.
-- [ ] Store embedding model and dimensions.
-- [ ] Add client `close()`.
+- [x] Store embedding model and dimensions.
+- [x] Add client `close()`.
 - [x] Apply one canonical retrieval filter to all retrieval paths.
-- [ ] Use `lexical` / `fts` terminology instead of BM25 for `ts_rank`.
+- [x] Use `lexical` / `fts` terminology instead of BM25 for `ts_rank`.
 - [x] Add typed errors.
 - [x] Keep `client.ts` as a thin backend wiring layer.
 - [x] Add package export smoke tests.

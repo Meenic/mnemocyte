@@ -245,12 +245,14 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					assertNonEmptyString(input.entityId, "entityId");
-					await Promise.all([
+					const [deletedCount] = await Promise.all([
 						deleteMemoriesForEntity(handle.db, input.entityId),
 						deleteEventsForEntity(handle.db, input.entityId),
 					]);
+					return deletedCount;
 				},
-			);
+				(count) => ({ count }),
+			).then(() => undefined);
 		},
 		async prune(input: PruneInput): Promise<PruneResult> {
 			return observe(

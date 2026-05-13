@@ -212,7 +212,7 @@ export interface Embedder {
  * new memory and link the previous one via {@link Memory.supersededBy}.
  */
 export interface Memory {
-	/** Unique identifier (UUID for Postgres backend). */
+	/** Unique identifier (`mem_*` prefixed string). */
 	id: string;
 	/** Owning entity — typically a user, agent, or session ID. */
 	entityId: string;

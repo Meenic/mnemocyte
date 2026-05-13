@@ -53,6 +53,9 @@ jobs:
       - name: Test prune
         run: pnpm run test:prune
 
+      - name: Test lifecycle
+        run: pnpm run test:lifecycle
+
       - name: Test retrieval
         run: pnpm run test:retrieval
 

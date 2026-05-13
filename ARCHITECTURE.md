@@ -467,7 +467,7 @@ Before a production release, add:
 
 ### Phase 5 — Production Hardening
 
-- Add provider retries, timeouts, and abort signals.
+- Add provider retries, timeouts, and abort signals. ✅
 - Add observability hooks. ✅
 - Add pruning policies.
 - Add release CI with provenance or trusted publishing. ✅

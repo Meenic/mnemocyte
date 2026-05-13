@@ -1,11 +1,13 @@
 import type { MemoryRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
+import { withResilience } from "../resilience.js";
 import type {
 	BuildContextInput,
 	Embedder,
 	ImportanceLevel,
 	Memory,
 	MemoryType,
+	ProviderResilienceConfig,
 	RecallInput,
 	RememberInput,
 } from "../types.js";
@@ -115,11 +117,32 @@ export function rowToMemory(row: MemoryRow): Memory {
 export async function embedOne(
 	embedder: Embedder,
 	text: string,
+	options: {
+		signal?: AbortSignal;
+		resilience?: ProviderResilienceConfig;
+	} = {},
 ): Promise<number[]> {
 	let embeddings: number[][];
 	try {
-		embeddings = await embedder.embed([text]);
+		embeddings = await withResilience(
+			(signal) =>
+				signal === undefined
+					? embedder.embed([text])
+					: embedder.embed([text], { signal }),
+			{
+				...(options.signal === undefined ? {} : { signal: options.signal }),
+				...(options.resilience === undefined
+					? {}
+					: { resilience: options.resilience }),
+			},
+		);
 	} catch (error) {
+		if (
+			error instanceof MnemocyteError &&
+			(error.code === "TIMEOUT" || error.code === "ABORTED")
+		) {
+			throw error;
+		}
 		throw new MnemocyteError("Failed to embed text.", "EMBEDDING", error);
 	}
 	const embedding = embeddings[0];

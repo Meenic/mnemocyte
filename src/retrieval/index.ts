@@ -9,6 +9,7 @@ import { embedOne, rowToMemory } from "../memory/shared.js";
 import type {
 	Embedder,
 	MemoryWithScore,
+	ProviderResilienceConfig,
 	RecallInput,
 	RetrievalConfig,
 } from "../types.js";
@@ -21,6 +22,8 @@ interface HybridRecallInput {
 	limit: number;
 	minScore: number;
 	retrieval: RetrievalConfig | undefined;
+	signal?: AbortSignal;
+	resilience?: ProviderResilienceConfig;
 }
 
 interface ScoredRow {
@@ -32,7 +35,10 @@ interface ScoredRow {
 export async function hybridRecall(
 	input: HybridRecallInput,
 ): Promise<MemoryWithScore[]> {
-	const queryEmbedding = await embedOne(input.embedder, input.input.query);
+	const queryEmbedding = await embedOne(input.embedder, input.input.query, {
+		...(input.signal === undefined ? {} : { signal: input.signal }),
+		...(input.resilience === undefined ? {} : { resilience: input.resilience }),
+	});
 	const candidateMultiplier =
 		input.retrieval?.candidateMultiplier ?? DEFAULT_CANDIDATE_MULTIPLIER;
 	const candidateLimit = Math.max(

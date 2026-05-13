@@ -47,6 +47,9 @@ jobs:
       - name: Test observability
         run: pnpm run test:observability
 
+      - name: Test resilience
+        run: pnpm run test:resilience
+
       - name: Test retrieval
         run: pnpm run test:retrieval
 

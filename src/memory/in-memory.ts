@@ -53,7 +53,12 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 			async () => {
 				assertOpen();
 				validateRememberInput(input);
-				const embedding = await embedOne(config.embedder, input.content);
+				const embedding = await embedOne(config.embedder, input.content, {
+					...(input.signal === undefined ? {} : { signal: input.signal }),
+					...(config.provider === undefined
+						? {}
+						: { resilience: config.provider }),
+				});
 				const now = new Date();
 				const memory: StoredMemory = {
 					id: createId(),
@@ -115,7 +120,12 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 						input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
 					assertLimit(limit);
 					assertMinScore(minScore);
-					const queryEmbedding = await embedOne(config.embedder, input.query);
+					const queryEmbedding = await embedOne(config.embedder, input.query, {
+						...(input.signal === undefined ? {} : { signal: input.signal }),
+						...(config.provider === undefined
+							? {}
+							: { resilience: config.provider }),
+					});
 					const now = new Date();
 					const scored = Array.from(memories.values())
 						.filter((memory) => matchesRecallFilter(memory, input, now))
@@ -154,8 +164,14 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 					assertOpen();
 					return buildContext({
 						input,
-						recall: (contextInput) =>
-							this.recall(contextInputToRecallInput(contextInput)),
+						recall: (contextInput) => {
+							const recallInput = contextInputToRecallInput(contextInput);
+							return this.recall(
+								input.signal === undefined
+									? recallInput
+									: { ...recallInput, signal: input.signal },
+							);
+						},
 					});
 				},
 			);

@@ -58,7 +58,12 @@ export function createPostgresClient(
 			async () => {
 				assertOpen();
 				validateRememberInput(input);
-				const embedding = await embedOne(config.embedder, input.content);
+				const embedding = await embedOne(config.embedder, input.content, {
+					...(input.signal === undefined ? {} : { signal: input.signal }),
+					...(config.provider === undefined
+						? {}
+						: { resilience: config.provider }),
+				});
 				const now = new Date();
 				const row = await insertMemory(handle.db, {
 					id: createId(),
@@ -127,6 +132,10 @@ export function createPostgresClient(
 						limit,
 						minScore,
 						retrieval: config.retrieval,
+						...(input.signal === undefined ? {} : { signal: input.signal }),
+						...(config.provider === undefined
+							? {}
+							: { resilience: config.provider }),
 					});
 				},
 				(result) => ({ count: result.length }),
@@ -142,8 +151,14 @@ export function createPostgresClient(
 					assertOpen();
 					return buildContext({
 						input,
-						recall: (contextInput) =>
-							this.recall(contextInputToRecallInput(contextInput)),
+						recall: (contextInput) => {
+							const recallInput = contextInputToRecallInput(contextInput);
+							return this.recall(
+								input.signal === undefined
+									? recallInput
+									: { ...recallInput, signal: input.signal },
+							);
+						},
 					});
 				},
 			);

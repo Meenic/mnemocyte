@@ -65,6 +65,40 @@ embedder,
 
 The published package includes `migrations/0000_initial.sql`.
 
+## Provider resilience
+
+Mnemocyte applies an optional timeout and retry policy to every outbound
+embedder call, and forwards `AbortSignal` cancellation to in-flight
+attempts. Defaults disable both retries and timeouts so existing setups
+are unaffected.
+
+```ts
+const client = createMnemocyte({
+embedder,
+provider: {
+timeoutMs: 5_000,
+retries: 2,
+baseDelayMs: 200,
+maxDelayMs: 2_000,
+},
+});
+
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 1_000);
+
+await client.remember({
+entityId: "user_123",
+content: "Prefers short answers.",
+signal: controller.signal,
+});
+```
+
+Failures surface as `MnemocyteError` with stable `code`s:
+
+- `"TIMEOUT"` — a single provider attempt exceeded `timeoutMs`.
+- `"ABORTED"` — the operation was cancelled via `signal` (never retried).
+- `"EMBEDDING"` — the embedder failed after all retries are exhausted.
+
 ## Retrieval tuning
 
 ```ts

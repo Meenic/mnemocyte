@@ -1,0 +1,70 @@
+{
+	"name": "mnemocyte",
+	"version": "0.0.1",
+	"description": "Persistent memory for TypeScript AI apps.",
+	"type": "module",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts --format esm,cjs --dts --clean",
+		"dev": "tsup src/index.ts --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"lint": "biome lint --write",
+		"format": "biome format --write",
+		"prepublishOnly": "pnpm build && pnpm typecheck && pnpm test"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Meenic/mnemocyte.git"
+	},
+	"keywords": [
+		"ai",
+		"memory",
+		"llm",
+		"agents",
+		"typescript",
+		"postgres",
+		"pgvector"
+	],
+	"author": "Meenic",
+	"license": "MIT",
+	"funding": "https://github.com/sponsors/Meenic",
+	"bugs": {
+		"url": "https://github.com/Meenic/mnemocyte/issues"
+	},
+	"homepage": "https://github.com/Meenic/mnemocyte#readme",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	},
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "^11.0.8",
+			"onFail": "download"
+		}
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.15",
+		"@types/node": "^25.7.0",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
+	}
+}

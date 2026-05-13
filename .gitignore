@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+out
+build
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Misc
+package-lock.json
+yarn.lock

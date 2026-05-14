@@ -410,13 +410,14 @@ Before a production release, add:
 - Add provider retries, timeouts, and abort signals. ✅
 - Add observability hooks. ✅
 - Add pruning policies. ✅
-- Add release CI with provenance or trusted publishing. ✅
+- Add release CI with provenance or trusted publishing.
 - Add Node compatibility matrix. ✅
 
 ### Phase 6 — Experimental Maintenance
 
 - Add consolidation only under an experimental namespace. ✅
-- Add conflict detection and deduplication. ✅ (passive: `findDuplicates`)
+- Add passive duplicate detection. ✅ (`findDuplicates`)
+- Add conflict detection. (future work)
 - Add audit logs for merges and deletes. ✅
 - Add MCP/adapters after the core package is stable. (planned: separate `packages/mcp` workspace, post-0.1.0)
 

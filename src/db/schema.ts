@@ -4,6 +4,7 @@ import {
 	index,
 	integer,
 	jsonb,
+	type AnyPgColumn,
 	pgTable,
 	real,
 	text,
@@ -16,12 +17,19 @@ const vector = customType<{ data: number[]; driverData: string }>({
 		return `vector(${dimensions})`;
 	},
 	toDriver(value) {
-		return `[${value.join(",")}]`;
+		return `[${value.map(formatVectorComponent).join(",")}]`;
 	},
 	fromDriver(value) {
 		return value.slice(1, -1).split(",").filter(Boolean).map(Number);
 	},
 });
+
+function formatVectorComponent(value: number): string {
+	if (!Number.isFinite(value)) {
+		throw new Error("Vector values must be finite numbers.");
+	}
+	return Object.is(value, -0) ? "0" : value.toFixed(17);
+}
 
 export const memoriesTable = pgTable(
 	"mnemocyte_memories",
@@ -38,7 +46,9 @@ export const memoriesTable = pgTable(
 		embedding: vector("embedding", { dimensions: 1536 }),
 		embeddingModel: text("embedding_model").notNull(),
 		embeddingDimensions: integer("embedding_dimensions").notNull(),
-		supersededBy: text("superseded_by"),
+		supersededBy: text("superseded_by").references(
+			(): AnyPgColumn => memoriesTable.id,
+		),
 		supersededAt: timestamp("superseded_at", { withTimezone: true }),
 		expiresAt: timestamp("expires_at", { withTimezone: true }),
 		lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),

@@ -24,9 +24,18 @@ function formatMetadata(memory: MemoryWithScore): string {
 	return parts.join("; ");
 }
 
+function markdownFence(value: string): string {
+	const longestBacktickRun = Math.max(
+		0,
+		...Array.from(value.matchAll(/`+/g), (match) => match[0].length),
+	);
+	return "`".repeat(Math.max(3, longestBacktickRun + 1));
+}
+
 function formatMarkdown(
 	memories: readonly MemoryWithScore[],
 	query: string,
+	omittedCount: number,
 ): string {
 	const lines = [
 		"# Memory Context",
@@ -36,7 +45,17 @@ function formatMarkdown(
 		"## Relevant Memories",
 	];
 	for (const memory of memories) {
-		lines.push("", `- ${memory.content}`, `  - ${formatMetadata(memory)}`);
+		const fence = markdownFence(memory.content);
+		lines.push(
+			"",
+			`- ${formatMetadata(memory)}`,
+			`  ${fence}text`,
+			...memory.content.split("\n").map((line) => `  ${line}`),
+			`  ${fence}`,
+		);
+	}
+	if (omittedCount > 0) {
+		lines.push("", `[${omittedCount} memories omitted to fit token budget]`);
 	}
 	return lines.join("\n");
 }
@@ -44,6 +63,7 @@ function formatMarkdown(
 function formatPlain(
 	memories: readonly MemoryWithScore[],
 	query: string,
+	omittedCount: number,
 ): string {
 	const lines = [
 		"MEMORY CONTEXT",
@@ -52,8 +72,17 @@ function formatPlain(
 		"",
 		"RELEVANT MEMORIES",
 	];
-	for (const memory of memories) {
-		lines.push("", memory.content, formatMetadata(memory));
+	for (const [index, memory] of memories.entries()) {
+		lines.push(
+			"",
+			`--- MEMORY ${index + 1} START ---`,
+			formatMetadata(memory),
+			memory.content,
+			`--- MEMORY ${index + 1} END ---`,
+		);
+	}
+	if (omittedCount > 0) {
+		lines.push("", `[${omittedCount} memories omitted to fit token budget]`);
 	}
 	return lines.join("\n");
 }
@@ -61,6 +90,7 @@ function formatPlain(
 function formatXml(
 	memories: readonly MemoryWithScore[],
 	query: string,
+	omittedCount: number,
 ): string {
 	const lines = [`<memory_context query="${escapeXml(query)}">`];
 	for (const memory of memories) {
@@ -71,6 +101,9 @@ function formatXml(
 			"  </memory>",
 		);
 	}
+	if (omittedCount > 0) {
+		lines.push(`  <omitted count="${omittedCount}" reason="token_budget" />`);
+	}
 	lines.push("</memory_context>");
 	return lines.join("\n");
 }
@@ -79,13 +112,14 @@ export function formatContext(
 	memories: readonly MemoryWithScore[],
 	query: string,
 	format: ContextFormat,
+	omittedCount = 0,
 ): string {
 	switch (format) {
 		case "markdown":
-			return formatMarkdown(memories, query);
+			return formatMarkdown(memories, query, omittedCount);
 		case "plain":
-			return formatPlain(memories, query);
+			return formatPlain(memories, query, omittedCount);
 		case "xml":
-			return formatXml(memories, query);
+			return formatXml(memories, query, omittedCount);
 	}
 }

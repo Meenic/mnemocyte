@@ -92,7 +92,7 @@ async function main() {
 				query: "TypeScript library answer style",
 				limit: 5,
 				types: ["preference"],
-				tags: ["typescript"],
+				tags: ["dx", "typescript"],
 				explain: true,
 			});
 			assert.equal(recalled.length, 1);

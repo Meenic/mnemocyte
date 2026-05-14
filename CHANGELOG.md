@@ -8,6 +8,19 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-14
+
+### Fixed
+
+- Postgres recall/buildContext tag filters now require all requested tags,
+  matching the public types and in-memory backend.
+- pgvector insert and query literals now reject non-finite values and avoid
+  scientific notation.
+- Context output now uses explicit Markdown/plain text boundaries and trims
+  whole ranked memories before falling back to string-level token truncation.
+- README, architecture, and roadmap wording now match the current HNSW
+  migration, passive dedup/conflict-detection status, and Neon driver plan.
+
 ## [0.1.0] — Phase 5 hardening + Phase 6 consolidation tooling
 
 First milestone release. Phase 5 (production hardening) and the first
@@ -133,7 +146,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Meenic/mnemocyte/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Meenic/mnemocyte/compare/v0.0.8...v0.1.0
 [0.0.8]: https://github.com/Meenic/mnemocyte/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/Meenic/mnemocyte/compare/v0.0.6...v0.0.7

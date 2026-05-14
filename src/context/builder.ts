@@ -14,6 +14,21 @@ export async function buildContext(
 	const maxTokens = options.input.maxTokens ?? 1200;
 	const tokenCounter = options.input.tokenCounter ?? heuristicTokenCounter;
 	const memories = await options.recall(options.input);
-	const context = formatContext(memories, options.input.query, format);
-	return trimToTokenBudget(context, maxTokens, tokenCounter);
+	for (let count = memories.length; count >= 0; count -= 1) {
+		const omittedCount = memories.length - count;
+		const context = formatContext(
+			memories.slice(0, count),
+			options.input.query,
+			format,
+			omittedCount,
+		);
+		if (tokenCounter.count(context) <= maxTokens) {
+			return context;
+		}
+	}
+	return trimToTokenBudget(
+		formatContext([], options.input.query, format, memories.length),
+		maxTokens,
+		tokenCounter,
+	);
 }

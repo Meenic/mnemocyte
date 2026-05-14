@@ -35,7 +35,14 @@ export interface LexicalSearchInput extends MemoryFilter {
 }
 
 function vectorLiteral(embedding: readonly number[]): string {
-	return `[${embedding.join(",")}]`;
+	return `[${embedding.map(formatVectorComponent).join(",")}]`;
+}
+
+function formatVectorComponent(value: number): string {
+	if (!Number.isFinite(value)) {
+		throw new Error("Vector values must be finite numbers.");
+	}
+	return Object.is(value, -0) ? "0" : value.toFixed(17);
 }
 
 function filterConditions(filter: MemoryFilter) {
@@ -49,7 +56,7 @@ function filterConditions(filter: MemoryFilter) {
 			? inArray(memoriesTable.type, [...filter.types])
 			: undefined,
 		filter.tags && filter.tags.length > 0
-			? sql`${memoriesTable.tags} && ${filter.tags}`
+			? sql`${memoriesTable.tags} @> ${filter.tags}`
 			: undefined,
 		filter.before ? lt(memoriesTable.createdAt, filter.before) : undefined,
 		filter.after ? gt(memoriesTable.createdAt, filter.after) : undefined,
@@ -456,7 +463,7 @@ export async function vectorSearch(
 						)})`
 					: sql``
 			}
-			${input.tags && input.tags.length > 0 ? sql`AND tags && ${input.tags}` : sql``}
+			${input.tags && input.tags.length > 0 ? sql`AND tags @> ${input.tags}` : sql``}
 			${input.before ? sql`AND created_at < ${input.before}` : sql``}
 			${input.after ? sql`AND created_at > ${input.after}` : sql``}
 			AND 1 - (embedding <=> ${embedding}::vector) >= ${minScore}
@@ -505,7 +512,7 @@ export async function lexicalSearch(
 						)})`
 					: sql``
 			}
-			${input.tags && input.tags.length > 0 ? sql`AND tags && ${input.tags}` : sql``}
+			${input.tags && input.tags.length > 0 ? sql`AND tags @> ${input.tags}` : sql``}
 			${input.before ? sql`AND created_at < ${input.before}` : sql``}
 			${input.after ? sql`AND created_at > ${input.after}` : sql``}
 			AND to_tsvector('english', content) @@ websearch_to_tsquery('english', ${input.query})

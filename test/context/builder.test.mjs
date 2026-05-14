@@ -34,6 +34,7 @@ try {
 	});
 	assert.match(markdown, /# Memory Context/);
 	assert.match(markdown, /Relevant Memories/);
+	assert.match(markdown, /```text/);
 	assert.match(markdown, /Prefers short, direct answers/);
 
 	const plain = await client.buildContext({
@@ -44,6 +45,7 @@ try {
 	});
 	assert.match(plain, /MEMORY CONTEXT/);
 	assert.match(plain, /RELEVANT MEMORIES/);
+	assert.match(plain, /--- MEMORY 1 START ---/);
 
 	const xml = await client.buildContext({
 		entityId,
@@ -67,7 +69,10 @@ try {
 			},
 		},
 	});
-	assert.match(trimmed, /\[truncated to fit token budget\]/);
+	assert.match(
+		trimmed,
+		/\[(1 memories omitted|truncated) to fit token budget\]/,
+	);
 } finally {
 	await client.close();
 }

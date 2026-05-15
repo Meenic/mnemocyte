@@ -34,9 +34,6 @@ Thumbs.db
 # Testing
 coverage
 
-# Pack check output
-.pack-check
-
 # Runtime
 *.pid
 *.seed

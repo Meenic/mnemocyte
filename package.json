@@ -36,8 +36,8 @@
 		"format": "biome format --write",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
-		"pack:check": "pnpm pack --pack-destination .pack-check",
-		"prepublishOnly": "tsdown src/index.ts && tsc --noEmit && pnpm pack --pack-destination .pack-check"
+		"pack:check": "pnpm pack --dry-run",
+		"prepublishOnly": "tsdown src/index.ts && tsc --noEmit && pnpm pack --dry-run"
 	},
 	"repository": {
 		"type": "git",

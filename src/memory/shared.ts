@@ -181,6 +181,57 @@ export async function embedOne(
 	return embedding;
 }
 
+export async function embedMany(
+	embedder: Embedder,
+	texts: readonly string[],
+	options: {
+		signal?: AbortSignal;
+		resilience?: ProviderResilienceConfig;
+	} = {},
+): Promise<number[][]> {
+	if (texts.length === 0) {
+		return [];
+	}
+	let embeddings: number[][];
+	try {
+		embeddings = await withResilience(
+			(signal) =>
+				signal === undefined
+					? embedder.embed(texts)
+					: embedder.embed(texts, { signal }),
+			{
+				...(options.signal === undefined ? {} : { signal: options.signal }),
+				...(options.resilience === undefined
+					? {}
+					: { resilience: options.resilience }),
+			},
+		);
+	} catch (error) {
+		if (
+			error instanceof MnemocyteError &&
+			(error.code === "TIMEOUT" || error.code === "ABORTED")
+		) {
+			throw error;
+		}
+		throw new MnemocyteError("Failed to embed texts.", "EMBEDDING", error);
+	}
+	if (embeddings.length !== texts.length) {
+		throw new MnemocyteError(
+			`Embedder returned ${embeddings.length} embeddings for ${texts.length} texts.`,
+			"EMBEDDING",
+		);
+	}
+	for (const embedding of embeddings) {
+		if (embedding.length !== embedder.dimensions) {
+			throw new MnemocyteError(
+				"Embedder returned an embedding with unexpected dimensions.",
+				"EMBEDDING",
+			);
+		}
+	}
+	return embeddings;
+}
+
 export function validateRememberInput(input: RememberInput): void {
 	assertNonEmptyString(input.entityId, "entityId");
 	assertNonEmptyString(input.content, "content");

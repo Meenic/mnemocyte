@@ -7,6 +7,7 @@ import {
 	deleteMemory,
 	findDuplicatePairs,
 	getMemoryById,
+	insertMemories,
 	insertMemory,
 	listMemories,
 	loadConsolidationTargets,
@@ -51,6 +52,7 @@ import {
 	DEFAULT_LIMIT,
 	DEFAULT_MIN_SCORE,
 	DEFAULT_TYPE,
+	embedMany,
 	embedOne,
 	IMPORTANCE_RANK,
 	isExpired,
@@ -210,11 +212,56 @@ export function createPostgresClient(
 				{ count: inputs.length },
 				async () => {
 					assertOpen();
-					const result: Memory[] = [];
-					for (const input of inputs) {
-						result.push(await remember(input));
+					if (inputs.length === 0) {
+						return [];
 					}
-					return result;
+					for (const input of inputs) {
+						validateRememberInput(input);
+					}
+					const embeddings = await embedMany(
+						config.embedder,
+						inputs.map((i) => i.content),
+						{
+							...(inputs[0]?.signal === undefined
+								? {}
+								: { signal: inputs[0].signal }),
+							...(config.provider === undefined
+								? {}
+								: { resilience: config.provider }),
+						},
+					);
+					const now = new Date();
+					const rows = inputs.map((input, idx) => ({
+						id: createId(),
+						entityId: input.entityId,
+						content: input.content,
+						type: input.type ?? DEFAULT_TYPE,
+						importance: input.importance ?? DEFAULT_IMPORTANCE,
+						tags: normalizeTags(input.tags),
+						source: input.source ?? null,
+						metadata: input.metadata ?? {},
+						confidence: input.confidence ?? 1,
+						embedding: embeddings[idx] as number[],
+						embeddingModel: config.embedder.model,
+						embeddingDimensions: config.embedder.dimensions,
+						supersededBy: null,
+						supersededAt: null,
+						expiresAt: input.expiresAt ?? null,
+						lastAccessedAt: null,
+						accessCount: 0,
+						createdAt: now,
+						updatedAt: now,
+					}));
+					const inserted = await insertMemories(handle.db, rows);
+					const memories = inserted.map(rowToMemory);
+					for (const memory of memories) {
+						void recordAudit(memory.entityId, "memory.created", {
+							memoryId: memory.id,
+							type: memory.type,
+							importance: memory.importance,
+						});
+					}
+					return memories;
 				},
 				(result) => ({ count: result.length }),
 			);
@@ -512,35 +559,43 @@ export function createPostgresClient(
 							} satisfies ConsolidateResult;
 						}
 						const now = new Date();
-						const updated = await markMemoriesSuperseded(handle.db, {
-							survivorId: survivor.id,
-							entityId: input.entityId,
-							ids: losers.map((loser) => loser.id),
-							now,
-						});
-						const newSupersededIds = updated.map((row) => row.id);
-						for (const id of newSupersededIds) {
-							await recordAudit(input.entityId, "memory.superseded", {
-								memoryId: id,
-								supersededBy: survivor.id,
-							});
-						}
-						if (input.mergeTags !== false && updated.length > 0) {
-							const mergedTags = new Set(survivor.tags);
-							for (const row of updated) {
-								for (const tag of row.tags) {
-									mergedTags.add(tag);
-								}
-							}
-							if (mergedTags.size !== survivor.tags.length) {
-								await setMemoryTags(handle.db, {
+						const { newSupersededIds } = await handle.db.transaction(
+							async (tx) => {
+								const updated = await markMemoriesSuperseded(tx, {
+									survivorId: survivor.id,
 									entityId: input.entityId,
-									memoryId: survivor.id,
-									tags: [...mergedTags],
+									ids: losers.map((loser) => loser.id),
 									now,
 								});
-							}
-						}
+								const newSupersededIds = updated.map((row) => row.id);
+								for (const id of newSupersededIds) {
+									await insertEvent(tx, {
+										id: createEventId(),
+										entityId: input.entityId,
+										description: "memory.superseded",
+										metadata: { memoryId: id, supersededBy: survivor.id },
+										timestamp: now,
+									});
+								}
+								if (input.mergeTags !== false && updated.length > 0) {
+									const mergedTags = new Set(survivor.tags);
+									for (const row of updated) {
+										for (const tag of row.tags) {
+											mergedTags.add(tag);
+										}
+									}
+									if (mergedTags.size !== survivor.tags.length) {
+										await setMemoryTags(tx, {
+											entityId: input.entityId,
+											memoryId: survivor.id,
+											tags: [...mergedTags],
+											now,
+										});
+									}
+								}
+								return { updated, newSupersededIds };
+							},
+						);
 						return {
 							survivorId: survivor.id,
 							supersededCount: newSupersededIds.length,

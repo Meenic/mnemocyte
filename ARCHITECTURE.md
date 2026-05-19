@@ -94,7 +94,7 @@ src/
 │   └── scorer.ts             # cosineSimilarity, lexical score, fused ranker
 │
 ├── memory/
-│   ├── shared.ts             # validation, mapping, embedding helpers
+│   ├── shared.ts             # validation, mapping, embedding helpers (single + batch)
 │   ├── in-memory.ts          # in-memory backend (with audit log array)
 │   └── postgres.ts           # Postgres-backed backend
 │
@@ -425,7 +425,7 @@ Before a production release, add:
 
 - **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` now validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterised. Making this configurable is a future enhancement.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
-- **Hybrid recall on Postgres approximates score fusion.** The vector and lexical top-K candidates are fused by ID; a row appearing only in the lexical top-K gets `vectorScore = 0` (and vice versa). `candidateMultiplier` widens the candidate set to mitigate this. The in-memory backend computes both components for every memory.
+- **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
 - **`experimental.consolidate` is gated under `client.experimental.*`.** Members of that namespace may change between minor releases.
 

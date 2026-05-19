@@ -8,6 +8,28 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-20
+
+### Changed
+
+- **`rememberMany` batches embedding and insert.** Both backends now call
+  `embedder.embed()` once for all texts and the Postgres backend performs a
+  single batch `INSERT`, reducing N sequential network round-trips to 1.
+- **Hybrid recall computes real scores for non-overlapping candidates.**
+  Vector-only results now get a JS-side lexical score and lexical-only
+  results get a cosine similarity from the stored embedding, instead of
+  defaulting to 0.
+- **`buildContext` uses binary search for token-budget fitting.** Reduced
+  from O(N) to O(log N) `tokenCounter.count()` calls.
+- **`experimental.consolidate` mutations are transaction-wrapped.** The
+  `markMemoriesSuperseded`, audit event inserts, and `setMemoryTags` calls
+  now execute inside a single `db.transaction()` for ACID safety.
+
+### Added
+
+- `embedMany()` batch embedding helper in `memory/shared.ts`.
+- `insertMemories()` batch insert query in `db/queries/memories.ts`.
+
 ## [0.1.1] — 2026-05-14
 
 ### Fixed
@@ -146,7 +168,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Meenic/mnemocyte/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Meenic/mnemocyte/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Meenic/mnemocyte/compare/v0.0.8...v0.1.0
 [0.0.8]: https://github.com/Meenic/mnemocyte/compare/v0.0.7...v0.0.8

@@ -37,6 +37,7 @@ import {
 	DEFAULT_LIMIT,
 	DEFAULT_MIN_SCORE,
 	DEFAULT_TYPE,
+	embedMany,
 	embedOne,
 	isExpired,
 	matchesDuplicateFilter,
@@ -149,9 +150,56 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 				{ count: inputs.length },
 				async () => {
 					assertOpen();
-					const result: Memory[] = [];
+					if (inputs.length === 0) {
+						return [];
+					}
 					for (const input of inputs) {
-						result.push(await remember(input));
+						validateRememberInput(input);
+					}
+					const embeddings = await embedMany(
+						config.embedder,
+						inputs.map((i) => i.content),
+						{
+							...(inputs[0]?.signal === undefined
+								? {}
+								: { signal: inputs[0].signal }),
+							...(config.provider === undefined
+								? {}
+								: { resilience: config.provider }),
+						},
+					);
+					const now = new Date();
+					const result: Memory[] = [];
+					for (let i = 0; i < inputs.length; i++) {
+						const input = inputs[i] as RememberInput;
+						const memory: StoredMemory = {
+							id: createId(),
+							entityId: input.entityId,
+							content: input.content,
+							type: input.type ?? DEFAULT_TYPE,
+							importance: input.importance ?? DEFAULT_IMPORTANCE,
+							tags: normalizeTags(input.tags),
+							source: input.source ?? null,
+							metadata: input.metadata ?? {},
+							confidence: input.confidence ?? 1,
+							embeddingModel: config.embedder.model,
+							embeddingDimensions: config.embedder.dimensions,
+							supersededBy: null,
+							supersededAt: null,
+							expiresAt: input.expiresAt ?? null,
+							lastAccessedAt: null,
+							accessCount: 0,
+							createdAt: now,
+							updatedAt: now,
+							embedding: embeddings[i] as number[],
+						};
+						memories.set(memory.id, memory);
+						recordAudit(memory.entityId, "memory.created", {
+							memoryId: memory.id,
+							type: memory.type,
+							importance: memory.importance,
+						});
+						result.push(cloneMemory(memory));
 					}
 					return result;
 				},

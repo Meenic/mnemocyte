@@ -14,17 +14,27 @@ export async function buildContext(
 	const maxTokens = options.input.maxTokens ?? 1200;
 	const tokenCounter = options.input.tokenCounter ?? heuristicTokenCounter;
 	const memories = await options.recall(options.input);
-	for (let count = memories.length; count >= 0; count -= 1) {
-		const omittedCount = memories.length - count;
+	let low = 0;
+	let high = memories.length;
+	let bestContext = "";
+	while (low <= high) {
+		const mid = Math.floor((low + high) / 2);
+		const omittedCount = memories.length - mid;
 		const context = formatContext(
-			memories.slice(0, count),
+			memories.slice(0, mid),
 			options.input.query,
 			format,
 			omittedCount,
 		);
 		if (tokenCounter.count(context) <= maxTokens) {
-			return context;
+			bestContext = context;
+			low = mid + 1;
+		} else {
+			high = mid - 1;
 		}
+	}
+	if (bestContext || memories.length === 0) {
+		return bestContext;
 	}
 	return trimToTokenBudget(
 		formatContext([], options.input.query, format, memories.length),

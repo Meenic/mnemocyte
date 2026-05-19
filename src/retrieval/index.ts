@@ -13,7 +13,12 @@ import type {
 	RecallInput,
 	RetrievalConfig,
 } from "../types.js";
-import { DEFAULT_CANDIDATE_MULTIPLIER, toScoredMemory } from "./scorer.js";
+import {
+	cosineSimilarity,
+	DEFAULT_CANDIDATE_MULTIPLIER,
+	lexicalScore,
+	toScoredMemory,
+} from "./scorer.js";
 
 interface HybridRecallInput {
 	db: MnemocyteDatabase;
@@ -59,7 +64,7 @@ export async function hybridRecall(
 		merged.set(row.id, {
 			row,
 			vectorScore: row.vectorScore,
-			lexicalScore: 0,
+			lexicalScore: lexicalScore(row.content, input.input.query),
 		});
 	}
 	for (const row of lexicalRows) {
@@ -67,9 +72,11 @@ export async function hybridRecall(
 		if (existing) {
 			existing.lexicalScore = row.lexicalScore;
 		} else {
+			const embedding = (row as unknown as { embedding: number[] }).embedding;
+			const sim = embedding ? cosineSimilarity(embedding, queryEmbedding) : 0;
 			merged.set(row.id, {
 				row,
-				vectorScore: 0,
+				vectorScore: Math.max(0, sim),
 				lexicalScore: row.lexicalScore,
 			});
 		}

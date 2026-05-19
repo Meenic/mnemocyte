@@ -75,6 +75,16 @@ export async function insertMemory(
 	return inserted;
 }
 
+export async function insertMemories(
+	db: MnemocyteDatabase,
+	rows: NewMemoryRow[],
+): Promise<MemoryRow[]> {
+	if (rows.length === 0) {
+		return [];
+	}
+	return db.insert(memoriesTable).values(rows).returning();
+}
+
 export async function getMemoryById(
 	db: MnemocyteDatabase,
 	entityId: string,

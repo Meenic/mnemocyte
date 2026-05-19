@@ -1,10 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+	type AnyPgColumn,
 	customType,
 	index,
 	integer,
 	jsonb,
-	type AnyPgColumn,
 	pgTable,
 	real,
 	text,

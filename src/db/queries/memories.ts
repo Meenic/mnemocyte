@@ -34,6 +34,12 @@ export interface LexicalSearchInput extends MemoryFilter {
 	limit: number;
 }
 
+export type RecallMemoryRow = Omit<MemoryRow, "embedding">;
+
+export type VectorSearchRow = RecallMemoryRow & { vectorScore: number };
+
+export type LexicalSearchRow = RecallMemoryRow & { lexicalScore: number };
+
 function vectorLiteral(embedding: readonly number[]): string {
 	return `[${embedding.map(formatVectorComponent).join(",")}]`;
 }
@@ -431,10 +437,29 @@ export async function markMemoryAccessed(
 		.where(inArray(memoriesTable.id, [...memoryIds]));
 }
 
+export async function getMemoryEmbeddings(
+	db: MnemocyteDatabase,
+	memoryIds: readonly string[],
+): Promise<Map<string, number[]>> {
+	if (memoryIds.length === 0) {
+		return new Map();
+	}
+	const rows = await db
+		.select({
+			id: memoriesTable.id,
+			embedding: memoriesTable.embedding,
+		})
+		.from(memoriesTable)
+		.where(inArray(memoriesTable.id, [...memoryIds]));
+	return new Map(
+		rows.flatMap((row) => (row.embedding ? [[row.id, row.embedding]] : [])),
+	);
+}
+
 export async function vectorSearch(
 	db: MnemocyteDatabase,
 	input: VectorSearchInput,
-): Promise<Array<MemoryRow & { vectorScore: number }>> {
+): Promise<VectorSearchRow[]> {
 	const embedding = vectorLiteral(input.embedding);
 	const minScore = input.minScore ?? 0;
 	const rows = await db.execute(sql`
@@ -448,7 +473,6 @@ export async function vectorSearch(
 			source,
 			metadata,
 			confidence,
-			embedding,
 			embedding_model AS "embeddingModel",
 			embedding_dimensions AS "embeddingDimensions",
 			superseded_by AS "supersededBy",
@@ -480,13 +504,13 @@ export async function vectorSearch(
 		ORDER BY embedding <=> ${embedding}::vector
 		LIMIT ${input.limit}
 	`);
-	return rows as unknown as Array<MemoryRow & { vectorScore: number }>;
+	return rows as unknown as VectorSearchRow[];
 }
 
 export async function lexicalSearch(
 	db: MnemocyteDatabase,
 	input: LexicalSearchInput,
-): Promise<Array<MemoryRow & { lexicalScore: number }>> {
+): Promise<LexicalSearchRow[]> {
 	const rows = await db.execute(sql`
 		SELECT
 			id,
@@ -498,7 +522,6 @@ export async function lexicalSearch(
 			source,
 			metadata,
 			confidence,
-			embedding,
 			embedding_model AS "embeddingModel",
 			embedding_dimensions AS "embeddingDimensions",
 			superseded_by AS "supersededBy",
@@ -529,5 +552,5 @@ export async function lexicalSearch(
 		ORDER BY "lexicalScore" DESC
 		LIMIT ${input.limit}
 	`);
-	return rows as unknown as Array<MemoryRow & { lexicalScore: number }>;
+	return rows as unknown as LexicalSearchRow[];
 }

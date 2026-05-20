@@ -114,7 +114,7 @@ export function cloneMemory(memory: Memory): Memory {
 	};
 }
 
-export function rowToMemory(row: MemoryRow): Memory {
+export function rowToMemory(row: Omit<MemoryRow, "embedding">): Memory {
 	return {
 		id: row.id,
 		entityId: row.entityId,

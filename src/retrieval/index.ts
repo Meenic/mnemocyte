@@ -1,10 +1,11 @@
 import type { MnemocyteDatabase } from "../db/index.js";
 import {
+	getMemoryEmbeddings,
 	lexicalSearch,
 	markMemoryAccessed,
+	type RecallMemoryRow,
 	vectorSearch,
 } from "../db/queries/memories.js";
-import type { MemoryRow } from "../db/schema.js";
 import { embedOne, rowToMemory } from "../memory/shared.js";
 import type {
 	Embedder,
@@ -32,7 +33,7 @@ interface HybridRecallInput {
 }
 
 interface ScoredRow {
-	row: MemoryRow;
+	row: RecallMemoryRow;
 	vectorScore: number;
 	lexicalScore: number;
 }
@@ -67,12 +68,17 @@ export async function hybridRecall(
 			lexicalScore: lexicalScore(row.content, input.input.query),
 		});
 	}
+	const lexicalOnlyRows = lexicalRows.filter((row) => !merged.has(row.id));
+	const lexicalOnlyEmbeddings = await getMemoryEmbeddings(
+		input.db,
+		lexicalOnlyRows.map((row) => row.id),
+	);
 	for (const row of lexicalRows) {
 		const existing = merged.get(row.id);
 		if (existing) {
 			existing.lexicalScore = row.lexicalScore;
 		} else {
-			const embedding = (row as unknown as { embedding: number[] }).embedding;
+			const embedding = lexicalOnlyEmbeddings.get(row.id);
 			const sim = embedding ? cosineSimilarity(embedding, queryEmbedding) : 0;
 			merged.set(row.id, {
 				row,

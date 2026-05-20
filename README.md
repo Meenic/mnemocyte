@@ -79,6 +79,10 @@ The current Postgres schema uses `embedding vector(1536)`. If
 `MnemocyteError` with code `"CONFIG"` before opening the connection pool. The
 in-memory backend does not enforce this constraint.
 
+Database scripts and Postgres integration tests read `DATABASE_URL` from the
+process environment and load `.env` when present. Run `pnpm db:migrate` to
+apply the bundled migration.
+
 ## Provider Resilience
 
 Mnemocyte can apply timeouts and retries to embedder calls, and forwards
@@ -248,7 +252,8 @@ pnpm run test:integration
 pnpm run pack:check
 ```
 
-`test:integration` skips cleanly when `DATABASE_URL` is not set.
+`test:integration` skips cleanly when `DATABASE_URL` is not set in the process
+environment or `.env`.
 
 ## Architecture
 

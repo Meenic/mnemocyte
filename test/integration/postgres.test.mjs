@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres from "postgres";
 import { createMnemocyte } from "../../dist/index.mjs";
+
+const envPath = resolve(".env");
+if (!process.env.DATABASE_URL && existsSync(envPath)) {
+	process.loadEnvFile(envPath);
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 

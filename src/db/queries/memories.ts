@@ -1,5 +1,7 @@
 import {
 	and,
+	count,
+	countDistinct,
 	eq,
 	gt,
 	inArray,
@@ -110,7 +112,7 @@ function duplicateTagsFilter(tags: readonly string[] | undefined) {
 
 function memoryStatsCountFields(now: Date) {
 	return {
-		memoryCount: sql<number>`count(*)::int`.mapWith(Number),
+		memoryCount: count(),
 		activeMemoryCount: sql<number>`
 			(count(*) FILTER (
 				WHERE ${memoriesTable.supersededBy} IS NULL
@@ -217,10 +219,7 @@ export async function getGlobalMemoryStatsCounts(
 ): Promise<GlobalMemoryStatsCounts> {
 	const rows = await db
 		.select({
-			entityCount:
-				sql<number>`count(DISTINCT ${memoriesTable.entityId})::int`.mapWith(
-					Number,
-				),
+			entityCount: countDistinct(memoriesTable.entityId),
 			...memoryStatsCountFields(now),
 		})
 		.from(memoriesTable);
@@ -298,11 +297,7 @@ export async function countPruneMatches(
 	db: MnemocyteDatabase,
 	filter: PruneFilter,
 ): Promise<number> {
-	const result = await db
-		.select({ count: sql<number>`count(*)::int` })
-		.from(memoriesTable)
-		.where(pruneConditions(filter));
-	return result[0]?.count ?? 0;
+	return db.$count(memoriesTable, pruneConditions(filter));
 }
 
 export async function pruneMemories(
@@ -532,15 +527,16 @@ export async function markMemoryAccessed(
 	db: MnemocyteDatabase,
 	memoryIds: readonly string[],
 ): Promise<void> {
+	const now = new Date();
 	if (memoryIds.length === 0) {
 		return;
 	}
 	await db
 		.update(memoriesTable)
 		.set({
-			lastAccessedAt: new Date(),
+			lastAccessedAt: now,
 			accessCount: sql`${memoriesTable.accessCount} + 1`,
-			updatedAt: new Date(),
+			updatedAt: now,
 		})
 		.where(inArray(memoriesTable.id, [...memoryIds]));
 }

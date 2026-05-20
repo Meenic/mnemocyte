@@ -79,9 +79,29 @@ The current Postgres schema uses `embedding vector(1536)`. If
 `MnemocyteError` with code `"CONFIG"` before opening the connection pool. The
 in-memory backend does not enforce this constraint.
 
+Choose an embedder that returns 1536-dimensional vectors for Postgres today
+unless you maintain your own compatible migration. Native 1536-dimensional
+models such as OpenAI `text-embedding-3-small` fit directly. Other providers
+may require a 1536-dimensional output option, truncation/padding owned by your
+application, or waiting for configurable storage dimensions in a future
+release.
+
 Database scripts and Postgres integration tests read `DATABASE_URL` from the
 process environment and load `.env` when present. Run `pnpm db:migrate` to
 apply the bundled migration.
+
+The built-in `databaseUrl` path uses postgres.js over TCP. It maps
+`sslmode=require`, `prefer`, or `allow` to TLS without certificate verification,
+uses `verify-full` when requested, and disables prepared statements for common
+pooler URLs (`:6543` or `pgbouncer=true`). Neon HTTP/serverless and
+caller-managed Drizzle clients are planned future work.
+
+The migration creates an HNSW pgvector index for cosine search. HNSW is
+approximate, and Postgres applies ordinary filters such as `entityId`, tags,
+and timestamps around that vector search. For highly selective filters or very
+large/write-heavy tables, benchmark query plans and consider future index
+tuning or an IVFFlat/custom migration. The current bundled migration does not
+ship a full-text GIN index for lexical search.
 
 ## Provider Resilience
 
@@ -115,6 +135,12 @@ Provider failures surface as `MnemocyteError` values with stable `code`s:
 - `"TIMEOUT"`: a provider attempt exceeded `timeoutMs`.
 - `"ABORTED"`: the operation was cancelled via `signal` and is not retried.
 - `"EMBEDDING"`: the embedder failed after retries were exhausted.
+
+When `provider.shouldRetry` is omitted, Mnemocyte uses a conservative
+transient-error heuristic. It retries common network, timeout, rate-limit, and
+5xx-looking failures whose messages include `network`, `timeout`, `econn`,
+`etimedout`, `temporarily`, `rate limit`, `500`, `502`, `503`, or `504`.
+`"VALIDATION"`, `"CONFIG"`, and `"ABORTED"` `MnemocyteError`s are never retried.
 
 ## Pruning
 
@@ -251,6 +277,9 @@ pnpm run test:retrieval
 pnpm run test:integration
 pnpm run pack:check
 ```
+
+`pnpm lint` and `pnpm format` run Biome in write mode. Use them for local
+maintenance, then review the resulting diff.
 
 `test:integration` skips cleanly when `DATABASE_URL` is not set in the process
 environment or `.env`.

@@ -36,7 +36,8 @@ exposes Mnemocyte's tools to LLM hosts (Claude Desktop, Cursor, etc.).
 
 ## `0.1.x` — docs + tiny safety patches
 
-No API breakage. One new subpath export, one new migration file, and docs.
+No API breakage. Documentation corrections, small safety fixes, and optional
+additive helpers only.
 
 ### Production safety (do not ship 0.1.x indefinitely without these)
 
@@ -59,20 +60,9 @@ problem identified during the DX audit.
 
 ### Documentation
 
-- [ ] **Document the `defaultShouldRetry` heuristic in the README.** Currently
-      it lives only in `src/resilience.ts`. Users who plug in custom embedders
-      against non-standard providers (e.g. a self-hosted vLLM) need to know
-      which substrings trigger retries (`network`, `timeout`, `econn`,
-      `etimedout`, `temporarily`, `rate limit`, `500`, `502`, `503`, `504`)
-      and that the *conservative-by-default* posture is intentional.
-- [ ] Add a "Choosing an embedder" section to the README covering the
-      hardcoded `1536` constraint and the workarounds available today
-      (choose native 1536-dimensional models such as OpenAI
-      `text-embedding-3-small` or Cohere `embed-v4.0`; truncate
-      Matryoshka-capable models; pad smaller models; or wait for `0.2.0`).
-- [ ] Document current driver compatibility: the bundled `databaseUrl` path
-      uses postgres.js over TCP; Neon HTTP/serverless support belongs to the
-      future pluggable-Drizzle path.
+Recently completed documentation alignment lives in [CHANGELOG.md](./CHANGELOG.md).
+Future `0.1.x` documentation work should focus on examples, migration guides,
+and production tuning notes that do not imply new schema/API behavior.
 
 ---
 

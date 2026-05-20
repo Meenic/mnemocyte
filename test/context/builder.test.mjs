@@ -73,6 +73,15 @@ try {
 		trimmed,
 		/\[(1 memories omitted|truncated) to fit token budget\]/,
 	);
+
+	const { buildContext } = client;
+	const detached = await buildContext({
+		entityId,
+		query: "direct xml answers",
+		format: "plain",
+		limit: 1,
+	});
+	assert.match(detached, /RELEVANT MEMORIES/);
 } finally {
 	await client.close();
 }

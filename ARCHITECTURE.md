@@ -43,12 +43,12 @@ Use `postgres` for the database driver. In this document, `postgres` means the p
 {
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
-    "@types/node": "^25.7.0",
-    "drizzle-kit": "^0.31.0",
+    "@types/node": "^25.9.0",
+    "drizzle-kit": "^0.31.10",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.3"
   }
@@ -144,7 +144,7 @@ types: ["preference", "instruction"],
 await client.close();
 ```
 
-## Public Surface (0.1.0)
+## Public Surface (0.1.x)
 
 The source of truth is `dist/index.d.mts`; this section is a fast index.
 
@@ -254,12 +254,20 @@ CREATE TABLE mnemocyte_events (
 ```sql
 CREATE INDEX mnemocyte_memories_entity_idx ON mnemocyte_memories (entity_id);
 CREATE INDEX mnemocyte_memories_entity_type_idx ON mnemocyte_memories (entity_id, type);
-CREATE INDEX mnemocyte_events_entity_time_idx ON mnemocyte_events (entity_id, timestamp DESC);
-CREATE INDEX mnemocyte_memories_fts_idx ON mnemocyte_memories USING gin (to_tsvector('english', content));
+CREATE INDEX mnemocyte_events_entity_time_idx ON mnemocyte_events (entity_id, timestamp);
 CREATE INDEX mnemocyte_memories_embedding_hnsw_idx ON mnemocyte_memories USING hnsw (embedding vector_cosine_ops);
 ```
 
-HNSW is the preferred production default when build time and memory are acceptable. IVFFlat is also valid, but it needs workload-specific tuning and should be created after the table has representative data.
+HNSW is the current bundled vector-search index. pgvector HNSW is approximate,
+and Postgres applies ordinary filters around the vector search. Highly
+selective filters may require query/session tuning or a workload-specific
+migration. IVFFlat is also valid, but it needs workload-specific tuning and
+should be created after the table has representative data.
+
+The current migration does not include a full-text GIN expression index for
+`to_tsvector('english', content)`. Lexical search is implemented with
+PostgreSQL full-text search, but production deployments should add and benchmark
+a matching expression index before relying on large lexical scans.
 
 ### Embedding Dimension Policy
 
@@ -357,7 +365,7 @@ count(text: string): number;
 
 ## Connection Lifecycle
 
-The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`.
+The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`. The current `createDatabase()` path uses postgres.js over TCP, parses common `sslmode` values, and disables prepared statements for pooler-style URLs (`:6543` or `pgbouncer=true`).
 
 Later, support caller-managed database clients for apps that already own pools.
 
@@ -375,6 +383,7 @@ Before a production release, add:
 - typed errors ✅
 - safe deletion and pruning policy
 - retrieval evaluation fixtures
+- full-text/search and filtered-vector index guidance
 - npm provenance or trusted publishing workflow
 
 ## Implementation Roadmap
@@ -382,7 +391,7 @@ Before a production release, add:
 ### Phase 0 — Package Truthfulness
 
 - Keep package exports aligned with shipped files.
-- Keep README explicit about current stub status.
+- Keep README explicit about current package behavior and limitations.
 - Keep this architecture document canonical.
 - Run `pnpm checktypes` and `pnpm pack --dry-run` before publishing.
 
@@ -456,4 +465,4 @@ Before a production release, add:
 - [x] Add package export smoke tests.
 - [x] Add Postgres + pgvector integration tests.
 - [x] Add safe context formatting and token counting.
-- [ ] Keep consolidation out of stable API until implemented.
+- [x] Keep consolidation under `client.experimental.*` until it graduates.

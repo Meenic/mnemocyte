@@ -140,7 +140,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 		);
 	}
 
-	return {
+	const client: MnemocyteClient = {
 		remember,
 		async rememberMany(inputs) {
 			return observe(
@@ -266,7 +266,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 						input,
 						recall: (contextInput) => {
 							const recallInput = contextInputToRecallInput(contextInput);
-							return this.recall(
+							return client.recall(
 								input.signal === undefined
 									? recallInput
 									: { ...recallInput, signal: input.signal },
@@ -497,6 +497,7 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 			});
 		},
 	};
+	return client;
 
 	function createExperimental(): ExperimentalMnemocyteClient {
 		return {

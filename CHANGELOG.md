@@ -17,9 +17,17 @@ behavioural changes documented in their entries.
 - **Postgres `stats()` aggregates in SQL.** Entity and global stats now use
   conditional aggregate queries instead of materializing full memory rows in
   JavaScript.
+- **Documentation now matches the shipped schema and driver path.** README,
+  architecture, roadmap, and performance notes now describe the actual HNSW,
+  full-text, embedder-dimension, postgres.js, and retry behavior.
 
 ### Fixed
 
+- **Postgres consolidation honors audit opt-in.** `"memory.superseded"` audit
+  events are only written when `audit.enabled` is true, matching the in-memory
+  backend and README contract.
+- **`buildContext` no longer depends on method `this` binding.** Both backends
+  close over the client object when delegating to `recall`.
 - **Postgres tag filters bind text arrays correctly.** Raw SQL recall and
   duplicate-detection paths now pass requested tags as `text[]` values.
 - **Postgres raw recall rows preserve timestamp semantics.** Timestamp fields

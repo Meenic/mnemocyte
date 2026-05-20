@@ -202,7 +202,7 @@ export function createPostgresClient(
 		);
 	}
 
-	return {
+	const client: MnemocyteClient = {
 		remember,
 		async rememberMany(inputs) {
 			return observe(
@@ -308,7 +308,7 @@ export function createPostgresClient(
 						input,
 						recall: (contextInput) => {
 							const recallInput = contextInputToRecallInput(contextInput);
-							return this.recall(
+							return client.recall(
 								input.signal === undefined
 									? recallInput
 									: { ...recallInput, signal: input.signal },
@@ -481,6 +481,7 @@ export function createPostgresClient(
 			});
 		},
 	};
+	return client;
 
 	function createExperimental(): ExperimentalMnemocyteClient {
 		return {
@@ -544,14 +545,16 @@ export function createPostgresClient(
 									now,
 								});
 								const newSupersededIds = updated.map((row) => row.id);
-								for (const id of newSupersededIds) {
-									await insertEvent(tx, {
-										id: createEventId(),
-										entityId: input.entityId,
-										description: "memory.superseded",
-										metadata: { memoryId: id, supersededBy: survivor.id },
-										timestamp: now,
-									});
+								if (config.audit?.enabled === true) {
+									for (const id of newSupersededIds) {
+										await insertEvent(tx, {
+											id: createEventId(),
+											entityId: input.entityId,
+											description: "memory.superseded",
+											metadata: { memoryId: id, supersededBy: survivor.id },
+											timestamp: now,
+										});
+									}
 								}
 								if (input.mergeTags !== false && updated.length > 0) {
 									const mergedTags = new Set(survivor.tags);

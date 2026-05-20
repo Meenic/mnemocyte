@@ -40,6 +40,11 @@ async function main() {
 
 	try {
 		await sql.unsafe(migration);
+	} catch (error) {
+		if (error.code !== "42P07") throw error;
+	}
+
+	try {
 		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 		await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 

@@ -75,6 +75,7 @@
 		"@types/node": "^25.9.0",
 		"drizzle-kit": "^0.31.10",
 		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
 	}
 }

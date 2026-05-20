@@ -297,10 +297,16 @@ includeExpired?: boolean;
 
 ### Vector Search
 
-Use cosine distance with pgvector:
+Use cosine distance with pgvector. Recall queries should project only the
+fields needed to build `Memory` plus the score; stored embeddings are used for
+distance calculation but are not returned in the main candidate result set.
 
 ```sql
-SELECT *, 1 - (embedding <=> $1::vector) AS vector_score
+SELECT id, entity_id, content, type, importance, tags, source, metadata,
+       confidence, embedding_model, embedding_dimensions, superseded_by,
+       superseded_at, expires_at, last_accessed_at, access_count,
+       created_at, updated_at,
+       1 - (embedding <=> $1::vector) AS vector_score
 FROM mnemocyte_memories
 WHERE entity_id = $2 AND embedding IS NOT NULL
 ORDER BY embedding <=> $1::vector
@@ -309,10 +315,16 @@ LIMIT $3;
 
 ### Lexical Search
 
-Use PostgreSQL full-text search for lexical retrieval. Do not call this BM25; PostgreSQL `ts_rank` is useful, but it is not BM25.
+Use PostgreSQL full-text search for lexical retrieval. Do not call this BM25;
+PostgreSQL `ts_rank` is useful, but it is not BM25. Lexical candidate rows
+also avoid returning embeddings; lexical-only candidates fetch embeddings
+through a narrow `id, embedding` lookup when cosine rescoring needs them.
 
 ```sql
-SELECT *,
+SELECT id, entity_id, content, type, importance, tags, source, metadata,
+  confidence, embedding_model, embedding_dimensions, superseded_by,
+  superseded_at, expires_at, last_accessed_at, access_count,
+  created_at, updated_at,
   ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $1)) AS lexical_score
 FROM mnemocyte_memories
 WHERE entity_id = $2
@@ -425,7 +437,7 @@ Before a production release, add:
 
 - **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` now validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterised. Making this configurable is a future enhancement.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
-- **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
+- **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
 - **`experimental.consolidate` is gated under `client.experimental.*`.** Members of that namespace may change between minor releases.
 

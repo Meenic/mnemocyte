@@ -8,6 +8,16 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **Postgres recall transfers narrower result rows.** Vector and lexical
+  candidate queries no longer return stored embeddings in their main result
+  sets; lexical-only candidates fetch embeddings through a narrow follow-up
+  lookup only when JS-side cosine rescoring needs them.
+- **Postgres `stats()` aggregates in SQL.** Entity and global stats now use
+  conditional aggregate queries instead of materializing full memory rows in
+  JavaScript.
+
 ## [0.1.2] — 2026-05-20
 
 ### Changed

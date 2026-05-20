@@ -40,6 +40,28 @@ export type VectorSearchRow = RecallMemoryRow & { vectorScore: number };
 
 export type LexicalSearchRow = RecallMemoryRow & { lexicalScore: number };
 
+export interface MemoryStatsCounts {
+	memoryCount: number;
+	activeMemoryCount: number;
+	expiredMemoryCount: number;
+	supersededMemoryCount: number;
+}
+
+export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
+	entityCount: number;
+}
+
+type MemoryStatsCountRow = {
+	memoryCount: number | string | null;
+	activeMemoryCount: number | string | null;
+	expiredMemoryCount: number | string | null;
+	supersededMemoryCount: number | string | null;
+};
+
+type GlobalMemoryStatsCountRow = MemoryStatsCountRow & {
+	entityCount: number | string | null;
+};
+
 function vectorLiteral(embedding: readonly number[]): string {
 	return `[${embedding.map(formatVectorComponent).join(",")}]`;
 }
@@ -49,6 +71,30 @@ function formatVectorComponent(value: number): string {
 		throw new Error("Vector values must be finite numbers.");
 	}
 	return Object.is(value, -0) ? "0" : value.toFixed(17);
+}
+
+function toCount(value: number | string | null | undefined): number {
+	return Number(value ?? 0);
+}
+
+function normalizeMemoryStatsRow(
+	row: MemoryStatsCountRow | undefined,
+): MemoryStatsCounts {
+	return {
+		memoryCount: toCount(row?.memoryCount),
+		activeMemoryCount: toCount(row?.activeMemoryCount),
+		expiredMemoryCount: toCount(row?.expiredMemoryCount),
+		supersededMemoryCount: toCount(row?.supersededMemoryCount),
+	};
+}
+
+function normalizeGlobalMemoryStatsRow(
+	row: GlobalMemoryStatsCountRow | undefined,
+): GlobalMemoryStatsCounts {
+	return {
+		entityCount: toCount(row?.entityCount),
+		...normalizeMemoryStatsRow(row),
+	};
 }
 
 function filterConditions(filter: MemoryFilter) {
@@ -111,6 +157,47 @@ export async function listMemories(
 	filter: MemoryFilter,
 ): Promise<MemoryRow[]> {
 	return db.select().from(memoriesTable).where(filterConditions(filter));
+}
+
+export async function getEntityMemoryStatsCounts(
+	db: MnemocyteDatabase,
+	entityId: string,
+	now: Date,
+): Promise<MemoryStatsCounts> {
+	const rows = await db.execute(sql`
+		SELECT
+			count(*)::int AS "memoryCount",
+			(count(*) FILTER (
+				WHERE superseded_by IS NULL
+					AND (expires_at IS NULL OR expires_at > ${now})
+			))::int AS "activeMemoryCount",
+			(count(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= ${now}))::int AS "expiredMemoryCount",
+			(count(*) FILTER (WHERE superseded_by IS NOT NULL))::int AS "supersededMemoryCount"
+		FROM mnemocyte_memories
+		WHERE entity_id = ${entityId}
+	`);
+	const row = (rows as unknown as MemoryStatsCountRow[])[0];
+	return normalizeMemoryStatsRow(row);
+}
+
+export async function getGlobalMemoryStatsCounts(
+	db: MnemocyteDatabase,
+	now: Date,
+): Promise<GlobalMemoryStatsCounts> {
+	const rows = await db.execute(sql`
+		SELECT
+			count(DISTINCT entity_id)::int AS "entityCount",
+			count(*)::int AS "memoryCount",
+			(count(*) FILTER (
+				WHERE superseded_by IS NULL
+					AND (expires_at IS NULL OR expires_at > ${now})
+			))::int AS "activeMemoryCount",
+			(count(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= ${now}))::int AS "expiredMemoryCount",
+			(count(*) FILTER (WHERE superseded_by IS NOT NULL))::int AS "supersededMemoryCount"
+		FROM mnemocyte_memories
+	`);
+	const row = (rows as unknown as GlobalMemoryStatsCountRow[])[0];
+	return normalizeGlobalMemoryStatsRow(row);
 }
 
 export async function deleteMemory(

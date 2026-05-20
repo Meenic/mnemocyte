@@ -6,17 +6,18 @@ import {
 	deleteMemoriesForEntity,
 	deleteMemory,
 	findDuplicatePairs,
+	getEntityMemoryStatsCounts,
+	getGlobalMemoryStatsCounts,
 	getMemoryById,
 	insertMemories,
 	insertMemory,
-	listMemories,
 	loadConsolidationTargets,
 	markMemoriesSuperseded,
 	type PruneFilter,
 	pruneMemories,
 	setMemoryTags,
 } from "../db/queries/memories.js";
-import { type EventRow, memoriesTable } from "../db/schema.js";
+import type { EventRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
 import { hybridRecall } from "../retrieval/index.js";
@@ -55,7 +56,6 @@ import {
 	embedMany,
 	embedOne,
 	IMPORTANCE_RANK,
-	isExpired,
 	normalizeTags,
 	rowToMemory,
 	validateConsolidateInput,
@@ -456,44 +456,20 @@ export function createPostgresClient(
 					assertOpen();
 					const now = new Date();
 					if (input?.entityId) {
-						const selected = await listMemories(handle.db, {
-							entityId: input.entityId,
-							includeExpired: true,
-							includeSuperseded: true,
-						});
+						const counts = await getEntityMemoryStatsCounts(
+							handle.db,
+							input.entityId,
+							now,
+						);
 						return {
 							entityId: input.entityId,
-							memoryCount: selected.length,
-							activeMemoryCount: selected.filter(
-								(memory) =>
-									!isExpired(rowToMemory(memory), now) &&
-									memory.supersededBy === null,
-							).length,
-							expiredMemoryCount: selected.filter((memory) =>
-								isExpired(rowToMemory(memory), now),
-							).length,
-							supersededMemoryCount: selected.filter(
-								(memory) => memory.supersededBy !== null,
-							).length,
+							...counts,
 						} satisfies EntityStats;
 					}
-					const allMemories = await handle.db.select().from(memoriesTable);
-					return {
-						entityCount: new Set(allMemories.map((memory) => memory.entityId))
-							.size,
-						memoryCount: allMemories.length,
-						activeMemoryCount: allMemories.filter(
-							(memory) =>
-								!isExpired(rowToMemory(memory), now) &&
-								memory.supersededBy === null,
-						).length,
-						expiredMemoryCount: allMemories.filter((memory) =>
-							isExpired(rowToMemory(memory), now),
-						).length,
-						supersededMemoryCount: allMemories.filter(
-							(memory) => memory.supersededBy !== null,
-						).length,
-					} satisfies GlobalStats;
+					return (await getGlobalMemoryStatsCounts(
+						handle.db,
+						now,
+					)) satisfies GlobalStats;
 				},
 			);
 		},

@@ -18,6 +18,20 @@ behavioural changes documented in their entries.
   conditional aggregate queries instead of materializing full memory rows in
   JavaScript.
 
+### Fixed
+
+- **Postgres tag filters bind text arrays correctly.** Raw SQL recall and
+  duplicate-detection paths now pass requested tags as `text[]` values.
+- **Postgres raw recall rows preserve timestamp semantics.** Timestamp fields
+  returned from raw SQL candidate queries are normalized to `Date` instances
+  before scoring and output.
+- **Postgres tooling loads `.env` when present.** `drizzle.config.ts` and
+  `test:integration` now pick up `DATABASE_URL` from `.env` if it is not
+  already set in the process environment.
+- **Migrations now use Drizzle-native format.** Replaced hand-written SQL
+  migration with Drizzle-generated migration for better schema sync and
+  maintainability.
+
 ## [0.1.2] — 2026-05-20
 
 ### Changed

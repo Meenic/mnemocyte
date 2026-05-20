@@ -34,12 +34,6 @@ export interface LexicalSearchInput extends MemoryFilter {
 	limit: number;
 }
 
-export type RecallMemoryRow = Omit<MemoryRow, "embedding">;
-
-export type VectorSearchRow = RecallMemoryRow & { vectorScore: number };
-
-export type LexicalSearchRow = RecallMemoryRow & { lexicalScore: number };
-
 export interface MemoryStatsCounts {
 	memoryCount: number;
 	activeMemoryCount: number;
@@ -50,17 +44,6 @@ export interface MemoryStatsCounts {
 export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
 	entityCount: number;
 }
-
-type MemoryStatsCountRow = {
-	memoryCount: number | string | null;
-	activeMemoryCount: number | string | null;
-	expiredMemoryCount: number | string | null;
-	supersededMemoryCount: number | string | null;
-};
-
-type GlobalMemoryStatsCountRow = MemoryStatsCountRow & {
-	entityCount: number | string | null;
-};
 
 function vectorLiteral(embedding: readonly number[]): string {
 	return `[${embedding.map(formatVectorComponent).join(",")}]`;
@@ -73,27 +56,85 @@ function formatVectorComponent(value: number): string {
 	return Object.is(value, -0) ? "0" : value.toFixed(17);
 }
 
-function toCount(value: number | string | null | undefined): number {
-	return Number(value ?? 0);
+type RawTimestamp = Date | string;
+
+export type RecallMemoryRow = Omit<
+	MemoryRow,
+	| "embedding"
+	| "supersededAt"
+	| "expiresAt"
+	| "lastAccessedAt"
+	| "createdAt"
+	| "updatedAt"
+> & {
+	supersededAt: RawTimestamp | null;
+	expiresAt: RawTimestamp | null;
+	lastAccessedAt: RawTimestamp | null;
+	createdAt: RawTimestamp;
+	updatedAt: RawTimestamp;
+};
+
+export type VectorSearchRow = RecallMemoryRow & { vectorScore: number };
+
+export type LexicalSearchRow = RecallMemoryRow & { lexicalScore: number };
+
+function timestampParam(value: Date) {
+	return sql`${value.toISOString()}::timestamptz`;
 }
 
-function normalizeMemoryStatsRow(
-	row: MemoryStatsCountRow | undefined,
-): MemoryStatsCounts {
+function textArrayLiteral(values: readonly string[]) {
+	return sql`ARRAY[${sql.join(
+		values.map((value) => sql`${value}`),
+		sql`, `,
+	)}]::text[]`;
+}
+
+function tagsContainAll(tags: readonly string[] | undefined) {
+	return tags && tags.length > 0
+		? sql`${memoriesTable.tags} @> ${textArrayLiteral(tags)}`
+		: undefined;
+}
+
+function rawTagsFilter(tags: readonly string[] | undefined) {
+	return tags && tags.length > 0
+		? sql`AND tags @> ${textArrayLiteral(tags)}`
+		: sql``;
+}
+
+function duplicateTagsFilter(tags: readonly string[] | undefined) {
+	return tags && tags.length > 0
+		? sql`AND a.tags @> ${textArrayLiteral(tags)} AND b.tags @> ${textArrayLiteral(tags)}`
+		: sql``;
+}
+
+function memoryStatsCountFields(now: Date) {
 	return {
-		memoryCount: toCount(row?.memoryCount),
-		activeMemoryCount: toCount(row?.activeMemoryCount),
-		expiredMemoryCount: toCount(row?.expiredMemoryCount),
-		supersededMemoryCount: toCount(row?.supersededMemoryCount),
+		memoryCount: sql<number>`count(*)::int`.mapWith(Number),
+		activeMemoryCount: sql<number>`
+			(count(*) FILTER (
+				WHERE ${memoriesTable.supersededBy} IS NULL
+					AND (${memoriesTable.expiresAt} IS NULL OR ${memoriesTable.expiresAt} > ${timestampParam(now)})
+			))::int
+		`.mapWith(Number),
+		expiredMemoryCount: sql<number>`
+			(count(*) FILTER (
+				WHERE ${memoriesTable.expiresAt} IS NOT NULL
+					AND ${memoriesTable.expiresAt} <= ${timestampParam(now)}
+			))::int
+		`.mapWith(Number),
+		supersededMemoryCount:
+			sql<number>`(count(*) FILTER (WHERE ${memoriesTable.supersededBy} IS NOT NULL))::int`.mapWith(
+				Number,
+			),
 	};
 }
 
-function normalizeGlobalMemoryStatsRow(
-	row: GlobalMemoryStatsCountRow | undefined,
-): GlobalMemoryStatsCounts {
+function emptyMemoryStatsCounts(): MemoryStatsCounts {
 	return {
-		entityCount: toCount(row?.entityCount),
-		...normalizeMemoryStatsRow(row),
+		memoryCount: 0,
+		activeMemoryCount: 0,
+		expiredMemoryCount: 0,
+		supersededMemoryCount: 0,
 	};
 }
 
@@ -107,9 +148,7 @@ function filterConditions(filter: MemoryFilter) {
 		filter.types && filter.types.length > 0
 			? inArray(memoriesTable.type, [...filter.types])
 			: undefined,
-		filter.tags && filter.tags.length > 0
-			? sql`${memoriesTable.tags} @> ${filter.tags}`
-			: undefined,
+		tagsContainAll(filter.tags),
 		filter.before ? lt(memoriesTable.createdAt, filter.before) : undefined,
 		filter.after ? gt(memoriesTable.createdAt, filter.after) : undefined,
 	);
@@ -164,40 +203,27 @@ export async function getEntityMemoryStatsCounts(
 	entityId: string,
 	now: Date,
 ): Promise<MemoryStatsCounts> {
-	const rows = await db.execute(sql`
-		SELECT
-			count(*)::int AS "memoryCount",
-			(count(*) FILTER (
-				WHERE superseded_by IS NULL
-					AND (expires_at IS NULL OR expires_at > ${now})
-			))::int AS "activeMemoryCount",
-			(count(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= ${now}))::int AS "expiredMemoryCount",
-			(count(*) FILTER (WHERE superseded_by IS NOT NULL))::int AS "supersededMemoryCount"
-		FROM mnemocyte_memories
-		WHERE entity_id = ${entityId}
-	`);
-	const row = (rows as unknown as MemoryStatsCountRow[])[0];
-	return normalizeMemoryStatsRow(row);
+	const rows = await db
+		.select(memoryStatsCountFields(now))
+		.from(memoriesTable)
+		.where(eq(memoriesTable.entityId, entityId));
+	return rows[0] ?? emptyMemoryStatsCounts();
 }
 
 export async function getGlobalMemoryStatsCounts(
 	db: MnemocyteDatabase,
 	now: Date,
 ): Promise<GlobalMemoryStatsCounts> {
-	const rows = await db.execute(sql`
-		SELECT
-			count(DISTINCT entity_id)::int AS "entityCount",
-			count(*)::int AS "memoryCount",
-			(count(*) FILTER (
-				WHERE superseded_by IS NULL
-					AND (expires_at IS NULL OR expires_at > ${now})
-			))::int AS "activeMemoryCount",
-			(count(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= ${now}))::int AS "expiredMemoryCount",
-			(count(*) FILTER (WHERE superseded_by IS NOT NULL))::int AS "supersededMemoryCount"
-		FROM mnemocyte_memories
-	`);
-	const row = (rows as unknown as GlobalMemoryStatsCountRow[])[0];
-	return normalizeGlobalMemoryStatsRow(row);
+	const rows = await db
+		.select({
+			entityCount:
+				sql<number>`count(DISTINCT ${memoriesTable.entityId})::int`.mapWith(
+					Number,
+				),
+			...memoryStatsCountFields(now),
+		})
+		.from(memoriesTable);
+	return rows[0] ?? { entityCount: 0, ...emptyMemoryStatsCounts() };
 }
 
 export async function deleteMemory(
@@ -260,9 +286,7 @@ function pruneConditions(filter: PruneFilter) {
 		filter.types && filter.types.length > 0
 			? inArray(memoriesTable.type, [...filter.types])
 			: undefined,
-		filter.tags && filter.tags.length > 0
-			? sql`${memoriesTable.tags} @> ${filter.tags}`
-			: undefined,
+		tagsContainAll(filter.tags),
 		filter.maxImportanceLevels && filter.maxImportanceLevels.length > 0
 			? inArray(memoriesTable.importance, [...filter.maxImportanceLevels])
 			: undefined,
@@ -367,11 +391,7 @@ export async function findDuplicatePairs(
 						)})`
 					: sql``
 			}
-			${
-				input.tags && input.tags.length > 0
-					? sql`AND a.tags @> ${input.tags} AND b.tags @> ${input.tags}`
-					: sql``
-			}
+			${duplicateTagsFilter(input.tags)}
 			AND 1 - (a.embedding <=> b.embedding) >= ${input.threshold}
 		ORDER BY "similarity" DESC
 		LIMIT ${input.limit}
@@ -584,9 +604,9 @@ export async function vectorSearch(
 						)})`
 					: sql``
 			}
-			${input.tags && input.tags.length > 0 ? sql`AND tags @> ${input.tags}` : sql``}
-			${input.before ? sql`AND created_at < ${input.before}` : sql``}
-			${input.after ? sql`AND created_at > ${input.after}` : sql``}
+			${rawTagsFilter(input.tags)}
+			${input.before ? sql`AND created_at < ${timestampParam(input.before)}` : sql``}
+			${input.after ? sql`AND created_at > ${timestampParam(input.after)}` : sql``}
 			AND 1 - (embedding <=> ${embedding}::vector) >= ${minScore}
 		ORDER BY embedding <=> ${embedding}::vector
 		LIMIT ${input.limit}
@@ -632,9 +652,9 @@ export async function lexicalSearch(
 						)})`
 					: sql``
 			}
-			${input.tags && input.tags.length > 0 ? sql`AND tags @> ${input.tags}` : sql``}
-			${input.before ? sql`AND created_at < ${input.before}` : sql``}
-			${input.after ? sql`AND created_at > ${input.after}` : sql``}
+			${rawTagsFilter(input.tags)}
+			${input.before ? sql`AND created_at < ${timestampParam(input.before)}` : sql``}
+			${input.after ? sql`AND created_at > ${timestampParam(input.after)}` : sql``}
 			AND to_tsvector('english', content) @@ websearch_to_tsquery('english', ${input.query})
 		ORDER BY "lexicalScore" DESC
 		LIMIT ${input.limit}

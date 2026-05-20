@@ -114,7 +114,33 @@ export function cloneMemory(memory: Memory): Memory {
 	};
 }
 
-export function rowToMemory(row: Omit<MemoryRow, "embedding">): Memory {
+type MemoryRowTimestamp = Date | string;
+
+type MemoryLikeRow = Omit<
+	MemoryRow,
+	| "embedding"
+	| "supersededAt"
+	| "expiresAt"
+	| "lastAccessedAt"
+	| "createdAt"
+	| "updatedAt"
+> & {
+	supersededAt: MemoryRowTimestamp | null;
+	expiresAt: MemoryRowTimestamp | null;
+	lastAccessedAt: MemoryRowTimestamp | null;
+	createdAt: MemoryRowTimestamp;
+	updatedAt: MemoryRowTimestamp;
+};
+
+function toDate(value: MemoryRowTimestamp): Date {
+	return value instanceof Date ? value : new Date(value);
+}
+
+function toNullableDate(value: MemoryRowTimestamp | null): Date | null {
+	return value === null ? null : toDate(value);
+}
+
+export function rowToMemory(row: MemoryLikeRow): Memory {
 	return {
 		id: row.id,
 		entityId: row.entityId,
@@ -128,12 +154,12 @@ export function rowToMemory(row: Omit<MemoryRow, "embedding">): Memory {
 		embeddingModel: row.embeddingModel,
 		embeddingDimensions: row.embeddingDimensions,
 		supersededBy: row.supersededBy,
-		supersededAt: row.supersededAt,
-		expiresAt: row.expiresAt,
-		lastAccessedAt: row.lastAccessedAt,
+		supersededAt: toNullableDate(row.supersededAt),
+		expiresAt: toNullableDate(row.expiresAt),
+		lastAccessedAt: toNullableDate(row.lastAccessedAt),
 		accessCount: row.accessCount,
-		createdAt: row.createdAt,
-		updatedAt: row.updatedAt,
+		createdAt: toDate(row.createdAt),
+		updatedAt: toDate(row.updatedAt),
 	};
 }
 

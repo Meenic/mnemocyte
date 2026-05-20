@@ -63,6 +63,10 @@ export const memoriesTable = pgTable(
 	(table) => [
 		index("mnemocyte_memories_entity_idx").on(table.entityId),
 		index("mnemocyte_memories_entity_type_idx").on(table.entityId, table.type),
+		index("mnemocyte_memories_embedding_hnsw_idx").using(
+			"hnsw",
+			table.embedding.op("vector_cosine_ops"),
+		),
 	],
 );
 

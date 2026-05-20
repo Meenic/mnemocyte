@@ -1,46 +1,35 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE IF NOT EXISTS mnemocyte_memories (
-  id text PRIMARY KEY,
-  entity_id text NOT NULL,
-  content text NOT NULL,
-  type text NOT NULL DEFAULT 'fact',
-  importance text NOT NULL DEFAULT 'normal',
-  tags text[] NOT NULL DEFAULT '{}',
-  source text,
-  metadata jsonb NOT NULL DEFAULT '{}',
-  confidence real NOT NULL DEFAULT 1.0,
-  embedding vector(1536),
-  embedding_model text NOT NULL,
-  embedding_dimensions integer NOT NULL,
-  superseded_by text REFERENCES mnemocyte_memories(id),
-  superseded_at timestamptz,
-  expires_at timestamptz,
-  last_accessed_at timestamptz,
-  access_count integer NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE "mnemocyte_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"entity_id" text NOT NULL,
+	"description" text NOT NULL,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"timestamp" timestamp with time zone DEFAULT now() NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS mnemocyte_events (
-  id text PRIMARY KEY,
-  entity_id text NOT NULL,
-  description text NOT NULL,
-  metadata jsonb NOT NULL DEFAULT '{}',
-  timestamp timestamptz NOT NULL DEFAULT now()
+--> statement-breakpoint
+CREATE TABLE "mnemocyte_memories" (
+	"id" text PRIMARY KEY NOT NULL,
+	"entity_id" text NOT NULL,
+	"content" text NOT NULL,
+	"type" text DEFAULT 'fact' NOT NULL,
+	"importance" text DEFAULT 'normal' NOT NULL,
+	"tags" text[] DEFAULT '{}'::text[] NOT NULL,
+	"source" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"confidence" real DEFAULT 1 NOT NULL,
+	"embedding" vector(1536),
+	"embedding_model" text NOT NULL,
+	"embedding_dimensions" integer NOT NULL,
+	"superseded_by" text,
+	"superseded_at" timestamp with time zone,
+	"expires_at" timestamp with time zone,
+	"last_accessed_at" timestamp with time zone,
+	"access_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS mnemocyte_memories_entity_idx
-  ON mnemocyte_memories (entity_id);
-
-CREATE INDEX IF NOT EXISTS mnemocyte_memories_entity_type_idx
-  ON mnemocyte_memories (entity_id, type);
-
-CREATE INDEX IF NOT EXISTS mnemocyte_events_entity_time_idx
-  ON mnemocyte_events (entity_id, timestamp DESC);
-
-CREATE INDEX IF NOT EXISTS mnemocyte_memories_fts_idx
-  ON mnemocyte_memories USING gin (to_tsvector('english', content));
-
-CREATE INDEX IF NOT EXISTS mnemocyte_memories_embedding_hnsw_idx
-  ON mnemocyte_memories USING hnsw (embedding vector_cosine_ops);
+--> statement-breakpoint
+ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "mnemocyte_events_entity_time_idx" ON "mnemocyte_events" USING btree ("entity_id","timestamp");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_entity_idx" ON "mnemocyte_memories" USING btree ("entity_id");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_entity_type_idx" ON "mnemocyte_memories" USING btree ("entity_id","type");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_embedding_hnsw_idx" ON "mnemocyte_memories" USING hnsw ("embedding" vector_cosine_ops);

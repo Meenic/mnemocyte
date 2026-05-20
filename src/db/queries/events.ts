@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, lt } from "drizzle-orm";
+import { MnemocyteError } from "../../errors.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type EventRow, eventsTable, type NewEventRow } from "../schema.js";
 
@@ -16,7 +17,7 @@ export async function insertEvent(
 	const result = await db.insert(eventsTable).values(row).returning();
 	const inserted = result[0];
 	if (!inserted) {
-		throw new Error("Event insert returned no rows.");
+		throw new MnemocyteError("Event insert returned no rows.", "DB");
 	}
 	return inserted;
 }

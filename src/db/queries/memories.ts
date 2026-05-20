@@ -9,6 +9,7 @@ import {
 	or,
 	sql,
 } from "drizzle-orm";
+import { MnemocyteError } from "../../errors.js";
 import type { ImportanceLevel, MemoryType } from "../../types.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
@@ -161,7 +162,7 @@ export async function insertMemory(
 	const result = await db.insert(memoriesTable).values(row).returning();
 	const inserted = result[0];
 	if (!inserted) {
-		throw new Error("Memory insert returned no rows.");
+		throw new MnemocyteError("Memory insert returned no rows.", "DB");
 	}
 	return inserted;
 }

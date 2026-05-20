@@ -67,6 +67,14 @@ async function main() {
 		});
 
 		try {
+			const globalBefore = await client.stats();
+			const emptyEntityStats = await client.stats({ entityId });
+			assert.equal(emptyEntityStats.entityId, entityId);
+			assert.equal(emptyEntityStats.memoryCount, 0);
+			assert.equal(emptyEntityStats.activeMemoryCount, 0);
+			assert.equal(emptyEntityStats.expiredMemoryCount, 0);
+			assert.equal(emptyEntityStats.supersededMemoryCount, 0);
+
 			// 1. Basic remember/recall.
 			const memory = await client.remember({
 				entityId,
@@ -96,6 +104,40 @@ async function main() {
 					tags: ["location"],
 				},
 			]);
+			const expired = await client.remember({
+				entityId,
+				content: "Expired memory used only for stats parity.",
+				type: "session",
+				expiresAt: new Date(Date.now() - 60_000),
+			});
+			void expired;
+
+			const afterRememberStats = await client.stats({ entityId });
+			assert.equal(afterRememberStats.memoryCount, 4);
+			assert.equal(afterRememberStats.activeMemoryCount, 3);
+			assert.equal(afterRememberStats.expiredMemoryCount, 1);
+			assert.equal(afterRememberStats.supersededMemoryCount, 0);
+			const globalAfterRemember = await client.stats();
+			assert.equal(
+				globalAfterRemember.entityCount,
+				globalBefore.entityCount + 1,
+			);
+			assert.equal(
+				globalAfterRemember.memoryCount,
+				globalBefore.memoryCount + 4,
+			);
+			assert.equal(
+				globalAfterRemember.activeMemoryCount,
+				globalBefore.activeMemoryCount + 3,
+			);
+			assert.equal(
+				globalAfterRemember.expiredMemoryCount,
+				globalBefore.expiredMemoryCount + 1,
+			);
+			assert.equal(
+				globalAfterRemember.supersededMemoryCount,
+				globalBefore.supersededMemoryCount,
+			);
 
 			// 3. recall surfaces the original by tag+type filter.
 			const recalled = await client.recall({
@@ -130,6 +172,11 @@ async function main() {
 			assert.equal(consolidated.survivorId, memory.id);
 			assert.equal(consolidated.supersededCount, 1);
 			assert.deepEqual([...consolidated.supersededIds], [dup.id]);
+			const afterConsolidateStats = await client.stats({ entityId });
+			assert.equal(afterConsolidateStats.memoryCount, 4);
+			assert.equal(afterConsolidateStats.activeMemoryCount, 2);
+			assert.equal(afterConsolidateStats.expiredMemoryCount, 1);
+			assert.equal(afterConsolidateStats.supersededMemoryCount, 1);
 
 			// 6. Recall now excludes the loser by default.
 			const recalledAfter = await client.recall({
@@ -178,12 +225,33 @@ async function main() {
 			});
 			assert.equal(pruneResult.deletedCount, 1);
 			const afterPrune = await client.stats({ entityId });
+			assert.equal(afterPrune.memoryCount, 3);
+			assert.equal(afterPrune.activeMemoryCount, 2);
+			assert.equal(afterPrune.expiredMemoryCount, 1);
 			assert.equal(afterPrune.supersededMemoryCount, 0);
 
 			// 11. forgetAll wipes remaining memories but keeps audit history.
 			await client.forgetAll({ entityId });
 			const afterForget = await client.stats({ entityId });
 			assert.equal(afterForget.memoryCount, 0);
+			assert.equal(afterForget.activeMemoryCount, 0);
+			assert.equal(afterForget.expiredMemoryCount, 0);
+			assert.equal(afterForget.supersededMemoryCount, 0);
+			const globalAfterForget = await client.stats();
+			assert.equal(globalAfterForget.entityCount, globalBefore.entityCount);
+			assert.equal(globalAfterForget.memoryCount, globalBefore.memoryCount);
+			assert.equal(
+				globalAfterForget.activeMemoryCount,
+				globalBefore.activeMemoryCount,
+			);
+			assert.equal(
+				globalAfterForget.expiredMemoryCount,
+				globalBefore.expiredMemoryCount,
+			);
+			assert.equal(
+				globalAfterForget.supersededMemoryCount,
+				globalBefore.supersededMemoryCount,
+			);
 			const logAfterForget = await client.listAuditLog({ entityId });
 			assert.ok(
 				logAfterForget.some((event) => event.description === "entity.cleared"),

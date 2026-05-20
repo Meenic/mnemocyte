@@ -16,9 +16,10 @@ import type {
 } from "../types.js";
 import {
 	cosineSimilarity,
+	createLexicalScorer,
+	createScoringConfig,
 	DEFAULT_CANDIDATE_MULTIPLIER,
-	lexicalScore,
-	toScoredMemory,
+	toScoredMemoryWithConfig,
 } from "./scorer.js";
 
 interface HybridRecallInput {
@@ -51,6 +52,8 @@ export async function hybridRecall(
 		input.limit,
 		input.limit * candidateMultiplier,
 	);
+	const scoreLexical = createLexicalScorer(input.input.query);
+	const scoringConfig = createScoringConfig(input.retrieval);
 	const [vectorRows, lexicalRows] = await Promise.all([
 		vectorSearch(input.db, {
 			...input.input,
@@ -65,7 +68,7 @@ export async function hybridRecall(
 		merged.set(row.id, {
 			row,
 			vectorScore: row.vectorScore,
-			lexicalScore: lexicalScore(row.content, input.input.query),
+			lexicalScore: scoreLexical(row.content),
 		});
 	}
 	const lexicalOnlyRows = lexicalRows.filter((row) => !merged.has(row.id));
@@ -89,12 +92,12 @@ export async function hybridRecall(
 	}
 	const scored = Array.from(merged.values())
 		.map((entry) =>
-			toScoredMemory(
+			toScoredMemoryWithConfig(
 				rowToMemory(entry.row),
 				Math.max(0, entry.vectorScore),
 				Math.max(0, entry.lexicalScore),
 				input.input,
-				input.retrieval,
+				scoringConfig,
 			),
 		)
 		.filter((memory) => memory.score >= input.minScore)

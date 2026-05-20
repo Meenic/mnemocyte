@@ -3,8 +3,9 @@ import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
 import {
 	cosineSimilarity,
-	lexicalScore,
-	toScoredMemory,
+	createLexicalScorer,
+	createScoringConfig,
+	toScoredMemoryWithConfig,
 } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
@@ -227,15 +228,17 @@ export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
 							: { resilience: config.provider }),
 					});
 					const now = new Date();
+					const scoreLexical = createLexicalScorer(input.query);
+					const scoringConfig = createScoringConfig(config.retrieval);
 					const scored = Array.from(memories.values())
 						.filter((memory) => matchesRecallFilter(memory, input, now))
 						.map((memory) =>
-							toScoredMemory(
+							toScoredMemoryWithConfig(
 								memory,
 								Math.max(0, cosineSimilarity(memory.embedding, queryEmbedding)),
-								lexicalScore(memory.content, input.query),
+								scoreLexical(memory.content),
 								input,
-								config.retrieval,
+								scoringConfig,
 							),
 						)
 						.filter((memory) => memory.score >= minScore)

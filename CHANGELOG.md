@@ -20,6 +20,12 @@ behavioural changes documented in their entries.
 - **Documentation now matches the shipped schema and driver path.** README,
   architecture, roadmap, and performance notes now describe the actual HNSW,
   full-text, embedder-dimension, postgres.js, and retry behavior.
+- **Retrieval benchmarks now cover scale curves.** `bench:retrieval` runs
+  multiple in-memory sizes and optional Postgres cases when `DATABASE_URL` is
+  configured.
+- **Recall scoring avoids repeated per-candidate setup.** Recall paths now
+  precompute lexical query terms and normalized retrieval weights once per
+  request.
 
 ### Fixed
 
@@ -28,6 +34,9 @@ behavioural changes documented in their entries.
   backend and README contract.
 - **`buildContext` no longer depends on method `this` binding.** Both backends
   close over the client object when delegating to `recall`.
+- **Postgres `stats()` has broader parity coverage.** Integration assertions
+  now cover empty, active, expired, superseded, pruned, deleted, entity, and
+  global stats scenarios.
 - **Postgres tag filters bind text arrays correctly.** Raw SQL recall and
   duplicate-detection paths now pass requested tags as `text[]` values.
 - **Postgres raw recall rows preserve timestamp semantics.** Timestamp fields

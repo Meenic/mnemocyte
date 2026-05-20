@@ -28,6 +28,12 @@ const DEFAULT_RECENCY_HALF_LIFE_DAYS = 90;
 const DEFAULT_ACCESS_SATURATION = 10;
 export const DEFAULT_CANDIDATE_MULTIPLIER = 3;
 
+export interface ScoringConfig {
+	weights: Required<RetrievalScoreWeights>;
+	recencyHalfLifeDays: number;
+	accessSaturation: number;
+}
+
 export function cosineSimilarity(
 	a: readonly number[],
 	b: readonly number[],
@@ -48,14 +54,31 @@ export function cosineSimilarity(
 	return dot / (Math.sqrt(aMagnitude) * Math.sqrt(bMagnitude));
 }
 
-export function lexicalScore(content: string, query: string): number {
-	const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+export function tokenizeQuery(query: string): readonly string[] {
+	return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+export function lexicalScoreWithTerms(
+	content: string,
+	terms: readonly string[],
+): number {
 	if (terms.length === 0) {
 		return 0;
 	}
 	const lowerContent = content.toLowerCase();
 	const matches = terms.filter((term) => lowerContent.includes(term)).length;
 	return matches / terms.length;
+}
+
+export function createLexicalScorer(
+	query: string,
+): (content: string) => number {
+	const terms = tokenizeQuery(query);
+	return (content) => lexicalScoreWithTerms(content, terms);
+}
+
+export function lexicalScore(content: string, query: string): number {
+	return lexicalScoreWithTerms(content, tokenizeQuery(query));
 }
 
 function clampScore(value: number): number {
@@ -89,6 +112,15 @@ function normalizeWeights(
 	};
 }
 
+export function createScoringConfig(config?: RetrievalConfig): ScoringConfig {
+	return {
+		weights: normalizeWeights(config?.weights),
+		recencyHalfLifeDays:
+			config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
+		accessSaturation: config?.accessSaturation ?? DEFAULT_ACCESS_SATURATION,
+	};
+}
+
 function recencyScore(createdAt: Date, halfLifeDays: number): number {
 	const ageMs = Date.now() - createdAt.getTime();
 	const ageDays = Math.max(0, ageMs / 86_400_000);
@@ -102,23 +134,17 @@ function accessScore(accessCount: number, saturation: number): number {
 	return Math.min(1, Math.log1p(accessCount) / Math.log1p(saturation));
 }
 
-export function toScoredMemory(
+export function toScoredMemoryWithConfig(
 	memory: Memory,
 	vector: number,
 	lexical: number,
 	input: RecallInput,
-	config?: RetrievalConfig,
+	config: ScoringConfig,
 ): MemoryWithScore {
-	const weights = normalizeWeights(config?.weights);
-	const recency = recencyScore(
-		memory.createdAt,
-		config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
-	);
+	const { weights } = config;
+	const recency = recencyScore(memory.createdAt, config.recencyHalfLifeDays);
 	const confidence = clampScore(memory.confidence);
-	const access = accessScore(
-		memory.accessCount,
-		config?.accessSaturation ?? DEFAULT_ACCESS_SATURATION,
-	);
+	const access = accessScore(memory.accessCount, config.accessSaturation);
 	const importance = IMPORTANCE_SCORES[memory.importance];
 	const score = Math.max(
 		0,
@@ -157,4 +183,20 @@ export function toScoredMemory(
 				}
 			: null,
 	};
+}
+
+export function toScoredMemory(
+	memory: Memory,
+	vector: number,
+	lexical: number,
+	input: RecallInput,
+	config?: RetrievalConfig,
+): MemoryWithScore {
+	return toScoredMemoryWithConfig(
+		memory,
+		vector,
+		lexical,
+		input,
+		createScoringConfig(config),
+	);
 }

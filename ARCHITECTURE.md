@@ -1,28 +1,44 @@
 # Mnemocyte Architecture
 
-> This is the canonical architecture document for Mnemocyte. It describes the current MVP architecture and the planned path toward a production-ready package.
+> This is the canonical architecture document for Mnemocyte. It describes the
+> current package, the infrastructure boundaries it relies on, and the planned
+> path toward adapter-based TypeScript infrastructure.
 
 ## Current Status
 
-Mnemocyte currently exposes an MVP public API through `createMnemocyte()`. The client supports an in-memory backend when `databaseUrl` is omitted and a Postgres/pgvector backend when `databaseUrl` is provided.
+Mnemocyte currently exposes its public API through `createMnemocyte()`. The
+client supports an in-memory backend when `databaseUrl` is omitted and a
+Postgres/pgvector backend when `databaseUrl` is provided.
 
 The package is ESM-only for now. CommonJS is intentionally not advertised unless the build later emits and tests a real CJS artifact.
+
+The current package is intentionally explicit: callers supply the embedder, the
+Postgres schema is applied through migrations, and the client does not hide
+infrastructure setup behind constructor side effects.
 
 ## Goals
 
 - **Maintainability:** each module has one responsibility and clear boundaries.
 - **TypeScript-first DX:** public types are exported from `mnemocyte` and APIs are easy to evolve before v1.
-- **Minimal infrastructure:** Postgres with pgvector is the default persistence and vector search backend.
+- **Composable infrastructure:** callers should be able to bring their own
+  embedder, database client, connection lifecycle, and runtime-specific
+  adapters.
+- **Minimal core:** Postgres with pgvector is the first persistence and vector
+  search backend, not a mandate to adopt a separate vector database or agent
+  framework.
 - **Realistic agent memory:** prioritize reliable recall, provenance, lifecycle, and debuggability over speculative intelligence.
 - **Package correctness:** npm metadata, exports, build output, and docs must match what is actually shipped.
 
 ## Non-Goals
 
-- No separate vector database for the MVP.
+- No separate vector database requirement in the core package.
 - No stable CommonJS export until CJS output is produced and tested.
 - No hidden schema creation from the client constructor.
 - No unimplemented methods in the stable public API.
-- No full autonomous memory consolidation in the MVP.
+- No full autonomous memory consolidation in the core package.
+- No provider lock-in. Official embedder factories are convenience adapters,
+  not the only supported path.
+- No broad backend expansion before a `Store` abstraction exists.
 
 ## Package Strategy
 
@@ -32,6 +48,10 @@ Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The p
 - `migrations/0000_initial.sql` — the only supported way to provision the Postgres schema.
 
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, etc.). CI runs `test:exports` to enforce that the built `.d.mts` keeps every public type reachable from `mnemocyte`.
+
+Future adapter packages should depend on the core rather than widening the core
+surface. The planned order is `openaiEmbedder()` first, configurable dimensions,
+`Store`, `drizzleStore(db)`, and then `@mnemocyte/mcp`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -104,7 +124,11 @@ src/
     └── tokens.ts             # token counting abstraction
 ```
 
-Embedder providers (OpenAI, Ollama, …) are deliberately **not** bundled into the core. Callers pass an `Embedder` implementation explicitly. The MCP adapter package (planned, separate workspace) is the right place to ship a small set of out-of-the-box providers.
+Embedder providers are deliberately represented by a small `Embedder`
+interface. Callers pass an implementation explicitly. Official factories such
+as the planned `openaiEmbedder()` should remove boilerplate while preserving the
+same contract. Additional provider integrations should stay in subpaths or
+adapter packages rather than becoming hidden behavior in `createMnemocyte()`.
 
 Layering rule: lower-level modules must not import higher-level modules. For example, `db/` must not import from `memory/`, and `retrieval/` must not import from `context/`.
 
@@ -271,13 +295,18 @@ a matching expression index before relying on large lexical scans.
 
 ### Embedding Dimension Policy
 
-The MVP supports one embedding dimension per installation. Store `embedding_model` and `embedding_dimensions` on every memory so mismatches are detectable and future migrations are possible.
+The current package supports one embedding dimension per installation. Store
+`embedding_model` and `embedding_dimensions` on every memory so mismatches are
+detectable and future migrations are possible.
 
-Supporting multiple embedding dimensions in one database should be treated as a later production feature, likely through separate columns, tables, or partitions.
+`0.2.0` should add `mnemocyte_meta` as the installation-level source of truth
+for the configured embedding dimension. Supporting multiple embedding
+dimensions in one database should remain a later production feature, likely
+through separate columns, tables, or partitions.
 
 ## Write Path
 
-MVP write flow:
+Current write flow:
 
 1. Validate input.
 2. Embed content.
@@ -367,7 +396,9 @@ count(text: string): number;
 
 The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`. The current `createDatabase()` path uses postgres.js over TCP, parses common `sslmode` values, and disables prepared statements for pooler-style URLs (`:6543` or `pgbouncer=true`).
 
-Later, support caller-managed database clients for apps that already own pools.
+The planned `Store` and `drizzleStore(db)` milestones move
+caller-managed database clients into the public architecture for apps that
+already own pools or need runtime-specific Drizzle drivers.
 
 ## Production Concerns
 
@@ -388,63 +419,59 @@ Before a production release, add:
 
 ## Implementation Roadmap
 
-### Phase 0 — Package Truthfulness
+The historical MVP phases are complete enough to treat the current package as
+the baseline. Future work is ordered around hardening first, then adapter-ready
+storage boundaries.
 
-- Keep package exports aligned with shipped files.
-- Keep README explicit about current package behavior and limitations.
-- Keep this architecture document canonical.
-- Run `pnpm checktypes` and `pnpm pack --dry-run` before publishing.
+### `0.1.x` - Production Hardening
 
-### Phase 1 — MVP API
+- Safety fixes for validation, destructive operations, provider resilience, and
+  experimental APIs.
+- Documentation polish for the current package surface and migration workflow.
+- HNSW and index guidance for real Postgres deployments.
+- Release-process cleanup, including provenance/trusted publishing when ready.
 
-- Implement public types.
-- Implement object-parameter `remember`, `rememberMany`, `recall`, `forget`, `forgetAll`, `stats`, and `close`.
-- Support custom embedder first.
-- Add typed errors and validation.
-- Add unit and type tests.
+### `0.1.x` - Official `openaiEmbedder()`
 
-### Phase 2 — Postgres Persistence
+- Add an OpenAI embedder factory as a convenience adapter.
+- Preserve the public `Embedder` contract so custom and local embedders remain
+  first-class.
+- Forward cancellation and surface provider failures consistently with the
+  resilience layer.
 
-- Add Drizzle schema. ✅
-- Add explicit migrations. ✅
-- Add postgres.js connection lifecycle. ✅
-- Add pgvector-backed vector recall query helpers. ✅
-- Wire the public client to Postgres persistence. ✅
-- Add integration tests. ✅
+### `0.2.0` - Configurable Embedding Dimensions
 
-### Phase 3 — Retrieval Quality
+- Add `mnemocyte_meta` with installation metadata such as
+  `embedding_dimensions`.
+- Parameterize the Postgres vector dimension instead of assuming
+  `vector(1536)`.
+- Validate the configured embedder against stored metadata on connect.
+- Keep one vector dimension per installation.
 
-- Add PostgreSQL full-text lexical retrieval. ✅
-- Add score fusion and optional explanations. ✅
-- Add recency, confidence, and access-count signals. ✅
-- Add retrieval quality fixtures and benchmarks. ✅
+### `0.3.0` - `Store`
 
-### Phase 4 — Context Builder
+- Extract storage primitives into a `Store` interface.
+- Move shared orchestration into one core path.
+- Reduce in-memory and Postgres backends to adapters.
+- Defer any third backend until this boundary exists.
 
-- Add markdown/plain/XML formatting. ✅
-- Add XML escaping and safe untrusted-content boundaries. ✅
-- Add pluggable token counter. ✅
-- Add deterministic token-budget trimming. ✅
+### `0.4.0` - `drizzleStore(db)`
 
-### Phase 5 — Production Hardening
+- Let applications pass a caller-owned Drizzle database instance.
+- Keep connection lifecycle ownership with the application.
+- Verify and document supported Drizzle driver/runtime combinations before
+  advertising them.
 
-- Add provider retries, timeouts, and abort signals. ✅
-- Add observability hooks. ✅
-- Add pruning policies. ✅
-- Add release CI with provenance or trusted publishing.
-- Add Node compatibility matrix. ✅
+### `0.5.0` - `@mnemocyte/mcp`
 
-### Phase 6 — Experimental Maintenance
-
-- Add consolidation only under an experimental namespace. ✅
-- Add passive duplicate detection. ✅ (`findDuplicates`)
-- Add conflict detection. (future work)
-- Add audit logs for merges and deletes. ✅
-- Add MCP/adapters after the core package is stable. (planned: separate `packages/mcp` workspace, post-0.1.0)
+- Ship MCP as a separate adapter package built on the same core primitives.
+- Configure database and embedder explicitly.
+- Expose memory tools only after the core storage and embedder contracts are
+  stable enough to avoid a parallel implementation.
 
 ## Known limitations
 
-- **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` now validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterised. Making this configurable is a future enhancement.
+- **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterized. `0.2.0` is planned to make this configurable with `mnemocyte_meta`.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.

@@ -20,6 +20,10 @@ behavioural changes documented in their entries.
 - **Documentation now matches the shipped schema and driver path.** README,
   architecture, roadmap, and performance notes now describe the actual HNSW,
   full-text, embedder-dimension, postgres.js, and retry behavior.
+- **Roadmap documentation now reflects the adapter-first direction.** The
+  planning docs prioritize `0.1.x` hardening, `openaiEmbedder()`, configurable
+  dimensions with `mnemocyte_meta`, `Store`, `drizzleStore(db)`,
+  and `@mnemocyte/mcp`.
 - **Retrieval benchmarks now cover scale curves.** `bench:retrieval` runs
   multiple in-memory sizes and optional Postgres cases when `DATABASE_URL` is
   configured.

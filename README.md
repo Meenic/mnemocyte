@@ -1,20 +1,20 @@
 # Mnemocyte
 
-Persistent memory for TypeScript AI applications.
+Infrastructure-native memory for TypeScript AI applications.
 
-Mnemocyte stores small, durable memories for users, agents, sessions, or
-other entities. It provides hybrid retrieval, context formatting, lifecycle
-operations, audit logging, and duplicate-consolidation tools without requiring
-a separate vector database.
+Mnemocyte stores durable memories for users, agents, sessions, and other
+entities. It gives your app hybrid recall, prompt-ready context, pruning, audit
+logs, and duplicate-consolidation tools on top of your existing infrastructure.
 
 > Mnemocyte is early software. APIs may change before v1.0.
 
 ## Features
 
-- In-memory backend for tests, demos, and short-lived processes.
+- In-memory backend for tests and demos.
 - Postgres + pgvector backend for persistent storage.
-- Hybrid recall using vector similarity, lexical matching, recency,
-  confidence, access count, and importance.
+- User-supplied `Embedder` interface.
+- Hybrid recall with vector similarity, lexical matching, recency, confidence,
+  access count, and importance.
 - Prompt-ready context output in Markdown, plain text, or XML.
 - Provider timeouts, retries, and `AbortSignal` cancellation.
 - Pruning, duplicate detection, audit logs, and experimental consolidation.
@@ -55,59 +55,153 @@ const memories = await client.recall({
   explain: true,
 });
 
+const context = await client.buildContext({
+  entityId: "user_123",
+  query: "How should I respond?",
+  format: "markdown",
+  maxTokens: 500,
+});
+
 await client.close();
 ```
 
 When `databaseUrl` is omitted, Mnemocyte uses the in-memory backend.
 
-## Postgres
+## Embedder
 
-Apply the bundled migration to a Postgres database with pgvector enabled, then
-pass `databaseUrl`:
+Mnemocyte accepts any embedder that returns one vector per input text.
 
 ```ts
 const client = createMnemocyte({
-  databaseUrl: process.env.DATABASE_URL,
-  embedder, // embedder.dimensions must be 1536 for the Postgres backend.
+  embedder: {
+    model: "text-embedding-3-small",
+    dimensions: 1536,
+    async embed(texts, options) {
+      return embedWithYourProvider(texts, {
+        signal: options?.signal,
+      });
+    },
+  },
 });
 ```
 
-The published package includes `migrations/0000_initial.sql`.
+Official embedder helpers are planned, starting with `openaiEmbedder()`.
 
-The current Postgres schema uses `embedding vector(1536)`. If
-`embedder.dimensions` is anything else, `createMnemocyte` throws a
-`MnemocyteError` with code `"CONFIG"` before opening the connection pool. The
-in-memory backend does not enforce this constraint.
+## Postgres
 
-Choose an embedder that returns 1536-dimensional vectors for Postgres today
-unless you maintain your own compatible migration. Native 1536-dimensional
-models such as OpenAI `text-embedding-3-small` fit directly. Other providers
-may require a 1536-dimensional output option, truncation/padding owned by your
-application, or waiting for configurable storage dimensions in a future
-release.
+For persistent storage, apply the bundled migration to a Postgres database with
+pgvector enabled, then pass `databaseUrl`.
 
-Database scripts and Postgres integration tests read `DATABASE_URL` from the
-process environment and load `.env` when present. Run `pnpm db:migrate` to
-apply the bundled migration.
+```ts
+const client = createMnemocyte({
+  databaseUrl: process.env.DATABASE_URL!,
+  embedder,
+});
+```
 
-The built-in `databaseUrl` path uses postgres.js over TCP. It maps
-`sslmode=require`, `prefer`, or `allow` to TLS without certificate verification,
-uses `verify-full` when requested, and disables prepared statements for common
-pooler URLs (`:6543` or `pgbouncer=true`). Neon HTTP/serverless and
-caller-managed Drizzle clients are planned future work.
+The package includes:
 
-The migration creates an HNSW pgvector index for cosine search. HNSW is
-approximate, and Postgres applies ordinary filters such as `entityId`, tags,
-and timestamps around that vector search. For highly selective filters or very
-large/write-heavy tables, benchmark query plans and consider future index
-tuning or an IVFFlat/custom migration. The current bundled migration does not
-ship a full-text GIN index for lexical search.
+```txt
+migrations/0000_initial.sql
+```
+
+The current Postgres schema uses `embedding vector(1536)`, so the Postgres
+backend currently requires a 1536-dimensional embedder.
+
+If dimensions do not match, `createMnemocyte` throws a `MnemocyteError` with
+code `"CONFIG"` before opening the connection pool.
+
+The migration creates an HNSW pgvector index for cosine search. Configurable
+embedding dimensions are planned for `0.2.0`.
+
+## API
+
+### `remember`
+
+```ts
+await client.remember({
+  entityId: "user_123",
+  content: "Likes concise answers.",
+  type: "preference",
+  importance: "high",
+  tags: ["communication"],
+});
+```
+
+### `recall`
+
+```ts
+const memories = await client.recall({
+  entityId: "user_123",
+  query: "How should I respond to this user?",
+  limit: 5,
+  explain: true,
+});
+```
+
+### `buildContext`
+
+```ts
+const context = await client.buildContext({
+  entityId: "user_123",
+  query: "User communication preferences",
+  format: "markdown",
+  maxTokens: 500,
+});
+```
+
+### `prune`
+
+```ts
+const preview = await client.prune({
+  entityId: "user_123",
+  superseded: true,
+  dryRun: true,
+});
+
+await client.prune({
+  entityId: "user_123",
+  expired: true,
+});
+```
+
+### `findDuplicates`
+
+```ts
+const pairs = await client.findDuplicates({
+  entityId: "user_123",
+  threshold: 0.95,
+  limit: 50,
+});
+```
+
+### `listAuditLog`
+
+```ts
+const client = createMnemocyte({
+  embedder,
+  audit: { enabled: true },
+});
+
+const events = await client.listAuditLog({
+  entityId: "user_123",
+  limit: 100,
+});
+```
+
+### `experimental.consolidate`
+
+```ts
+await client.experimental.consolidate({
+  entityId: "user_123",
+  survivorId: "mem_survivor",
+  supersededIds: ["mem_duplicate"],
+});
+```
+
+The `experimental` namespace may change before v1.0.
 
 ## Provider Resilience
-
-Mnemocyte can apply timeouts and retries to embedder calls, and forwards
-`AbortSignal` cancellation to in-flight attempts. Retries and timeouts are
-disabled by default.
 
 ```ts
 const client = createMnemocyte({
@@ -119,9 +213,12 @@ const client = createMnemocyte({
     maxDelayMs: 2_000,
   },
 });
+```
 
+Pass `signal` to cancel an operation:
+
+```ts
 const controller = new AbortController();
-setTimeout(() => controller.abort(), 1_000);
 
 await client.remember({
   entityId: "user_123",
@@ -130,122 +227,17 @@ await client.remember({
 });
 ```
 
-Provider failures surface as `MnemocyteError` values with stable `code`s:
+Common `MnemocyteError` codes:
 
-- `"TIMEOUT"`: a provider attempt exceeded `timeoutMs`.
-- `"ABORTED"`: the operation was cancelled via `signal` and is not retried.
-- `"EMBEDDING"`: the embedder failed after retries were exhausted.
-
-When `provider.shouldRetry` is omitted, Mnemocyte uses a conservative
-transient-error heuristic. It retries common network, timeout, rate-limit, and
-5xx-looking failures whose messages include `network`, `timeout`, `econn`,
-`etimedout`, `temporarily`, `rate limit`, `500`, `502`, `503`, or `504`.
-`"VALIDATION"`, `"CONFIG"`, and `"ABORTED"` `MnemocyteError`s are never retried.
-
-## Pruning
-
-`prune` deletes memories matching a filter. At least one selector is required;
-`prune({})` is rejected to avoid accidental full deletion.
-
-```ts
-await client.prune({ entityId: "user_123", expired: true });
-
-await client.prune({
-  notAccessedSince: new Date(Date.now() - 30 * 24 * 3600 * 1000),
-  maxImportance: "normal",
-});
-
-const preview = await client.prune({
-  entityId: "user_123",
-  superseded: true,
-  dryRun: true,
-});
-console.log(preview.matchedCount);
+```txt
+TIMEOUT
+ABORTED
+EMBEDDING
+VALIDATION
+CONFIG
+DB
+NOT_FOUND
 ```
-
-Available selectors: `entityId`, `expired`, `superseded`, `createdBefore`,
-`notAccessedSince`, `types`, `tags`, `maxImportance`. Selectors are combined
-with AND semantics.
-
-## Duplicate Detection
-
-`findDuplicates` is an experimental, read-only scan that surfaces
-near-identical memories for one entity using pairwise cosine similarity.
-
-```ts
-const pairs = await client.findDuplicates({
-  entityId: "user_123",
-  threshold: 0.95,
-  limit: 50,
-});
-
-for (const { a, b, similarity } of pairs) {
-  console.log(similarity.toFixed(3), a.content, "<>", b.content);
-}
-```
-
-Optional selectors: `types`, `tags`, `includeSuperseded`, `includeExpired`.
-`types` and `tags` must match on both memories in each pair. Superseded and
-expired memories are excluded by default.
-
-## Audit Log
-
-When `audit.enabled` is `true`, Mnemocyte records an entry for state-changing
-operations. Read entries with `client.listAuditLog()`.
-
-```ts
-const client = createMnemocyte({
-  embedder,
-  audit: { enabled: true },
-});
-
-await client.remember({ entityId: "user_123", content: "Likes tea." });
-await client.prune({ entityId: "user_123", expired: true });
-
-const log = await client.listAuditLog({
-  entityId: "user_123",
-  limit: 100,
-});
-
-for (const event of log) {
-  console.log(event.timestamp, event.description, event.metadata);
-}
-```
-
-Recorded `description` slugs:
-
-- `"memory.created"`: single insert.
-- `"memory.deleted"`: single `forget`.
-- `"entity.cleared"`: `forgetAll`.
-- `"memory.pruned"`: non-dry-run `prune` with an `entityId` selector.
-- `"memory.superseded"`: experimental consolidation.
-
-Audit entries are sticky: `forgetAll` does not erase prior log entries. Disable
-audit by leaving `audit.enabled` unset.
-
-## Consolidation
-
-`client.experimental.consolidate()` marks likely-duplicate memories as
-superseded by a survivor. Superseded memories are excluded from `recall` by
-default. Tags are unioned onto the survivor unless `mergeTags: false`.
-
-```ts
-const pairs = await client.findDuplicates({
-  entityId: "user_123",
-  threshold: 0.97,
-});
-
-for (const { a, b } of pairs) {
-  await client.experimental.consolidate({
-    entityId: "user_123",
-    survivorId: a.id,
-    supersededIds: [b.id],
-  });
-}
-```
-
-The `experimental` namespace is intentionally unstable. Members may change or
-move before v1.0.
 
 ## Retrieval Tuning
 
@@ -268,6 +260,19 @@ const client = createMnemocyte({
 });
 ```
 
+## Roadmap
+
+Near-term work:
+
+- production safety and HNSW documentation
+- official `openaiEmbedder()`
+- configurable embedding dimensions with `mnemocyte_meta`
+- `Store` abstraction
+- `drizzleStore(db)` for caller-owned Drizzle clients
+- `@mnemocyte/mcp`
+
+See [ROADMAP.md](./ROADMAP.md).
+
 ## Development
 
 ```bash
@@ -278,13 +283,8 @@ pnpm run test:integration
 pnpm run pack:check
 ```
 
-`pnpm lint` and `pnpm format` run Biome in write mode. Use them for local
-maintenance, then review the resulting diff.
-
-`test:integration` skips cleanly when `DATABASE_URL` is not set in the process
-environment or `.env`.
+`test:integration` skips when `DATABASE_URL` is not set.
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for implementation details and
-[ROADMAP.md](./ROADMAP.md) for planned work.
+See [ARCHITECTURE.md](./ARCHITECTURE.md).

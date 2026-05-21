@@ -1,263 +1,188 @@
 # Mnemocyte Roadmap
 
-This file tracks **deferred work** identified during the `0.1.0` audit and the
-sandbox dogfooding pass. Each item lists its rationale, scope, and the version
-it's tentatively targeting. Nothing here blocks `0.1.0`.
+This roadmap tracks the planned direction for Mnemocyte before v1.0. It is a
+forward-looking planning document, not a release history. Shipped work belongs
+in [CHANGELOG.md](./CHANGELOG.md).
 
-For shipped work, see [CHANGELOG.md](./CHANGELOG.md).
-For architectural context, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+Mnemocyte's direction is infrastructure-native and deliberately composable:
+bring your own database, bring your own embedder, and keep the core package
+small enough to fit into existing TypeScript stacks. The long-term shape is a
+set of focused adapters around a stable memory core, similar in spirit to the
+way modern TypeScript infrastructure tools let applications own their database,
+auth, model provider, and runtime boundaries.
 
----
+## Product Principles
 
-## Next slice — `@mnemocyte/mcp@0.0.1`
+- **Bring your own database.** Mnemocyte should integrate with storage the app
+  already operates. Postgres + pgvector is the current first-class path, but the
+  API should move toward caller-owned database clients and explicit stores.
+- **Bring your own embedder.** The core accepts an `Embedder` interface. Built-in
+  factories should remove boilerplate without making one provider special.
+- **Adapters over monoliths.** Framework, model-host, and runtime integrations
+  should live in small packages that depend on the core, not inside the core.
+- **Explicit infrastructure.** Migrations, dimensions, indexes, and runtime
+  tradeoffs should be visible. The client should not hide schema creation or
+  production tuning behind side effects.
+- **Stable core before broad distribution.** MCP and framework adapters become
+  more valuable after the storage and embedder contracts are clean.
 
-**Status:** planned, in progress next.
-**Target:** new package; no version bump on `mnemocyte` core required.
+## `0.1.x` - Production Hardening
 
-Restructure the repository into a pnpm workspace and ship an MCP server that
-exposes Mnemocyte's tools to LLM hosts (Claude Desktop, Cursor, etc.).
+No API breakage. Focus on safety fixes, documentation polish, and operational
+clarity for the current Postgres + pgvector implementation.
 
-- [ ] Move existing `mnemocyte` source to `packages/core/`.
-- [ ] Add `packages/mcp/` with `@mnemocyte/mcp` package.
-- [ ] Built-in embedder factories (OpenAI via `OPENAI_API_KEY`,
-      `MNEMOCYTE_EMBEDDING_MODEL`) with config-file override via
-      `MNEMOCYTE_CONFIG`.
-- [ ] `entityId` defaults from `MNEMOCYTE_DEFAULT_ENTITY_ID`; per-tool override
-      optional.
-- [ ] MCP tools: `remember`, `recall`, `buildContext`, `findDuplicates`,
-      `consolidate`, `forget`, `prune`, `listAuditLog`, `stats`.
-- [ ] Pin and document the MCP specification revision supported by the
-      package at release time, and build against the official
-      `@modelcontextprotocol/sdk`.
-- [ ] Tests covering each tool wired through an in-memory backend.
-- [ ] README with Claude Desktop / Cursor install instructions.
+### Safety fixes
 
----
+- Keep provider timeouts, retries, and `AbortSignal` behavior consistent across
+  every embedder call.
+- Continue tightening validation around destructive operations, configuration
+  mismatches, and closed-client access.
+- Keep audit-log behavior explicit: audit is opt-in, state-changing operations
+  are recorded when enabled, and entity deletion does not silently erase history.
+- Treat experimental APIs (`findDuplicates`, `experimental.consolidate`) as
+  useful but unstable until the storage abstraction is settled.
 
-## `0.1.x` — docs + tiny safety patches
+### Documentation polish
 
-No API breakage. Documentation corrections, small safety fixes, and optional
-additive helpers only.
+- Keep README examples small, current, and runnable.
+- Keep [ARCHITECTURE.md](./ARCHITECTURE.md) aligned with the shipped package
+  surface and known limitations.
+- Add migration notes for users moving within `0.1.x`.
+- Make every limitation concrete: what works today, what fails fast, and what is
+  planned next.
 
-### Production safety (do not ship 0.1.x indefinitely without these)
+### HNSW and index guidance
 
-- [ ] **Document and tune the bundled HNSW index.** The initial migration
-      already creates `mnemocyte_memories_embedding_hnsw_idx`; add production
-      guidance for expected build time, memory, and when IVFFlat is a better
-      workload-specific fallback for very large or write-heavy deployments.
+- Document the bundled HNSW index created by the migration:
+  `mnemocyte_memories_embedding_hnsw_idx`.
+- Explain expected tradeoffs: approximate recall, index build memory, write
+  overhead, and interaction with ordinary Postgres filters.
+- Document when production users should benchmark alternate indexes or custom
+  migrations, including IVFFlat for large tables with representative data and
+  workload-specific tuning.
+- Add guidance for full-text and tag indexes without baking unproven indexes
+  into the default migration.
 
-### Built-in embedder factories
+## `0.1.x` - Official `openaiEmbedder()`
 
-Kills the "every user writes the same eight lines of OpenAI boilerplate"
-problem identified during the DX audit.
+Add the first official embedder factory without changing the core `Embedder`
+contract.
 
-- [ ] Ship `mnemocyte/embedders/openai` subpath export:
-      `openaiEmbedder({ apiKey, model })` returns a ready-made `Embedder`.
-      Forwards `AbortSignal`, surfaces rate-limit errors with messages that
-      the default `shouldRetry` heuristic already matches.
-- [ ] (Stretch) `mnemocyte/embedders/cohere`, `mnemocyte/embedders/voyage` —
-      same shape, different provider.
+- Ship a subpath export such as `mnemocyte/embedders/openai`.
+- Export `openaiEmbedder({ apiKey, model, dimensions? })`.
+- Forward `AbortSignal` to the OpenAI SDK.
+- Surface provider errors in a way that works with the default retry heuristic.
+- Keep the dependency boundary clear. If the OpenAI SDK materially increases
+  install weight, prefer an optional peer dependency or a narrowly scoped
+  subpath package shape.
+- Document that custom embedders remain the default integration model.
 
-### Documentation
+This is not a pivot to a provider-owned package. It is a convenience adapter for
+the common case.
 
-Recently completed documentation alignment lives in [CHANGELOG.md](./CHANGELOG.md).
-Future `0.1.x` documentation work should focus on examples, migration guides,
-and production tuning notes that do not imply new schema/API behavior.
+## `0.2.0` - Configurable Embedding Dimensions
 
----
+Make embedding dimensions an installation-level setting instead of a hardcoded
+1536-dimensional Postgres schema.
 
-## `0.2.0` — additive ergonomics
+- Add `mnemocyte_meta` to store installation metadata, including
+  `embedding_dimensions`.
+- Replace the hardcoded `vector(1536)` assumption with a migration path that can
+  create the selected vector dimension.
+- Validate `embedder.dimensions` against `mnemocyte_meta` on connect.
+- Keep one embedding dimension per installation. Mixed dimensions in one table
+  remain out of scope until there is a separate retrieval design.
+- Document common dimensions for OpenAI, local, Cohere, Voyage, and Nomic-style
+  embedders.
+- Provide an upgrade guide for existing `0.1.x` deployments, which remain on
+  1536 unless the operator chooses a migration path.
 
-Non-breaking additions. No data migrations required for users who don't opt in.
+This milestone unblocks a broader range of embedding providers while preserving
+the core storage invariant that all comparable vectors share one dimension.
 
-### Configurable embedding dimensions
+## `0.3.0` - `Store` Abstraction
 
-The single biggest portability limitation today. Required to support
-`text-embedding-3-large` (3072), `bge-large` (1024), `all-MiniLM-L6-v2` (384),
-Cohere `embed-v4.0` (256/512/1024/1536), Voyage 4-series models
-(256/512/1024/2048), and Nomic (768) natively.
+Separate memory orchestration from storage implementation.
 
-- [ ] Templated migration: replace [migrations/0000_initial.sql](migrations/0000_initial.sql)'s
-      `vector(1536)` with a `applyMigration(db, { dimensions })` runner, or
-      ship one migration file per common dimension.
-- [ ] Tiny `mnemocyte_meta` table storing `embedding_dimensions` so the client
-      can assert agreement with `embedder.dimensions` on connect (replaces
-      the static check in `src/client.ts`).
-- [ ] Update `src/db/schema.ts` to read dimensions from config rather than
-      the hardcoded `1536`.
-- [ ] Tests for 384, 768, 1024, 1536, 3072 dimensions in integration suite.
-- [ ] Embedder API should leave room for provider-level output dimensions.
-      OpenAI, Cohere, and Voyage all expose Matryoshka-style configurable
-      output dimensions on current embedding models. Mnemocyte still needs
-      one agreed storage/index dimension per installation; comparing vectors
-      with different dimensions in the same pgvector column is not valid
-      without a staged retrieval design or separate storage.
-- [ ] Migration guide for existing `0.1.x` deployments (they stay on 1536 by
-      default; no forced re-migration).
+- Introduce a `Store` interface responsible for persistence primitives,
+  recall candidates, audit events, and lifecycle operations.
+- Move validation, embedding, scoring coordination, observability, retries, and
+  context building into shared core orchestration.
+- Reduce in-memory and Postgres implementations to store adapters instead of
+  separate clients with duplicated behavior.
+- Keep `createMnemocyte()` as the main entry point while allowing future
+  adapter-backed construction.
+- Avoid adding a third backend before this lands.
 
-### Opt-in transient-error signal
+This is the architectural hinge for the rest of the roadmap. It makes future
+database and runtime adapters possible without copying the client.
 
-Currently the retry policy relies on substring matching against the error
-message. Works for OpenAI/Anthropic/Cohere SDKs whose errors say sensible
-things; fails for custom error classes.
+## `0.4.0` - `drizzleStore(db)`
 
-- [ ] Add `"TRANSIENT"` to the `MnemocyteErrorCode` union, OR add a
-      `transient?: boolean` field on `MnemocyteError`.
-- [ ] `defaultShouldRetry` (in `src/resilience.ts`) always retries errors with that signal.
-- [ ] Document in README so embedder authors can throw
-      `new MnemocyteError("…", "TRANSIENT")` and have it Just Work.
-- [ ] Backwards compatible: existing substring heuristic stays as fallback.
+Let applications bring their own Drizzle database instance.
 
-### Per-entity scoped client
+- Add `drizzleStore(db, options)` for caller-owned Drizzle clients.
+- Support the current Postgres + pgvector schema through the store adapter.
+- Keep connection lifecycle ownership with the caller when a database instance
+  is supplied.
+- Document tested driver/runtime combinations, starting with postgres.js and
+  expanding only after verification.
+- Prepare for Neon HTTP/serverless, node-postgres, and other Drizzle drivers
+  without hardcoding them into the core client.
 
-Today every call takes `entityId: string`. Users invariably want to bind a
-client to one entity for the duration of a request and stop repeating
-themselves. Identified during the DX audit as the single biggest
-ergonomics-paper-cut not already on the roadmap.
+The goal is to fit into apps that already use Drizzle, already own connection
+pools, or run in environments where `databaseUrl` plus postgres.js is too
+prescriptive.
 
-- [ ] Add `client.for(entityId): ScopedClient` returning a subset of the
-      `MnemocyteClient` interface with `entityId` pre-filled.
-- [ ] Thin wrapper, not a new resource lifetime: closing the parent closes
-      children. No new connection pool, no new audit stream.
-- [ ] Consider a generic `createMnemocyte<EntityId extends string>()` so
-      users can type-tag their IDs and have TypeScript catch
-      `"user-123"` vs `"user_123"` typos at compile time.
+## `0.5.0` - `@mnemocyte/mcp`
 
-### Quality-of-life
+Ship an official MCP adapter after the storage and embedder contracts are ready.
 
-- [ ] Expose `applyMigration(databaseUrl, { dimensions? })` programmatically
-      so users don't need to shell out to `psql`.
-- [ ] `client.healthcheck()` that pings the DB and validates pgvector +
-      schema presence.
-- [ ] CLI: `mnemocyte init` (scaffold config), `mnemocyte migrate`
-      (apply SQL), `mnemocyte stats $ENTITY`, `mnemocyte export --jsonl`.
+- Add `@mnemocyte/mcp` as a separate package.
+- Build against the official Model Context Protocol SDK and pin the supported
+  spec revision in package docs.
+- Expose practical tools first: `remember`, `recall`, `buildContext`,
+  `findDuplicates`, `consolidate`, `forget`, `prune`, `listAuditLog`, and
+  `stats`.
+- Configure database and embedder through explicit environment/config inputs.
+- Use the core package and official stores/embedders rather than maintaining a
+  parallel memory implementation.
+- Document Claude Desktop, Cursor, and other host setup only after the package
+  can be tested end to end.
 
----
+MCP is a distribution layer, not the foundation. It should sit on top of the
+same composable primitives application developers use directly.
 
-## Phase 7 — structural refactors
+## Adapter Architecture After `0.5.0`
 
-**Target:** undecided; **do before adding a third backend.**
+Once `Store` and the Drizzle store are stable, additional adapters can be
+considered independently:
 
-### Backend driver abstraction
+- framework/tool adapters such as Vercel AI SDK, LangChain, LlamaIndex, or
+  OpenAI tool-call helpers
+- runtime-specific database adapters where Drizzle support is verified
+- local-first storage experiments such as SQLite + `sqlite-vec`
+- OpenTelemetry integration using existing observability hooks
+- deterministic snapshot/fixture export for tests
 
-Today `src/memory/in-memory.ts` (~530 lines) and `src/memory/postgres.ts`
-(~556 lines) implement the **same `MnemocyteClient` interface** with
-**different storage**. The logic — scoring filters, supersede semantics, tag
-merging in consolidation, audit recording — is duplicated across both files.
-Works fine at 2 backends; will rot at 3.
+Adapters should stay small, optional, and replaceable. The core should remain a
+memory library, not an agent framework.
 
-- [ ] Extract a `MemoryStore` driver interface (`get`, `put`, `query`,
-      `update`, `delete`, plus audit and event hooks).
-- [ ] Reduce each backend to a thin adapter over `MemoryStore`.
-- [ ] Move all orchestration logic (validators, observe wrappers, consolidate
-      arithmetic, hybrid scoring) into a single shared
-      `createMnemocyteClient(store, config)`.
-- [ ] **Do this BEFORE adding SQLite or any third backend** — far cheaper
-      with 2 implementations than 3.
+## Non-Goals
 
-### File-size hygiene
+- No hidden schema creation from the client constructor.
+- No separate vector database requirement in the core package.
+- No built-in chunking policy. Applications know their content boundaries.
+- No built-in summarization pipeline in the core. A future summarizer hook can
+  compose with consolidation, but Mnemocyte should remain embedder-first by
+  default.
+- No multi-provider embedding mixture in one vector column until there is a
+  clear retrieval and migration design.
+- No broad backend expansion before the `Store` interface exists.
 
-- [ ] Split `src/memory/postgres.ts` into
-      `postgres/{client,queries,audit,consolidate}.ts`.
-- [ ] Apply the same split to `src/memory/in-memory.ts`.
+## Maintenance Rule
 
-### Edge-runtime / pluggable driver
-
-The current `createDatabase(url)` in `src/db/index.ts` hardcodes `postgres-js`
-over TCP, which excludes Cloudflare Workers, Vercel Edge Functions, and Deno
-Deploy.
-
-- [ ] Accept a pre-built Drizzle instance instead of (or in addition to) a
-      URL, so users can plug in `drizzle-orm/neon-http`,
-      `drizzle-orm/neon-serverless`, `drizzle-orm/postgres-js`, or
-      `drizzle-orm/node-postgres`.
-- [ ] Document edge-runtime caveats: no long-lived pools, no `LISTEN/NOTIFY`,
-      cold-start latency for connection setup.
-- [ ] Verify pgvector index queries over Neon HTTP/serverless once callers can
-      provide a pre-built Drizzle instance; document row-size and edge-runtime
-      caveats from that test.
-
----
-
-## Ideas under consideration
-
-Not committed to a release. Captured here so they don't get lost in chat
-history. Each would meaningfully change the product; each needs a real design
-pass before becoming a roadmap item.
-
-### High-leverage, low-effort (do these first if you do any)
-
-- **`@mnemocyte/vercel-ai` adapter.** Bind directly to the Vercel AI SDK's
-  `tools` API. Probably the single biggest distribution multiplier per line
-  of code. Same shape for `@mnemocyte/langchain`, `@mnemocyte/llamaindex`,
-  `@mnemocyte/openai-assistants`.
-- **OpenTelemetry tracing.** The `observability.onEvent` hook already emits
-  start/success/error events; wrap them as OTEL spans and Mnemocyte plugs
-  into Datadog/Honeycomb/Grafana with no further user work.
-- **Snapshot / fixture export.** `client.snapshot()` returns a deterministic
-  JSON blob; `createMnemocyte({ snapshot })` restores it. Game-changer for
-  testing user code against deterministic memory state.
-
-### High-leverage, larger effort
-
-- **SQLite + `sqlite-vec` backend.** Zero-setup local-first storage. Unlocks
-  "just `npx @mnemocyte/mcp`" with no Postgres install required. Forces the
-  Phase 7 `MemoryStore` refactor to happen first.
-- **Reranker stage in `recall`.** Pull top-K via hybrid scoring, then rescore
-  via a cross-encoder or a small, current LLM. Largest available *quality* win.
-- **Typed memory relationships.** A `mnemocyte_relations` table with kinds
-  like `contradicts`, `supports`, `refines`, `derived_from`. Pairs with…
-- **Active conflict detection.** Find memories that *disagree* (not just
-  near-duplicates). Requires an NLI model or an LLM check. Together with
-  typed relations, this is the leap from "vector store" to
-  "actually reasons about memories".
-- **LLM-driven consolidation summariser.** `experimental.consolidate` picks
-  a survivor today; a `summariser?: (memories) => string` callback would let
-  the survivor be a synthesis instead of just a winner.
-- **Studio web UI** (separate `@mnemocyte/studio` package). Browse memories,
-  run queries live, watch the audit log stream. High "wow factor" once the
-  API surface is stable.
-
-### Speculative
-
-- HyDE-style query expansion (write a hypothetical answer, embed it,
-  recall on that).
-- Image / multimodal memories (CLIP-style embeddings on the same row).
-- Type-safe metadata schemas via Zod
-  (`createMnemocyte({ metadata: zodSchema })`).
-- PII redaction hooks (`onBeforeStore: (input) => redacted`).
-- GDPR export / right-to-be-forgotten
-  (`exportEntity`, `purgeEntity({ includeAuditLog: true })`).
-- Encrypted-at-rest per-entity keys (content encrypted, embeddings queryable).
-- Row-level security migration helpers for multi-tenant Postgres.
-
----
-
-## Won't-do (explicit non-goals)
-
-These came up during the audit but are deliberately out of scope.
-
-- **CockroachDB support.** Speaks the Postgres protocol but does not
-  implement pgvector. Adding a non-vector retrieval path would fragment the
-  codebase.
-- **MySQL / DuckDB backends.** Outside the project thesis (vector hybrid
-  retrieval against a single-instance store is the value proposition).
-  *SQLite + sqlite-vec is excluded from this rejection because it's now
-  listed under "Ideas under consideration" above — it serves the local-first
-  MCP use case without abandoning vector search.*
-- **Built-in chunking/splitting.** Mnemocyte stores what you give it.
-  Chunking policy belongs upstream where the application knows its content
-  shape.
-- **Built-in summarisation/distillation as a core feature.** Same reasoning
-  as chunking. The `experimental.consolidate` API (see `src/types.ts`) is the
-  deliberate seam where a user-supplied summariser could plug in later, but
-  Mnemocyte itself stays embedder-only by default.
-
----
-
-## How to use this file
-
-When you finish an item, **move it to [CHANGELOG.md](CHANGELOG.md)** under the appropriate
-version section rather than checking it off here. This file stays a
-forward-looking document, not a history. When a planned version ships, delete
-its section entirely.
+When planned work ships, move the release details to
+[CHANGELOG.md](./CHANGELOG.md) and delete or revise the roadmap section. The
+roadmap should stay short, current, and biased toward the next architectural
+decision.

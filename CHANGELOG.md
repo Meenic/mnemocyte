@@ -8,6 +8,8 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-21
+
 ### Added
 
 - **Official OpenAI embedder helper.** Added
@@ -241,7 +243,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/Meenic/mnemocyte/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Meenic/mnemocyte/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Meenic/mnemocyte/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Meenic/mnemocyte/compare/v0.1.0...v0.1.1

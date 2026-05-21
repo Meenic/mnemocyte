@@ -27,38 +27,16 @@ auth, model provider, and runtime boundaries.
 - **Stable core before broad distribution.** MCP and framework adapters become
   more valuable after the storage and embedder contracts are clean.
 
-## `0.1.x` - Production Hardening
+## `0.1.x` - Maintenance
 
-No API breakage. Focus on safety fixes, documentation polish, and operational
-clarity for the current Postgres + pgvector implementation.
+The planned `0.1.x` hardening slice is complete for the `0.1.4` release. Future
+`0.1.x` work should be limited to critical fixes or documentation corrections
+while new feature design starts in `0.2.0`.
 
-### Safety fixes
-
-- Keep provider timeouts, retries, and `AbortSignal` behavior consistent across
-  every embedder call.
-- Continue tightening validation around destructive operations, configuration
-  mismatches, and closed-client access.
-- Keep audit-log behavior explicit: audit is opt-in, state-changing operations
-  are recorded when enabled, and entity deletion does not silently erase history.
-- Treat experimental APIs (`findDuplicates`, `experimental.consolidate`) as
-  useful but unstable until the `MemoryStore` abstraction is settled.
-
-### Documentation polish
-
-- Keep README examples small, current, and runnable.
-- Keep [ARCHITECTURE.md](./ARCHITECTURE.md) aligned with the shipped package
-  surface and known limitations.
-- Add migration notes for users moving within `0.1.x`.
-- Make every limitation concrete: what works today, what fails fast, and what is
-  planned next.
-
-### Remaining `0.1.x` work
-
-- Keep migration notes and package docs current as unreleased changes accumulate.
+- Keep package docs aligned with the shipped surface.
 - Keep provider adapters dependency-light; provider SDKs should not enter the
   core dependency graph.
-- Prepare release-process cleanup, including provenance/trusted publishing when
-  ready.
+- Do not add new storage backends before the `MemoryStore` abstraction exists.
 
 ## `0.2.0` - Configurable Embedding Dimensions
 

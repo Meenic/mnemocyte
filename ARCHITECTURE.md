@@ -445,12 +445,10 @@ The historical MVP phases are complete enough to treat the current package as
 the baseline. Future work is ordered around hardening first, then adapter-ready
 storage boundaries.
 
-### `0.1.x` - Production Hardening
+### `0.1.x` - Maintenance
 
-- Safety fixes for validation, destructive operations, provider resilience, and
-  experimental APIs.
-- Documentation polish for the current package surface and migration workflow.
-- Release-process cleanup, including provenance/trusted publishing when ready.
+The planned hardening slice is complete for the `0.1.4` release. Future
+`0.1.x` work should be limited to critical fixes or documentation corrections.
 
 ### `0.2.0` - Configurable Embedding Dimensions
 

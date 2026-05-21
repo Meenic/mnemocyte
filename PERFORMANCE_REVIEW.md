@@ -12,9 +12,10 @@ parity, query-term precomputation, and per-recall scoring config normalization
 are complete. Database index and duplicate-search changes should be driven by
 query plans from representative data.
 
-This document does not set product sequencing. The active roadmap prioritizes
-`0.1.x` production hardening before larger architecture work such as
-`MemoryStore`, `drizzleStore(db)`, and MCP.
+This document does not set product sequencing. After the `0.1.4` hardening
+release, the active roadmap moves to `0.2.0` configurable embedding dimensions
+before larger architecture work such as `MemoryStore`, `drizzleStore(db)`, and
+MCP.
 
 ## Active Priority List
 

@@ -3,20 +3,19 @@
 ## Current State
 
 - Package `v0.1.3` has been published.
+- Package `v0.1.4` is being prepared as the final `0.1.x` hardening release.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
-- `CHANGELOG.md` has a published `0.1.3` section dated `2026-05-21`.
-- `CHANGELOG.md` `[Unreleased]` now tracks the current HNSW/index docs,
-  `openaiEmbedder()` subpath export, direct-fetch OpenAI implementation, and
-  retry-status heuristic changes.
+- `CHANGELOG.md` has a `0.1.4` section dated `2026-05-21` for the current
+  HNSW/index docs, `openaiEmbedder()` subpath export, direct-fetch OpenAI
+  implementation, and retry-status heuristic changes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap still points to `0.1.x` production hardening before
-  larger API work, but HNSW/index guidance and the first `openaiEmbedder()`
-  helper are now implemented in the working tree.
+- The current roadmap treats `0.1.x` as maintenance after `0.1.4`; the next
+  planned feature line is `0.2.0` configurable embedding dimensions.
 - The OpenAI helper intentionally does not depend on the OpenAI SDK. It uses
   direct `fetch` calls and keeps the root `mnemocyte` import provider-free.
-- Do not bump the package version yet; more changes are planned before the next
-  release.
+- After `0.1.4` is published, start `0.2.0` work fresh from configurable
+  embedding dimensions.
 
 ## Important Commands
 
@@ -65,11 +64,10 @@ pnpm publish
 
 ## Suggested Next Steps
 
-- Review the current unreleased diff and decide what other changes should land
-  before the next version bump.
 - Run `pnpm run test:integration` when a compatible local Postgres + pgvector
   database is available.
-- Decide whether the next work should stay in `0.1.x` hardening or begin the
-  `0.2.0` configurable embedding-dimensions design.
+- Release `0.1.4` after verification, tagging, and publishing.
+- Begin the `0.2.0` configurable embedding-dimensions design from a fresh
+  post-release baseline.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

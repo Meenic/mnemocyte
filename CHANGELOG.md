@@ -30,6 +30,10 @@ behavioural changes documented in their entries.
 - **Recall scoring avoids repeated per-candidate setup.** Recall paths now
   precompute lexical query terms and normalized retrieval weights once per
   request.
+- **Tests now run fully through Vitest.** Runtime tests, package export checks,
+  strict test type checks, and retrieval benchmarks were migrated from Node
+  script-style `.mjs` files to TypeScript Vitest suites with named projects for
+  unit, package, and Postgres integration coverage.
 
 ### Fixed
 

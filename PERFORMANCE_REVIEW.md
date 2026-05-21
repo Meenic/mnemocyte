@@ -139,7 +139,7 @@ architecture work such as `Store`, `drizzleStore(db)`, and MCP.
 
 ## Validation Checklist
 
-- Run `pnpm run checktypes` after TypeScript changes.
+- Run `pnpm checktypes` after TypeScript changes.
 - Run targeted tests for the touched subsystem: `test:retrieval`,
   `test:context`, `test:dedup`, `test:audit`, and `test:integration` when
   Postgres is available.

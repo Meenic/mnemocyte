@@ -278,7 +278,7 @@ See [ROADMAP.md](./ROADMAP.md).
 ```bash
 pnpm checktypes
 pnpm lint
-pnpm run test:retrieval
+pnpm test
 pnpm run test:integration
 pnpm run pack:check
 ```

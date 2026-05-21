@@ -7,5 +7,5 @@
 			"mnemocyte": ["../../dist/index.d.mts"]
 		}
 	},
-	"include": ["./exports-types.test.ts"]
+	"include": ["./exports-types.test-d.ts"]
 }

@@ -1,14 +1,18 @@
-import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import {
+	createMnemocyte,
+	type MnemocyteClient,
+	type RememberInput,
+} from "mnemocyte";
 import postgres from "postgres";
-import { createMnemocyte } from "../../dist/index.mjs";
+import { bench, describe, expect } from "vitest";
 import {
 	retrievalConfig,
 	testEmbedder,
-} from "../fixtures/retrieval-quality.mjs";
+} from "../fixtures/retrieval-quality.js";
+import { expectDefined } from "../helpers.js";
 
 const IN_MEMORY_SIZES = [200, 1_000, 5_000];
 const POSTGRES_SIZES = [200, 1_000];
@@ -22,25 +26,24 @@ const contents = [
 ];
 const queries = ["typescript concise answers", "postgres pgvector database"];
 
-const envPath = resolve(".env");
-if (!process.env.DATABASE_URL && existsSync(envPath)) {
-	process.loadEnvFile(envPath);
+function cycle<T>(values: readonly T[], index: number) {
+	return expectDefined(values[index % values.length]);
 }
 
-function createInputs(entityId, count) {
+function createInputs(entityId: string, count: number): RememberInput[] {
 	return Array.from({ length: count }, (_, index) => ({
 		entityId,
-		content: contents[index % contents.length],
+		content: cycle(contents, index),
 		type: index % 2 === 0 ? "preference" : "fact",
 		importance: index % 5 === 0 ? "high" : "normal",
 		confidence: 0.8 + (index % 3) * 0.05,
 	}));
 }
 
-async function measureRecall(client, entityId) {
+async function measureRecall(client: MnemocyteClient, entityId: string) {
 	await client.recall({
 		entityId,
-		query: queries[0],
+		query: cycle(queries, 0),
 		limit: 5,
 	});
 
@@ -48,16 +51,16 @@ async function measureRecall(client, entityId) {
 	for (let index = 0; index < QUERY_COUNT; index += 1) {
 		const results = await client.recall({
 			entityId,
-			query: queries[index % queries.length],
+			query: cycle(queries, index),
 			limit: 5,
 		});
-		assert.ok(results.length > 0);
+		expect(results.length).toBeGreaterThan(0);
 	}
 	const durationMs = performance.now() - startedAt;
 	return Number((durationMs / QUERY_COUNT).toFixed(3));
 }
 
-async function runInMemoryBench(memoryCount) {
+async function runInMemoryBench(memoryCount: number) {
 	const client = createMnemocyte({
 		embedder: testEmbedder,
 		retrieval: retrievalConfig,
@@ -77,11 +80,11 @@ async function runInMemoryBench(memoryCount) {
 	}
 }
 
-function createPostgresEmbedding(seed) {
+function createPostgresEmbedding(seed: string) {
 	const values = Array.from({ length: 1536 }, () => 0);
 	for (const char of seed.toLowerCase()) {
 		const index = char.charCodeAt(0) % values.length;
-		values[index] += 1;
+		values[index] = (values[index] ?? 0) + 1;
 	}
 	return values;
 }
@@ -89,12 +92,12 @@ function createPostgresEmbedding(seed) {
 const postgresEmbedder = {
 	model: "retrieval-bench-postgres",
 	dimensions: 1536,
-	async embed(texts) {
+	async embed(texts: readonly string[]) {
 		return texts.map(createPostgresEmbedding);
 	},
 };
 
-async function ensureMigration(sql) {
+async function ensureMigration(sql: ReturnType<typeof postgres>) {
 	const migration = await readFile(
 		resolve("migrations", "0000_initial.sql"),
 		"utf8",
@@ -102,13 +105,20 @@ async function ensureMigration(sql) {
 	try {
 		await sql.unsafe(migration);
 	} catch (error) {
-		if (error.code !== "42P07") {
+		if (
+			!(
+				error &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "42P07"
+			)
+		) {
 			throw error;
 		}
 	}
 }
 
-async function runPostgresBench(databaseUrl, memoryCount) {
+async function runPostgresBench(databaseUrl: string, memoryCount: number) {
 	const sql = postgres(databaseUrl, { max: 1 });
 	const entityId = `retrieval_bench_pg_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
@@ -141,30 +151,26 @@ async function runPostgresBench(databaseUrl, memoryCount) {
 	}
 }
 
-const inMemory = [];
-for (const size of IN_MEMORY_SIZES) {
-	inMemory.push(await runInMemoryBench(size));
-}
-
-const postgresResults = [];
-if (process.env.DATABASE_URL) {
-	for (const size of POSTGRES_SIZES) {
-		postgresResults.push(
-			await runPostgresBench(process.env.DATABASE_URL, size),
+describe("retrieval benchmarks", () => {
+	for (const size of IN_MEMORY_SIZES) {
+		bench(
+			`in-memory recall over ${size} memories`,
+			async () => {
+				await runInMemoryBench(size);
+			},
+			{ iterations: 1, time: 0 },
 		);
 	}
-}
 
-console.log(
-	JSON.stringify(
-		{
-			queryCount: QUERY_COUNT,
-			inMemory,
-			postgres: process.env.DATABASE_URL
-				? postgresResults
-				: { skipped: "DATABASE_URL is not set" },
-		},
-		null,
-		2,
-	),
-);
+	if (process.env.DATABASE_URL) {
+		for (const size of POSTGRES_SIZES) {
+			bench(
+				`Postgres recall over ${size} memories`,
+				async () => {
+					await runPostgresBench(process.env.DATABASE_URL ?? "", size);
+				},
+				{ iterations: 1, time: 0 },
+			);
+		}
+	}
+});

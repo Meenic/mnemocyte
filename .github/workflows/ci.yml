@@ -41,38 +41,56 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test package exports
-        run: pnpm run test:exports
-
-      - name: Test observability
-        run: pnpm run test:observability
-
-      - name: Test resilience
-        run: pnpm run test:resilience
-
-      - name: Test prune
-        run: pnpm run test:prune
-
-      - name: Test lifecycle
-        run: pnpm run test:lifecycle
-
-      - name: Test dedup
-        run: pnpm run test:dedup
-
-      - name: Test audit
-        run: pnpm run test:audit
-
-      - name: Test consolidate
-        run: pnpm run test:consolidate
-
-      - name: Test retrieval
-        run: pnpm run test:retrieval
-
-      - name: Test context
-        run: pnpm run test:context
-
-      - name: Test integration skip path
-        run: pnpm run test:integration
+      - name: Test
+        run: pnpm run test:ci
 
       - name: Pack check
         run: pnpm run pack:check
+
+  postgres-integration:
+    name: Postgres integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Enable pgvector
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Test integration
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: pnpm run test:integration

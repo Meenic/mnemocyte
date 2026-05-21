@@ -1,3 +1,5 @@
+import type { Embedder, RememberInput, RetrievalConfig } from "mnemocyte";
+
 const VOCABULARY = new Map([
 	["typescript", 0],
 	["library", 1],
@@ -16,22 +18,22 @@ const VOCABULARY = new Map([
 	["workflow", 11],
 ]);
 
-function tokenize(text) {
+function tokenize(text: string) {
 	return text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 }
 
-function vectorize(text) {
+function vectorize(text: string) {
 	const vector = Array.from({ length: 12 }, () => 0);
 	for (const token of tokenize(text)) {
 		const index = VOCABULARY.get(token);
 		if (index !== undefined) {
-			vector[index] += 1;
+			vector[index] = (vector[index] ?? 0) + 1;
 		}
 	}
 	return vector;
 }
 
-export const testEmbedder = {
+export const testEmbedder: Embedder = {
 	model: "retrieval-quality-test",
 	dimensions: 12,
 	async embed(texts) {
@@ -39,7 +41,7 @@ export const testEmbedder = {
 	},
 };
 
-export const retrievalConfig = {
+export const retrievalConfig: RetrievalConfig = {
 	weights: {
 		vector: 0.4,
 		lexical: 0.25,
@@ -52,7 +54,14 @@ export const retrievalConfig = {
 	candidateMultiplier: 3,
 };
 
-export const retrievalQualityCases = [
+type RetrievalQualityCase = {
+	name: string;
+	query: string;
+	expectedTopContent: string;
+	memories: Array<Omit<RememberInput, "entityId">>;
+};
+
+export const retrievalQualityCases: RetrievalQualityCase[] = [
 	{
 		name: "prefers TypeScript answer style over unrelated release workflow",
 		query: "typescript concise answers",

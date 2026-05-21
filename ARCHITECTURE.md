@@ -47,7 +47,7 @@ Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The p
 - `dist/` — built `index.mjs` + `index.d.mts` (and source maps) produced by `tsdown`.
 - `migrations/0000_initial.sql` — the only supported way to provision the Postgres schema.
 
-The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, etc.). CI runs `test:exports` to enforce that the built `.d.mts` keeps every public type reachable from `mnemocyte`.
+The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
 surface. The planned order is `openaiEmbedder()` first, configurable dimensions,
@@ -70,7 +70,8 @@ Use `postgres` for the database driver. In this document, `postgres` means the p
     "@types/node": "^25.9.0",
     "drizzle-kit": "^0.31.10",
     "tsdown": "^0.22.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
   }
 }
 ```

@@ -71,7 +71,7 @@ Use `postgres` for the database driver. In this document, `postgres` means the p
     "drizzle-kit": "^0.31.10",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "4.1.6"
   }
 }
 ```

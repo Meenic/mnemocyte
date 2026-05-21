@@ -13,8 +13,8 @@ are complete. Database index and duplicate-search changes should be driven by
 query plans from representative data.
 
 This document does not set product sequencing. The active roadmap prioritizes
-`0.1.x` production hardening and HNSW/index documentation before larger
-architecture work such as `Store`, `drizzleStore(db)`, and MCP.
+`0.1.x` production hardening before larger architecture work such as
+`MemoryStore`, `drizzleStore(db)`, and MCP.
 
 ## Active Priority List
 

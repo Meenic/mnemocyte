@@ -1,8 +1,20 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
-const sourceAlias = { mnemocyte: resolve("src/index.ts") };
-const packageAlias = { mnemocyte: resolve("dist/index.mjs") };
+const sourceAlias = [
+	{
+		find: "mnemocyte/embedders/openai",
+		replacement: resolve("src/embedders/openai.ts"),
+	},
+	{ find: "mnemocyte", replacement: resolve("src/index.ts") },
+];
+const packageAlias = [
+	{
+		find: "mnemocyte/embedders/openai",
+		replacement: resolve("dist/embedders/openai.mjs"),
+	},
+	{ find: "mnemocyte", replacement: resolve("dist/index.mjs") },
+];
 
 export default defineConfig({
 	test: {

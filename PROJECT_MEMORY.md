@@ -6,8 +6,17 @@
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
 - `CHANGELOG.md` has a published `0.1.3` section dated `2026-05-21`.
+- `CHANGELOG.md` `[Unreleased]` now tracks the current HNSW/index docs,
+  `openaiEmbedder()` subpath export, direct-fetch OpenAI implementation, and
+  retry-status heuristic changes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap still points to `0.1.x` production hardening before larger API work.
+- The current roadmap still points to `0.1.x` production hardening before
+  larger API work, but HNSW/index guidance and the first `openaiEmbedder()`
+  helper are now implemented in the working tree.
+- The OpenAI helper intentionally does not depend on the OpenAI SDK. It uses
+  direct `fetch` calls and keeps the root `mnemocyte` import provider-free.
+- Do not bump the package version yet; more changes are planned before the next
+  release.
 
 ## Important Commands
 
@@ -56,23 +65,11 @@ pnpm publish
 
 ## Suggested Next Steps
 
-- Check whether the current docs-only changes are committed and pushed.
-- Check the GitHub Actions run for `v0.1.3`, especially the PostgreSQL integration job.
-- Start the next roadmap item under `0.1.x` production hardening.
-
-The most useful next implementation/doc task is HNSW and index guidance:
-
-- document the bundled `mnemocyte_memories_embedding_hnsw_idx` index
-- explain HNSW tradeoffs: approximate recall, build memory, write overhead, and filtering behavior
-- document when users should benchmark alternate indexes or custom migrations
-- add guidance for full-text and tag indexes without changing the default migration yet
-
-After that, the next likely feature is the official `openaiEmbedder()` subpath export. Keep it additive and non-breaking:
-
-- add `mnemocyte/embedders/openai`
-- export `openaiEmbedder({ apiKey, model, dimensions? })`
-- forward `AbortSignal`
-- keep the OpenAI dependency boundary optional or narrowly scoped
-- document that custom embedders remain the default integration model
-
-Do not start `0.2.0` configurable embedding dimensions until the remaining `0.1.x` hardening/doc items are settled.
+- Review the current unreleased diff and decide what other changes should land
+  before the next version bump.
+- Run `pnpm run test:integration` when a compatible local Postgres + pgvector
+  database is available.
+- Decide whether the next work should stay in `0.1.x` hardening or begin the
+  `0.2.0` configurable embedding-dimensions design.
+- Keep the future monorepo direction in mind: provider adapters can later move
+  from subpaths to packages such as `@mnemocyte/openai`.

@@ -65,7 +65,36 @@ describe("resilience", () => {
 			}
 		}
 
-		// 2. Retry exhausted surfaces an EMBEDDING error wrapping the underlying cause.
+		// 2. Numeric provider status codes trigger the default retry heuristic.
+		{
+			let calls = 0;
+			const client = createMnemocyte({
+				embedder: {
+					model: "status-retry-test",
+					dimensions: 2,
+					async embed(texts) {
+						calls += 1;
+						if (calls === 1) {
+							throw Object.assign(new Error("rate limited"), { status: 429 });
+						}
+						return texts.map((text) => [text.length, 1]);
+					},
+				},
+				provider: { retries: 1, baseDelayMs: 1, maxDelayMs: 1 },
+			});
+			try {
+				const memory = await client.remember({
+					entityId: "status_retry",
+					content: "remember after provider status failure",
+				});
+				expect(typeof memory.id).toBe("string");
+				expect(calls).toBe(2);
+			} finally {
+				await client.close();
+			}
+		}
+
+		// 3. Retry exhausted surfaces an EMBEDDING error wrapping the underlying cause.
 		{
 			const counter = createCountingEmbedder({ failures: 5 });
 			const client = createMnemocyte({
@@ -87,7 +116,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 3. Timeout throws TIMEOUT.
+		// 4. Timeout throws TIMEOUT.
 		{
 			const counter = createCountingEmbedder({ delayMs: 80 });
 			const client = createMnemocyte({
@@ -107,7 +136,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 4. AbortSignal cancels the operation with ABORTED and disables retry.
+		// 5. AbortSignal cancels the operation with ABORTED and disables retry.
 		{
 			const counter = createCountingEmbedder({ delayMs: 80 });
 			const client = createMnemocyte({
@@ -131,7 +160,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 5. Custom shouldRetry can opt out of retrying.
+		// 6. Custom shouldRetry can opt out of retrying.
 		{
 			const counter = createCountingEmbedder({ failures: 5 });
 			let predicateCalls = 0;
@@ -161,7 +190,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 6. Already-aborted signal short-circuits before calling the embedder.
+		// 7. Already-aborted signal short-circuits before calling the embedder.
 		{
 			const counter = createCountingEmbedder();
 			const client = createMnemocyte({ embedder: counter.embedder });

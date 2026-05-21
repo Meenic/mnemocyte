@@ -7,7 +7,8 @@
 		"ignoreDeprecations": "6.0",
 		"baseUrl": ".",
 		"paths": {
-			"mnemocyte": ["./src/index.ts"]
+			"mnemocyte": ["./src/index.ts"],
+			"mnemocyte/embedders/openai": ["./src/embedders/openai.ts"]
 		}
 	},
 	"include": ["src", "test/**/*.ts", "vitest.config.ts"],

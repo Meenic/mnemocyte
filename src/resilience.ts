@@ -57,6 +57,15 @@ export function defaultShouldRetry(error: unknown): boolean {
 		}
 		return true;
 	}
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"status" in error &&
+		typeof (error as { status?: unknown }).status === "number" &&
+		[429, 500, 502, 503, 504].includes((error as { status: number }).status)
+	) {
+		return true;
+	}
 	if (error instanceof Error) {
 		const message = error.message.toLowerCase();
 		if (

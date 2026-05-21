@@ -85,7 +85,20 @@ const client = createMnemocyte({
 });
 ```
 
-Official embedder helpers are planned, starting with `openaiEmbedder()`.
+You can also use the optional OpenAI helper:
+
+```ts
+import { openaiEmbedder } from "mnemocyte/embedders/openai";
+
+const embedder = openaiEmbedder({
+  model: "text-embedding-3-small",
+});
+```
+
+`openaiEmbedder()` reads `OPENAI_API_KEY` by default. Pass `apiKey`
+explicitly when you use a different key source. The helper uses `fetch`
+directly and does not depend on the OpenAI SDK; plain `import "mnemocyte"` also
+stays provider-free.
 
 ## Postgres
 
@@ -111,8 +124,23 @@ backend currently requires a 1536-dimensional embedder.
 If dimensions do not match, `createMnemocyte` throws a `MnemocyteError` with
 code `"CONFIG"` before opening the connection pool.
 
-The migration creates an HNSW pgvector index for cosine search. Configurable
-embedding dimensions are planned for `0.2.0`.
+The migration creates the bundled HNSW pgvector index
+`mnemocyte_memories_embedding_hnsw_idx` for cosine search. HNSW is approximate:
+it is fast for nearest-neighbor recall, but recall quality, index build memory,
+and write overhead should be benchmarked against your data volume and write
+rate. Postgres still applies ordinary filters such as `entity_id`, `type`, and
+tags around vector search, so highly selective filters may need query tuning or
+a workload-specific index strategy.
+
+Large production tables should benchmark alternate indexes or custom
+migrations with representative data before changing the default. IVFFlat can be
+a good fit for some large, steady-state tables, but it needs tuning after the
+table has representative vectors. The bundled migration intentionally does not
+add full-text or tag-specific GIN indexes yet; add and benchmark expression
+indexes such as `to_tsvector('english', content)` or tag-oriented indexes only
+when your workload needs them.
+
+Configurable embedding dimensions are planned for `0.2.0`.
 
 ## API
 
@@ -262,12 +290,10 @@ const client = createMnemocyte({
 
 ## Roadmap
 
-Near-term work:
+Planned larger milestones:
 
-- production safety and HNSW documentation
-- official `openaiEmbedder()`
 - configurable embedding dimensions with `mnemocyte_meta`
-- `Store` abstraction
+- `MemoryStore` abstraction
 - `drizzleStore(db)` for caller-owned Drizzle clients
 - `@mnemocyte/mcp`
 

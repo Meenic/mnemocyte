@@ -21,6 +21,10 @@ import type {
 	TokenCounter,
 } from "mnemocyte";
 import { createMnemocyte, MnemocyteError } from "mnemocyte";
+import {
+	type OpenAIEmbedderOptions,
+	openaiEmbedder,
+} from "mnemocyte/embedders/openai";
 
 const format: ContextFormat = "markdown";
 const weights: RetrievalScoreWeights = { vector: 1 };
@@ -137,6 +141,11 @@ const consolidateResult: ConsolidateResult = {
 	supersededIds: ["mem_b"],
 };
 const experimental: ExperimentalMnemocyteClient = client.experimental;
+const openaiOptions: OpenAIEmbedderOptions = {
+	model: "text-embedding-3-small",
+	dimensions: 1536,
+};
+const openai = openaiEmbedder(openaiOptions);
 
 void client;
 void remember;
@@ -152,3 +161,4 @@ void consolidate;
 void consolidateResult;
 void experimental;
 void MnemocyteError;
+void openai;

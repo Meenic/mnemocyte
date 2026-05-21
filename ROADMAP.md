@@ -15,7 +15,8 @@ auth, model provider, and runtime boundaries.
 
 - **Bring your own database.** Mnemocyte should integrate with storage the app
   already operates. Postgres + pgvector is the current first-class path, but the
-  API should move toward caller-owned database clients and explicit stores.
+  API should move toward caller-owned database clients and explicit
+  `MemoryStore` adapters.
 - **Bring your own embedder.** The core accepts an `Embedder` interface. Built-in
   factories should remove boilerplate without making one provider special.
 - **Adapters over monoliths.** Framework, model-host, and runtime integrations
@@ -40,7 +41,7 @@ clarity for the current Postgres + pgvector implementation.
 - Keep audit-log behavior explicit: audit is opt-in, state-changing operations
   are recorded when enabled, and entity deletion does not silently erase history.
 - Treat experimental APIs (`findDuplicates`, `experimental.consolidate`) as
-  useful but unstable until the storage abstraction is settled.
+  useful but unstable until the `MemoryStore` abstraction is settled.
 
 ### Documentation polish
 
@@ -51,34 +52,13 @@ clarity for the current Postgres + pgvector implementation.
 - Make every limitation concrete: what works today, what fails fast, and what is
   planned next.
 
-### HNSW and index guidance
+### Remaining `0.1.x` work
 
-- Document the bundled HNSW index created by the migration:
-  `mnemocyte_memories_embedding_hnsw_idx`.
-- Explain expected tradeoffs: approximate recall, index build memory, write
-  overhead, and interaction with ordinary Postgres filters.
-- Document when production users should benchmark alternate indexes or custom
-  migrations, including IVFFlat for large tables with representative data and
-  workload-specific tuning.
-- Add guidance for full-text and tag indexes without baking unproven indexes
-  into the default migration.
-
-## `0.1.x` - Official `openaiEmbedder()`
-
-Add the first official embedder factory without changing the core `Embedder`
-contract.
-
-- Ship a subpath export such as `mnemocyte/embedders/openai`.
-- Export `openaiEmbedder({ apiKey, model, dimensions? })`.
-- Forward `AbortSignal` to the OpenAI SDK.
-- Surface provider errors in a way that works with the default retry heuristic.
-- Keep the dependency boundary clear. If the OpenAI SDK materially increases
-  install weight, prefer an optional peer dependency or a narrowly scoped
-  subpath package shape.
-- Document that custom embedders remain the default integration model.
-
-This is not a pivot to a provider-owned package. It is a convenience adapter for
-the common case.
+- Keep migration notes and package docs current as unreleased changes accumulate.
+- Keep provider adapters dependency-light; provider SDKs should not enter the
+  core dependency graph.
+- Prepare release-process cleanup, including provenance/trusted publishing when
+  ready.
 
 ## `0.2.0` - Configurable Embedding Dimensions
 
@@ -100,15 +80,15 @@ Make embedding dimensions an installation-level setting instead of a hardcoded
 This milestone unblocks a broader range of embedding providers while preserving
 the core storage invariant that all comparable vectors share one dimension.
 
-## `0.3.0` - `Store` Abstraction
+## `0.3.0` - `MemoryStore` Abstraction
 
 Separate memory orchestration from storage implementation.
 
-- Introduce a `Store` interface responsible for persistence primitives,
+- Introduce a `MemoryStore` interface responsible for persistence primitives,
   recall candidates, audit events, and lifecycle operations.
 - Move validation, embedding, scoring coordination, observability, retries, and
   context building into shared core orchestration.
-- Reduce in-memory and Postgres implementations to store adapters instead of
+- Reduce in-memory and Postgres implementations to `MemoryStore` adapters instead of
   separate clients with duplicated behavior.
 - Keep `createMnemocyte()` as the main entry point while allowing future
   adapter-backed construction.
@@ -122,7 +102,7 @@ database and runtime adapters possible without copying the client.
 Let applications bring their own Drizzle database instance.
 
 - Add `drizzleStore(db, options)` for caller-owned Drizzle clients.
-- Support the current Postgres + pgvector schema through the store adapter.
+- Support the current Postgres + pgvector schema through the `MemoryStore` adapter.
 - Keep connection lifecycle ownership with the caller when a database instance
   is supplied.
 - Document tested driver/runtime combinations, starting with postgres.js and
@@ -145,7 +125,7 @@ Ship an official MCP adapter after the storage and embedder contracts are ready.
   `findDuplicates`, `consolidate`, `forget`, `prune`, `listAuditLog`, and
   `stats`.
 - Configure database and embedder through explicit environment/config inputs.
-- Use the core package and official stores/embedders rather than maintaining a
+- Use the core package and official `MemoryStore`/embedder adapters rather than maintaining a
   parallel memory implementation.
 - Document Claude Desktop, Cursor, and other host setup only after the package
   can be tested end to end.
@@ -155,7 +135,7 @@ same composable primitives application developers use directly.
 
 ## Adapter Architecture After `0.5.0`
 
-Once `Store` and the Drizzle store are stable, additional adapters can be
+Once `MemoryStore` and the Drizzle store are stable, additional adapters can be
 considered independently:
 
 - framework/tool adapters such as Vercel AI SDK, LangChain, LlamaIndex, or
@@ -166,7 +146,9 @@ considered independently:
 - deterministic snapshot/fixture export for tests
 
 Adapters should stay small, optional, and replaceable. The core should remain a
-memory library, not an agent framework.
+memory library, not an agent framework. If the repository moves to a monorepo,
+provider helpers can move from core subpaths into focused packages such as
+`@mnemocyte/openai`.
 
 ## Non-Goals
 
@@ -178,7 +160,7 @@ memory library, not an agent framework.
   default.
 - No multi-provider embedding mixture in one vector column until there is a
   clear retrieval and migration design.
-- No broad backend expansion before the `Store` interface exists.
+- No broad backend expansion before the `MemoryStore` interface exists.
 
 ## Maintenance Rule
 

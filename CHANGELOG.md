@@ -8,6 +8,28 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Official OpenAI embedder helper.** Added
+  `mnemocyte/embedders/openai` with `openaiEmbedder({ apiKey, model,
+  dimensions? })`, `OPENAI_API_KEY` defaulting, `AbortSignal` forwarding,
+  known OpenAI embedding dimensions, and package export/type coverage.
+
+### Changed
+
+- **OpenAI helper uses direct `fetch` calls.** The root package remains
+  provider-SDK-free, and the OpenAI helper does not add an OpenAI SDK
+  dependency.
+- **Provider retry detection recognizes numeric HTTP statuses.** The default
+  retry heuristic now treats provider errors with status `429`, `500`, `502`,
+  `503`, or `504` as transient.
+- **Documentation now includes production HNSW/index guidance.** README,
+  architecture, and roadmap docs explain the bundled
+  `mnemocyte_memories_embedding_hnsw_idx` index, HNSW tradeoffs, filtering
+  behavior, and when to benchmark alternate full-text/tag/vector indexes.
+- **Roadmap wording now uses `MemoryStore`.** Future backend abstraction docs
+  now refer to the planned `MemoryStore` boundary rather than generic `Store`.
+
 ## [0.1.3] - 2026-05-21
 
 ### Changed
@@ -24,7 +46,7 @@ behavioural changes documented in their entries.
   full-text, embedder-dimension, postgres.js, and retry behavior.
 - **Roadmap documentation now reflects the adapter-first direction.** The
   planning docs prioritize `0.1.x` hardening, `openaiEmbedder()`, configurable
-  dimensions with `mnemocyte_meta`, `Store`, `drizzleStore(db)`,
+  dimensions with `mnemocyte_meta`, `MemoryStore`, `drizzleStore(db)`,
   and `@mnemocyte/mcp`.
 - **Retrieval benchmarks now cover scale curves.** `bench:retrieval` runs
   multiple in-memory sizes and optional Postgres cases when `DATABASE_URL` is

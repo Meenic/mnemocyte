@@ -38,20 +38,21 @@ infrastructure setup behind constructor side effects.
 - No full autonomous memory consolidation in the core package.
 - No provider lock-in. Official embedder factories are convenience adapters,
   not the only supported path.
-- No broad backend expansion before a `Store` abstraction exists.
+- No broad backend expansion before a `MemoryStore` abstraction exists.
 
 ## Package Strategy
 
 Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The package ships:
 
-- `dist/` — built `index.mjs` + `index.d.mts` (and source maps) produced by `tsdown`.
+- `dist/` — built root and subpath `.mjs` / `.d.mts` files (and source maps) produced by `tsdown`.
 - `migrations/0000_initial.sql` — the only supported way to provision the Postgres schema.
 
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
-surface. The planned order is `openaiEmbedder()` first, configurable dimensions,
-`Store`, `drizzleStore(db)`, and then `@mnemocyte/mcp`.
+surface. After the current `openaiEmbedder()` helper, the planned order is
+configurable dimensions, `MemoryStore`, `drizzleStore(db)`, and then
+`@mnemocyte/mcp`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -127,9 +128,12 @@ src/
 
 Embedder providers are deliberately represented by a small `Embedder`
 interface. Callers pass an implementation explicitly. Official factories such
-as the planned `openaiEmbedder()` should remove boilerplate while preserving the
-same contract. Additional provider integrations should stay in subpaths or
-adapter packages rather than becoming hidden behavior in `createMnemocyte()`.
+as `openaiEmbedder()` should remove boilerplate while preserving the same
+contract. Additional provider integrations should stay in subpaths or adapter
+packages rather than becoming hidden behavior in `createMnemocyte()`. The root
+`mnemocyte` entrypoint must not import provider SDKs. `openaiEmbedder()` uses
+`fetch` directly for the embeddings endpoint so no OpenAI SDK dependency is
+required.
 
 Layering rule: lower-level modules must not import higher-level modules. For example, `db/` must not import from `memory/`, and `retrieval/` must not import from `context/`.
 
@@ -171,10 +175,16 @@ await client.close();
 
 ## Public Surface (0.1.x)
 
-The source of truth is `dist/index.d.mts`; this section is a fast index.
+The source of truth is `dist/index.d.mts` plus any exported subpath declaration
+files such as `dist/embedders/openai.d.mts`; this section is a fast index.
 
 **Factory**
 - `createMnemocyte(config: MnemocyteConfig): MnemocyteClient` — stable.
+
+**Embedder helpers**
+- `mnemocyte/embedders/openai`: `openaiEmbedder(options)` and
+  `OpenAIEmbedderOptions`. This helper uses direct `fetch` calls and does not
+  add an OpenAI SDK dependency.
 
 **Errors**
 - `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
@@ -284,15 +294,26 @@ CREATE INDEX mnemocyte_memories_embedding_hnsw_idx ON mnemocyte_memories USING h
 ```
 
 HNSW is the current bundled vector-search index. pgvector HNSW is approximate,
-and Postgres applies ordinary filters around the vector search. Highly
-selective filters may require query/session tuning or a workload-specific
-migration. IVFFlat is also valid, but it needs workload-specific tuning and
-should be created after the table has representative data.
+so production users should benchmark recall quality for their own corpus and
+queries instead of treating top-K results as exact. HNSW also has operational
+costs: index builds can use significant memory, and each write must update the
+graph, increasing insert/update overhead compared with no vector index.
+Postgres applies ordinary filters around vector search, so highly selective
+`entity_id`, `type`, tag, time, or lifecycle filters may require query/session
+tuning or a workload-specific migration.
+
+IVFFlat is also valid for some large, steady-state tables, but it needs
+representative data before index creation and workload-specific tuning. Do not
+replace the bundled HNSW index blindly; benchmark HNSW, IVFFlat, and custom
+filtered/partial indexes against real data volume, write rate, filters, and
+latency targets.
 
 The current migration does not include a full-text GIN expression index for
 `to_tsvector('english', content)`. Lexical search is implemented with
 PostgreSQL full-text search, but production deployments should add and benchmark
-a matching expression index before relying on large lexical scans.
+a matching expression index before relying on large lexical scans. Tag filters
+currently use the `text[]` column without a bundled GIN index; add a tag index
+only after measuring tag-heavy queries in the target workload.
 
 ### Embedding Dimension Policy
 
@@ -397,7 +418,7 @@ count(text: string): number;
 
 The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`. The current `createDatabase()` path uses postgres.js over TCP, parses common `sslmode` values, and disables prepared statements for pooler-style URLs (`:6543` or `pgbouncer=true`).
 
-The planned `Store` and `drizzleStore(db)` milestones move
+The planned `MemoryStore` and `drizzleStore(db)` milestones move
 caller-managed database clients into the public architecture for apps that
 already own pools or need runtime-specific Drizzle drivers.
 
@@ -429,16 +450,7 @@ storage boundaries.
 - Safety fixes for validation, destructive operations, provider resilience, and
   experimental APIs.
 - Documentation polish for the current package surface and migration workflow.
-- HNSW and index guidance for real Postgres deployments.
 - Release-process cleanup, including provenance/trusted publishing when ready.
-
-### `0.1.x` - Official `openaiEmbedder()`
-
-- Add an OpenAI embedder factory as a convenience adapter.
-- Preserve the public `Embedder` contract so custom and local embedders remain
-  first-class.
-- Forward cancellation and surface provider failures consistently with the
-  resilience layer.
 
 ### `0.2.0` - Configurable Embedding Dimensions
 
@@ -449,9 +461,9 @@ storage boundaries.
 - Validate the configured embedder against stored metadata on connect.
 - Keep one vector dimension per installation.
 
-### `0.3.0` - `Store`
+### `0.3.0` - `MemoryStore`
 
-- Extract storage primitives into a `Store` interface.
+- Extract storage primitives into a `MemoryStore` interface.
 - Move shared orchestration into one core path.
 - Reduce in-memory and Postgres backends to adapters.
 - Defer any third backend until this boundary exists.

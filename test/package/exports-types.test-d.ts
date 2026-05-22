@@ -24,6 +24,10 @@ import { createMnemocyte, MnemocyteError } from "mnemocyte";
 import {
 	type OpenAIEmbedderOptions,
 	openaiEmbedder,
+} from "mnemocyte/embedders";
+import {
+	type OpenAIEmbedderOptions as DirectOpenAIEmbedderOptions,
+	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
 
 const format: ContextFormat = "markdown";
@@ -146,6 +150,10 @@ const openaiOptions: OpenAIEmbedderOptions = {
 	dimensions: 1536,
 };
 const openai = openaiEmbedder(openaiOptions);
+const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
+	model: "text-embedding-3-small",
+};
+const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
 void remember;
@@ -162,3 +170,4 @@ void consolidateResult;
 void experimental;
 void MnemocyteError;
 void openai;
+void directOpenai;

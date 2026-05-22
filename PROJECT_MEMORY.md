@@ -2,8 +2,9 @@
 
 ## Current State
 
-- Package `v0.1.3` has been published.
-- Package `v0.1.4` is being prepared as the final `0.1.x` hardening release.
+- Package `v0.1.4` has been published.
+- Package `v0.1.5` is being prepared as a patch release for embedder export
+  discoverability.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
 - `CHANGELOG.md` has a `0.1.4` section dated `2026-05-21` for the current
@@ -14,8 +15,11 @@
   planned feature line is `0.2.0` configurable embedding dimensions.
 - The OpenAI helper intentionally does not depend on the OpenAI SDK. It uses
   direct `fetch` calls and keeps the root `mnemocyte` import provider-free.
-- After `0.1.4` is published, start `0.2.0` work fresh from configurable
-  embedding dimensions.
+- `mnemocyte/embedders` is the editor-discoverable barrel export for embedder
+  helpers. Provider-specific subpaths such as `mnemocyte/embedders/openai`
+  remain supported through wildcard package exports.
+- After `0.1.5` is published, start `0.2.0` work fresh from configurable
+  embedding dimensions unless another critical patch is needed.
 
 ## Important Commands
 
@@ -66,7 +70,7 @@ pnpm publish
 
 - Run `pnpm run test:integration` when a compatible local Postgres + pgvector
   database is available.
-- Release `0.1.4` after verification, tagging, and publishing.
+- Release `0.1.5` after verification, tagging, and publishing.
 - Begin the `0.2.0` configurable embedding-dimensions design from a fresh
   post-release baseline.
 - Keep the future monorepo direction in mind: provider adapters can later move

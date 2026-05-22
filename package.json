@@ -14,15 +14,20 @@
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
-		"./embedders/openai": {
-			"types": "./dist/embedders/openai.d.mts",
-			"import": "./dist/embedders/openai.mjs"
+		"./embedders": {
+			"types": "./dist/embedders/index.d.mts",
+			"import": "./dist/embedders/index.mjs"
+		},
+		"./embedders/index": null,
+		"./embedders/*": {
+			"types": "./dist/embedders/*.d.mts",
+			"import": "./dist/embedders/*.mjs"
 		}
 	},
 	"types": "./dist/index.d.mts",
 	"scripts": {
-		"build": "tsdown src/index.ts src/embedders/openai.ts",
-		"dev": "tsdown src/index.ts src/embedders/openai.ts --watch",
+		"build": "tsdown src/index.ts \"src/embedders/*.ts\"",
+		"dev": "tsdown src/index.ts \"src/embedders/*.ts\" --watch",
 		"checktypes": "tsc --noEmit && tsc --noEmit --project tsconfig.test.json",
 		"test": "pnpm run test:ci",
 		"test:ci": "pnpm build && vitest run --typecheck --project unit --project package",
@@ -44,7 +49,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"pack:check": "pnpm pack --dry-run",
-		"prepublishOnly": "tsdown src/index.ts src/embedders/openai.ts && tsc --noEmit && pnpm pack --dry-run"
+		"prepublishOnly": "tsdown src/index.ts \"src/embedders/*.ts\" && tsc --noEmit && pnpm pack --dry-run"
 	},
 	"repository": {
 		"type": "git",

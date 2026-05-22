@@ -5,7 +5,8 @@
 		"noEmit": true,
 		"paths": {
 			"mnemocyte": ["../../dist/index.d.mts"],
-			"mnemocyte/embedders/openai": ["../../dist/embedders/openai.d.mts"]
+			"mnemocyte/embedders": ["../../dist/embedders/index.d.mts"],
+			"mnemocyte/embedders/*": ["../../dist/embedders/*.d.mts"]
 		}
 	},
 	"include": ["./exports-types.test-d.ts"]

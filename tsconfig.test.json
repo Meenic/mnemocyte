@@ -8,7 +8,8 @@
 		"baseUrl": ".",
 		"paths": {
 			"mnemocyte": ["./src/index.ts"],
-			"mnemocyte/embedders/openai": ["./src/embedders/openai.ts"]
+			"mnemocyte/embedders": ["./src/embedders/index.ts"],
+			"mnemocyte/embedders/*": ["./src/embedders/*.ts"]
 		}
 	},
 	"include": ["src", "test/**/*.ts", "vitest.config.ts"],

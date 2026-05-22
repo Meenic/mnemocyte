@@ -3,15 +3,23 @@ import { defineConfig } from "vitest/config";
 
 const sourceAlias = [
 	{
-		find: "mnemocyte/embedders/openai",
-		replacement: resolve("src/embedders/openai.ts"),
+		find: /^mnemocyte\/embedders\/(.+)$/,
+		replacement: resolve("src/embedders/$1.ts"),
+	},
+	{
+		find: "mnemocyte/embedders",
+		replacement: resolve("src/embedders/index.ts"),
 	},
 	{ find: "mnemocyte", replacement: resolve("src/index.ts") },
 ];
 const packageAlias = [
 	{
-		find: "mnemocyte/embedders/openai",
-		replacement: resolve("dist/embedders/openai.mjs"),
+		find: /^mnemocyte\/embedders\/(.+)$/,
+		replacement: resolve("dist/embedders/$1.mjs"),
+	},
+	{
+		find: "mnemocyte/embedders",
+		replacement: resolve("dist/embedders/index.mjs"),
 	},
 	{ find: "mnemocyte", replacement: resolve("dist/index.mjs") },
 ];

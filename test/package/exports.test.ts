@@ -1,5 +1,6 @@
 import { createMnemocyte, MnemocyteError } from "mnemocyte";
-import { openaiEmbedder } from "mnemocyte/embedders/openai";
+import { openaiEmbedder } from "mnemocyte/embedders";
+import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { describe, expect, test } from "vitest";
 
 describe("package exports", () => {
@@ -7,6 +8,7 @@ describe("package exports", () => {
 		expect(typeof createMnemocyte).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
 		expect(typeof openaiEmbedder).toBe("function");
+		expect(typeof directOpenAIEmbedder).toBe("function");
 
 		const client = createMnemocyte({
 			embedder: {

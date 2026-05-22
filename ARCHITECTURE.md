@@ -176,15 +176,17 @@ await client.close();
 ## Public Surface (0.1.x)
 
 The source of truth is `dist/index.d.mts` plus any exported subpath declaration
-files such as `dist/embedders/openai.d.mts`; this section is a fast index.
+files such as `dist/embedders/index.d.mts` and
+`dist/embedders/openai.d.mts`; this section is a fast index.
 
 **Factory**
 - `createMnemocyte(config: MnemocyteConfig): MnemocyteClient` — stable.
 
 **Embedder helpers**
-- `mnemocyte/embedders/openai`: `openaiEmbedder(options)` and
-  `OpenAIEmbedderOptions`. This helper uses direct `fetch` calls and does not
-  add an OpenAI SDK dependency.
+- `mnemocyte/embedders`: `openaiEmbedder(options)` and
+  `OpenAIEmbedderOptions` for editor-discoverable provider helpers.
+- `mnemocyte/embedders/openai`: the stable direct OpenAI helper subpath. This
+  helper uses direct `fetch` calls and does not add an OpenAI SDK dependency.
 
 **Errors**
 - `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).

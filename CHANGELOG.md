@@ -8,6 +8,13 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Embedder helper autocomplete.** Added a folder-level
+  `mnemocyte/embedders` package export so editors can discover
+  `openaiEmbedder` while preserving the existing
+  `mnemocyte/embedders/openai` subpath.
+
 ## [0.1.4] - 2026-05-21
 
 ### Added

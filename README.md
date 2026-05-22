@@ -88,7 +88,7 @@ const client = createMnemocyte({
 You can also use the optional OpenAI helper:
 
 ```ts
-import { openaiEmbedder } from "mnemocyte/embedders/openai";
+import { openaiEmbedder } from "mnemocyte/embedders";
 
 const embedder = openaiEmbedder({
   model: "text-embedding-3-small",
@@ -98,7 +98,8 @@ const embedder = openaiEmbedder({
 `openaiEmbedder()` reads `OPENAI_API_KEY` by default. Pass `apiKey`
 explicitly when you use a different key source. The helper uses `fetch`
 directly and does not depend on the OpenAI SDK; plain `import "mnemocyte"` also
-stays provider-free.
+stays provider-free. The direct subpath `mnemocyte/embedders/openai` is also
+supported for consumers that prefer provider-specific imports.
 
 ## Postgres
 

@@ -8,6 +8,8 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-05-22
+
 ### Fixed
 
 - **Embedder helper autocomplete.** Added a folder-level

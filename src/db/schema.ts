@@ -11,9 +11,13 @@ import {
 	timestamp,
 } from "drizzle-orm/pg-core";
 
-const vector = customType<{ data: number[]; driverData: string }>({
+const vector = customType<{
+	data: number[];
+	driverData: string;
+	config: { dimensions?: number };
+}>({
 	dataType(config) {
-		const dimensions = typeof config === "number" ? config : 1536;
+		const dimensions = config?.dimensions ?? 1536;
 		return `vector(${dimensions})`;
 	},
 	toDriver(value) {
@@ -89,7 +93,13 @@ export const eventsTable = pgTable(
 	],
 );
 
+export const metaTable = pgTable("mnemocyte_meta", {
+	key: text("key").primaryKey(),
+	embeddingDimensions: integer("embedding_dimensions").notNull(),
+});
+
 export type MemoryRow = typeof memoriesTable.$inferSelect;
 export type NewMemoryRow = typeof memoriesTable.$inferInsert;
 export type EventRow = typeof eventsTable.$inferSelect;
 export type NewEventRow = typeof eventsTable.$inferInsert;
+export type MetaRow = typeof metaTable.$inferSelect;

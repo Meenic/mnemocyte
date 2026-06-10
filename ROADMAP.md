@@ -40,14 +40,17 @@ while new feature design starts in `0.2.0`.
 
 ## `0.2.0` - Configurable Embedding Dimensions
 
-Make embedding dimensions an installation-level setting instead of a hardcoded
-1536-dimensional Postgres schema.
+The `0.2.0` implementation line makes embedding dimensions an
+installation-level setting instead of a hardcoded 1536-dimensional Postgres
+schema. The current working tree contains this line, but it should not be
+treated as released until validation and a versioned changelog entry are done.
 
 - Add `mnemocyte_meta` to store installation metadata, including
   `embedding_dimensions`.
-- Replace the hardcoded `vector(1536)` assumption with a migration path that can
-  create the selected vector dimension.
-- Validate `embedder.dimensions` against `mnemocyte_meta` on connect.
+- Replace the hardcoded `vector(1536)` assumption with a migration template and
+  renderer that can create the selected vector dimension.
+- Validate `embedder.dimensions` against `mnemocyte_meta` before Postgres
+  embedding operations call external embedders.
 - Keep one embedding dimension per installation. Mixed dimensions in one table
   remain out of scope until there is a separate retrieval design.
 - Document common dimensions for OpenAI, local, Cohere, Voyage, and Nomic-style
@@ -55,8 +58,45 @@ Make embedding dimensions an installation-level setting instead of a hardcoded
 - Provide an upgrade guide for existing `0.1.x` deployments, which remain on
   1536 unless the operator chooses a migration path.
 
-This milestone unblocks a broader range of embedding providers while preserving
-the core storage invariant that all comparable vectors share one dimension.
+When this milestone ships, keep only upgrade notes in release documentation and
+let the roadmap advance to v1 stabilization.
+
+## v1 Stabilization Criteria
+
+These items are the practical v1 gate. They should either be completed before
+v1 or explicitly documented as deferred limitations.
+
+Critical before v1:
+
+- Extract `MemoryStore` or an equivalent shared orchestration path so in-memory
+  and Postgres behavior cannot drift.
+- Ensure public memory and recall results never expose internal embedding
+  vectors.
+- Normalize expected database, migration, timeout, abort, and provider failures
+  through `MnemocyteError`.
+- Make provider timeouts actively abort underlying requests where the runtime
+  and helper support cancellation.
+- Split schema availability checks from embedding-dimension checks so
+  non-embedding recovery operations remain usable during migration repair.
+- Decide whether `rememberMany(inputs)` stays as the one positional-style method
+  or moves to an object-parameter shape before the API freezes.
+- Keep migration guidance explicit for default fresh installs, existing 0.1.x
+  installs, and custom-dimension fresh installs.
+
+Important but not blocking:
+
+- Add runtime validation around public inputs for JavaScript consumers.
+- Add retrieval evaluation fixtures that compare recall quality across vector,
+  lexical, and fused ranking changes.
+- Tighten package/release documentation around supported Node versions and npm
+  provenance or trusted publishing.
+
+Future considerations:
+
+- Multi-dimension storage in one database, likely through separate columns,
+  tables, or partitions.
+- OpenTelemetry adapters built on the current observability hook.
+- Additional provider packages if core subpaths become too crowded.
 
 ## `0.3.0` - `MemoryStore` Abstraction
 

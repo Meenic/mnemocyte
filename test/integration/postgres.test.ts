@@ -39,6 +39,10 @@ async function main(databaseUrl: string) {
 		resolve("migrations", "0000_initial.sql"),
 		"utf8",
 	);
+	const metaMigration = await readFile(
+		resolve("migrations", "0001_add_mnemocyte_meta.sql"),
+		"utf8",
+	);
 
 	try {
 		await sql.unsafe(migration);
@@ -53,6 +57,26 @@ async function main(databaseUrl: string) {
 		) {
 			throw error;
 		}
+	}
+	try {
+		await sql.unsafe(metaMigration);
+	} catch (error) {
+		if (
+			!(
+				error &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "42P07"
+			)
+		) {
+			throw error;
+		}
+		await sql`
+			INSERT INTO mnemocyte_meta (key, embedding_dimensions)
+			VALUES ('installation', 1536)
+			ON CONFLICT (key) DO UPDATE
+			SET embedding_dimensions = EXCLUDED.embedding_dimensions
+		`;
 	}
 
 	try {

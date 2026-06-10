@@ -1,8 +1,4 @@
-import {
-	createMnemocyte,
-	isMnemocyteError,
-	type MnemocyteObservation,
-} from "mnemocyte";
+import { createMnemocyte, type MnemocyteObservation } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError } from "../helpers.js";
 
@@ -67,30 +63,20 @@ describe("lifecycle", () => {
 			await expectClosed(() => client.stats());
 		}
 
-		// 3. createMnemocyte rejects a Postgres config with non-1536 embedder dims.
+		// 3. createMnemocyte keeps Postgres construction synchronous and defers
+		// schema validation until the first operation.
 		{
-			let thrown: unknown;
-			try {
-				createMnemocyte({
-					databaseUrl: "postgres://invalid:invalid@127.0.0.1:1/none",
-					embedder: {
-						model: "wrong-dims",
-						dimensions: 768,
-						async embed(texts) {
-							return texts.map(() => [0]);
-						},
+			const client = createMnemocyte({
+				databaseUrl: "postgres://invalid:invalid@127.0.0.1:1/none",
+				embedder: {
+					model: "custom-dims",
+					dimensions: 768,
+					async embed(texts) {
+						return texts.map(() => [0]);
 					},
-				});
-			} catch (error) {
-				thrown = error;
-			}
-			expect(thrown, "expected createMnemocyte to throw").toBeTruthy();
-			expect(isMnemocyteError(thrown)).toBe(true);
-			if (!isMnemocyteError(thrown)) {
-				throw thrown;
-			}
-			expect(thrown.code).toBe("CONFIG");
-			expect(thrown.message).toMatch(/1536/);
+				},
+			});
+			await client.close();
 		}
 
 		// 4. Observability still fires for close() and is then quiet for the rejected calls.

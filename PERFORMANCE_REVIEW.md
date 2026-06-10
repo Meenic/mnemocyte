@@ -17,6 +17,12 @@ release, the active roadmap moves to `0.2.0` configurable embedding dimensions
 before larger architecture work such as `MemoryStore`, `drizzleStore(db)`, and
 MCP.
 
+This file tracks performance only. The v1 architecture review also identified
+correctness and API-stability follow-ups, including public result mapping,
+timeout cancellation, database error wrapping, dimension-validation scope, and
+the planned `MemoryStore` boundary. Track those in `ARCHITECTURE.md`,
+`ROADMAP.md`, and `PROJECT_MEMORY.md`, not as performance backlog items.
+
 ## Active Priority List
 
 ### P1 - Database Hot Paths
@@ -99,15 +105,15 @@ MCP.
      non-transactional audit writes.
 
 7. **Reduce repeated context formatting/token counting**
-    - **Area:** Compute and allocation.
-    - **Current state:** `buildContext()` uses binary search over memory count,
-      but each probe slices arrays, formats the candidate context, and calls the
-      token counter.
-    - **Work:** Avoid repeated slices where easy, and consider prefix formatting
-      for markdown/plain outputs if benchmarks show real tokenizer cost.
-    - **Verification:** Context output snapshots remain identical for markdown,
-      plain, and XML.
-    - **Risk:** Low to medium. Formatting output must remain stable.
+   - **Area:** Compute and allocation.
+   - **Current state:** `buildContext()` uses binary search over memory count,
+     but each probe slices arrays, formats the candidate context, and calls the
+     token counter.
+   - **Work:** Avoid repeated slices where easy, and consider prefix formatting
+     for markdown/plain outputs if benchmarks show real tokenizer cost.
+   - **Verification:** Context output snapshots remain identical for markdown,
+     plain, and XML.
+   - **Risk:** Low to medium. Formatting output must remain stable.
 
 ## Completed or Downgraded Items
 

@@ -17,6 +17,7 @@ import {
 	pruneMemories,
 	setMemoryTags,
 } from "../db/queries/memories.js";
+import { getInstallationMeta } from "../db/queries/meta.js";
 import type { EventRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
@@ -91,6 +92,15 @@ function importanceCeilingLevels(
 	);
 }
 
+function hasPostgresErrorCode(error: unknown, code: string): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === code
+	);
+}
+
 function toPruneFilter(input: PruneInput): PruneFilter {
 	const filter: PruneFilter = {};
 	if (input.entityId !== undefined) {
@@ -125,11 +135,57 @@ export function createPostgresClient(
 	handle: DatabaseHandle,
 ): MnemocyteClient {
 	let closed = false;
+	let schemaValidated = false;
+	let schemaValidationPromise: Promise<void> | undefined;
 
 	function assertOpen(): void {
 		if (closed) {
 			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
 		}
+	}
+
+	async function ensureSchemaMatchesEmbedder(): Promise<void> {
+		if (schemaValidated) {
+			return;
+		}
+		if (!schemaValidationPromise) {
+			schemaValidationPromise = validateSchemaMatchesEmbedder().catch(
+				(error: unknown) => {
+					schemaValidationPromise = undefined;
+					throw error;
+				},
+			);
+		}
+		await schemaValidationPromise;
+	}
+
+	async function validateSchemaMatchesEmbedder(): Promise<void> {
+		let meta: Awaited<ReturnType<typeof getInstallationMeta>>;
+		try {
+			meta = await getInstallationMeta(handle.db);
+		} catch (error) {
+			if (hasPostgresErrorCode(error, "42P01")) {
+				throw new MnemocyteError(
+					"mnemocyte_meta is missing. Apply the v0.2.0 migration or render a dimension-specific initial migration before using the Postgres backend.",
+					"MIGRATION",
+					error,
+				);
+			}
+			throw error;
+		}
+		if (!meta) {
+			throw new MnemocyteError(
+				'mnemocyte_meta is missing the "installation" row. Apply the v0.2.0 migration or render a dimension-specific initial migration before using the Postgres backend.',
+				"MIGRATION",
+			);
+		}
+		if (meta.embeddingDimensions !== config.embedder.dimensions) {
+			throw new MnemocyteError(
+				`embedder.dimensions (${config.embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
+				"CONFIG",
+			);
+		}
+		schemaValidated = true;
 	}
 
 	async function recordAudit(
@@ -162,6 +218,7 @@ export function createPostgresClient(
 			async () => {
 				assertOpen();
 				validateRememberInput(input);
+				await ensureSchemaMatchesEmbedder();
 				const embedding = await embedOne(config.embedder, input.content, {
 					...(input.signal === undefined ? {} : { signal: input.signal }),
 					...(config.provider === undefined
@@ -218,6 +275,7 @@ export function createPostgresClient(
 					for (const input of inputs) {
 						validateRememberInput(input);
 					}
+					await ensureSchemaMatchesEmbedder();
 					const embeddings = await embedMany(
 						config.embedder,
 						inputs.map((i) => i.content),
@@ -280,6 +338,7 @@ export function createPostgresClient(
 						input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
 					assertLimit(limit);
 					assertMinScore(minScore);
+					await ensureSchemaMatchesEmbedder();
 					return hybridRecall({
 						db: handle.db,
 						embedder: config.embedder,
@@ -304,6 +363,7 @@ export function createPostgresClient(
 				{ entityId: input.entityId },
 				async () => {
 					assertOpen();
+					await ensureSchemaMatchesEmbedder();
 					return buildContext({
 						input,
 						recall: (contextInput) => {
@@ -328,6 +388,7 @@ export function createPostgresClient(
 					assertOpen();
 					assertNonEmptyString(input.entityId, "entityId");
 					assertNonEmptyString(input.memoryId, "memoryId");
+					await ensureSchemaMatchesEmbedder();
 					const deleted = await deleteMemory(
 						handle.db,
 						input.entityId,
@@ -351,6 +412,7 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					assertNonEmptyString(input.entityId, "entityId");
+					await ensureSchemaMatchesEmbedder();
 					const deletedCount = await deleteMemoriesForEntity(
 						handle.db,
 						input.entityId,
@@ -372,6 +434,7 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					validatePruneInput(input);
+					await ensureSchemaMatchesEmbedder();
 					const filter = toPruneFilter(input);
 					const dryRun = input.dryRun === true;
 					if (dryRun) {
@@ -402,6 +465,7 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					validateFindDuplicatesInput(input);
+					await ensureSchemaMatchesEmbedder();
 					const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
 					const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
 					const rows = await findDuplicatePairs(handle.db, {
@@ -435,6 +499,7 @@ export function createPostgresClient(
 				async () => {
 					assertOpen();
 					validateListAuditLogInput(input);
+					await ensureSchemaMatchesEmbedder();
 					const rows = await listEvents(handle.db, {
 						entityId: input.entityId,
 						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
@@ -454,6 +519,7 @@ export function createPostgresClient(
 				input?.entityId ? { entityId: input.entityId } : {},
 				async () => {
 					assertOpen();
+					await ensureSchemaMatchesEmbedder();
 					const now = new Date();
 					if (input?.entityId) {
 						const counts = await getEntityMemoryStatsCounts(
@@ -494,6 +560,7 @@ export function createPostgresClient(
 					async () => {
 						assertOpen();
 						validateConsolidateInput(input);
+						await ensureSchemaMatchesEmbedder();
 						const survivor = await getMemoryById(
 							handle.db,
 							input.entityId,

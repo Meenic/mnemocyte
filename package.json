@@ -46,6 +46,7 @@
 		"bench:retrieval": "vitest bench --project unit test/benchmarks/retrieval.bench.ts",
 		"lint": "biome lint --write",
 		"format": "biome format --write",
+		"migration:render": "node migrations/render-initial.mjs",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"pack:check": "pnpm pack --dry-run",

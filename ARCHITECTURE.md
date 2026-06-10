@@ -16,6 +16,12 @@ The current package is intentionally explicit: callers supply the embedder, the
 Postgres schema is applied through migrations, and the client does not hide
 infrastructure setup behind constructor side effects.
 
+The working tree includes the `0.2.0` configurable-dimensions line: Postgres
+installations use `mnemocyte_meta.embedding_dimensions` as installation
+metadata, the default 1536-dimensional install is represented by
+`0000_initial.sql` plus `0001_add_mnemocyte_meta.sql`, and custom fresh installs
+are rendered from `0000_initial.sql.template`.
+
 ## Goals
 
 - **Maintainability:** each module has one responsibility and clear boundaries.
@@ -42,17 +48,24 @@ infrastructure setup behind constructor side effects.
 
 ## Package Strategy
 
-Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The package ships:
+Mnemocyte remains ESM-only until there is a strong reason to dual-publish. The
+package ships:
 
-- `dist/` — built root and subpath `.mjs` / `.d.mts` files (and source maps) produced by `tsdown`.
-- `migrations/0000_initial.sql` — the only supported way to provision the Postgres schema.
+- `dist/` - built root and subpath `.mjs` / `.d.mts` files and source maps
+  produced by `tsdown`.
+- `migrations/0000_initial.sql` - the default 1536-dimensional Postgres schema
+  baseline for fresh installs.
+- `migrations/0001_add_mnemocyte_meta.sql` - the metadata migration that records
+  the default embedding dimensions for existing 0.1.x installs and default
+  fresh installs.
+- `migrations/0000_initial.sql.template` and `migrations/render-initial.mjs` -
+  the explicit custom-dimension fresh-install path.
 
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
-surface. After the current `openaiEmbedder()` helper, the planned order is
-configurable dimensions, `MemoryStore`, `drizzleStore(db)`, and then
-`@mnemocyte/mcp`.
+surface. After the configurable-dimensions line, the planned order is
+`MemoryStore`, `drizzleStore(db)`, and then `@mnemocyte/mcp`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -97,33 +110,33 @@ Before production, choose a stable Node target policy. `nodenext` is acceptable 
 
 ```text
 src/
-├── index.ts                  # public API re-exports only
-├── client.ts                 # createMnemocyte() factory + Postgres dim validation
-├── types.ts                  # public types
-├── errors.ts                 # MnemocyteError + isMnemocyteError
-├── observability.ts          # observe() helper that emits start/success/error events
-├── resilience.ts             # withResilience helper (timeout + retry + abort)
-│
-├── db/
-│   ├── index.ts              # postgres.js + drizzle setup (createDatabase)
-│   ├── schema.ts             # drizzle table definitions (memories + events)
-│   └── queries/
-│       ├── memories.ts       # memory CRUD, recall, prune, dedup, consolidate SQL
-│       └── events.ts         # audit-event CRUD
-│
-├── retrieval/
-│   ├── index.ts              # hybridRecall orchestration
-│   └── scorer.ts             # cosineSimilarity, lexical score, fused ranker
-│
-├── memory/
-│   ├── shared.ts             # validation, mapping, embedding helpers (single + batch)
-│   ├── in-memory.ts          # in-memory backend (with audit log array)
-│   └── postgres.ts           # Postgres-backed backend
-│
-└── context/
-    ├── builder.ts            # buildContext()
-    ├── formatter.ts          # safe markdown/plain/xml formatting
-    └── tokens.ts             # token counting abstraction
++-- index.ts                  # public API re-exports only
++-- client.ts                 # createMnemocyte() factory + backend selection
++-- types.ts                  # public types
++-- errors.ts                 # MnemocyteError + isMnemocyteError
++-- observability.ts          # observe() helper for start/success/error events
++-- resilience.ts             # withResilience helper (timeout/retry/caller abort)
++-- db/
+|   +-- index.ts              # postgres.js + drizzle setup (createDatabase)
+|   +-- schema.ts             # drizzle table definitions (memories, events, meta)
+|   +-- queries/
+|       +-- memories.ts       # memory CRUD, recall, prune, dedup, consolidate SQL
+|       +-- events.ts         # audit-event CRUD
+|       +-- meta.ts           # installation metadata reads
++-- embedders/
+|   +-- index.ts              # provider helper exports
+|   +-- openai.ts             # fetch-based OpenAI embeddings helper
++-- retrieval/
+|   +-- index.ts              # hybridRecall orchestration
+|   +-- scorer.ts             # cosineSimilarity, lexical score, fused ranker
++-- memory/
+|   +-- shared.ts             # validation, mapping, embedding helpers (single + batch)
+|   +-- in-memory.ts          # in-memory backend (with audit log array)
+|   +-- postgres.ts           # Postgres-backed backend
++-- context/
+    +-- builder.ts            # buildContext()
+    +-- formatter.ts          # safe markdown/plain/xml formatting
+    +-- tokens.ts             # token counting abstraction
 ```
 
 Embedder providers are deliberately represented by a small `Embedder`
@@ -137,6 +150,32 @@ required.
 
 Layering rule: lower-level modules must not import higher-level modules. For example, `db/` must not import from `memory/`, and `retrieval/` must not import from `context/`.
 
+## Current Architecture Assessment
+
+The strongest parts of the current architecture should stay: the root package is
+provider-free, schema setup is explicit, the public API is compact, typed errors
+exist, package exports are tested, and Postgres/pgvector is treated as
+infrastructure rather than hidden magic.
+
+The main pre-v1 weakness is that orchestration is duplicated between
+`memory/in-memory.ts` and `memory/postgres.ts`. Validation, embedding,
+resilience wrapping, audit behavior, result mapping, and lifecycle checks should
+be shared by a single core path, with storage-specific behavior behind the
+planned `MemoryStore` boundary. Until that boundary exists, small behavior drift
+between backends remains easy to introduce.
+
+Current unclear boundaries:
+
+- `memory/shared.ts` mixes validation, embedding helpers, row/result mapping,
+  and backend-specific knowledge.
+- `retrieval/scorer.ts` imports cloning from `memory/shared.ts`, which makes the
+  retrieval layer depend on memory-layer utilities.
+- Postgres query modules own both SQL shape and some public result-shaping
+  concerns.
+- Migration metadata validation currently protects write/recall paths, but the
+  same checks can also block non-embedding operations that should remain useful
+  during migration recovery.
+
 ## Public API Direction
 
 Use object parameters rather than positional APIs. This keeps the API evolvable before v1 without adding breaking positional arguments.
@@ -145,53 +184,57 @@ Use object parameters rather than positional APIs. This keeps the API evolvable 
 import { createMnemocyte } from "mnemocyte";
 
 const client = createMnemocyte({
-databaseUrl: process.env.DATABASE_URL!,
-embedder: {
-model: "text-embedding-3-small",
-dimensions: 1536,
-async embed(texts) {
-return embedWithProvider(texts);
-},
-},
+  databaseUrl: process.env.DATABASE_URL!,
+  embedder: {
+    model: "text-embedding-3-small",
+    dimensions: 1536,
+    async embed(texts) {
+      return embedWithProvider(texts);
+    },
+  },
 });
 
 await client.remember({
-entityId: "user_123",
-content: "Prefers short, direct answers.",
-type: "preference",
-source: "chat",
-confidence: 0.9,
+  entityId: "user_123",
+  content: "Prefers short, direct answers.",
+  type: "preference",
+  source: "chat",
+  confidence: 0.9,
 });
 
 const memories = await client.recall({
-entityId: "user_123",
-query: "How should I respond?",
-limit: 5,
-types: ["preference", "instruction"],
+  entityId: "user_123",
+  query: "How should I respond?",
+  limit: 5,
+  types: ["preference", "instruction"],
 });
 
 await client.close();
 ```
 
-## Public Surface (0.1.x)
+## Current Public Surface
 
 The source of truth is `dist/index.d.mts` plus any exported subpath declaration
 files such as `dist/embedders/index.d.mts` and
 `dist/embedders/openai.d.mts`; this section is a fast index.
 
 **Factory**
+
 - `createMnemocyte(config: MnemocyteConfig): MnemocyteClient` — stable.
 
 **Embedder helpers**
+
 - `mnemocyte/embedders`: `openaiEmbedder(options)` and
   `OpenAIEmbedderOptions` for editor-discoverable provider helpers.
 - `mnemocyte/embedders/openai`: the stable direct OpenAI helper subpath. This
   helper uses direct `fetch` calls and does not add an OpenAI SDK dependency.
 
 **Errors**
+
 - `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
 
 **Client (stable)**
+
 - `remember(input)` / `rememberMany(inputs)`
 - `recall(input)` — hybrid vector + lexical, with `RetrievalExplanation` when `explain: true`.
 - `buildContext(input)` — markdown / plain / xml with token-budget trimming.
@@ -203,12 +246,15 @@ files such as `dist/embedders/index.d.mts` and
 - `close()` — idempotent; further calls throw `"DB"`.
 
 **Client (experimental, gated under `client.experimental.*`)**
+
 - `experimental.consolidate(input)` — mark one or more memories as superseded by a survivor, with optional tag merge, idempotent for already-superseded losers, audited as `"memory.superseded"`.
 
 **Config**
-- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required, must be 1536-d for Postgres), `defaults?`, `retrieval?`, `observability?`, `provider?` (resilience), `audit?` (`{ enabled }`).
+
+- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required, must match `mnemocyte_meta.embedding_dimensions` for Postgres), `defaults?`, `retrieval?`, `observability?`, `provider?` (resilience), `audit?` (`{ enabled }`).
 
 **Types**
+
 - `Memory` (canonical record, includes `supersededBy` and `supersededAt`), `MemoryWithScore`, `RetrievalScores`, `RetrievalExplanation`, `EntityStats`, `GlobalStats`.
 - Input types: `RememberInput`, `RecallInput`, `BuildContextInput`, `PruneInput`, `FindDuplicatesInput`, `ListAuditLogInput`, `ConsolidateInput`.
 - Result types: `PruneResult`, `ConsolidateResult`.
@@ -217,6 +263,7 @@ files such as `dist/embedders/index.d.mts` and
 - Audit: `AuditConfig`, `AuditEvent`.
 
 **Escape hatches**
+
 - None. Internal helpers (`useDatabase`, `schema`, query builders) are not re-exported. If an unstable hatch is ever needed, expose it under `client.experimental.*`, never as a top-level export.
 
 ## Error Model
@@ -225,26 +272,31 @@ Use typed errors so consumers can recover from expected failures.
 
 ```ts
 export class MnemocyteError extends Error {
-constructor(
-message: string,
-readonly code:
-| "CONFIG"
-| "VALIDATION"
-| "DB"
-| "EMBEDDING"
-| "NOT_FOUND"
-| "MIGRATION"
-| "TIMEOUT"
-| "ABORTED",
-readonly cause?: unknown,
-) {
-super(message);
-this.name = "MnemocyteError";
-}
+  constructor(
+    message: string,
+    readonly code:
+      | "CONFIG"
+      | "VALIDATION"
+      | "DB"
+      | "EMBEDDING"
+      | "NOT_FOUND"
+      | "MIGRATION"
+      | "TIMEOUT"
+      | "ABORTED",
+    readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = "MnemocyteError";
+  }
 }
 ```
 
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"` covers both invalid embedder configuration and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call argument errors (including the explicit guard in `prune({})` and `consolidate({ supersededIds: [] })`).
+
+Known pre-v1 gap: `MnemocyteError` is the intended recovery boundary, but not
+every database/driver failure is wrapped consistently yet. Before v1, expected
+infrastructure failures should be normalized to `"DB"` or `"MIGRATION"` while
+preserving the original cause.
 
 ## Database Architecture
 
@@ -284,6 +336,14 @@ CREATE TABLE mnemocyte_events (
   metadata jsonb NOT NULL DEFAULT '{}',
   timestamp timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE mnemocyte_meta (
+  key text PRIMARY KEY,
+  embedding_dimensions integer NOT NULL
+);
+
+INSERT INTO mnemocyte_meta (key, embedding_dimensions)
+VALUES ('installation', 1536);
 ```
 
 ### Index Baseline
@@ -319,14 +379,20 @@ only after measuring tag-heavy queries in the target workload.
 
 ### Embedding Dimension Policy
 
-The current package supports one embedding dimension per installation. Store
-`embedding_model` and `embedding_dimensions` on every memory so mismatches are
-detectable and future migrations are possible.
+The current package supports one embedding dimension per installation.
+`mnemocyte_meta` is the installation-level source of truth for the configured
+dimension, and the Postgres client validates it against `embedder.dimensions`
+before write/recall paths call the embedder. Store `embedding_model` and
+`embedding_dimensions` on every memory so mismatches are detectable and future
+migrations are possible. Supporting multiple embedding dimensions in one
+database remains a later production feature, likely through separate columns,
+tables, or partitions.
 
-`0.2.0` should add `mnemocyte_meta` as the installation-level source of truth
-for the configured embedding dimension. Supporting multiple embedding
-dimensions in one database should remain a later production feature, likely
-through separate columns, tables, or partitions.
+Known pre-v1 gap: dimension validation is currently tied to backend operations
+more broadly than necessary. v1 should separate schema/migration availability
+checks from embedding-dimension checks so non-embedding operations such as
+cleanup, audit reads, or diagnostics can still run when an installation needs
+repair.
 
 ## Write Path
 
@@ -346,13 +412,13 @@ Retrieval uses a shared canonical filter object so vector and lexical paths cann
 
 ```ts
 export interface MemoryFilter {
-entityId: string;
-types?: MemoryType[];
-tags?: string[];
-before?: Date;
-after?: Date;
-includeSuperseded?: boolean;
-includeExpired?: boolean;
+  entityId: string;
+  types?: MemoryType[];
+  tags?: string[];
+  before?: Date;
+  after?: Date;
+  includeSuperseded?: boolean;
+  includeExpired?: boolean;
 }
 ```
 
@@ -412,7 +478,7 @@ Requirements:
 
 ```ts
 export interface TokenCounter {
-count(text: string): number;
+  count(text: string): number;
 }
 ```
 
@@ -426,17 +492,21 @@ already own pools or need runtime-specific Drizzle drivers.
 
 ## Production Concerns
 
-Before a production release, add:
+Before v1, finish or explicitly defer:
 
-- migration documentation
-- integration tests against Postgres + pgvector
-- package export smoke tests ✅
-- CI across supported Node versions ✅
-- provider timeouts and abort signals
-- retry/rate-limit handling for embedding providers
-- observability hooks ✅
-- typed errors ✅
-- safe deletion and pruning policy
+- one unambiguous migration guide for default installs, existing 0.1.x installs,
+  and custom-dimension fresh installs
+- a `MemoryStore` boundary or equivalent shared orchestration that removes
+  backend behavior drift
+- public result mapping that never leaks internal embedding vectors
+- timeout behavior that actively aborts provider requests where the runtime and
+  provider helper support cancellation
+- consistent `MnemocyteError` wrapping for expected database, migration, and
+  provider failures
+- runtime input validation for JavaScript consumers where TypeScript cannot help
+- package export smoke tests
+- Postgres + pgvector integration tests
+- CI across the supported Node range
 - retrieval evaluation fixtures
 - full-text/search and filtered-vector index guidance
 - npm provenance or trusted publishing workflow
@@ -454,18 +524,25 @@ The planned hardening slice is complete for the `0.1.4` release. Future
 
 ### `0.2.0` - Configurable Embedding Dimensions
 
+Status: implemented in the current working tree, with documentation and release
+verification still in progress. Do not describe this line as released until the
+versioned changelog entry and validation are complete.
+
 - Add `mnemocyte_meta` with installation metadata such as
   `embedding_dimensions`.
-- Parameterize the Postgres vector dimension instead of assuming
-  `vector(1536)`.
-- Validate the configured embedder against stored metadata on connect.
+- Parameterize the Postgres vector dimension through an explicit migration
+  template and renderer instead of assuming `vector(1536)`.
+- Validate the configured embedder against stored metadata before Postgres
+  embedding operations call the embedder.
 - Keep one vector dimension per installation.
 
-### `0.3.0` - `MemoryStore`
+### `0.3.0` - `MemoryStore` / v1 Stabilization
 
 - Extract storage primitives into a `MemoryStore` interface.
 - Move shared orchestration into one core path.
 - Reduce in-memory and Postgres backends to adapters.
+- Fix the known pre-v1 gaps around public result mapping, timeout cancellation,
+  database error wrapping, and dimension-validation scope.
 - Defer any third backend until this boundary exists.
 
 ### `0.4.0` - `drizzleStore(db)`
@@ -484,7 +561,20 @@ The planned hardening slice is complete for the `0.1.4` release. Future
 
 ## Known limitations
 
-- **Postgres embedding dimensionality is pinned to 1536.** The bundled migration creates `embedding vector(1536)`. `createMnemocyte` validates this up front and throws `MnemocyteError` code `"CONFIG"` before opening the connection pool, but the migration itself is not yet parameterized. `0.2.0` is planned to make this configurable with `mnemocyte_meta`.
+- **Postgres supports one embedding dimension per installation.** The default migration creates `embedding vector(1536)`, and custom dimensions must be rendered explicitly from the migration template. `createMnemocyte` stays synchronous; the Postgres client validates `embedder.dimensions` against `mnemocyte_meta` before the first storage operation.
+- **Backend orchestration is duplicated before `MemoryStore`.** The in-memory and
+  Postgres backends share helper functions, but each still owns its own
+  operation flow. Treat this as a v1 stabilization issue, not as a reason to add
+  more backends.
+- **Provider timeout cancellation is not fully active cancellation yet.** The
+  resilience layer can fail an operation with `"TIMEOUT"`, but provider helpers
+  should also abort the underlying request where possible before v1.
+- **Database error wrapping is not comprehensive yet.** Consumers should expect
+  typed `MnemocyteError` for documented validation/configuration failures, while
+  broader DB/driver normalization remains pre-v1 hardening.
+- **`rememberMany(inputs)` is the remaining positional-style public method.**
+  Decide before v1 whether to preserve it as-is or move it behind an
+  object-parameter shape.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
@@ -506,3 +596,9 @@ The planned hardening slice is complete for the `0.1.4` release. Future
 - [x] Add Postgres + pgvector integration tests.
 - [x] Add safe context formatting and token counting.
 - [x] Keep consolidation under `client.experimental.*` until it graduates.
+- [ ] Strip internal embedding vectors from all public in-memory results.
+- [ ] Split schema availability checks from embedding-dimension checks.
+- [ ] Actively abort provider requests on timeout where supported.
+- [ ] Wrap expected database and migration failures in `MnemocyteError`.
+- [ ] Decide the v1 shape for `rememberMany`.
+- [ ] Extract `MemoryStore` or equivalent shared orchestration before v1.

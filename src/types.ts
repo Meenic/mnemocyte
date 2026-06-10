@@ -154,7 +154,8 @@ export interface ProviderResilienceConfig {
 export interface MnemocyteConfig {
 	/**
 	 * Postgres connection string. When set, the client uses the Postgres
-	 * backend (requires the `pgvector` extension and the bundled migration).
+	 * backend (requires the `pgvector` extension and a rendered migration
+	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder).
 	 * When omitted, an in-memory backend is used.
 	 */
 	databaseUrl?: string;

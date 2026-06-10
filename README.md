@@ -16,7 +16,7 @@ logs, and duplicate-consolidation tools on top of your existing infrastructure.
 - Hybrid recall with vector similarity, lexical matching, recency, confidence,
   access count, and importance.
 - Prompt-ready context output in Markdown, plain text, or XML.
-- Provider timeouts, retries, and `AbortSignal` cancellation.
+- Provider retries, operation timeouts, and caller `AbortSignal` cancellation.
 - Pruning, duplicate detection, audit logs, and experimental consolidation.
 
 Mnemocyte is ESM-only. Use `import`, not CommonJS `require`.
@@ -103,8 +103,8 @@ supported for consumers that prefer provider-specific imports.
 
 ## Postgres
 
-For persistent storage, apply the bundled migration to a Postgres database with
-pgvector enabled, then pass `databaseUrl`.
+For persistent storage, enable pgvector in your Postgres database, apply the
+bundled migrations, then pass `databaseUrl`.
 
 ```ts
 const client = createMnemocyte({
@@ -117,13 +117,46 @@ The package includes:
 
 ```txt
 migrations/0000_initial.sql
+migrations/0001_add_mnemocyte_meta.sql
+migrations/0000_initial.sql.template
+migrations/render-initial.mjs
 ```
 
-The current Postgres schema uses `embedding vector(1536)`, so the Postgres
-backend currently requires a 1536-dimensional embedder.
+For the default 1536-dimensional schema on a fresh install, apply these in
+order:
 
-If dimensions do not match, `createMnemocyte` throws a `MnemocyteError` with
-code `"CONFIG"` before opening the connection pool.
+```txt
+migrations/0000_initial.sql
+migrations/0001_add_mnemocyte_meta.sql
+```
+
+For an existing 0.1.x Postgres install, apply
+`migrations/0001_add_mnemocyte_meta.sql` to record the current 1536-dimensional
+installation metadata.
+
+For a different embedding dimension on a fresh installation, render an explicit
+initial migration from the template and apply that rendered file instead of the
+default `0000_initial.sql`. The rendered initial migration includes the
+matching `mnemocyte_meta` row.
+
+```bash
+node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
+```
+
+Inside this repository, the equivalent development shortcut is:
+
+```bash
+pnpm migration:render -- --dimensions 768 --out migrations/0000_initial.768.sql
+```
+
+The Postgres backend supports one embedding dimension per installation. On the
+first Postgres operation, Mnemocyte reads `mnemocyte_meta` and validates it
+against `embedder.dimensions` before calling the embedder. A mismatch throws a
+`MnemocyteError` with code `"CONFIG"`; missing v0.2.0 metadata throws code
+`"MIGRATION"`.
+
+Use the embedding dimension documented for your chosen model, render or apply a
+matching schema, and keep one dimension per Mnemocyte installation.
 
 The migration creates the bundled HNSW pgvector index
 `mnemocyte_memories_embedding_hnsw_idx` for cosine search. HNSW is approximate:
@@ -141,7 +174,8 @@ add full-text or tag-specific GIN indexes yet; add and benchmark expression
 indexes such as `to_tsvector('english', content)` or tag-oriented indexes only
 when your workload needs them.
 
-Configurable embedding dimensions are planned for `0.2.0`.
+Existing 0.1.x deployments remain on 1536 unless you plan and run your own
+Postgres migration to a different pgvector dimension.
 
 ## API
 
@@ -266,6 +300,7 @@ VALIDATION
 CONFIG
 DB
 NOT_FOUND
+MIGRATION
 ```
 
 ## Retrieval Tuning
@@ -293,12 +328,40 @@ const client = createMnemocyte({
 
 Planned larger milestones:
 
-- configurable embedding dimensions with `mnemocyte_meta`
 - `MemoryStore` abstraction
 - `drizzleStore(db)` for caller-owned Drizzle clients
 - `@mnemocyte/mcp`
 
 See [ROADMAP.md](./ROADMAP.md).
+
+## Pre-v1 Notes
+
+Current behavior:
+
+- `createMnemocyte()` selects either the in-memory backend or the
+  Postgres/pgvector backend.
+- Postgres schema setup is explicit; the client does not create tables or
+  indexes for you.
+- `findDuplicates`, audit-log workflows, and `experimental.consolidate` are
+  available before v1 but still subject to API refinement.
+
+Known limitations before v1:
+
+- The two current backends share behavior by convention rather than through a
+  formal `MemoryStore` adapter boundary.
+- Configured provider timeouts fail the Mnemocyte operation with `"TIMEOUT"`;
+  actively aborting the underlying provider request on timeout remains a
+  pre-v1 hardening follow-up.
+- Postgres dimension metadata is installation-wide. Mixed embedding dimensions
+  in one database are intentionally out of scope for now.
+
+Planned v1 direction:
+
+- Extract a `MemoryStore` boundary so storage adapters own persistence while
+  shared core code owns validation, embedding, scoring, observability,
+  resilience, and context building.
+- Keep root `mnemocyte` imports provider-SDK-free.
+- Keep migrations, dimensions, and production index choices explicit.
 
 ## Development
 

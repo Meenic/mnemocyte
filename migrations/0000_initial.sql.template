@@ -1,0 +1,42 @@
+CREATE TABLE "mnemocyte_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"entity_id" text NOT NULL,
+	"description" text NOT NULL,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"timestamp" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "mnemocyte_meta" (
+	"key" text PRIMARY KEY NOT NULL,
+	"embedding_dimensions" integer NOT NULL
+);
+--> statement-breakpoint
+INSERT INTO "mnemocyte_meta" ("key", "embedding_dimensions") VALUES ('installation', {{EMBEDDING_DIMENSIONS}});
+--> statement-breakpoint
+CREATE TABLE "mnemocyte_memories" (
+	"id" text PRIMARY KEY NOT NULL,
+	"entity_id" text NOT NULL,
+	"content" text NOT NULL,
+	"type" text DEFAULT 'fact' NOT NULL,
+	"importance" text DEFAULT 'normal' NOT NULL,
+	"tags" text[] DEFAULT '{}'::text[] NOT NULL,
+	"source" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"confidence" real DEFAULT 1 NOT NULL,
+	"embedding" vector({{EMBEDDING_DIMENSIONS}}),
+	"embedding_model" text NOT NULL,
+	"embedding_dimensions" integer NOT NULL,
+	"superseded_by" text,
+	"superseded_at" timestamp with time zone,
+	"expires_at" timestamp with time zone,
+	"last_accessed_at" timestamp with time zone,
+	"access_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "mnemocyte_events_entity_time_idx" ON "mnemocyte_events" USING btree ("entity_id","timestamp");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_entity_idx" ON "mnemocyte_memories" USING btree ("entity_id");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_entity_type_idx" ON "mnemocyte_memories" USING btree ("entity_id","type");--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_embedding_hnsw_idx" ON "mnemocyte_memories" USING hnsw ("embedding" vector_cosine_ops);

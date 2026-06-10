@@ -8,6 +8,25 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable Postgres embedding dimensions.** Added
+  `mnemocyte_meta.embedding_dimensions` as installation metadata via
+  `0001_add_mnemocyte_meta.sql`, plus a dimension-rendered initial migration
+  template and `pnpm migration:render` tooling for explicit custom pgvector
+  schemas.
+
+### Changed
+
+- **Postgres dimension validation is metadata-backed.** `createMnemocyte`
+  stays synchronous and no longer hard-rejects non-1536 Postgres embedders.
+  The Postgres client validates `embedder.dimensions` against
+  `mnemocyte_meta` before storage operations, and write/recall paths validate
+  before calling external embedders.
+- **v1 planning docs are clearer.** README, architecture notes, roadmap,
+  project memory, and performance notes now separate current behavior, known
+  pre-v1 limitations, planned v1 work, and future considerations.
+
 ## [0.1.5] - 2026-05-22
 
 ### Fixed
@@ -23,7 +42,7 @@ behavioural changes documented in their entries.
 
 - **Official OpenAI embedder helper.** Added
   `mnemocyte/embedders/openai` with `openaiEmbedder({ apiKey, model,
-  dimensions? })`, `OPENAI_API_KEY` defaulting, `AbortSignal` forwarding,
+dimensions? })`, `OPENAI_API_KEY` defaulting, `AbortSignal` forwarding,
   known OpenAI embedding dimensions, and package export/type coverage.
 
 ### Changed
@@ -152,16 +171,16 @@ coherent surface.
   `maxImportance`, with `dryRun` preview. Rejects `prune({})` with code
   `"VALIDATION"` to avoid accidental full deletion.
 - **`client.findDuplicates(input)`**: read-only pairwise cosine scan,
-  threshold + limit + filters, returns `DuplicatePair[]`. *Experimental.*
+  threshold + limit + filters, returns `DuplicatePair[]`. _Experimental._
 - **`client.listAuditLog(input)`** + **`MnemocyteConfig.audit.enabled`**:
   opt-in audit log of state changes, persisted to `mnemocyte_events` (or
   an in-memory array). Slugs: `"memory.created"`, `"memory.deleted"`,
   `"entity.cleared"`, `"memory.pruned"`, `"memory.superseded"`.
-  *Experimental.*
+  _Experimental._
 - **`client.experimental.consolidate(input)`**: mark loser memories as
   superseded by a survivor; idempotent for already-superseded losers;
   optional tag merge; emits `"memory.superseded"` audit events.
-  *Experimental.*
+  _Experimental._
 - **Public types**: `ProviderResilienceConfig`, `PruneInput`,
   `PruneResult`, `FindDuplicatesInput`, `DuplicatePair`, `AuditConfig`,
   `AuditEvent`, `ListAuditLogInput`, `ConsolidateInput`,
@@ -252,7 +271,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Meenic/mnemocyte/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Meenic/mnemocyte/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Meenic/mnemocyte/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Meenic/mnemocyte/compare/v0.1.1...v0.1.2

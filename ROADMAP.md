@@ -39,10 +39,10 @@ The planned `0.1.x` hardening slice is complete for the `0.1.4` release. Future
 
 ## `0.2.0` - Configurable Embedding Dimensions
 
-The `0.2.0` implementation line makes embedding dimensions an
+The `0.2.0` implementation line made embedding dimensions an
 installation-level setting instead of a hardcoded 1536-dimensional Postgres
-schema. The package metadata and changelog are staged for this release; manual
-publication remains a maintainer action.
+schema. This release is published; keep new planning focused on v1
+stabilization.
 
 - Add `mnemocyte_meta` to store installation metadata, including
   `embedding_dimensions`.
@@ -57,8 +57,8 @@ publication remains a maintainer action.
 - Provide an upgrade guide for existing `0.1.x` deployments, which remain on
   1536 unless the operator chooses a migration path.
 
-After publication, keep only upgrade notes in release documentation and let the
-roadmap advance to v1 stabilization.
+Keep only upgrade notes in release documentation and let the roadmap advance to
+v1 stabilization.
 
 ## v1 Stabilization Criteria
 

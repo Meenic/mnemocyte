@@ -2,19 +2,16 @@
 
 ## Current State
 
-- Package `v0.1.4` has been published.
+- Package `v0.2.0` has been published and tagged.
 - Package `v0.1.5` is the previous patch baseline for embedder export
   discoverability.
-- The local tree is release-prepped as `v0.2.0` for configurable Postgres
-  embedding dimensions. Manual publication remains a maintainer action.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
-- `CHANGELOG.md` has a `0.1.4` section dated `2026-05-21` for the current
-  HNSW/index docs, `openaiEmbedder()` subpath export, direct-fetch OpenAI
-  implementation, and retry-status heuristic changes.
+- `CHANGELOG.md` has a `0.2.0` section dated `2026-06-10` for configurable
+  Postgres embedding dimensions and the related migration/documentation work.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.1.x` as maintenance after `0.1.4`; the next
-  feature line is `0.3.0` `MemoryStore` / v1 stabilization.
+- The current roadmap treats `0.2.0` as published; the next feature line is
+  `0.3.0` `MemoryStore` / v1 stabilization.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -85,31 +82,14 @@ Documentation follow-ups:
 - Move shipped roadmap items into `CHANGELOG.md` instead of letting the roadmap
   become release history.
 
-## Release Notes
+## Release Status
 
-For the staged `0.2.0` release:
-
-1. Review the staged `CHANGELOG.md` `0.2.0` section and `package.json`
-   version.
-2. Run the verification commands above.
-3. Commit the release changes.
-4. Create the version tag.
-5. Push branch and tags together:
-
-```sh
-git push --follow-tags origin HEAD
-```
-
-6. Publish:
-
-```sh
-pnpm publish
-```
+`v0.2.0` is published. Track changes after `v0.2.0` under the
+`CHANGELOG.md` `[Unreleased]` section and follow `AGENTS.md` release guidance
+when cutting the next version.
 
 ## Suggested Next Steps
 
-- Review, commit, tag, and publish the staged `0.2.0` configurable
-  embedding-dimensions release.
-- Start the `0.3.0` `MemoryStore` / v1 stabilization line after release.
+- Start the `0.3.0` `MemoryStore` / v1 stabilization line.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

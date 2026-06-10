@@ -3,17 +3,18 @@
 ## Current State
 
 - Package `v0.1.4` has been published.
-- Package `v0.1.5` is the current patch baseline for embedder export
+- Package `v0.1.5` is the previous patch baseline for embedder export
   discoverability.
-- `0.2.0` work is in progress for configurable Postgres embedding dimensions.
+- The local tree is release-prepped as `v0.2.0` for configurable Postgres
+  embedding dimensions. Manual publication remains a maintainer action.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
 - `CHANGELOG.md` has a `0.1.4` section dated `2026-05-21` for the current
   HNSW/index docs, `openaiEmbedder()` subpath export, direct-fetch OpenAI
   implementation, and retry-status heuristic changes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.1.x` as maintenance after `0.1.4`; the active
-  feature line is `0.2.0` configurable embedding dimensions.
+- The current roadmap treats `0.1.x` as maintenance after `0.1.4`; the next
+  feature line is `0.3.0` `MemoryStore` / v1 stabilization.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -86,20 +87,20 @@ Documentation follow-ups:
 
 ## Release Notes
 
-For the next release:
+For the staged `0.2.0` release:
 
-1. Move entries from `CHANGELOG.md` `[Unreleased]` into a new version section.
-2. Update the package version.
-3. Run the verification commands above.
-4. Commit the release changes.
-5. Create the version tag.
-6. Push branch and tags together:
+1. Review the staged `CHANGELOG.md` `0.2.0` section and `package.json`
+   version.
+2. Run the verification commands above.
+3. Commit the release changes.
+4. Create the version tag.
+5. Push branch and tags together:
 
 ```sh
 git push --follow-tags origin HEAD
 ```
 
-7. Publish:
+6. Publish:
 
 ```sh
 pnpm publish
@@ -107,8 +108,8 @@ pnpm publish
 
 ## Suggested Next Steps
 
-- Run `pnpm run test:integration` when a compatible local Postgres + pgvector
-  database is available.
-- Finish and verify the `0.2.0` configurable embedding-dimensions release.
+- Review, commit, tag, and publish the staged `0.2.0` configurable
+  embedding-dimensions release.
+- Start the `0.3.0` `MemoryStore` / v1 stabilization line after release.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

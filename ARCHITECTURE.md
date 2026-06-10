@@ -16,11 +16,12 @@ The current package is intentionally explicit: callers supply the embedder, the
 Postgres schema is applied through migrations, and the client does not hide
 infrastructure setup behind constructor side effects.
 
-The working tree includes the `0.2.0` configurable-dimensions line: Postgres
-installations use `mnemocyte_meta.embedding_dimensions` as installation
-metadata, the default 1536-dimensional install is represented by
-`0000_initial.sql` plus `0001_add_mnemocyte_meta.sql`, and custom fresh installs
-are rendered from `0000_initial.sql.template`.
+The current package metadata and changelog are staged for the `0.2.0`
+configurable-dimensions line: Postgres installations use
+`mnemocyte_meta.embedding_dimensions` as installation metadata, the default
+1536-dimensional install is represented by `0000_initial.sql` plus
+`0001_add_mnemocyte_meta.sql`, and custom fresh installs are rendered from
+`0000_initial.sql.template`.
 
 ## Goals
 
@@ -524,9 +525,8 @@ The planned hardening slice is complete for the `0.1.4` release. Future
 
 ### `0.2.0` - Configurable Embedding Dimensions
 
-Status: implemented in the current working tree, with documentation and release
-verification still in progress. Do not describe this line as released until the
-versioned changelog entry and validation are complete.
+Status: staged for the `0.2.0` release in package metadata and
+`CHANGELOG.md`. Manual publication remains a maintainer action.
 
 - Add `mnemocyte_meta` with installation metadata such as
   `embedding_dimensions`.

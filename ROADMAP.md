@@ -30,8 +30,7 @@ auth, model provider, and runtime boundaries.
 ## `0.1.x` - Maintenance
 
 The planned `0.1.x` hardening slice is complete for the `0.1.4` release. Future
-`0.1.x` work should be limited to critical fixes or documentation corrections
-while new feature design starts in `0.2.0`.
+`0.1.x` work should be limited to critical fixes or documentation corrections.
 
 - Keep package docs aligned with the shipped surface.
 - Keep provider adapters dependency-light; provider SDKs should not enter the
@@ -42,8 +41,8 @@ while new feature design starts in `0.2.0`.
 
 The `0.2.0` implementation line makes embedding dimensions an
 installation-level setting instead of a hardcoded 1536-dimensional Postgres
-schema. The current working tree contains this line, but it should not be
-treated as released until validation and a versioned changelog entry are done.
+schema. The package metadata and changelog are staged for this release; manual
+publication remains a maintainer action.
 
 - Add `mnemocyte_meta` to store installation metadata, including
   `embedding_dimensions`.
@@ -58,8 +57,8 @@ treated as released until validation and a versioned changelog entry are done.
 - Provide an upgrade guide for existing `0.1.x` deployments, which remain on
   1536 unless the operator chooses a migration path.
 
-When this milestone ships, keep only upgrade notes in release documentation and
-let the roadmap advance to v1 stabilization.
+After publication, keep only upgrade notes in release documentation and let the
+roadmap advance to v1 stabilization.
 
 ## v1 Stabilization Criteria
 

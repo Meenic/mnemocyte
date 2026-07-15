@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 13/16 items closed; documenting deferred behavior decisions.
+**Checkpoint:** 14/16 items closed; documenting tuning-validation decisions.
 
 ## Validation contract
 
@@ -194,11 +194,6 @@ the main architecture status agree that 0.2.0 is published and the internal
   events, and the buffer is cleared alongside memories. All required gates
   passed (18 test files/40 tests, with the database scenario skipped because
   `DATABASE_URL` is absent).
-- [ ] **BUG-01 (med): Decide `rememberMany` cancellation semantics.** Each
-  `RememberInput` accepts a signal, but the batch call forwards only the first
-  input's signal to the single embedder request. Record a reproduction and
-  recommendation in the bug/human-input trackers rather than changing a public
-  contract during cleanup.
 - [ ] **BUG-02 (med): Define runtime tuning validation.** Zero/negative
   `maxTokens`, non-positive recency/access settings, negative/non-finite
   weights, and invalid candidate multipliers can produce ignored budgets,
@@ -264,6 +259,8 @@ clean; no lint/type suppressions or prohibited test assertions exist.
 
 ## Deferred
 
-Items will move here only after `BUGS_FOUND.md` and/or
-`NEEDS_HUMAN_INPUT.md` contains the concrete reproduction, recommendation, and
-one-line reason the decision exceeds a behavior-preserving cleanup pass.
+- [x] **BUG-01 (med): Decide `rememberMany` cancellation semantics — Deferred.**
+  Per-item versus batch-level cancellation changes the public contract; the
+  reproduction and recommendation are recorded in `BUGS_FOUND.md` and
+  `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
+  with the database scenario skipped because `DATABASE_URL` is absent).

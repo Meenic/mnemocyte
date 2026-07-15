@@ -18,8 +18,8 @@ import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
  *
  * @param config - Client configuration. {@link MnemocyteConfig.embedder} is required.
  * @returns A {@link MnemocyteClient} instance.
- * @throws {MnemocyteError} With code `"CONFIG"` if `embedder` is missing or
- * invalid, or `"VALIDATION"` if `databaseUrl` is provided but empty.
+ * @throws {MnemocyteError} With code `"CONFIG"` if `embedder` or the database
+ * URL is malformed, or `"VALIDATION"` if `databaseUrl` is explicitly empty.
  *
  * @example Postgres-backed client
  * ```ts
@@ -31,7 +31,7 @@ import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
  */
 export function createMnemocyte(config: MnemocyteConfig): MnemocyteClient {
 	assertEmbedder(config.embedder);
-	if (config.databaseUrl) {
+	if (config.databaseUrl !== undefined) {
 		assertNonEmptyString(config.databaseUrl, "databaseUrl");
 		return createPostgresClient(config, createDatabase(config.databaseUrl));
 	}

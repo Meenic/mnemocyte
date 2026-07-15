@@ -37,12 +37,13 @@ export interface StoredMemory extends Memory {
 	embedding: number[];
 }
 
-export function assertNonEmptyString(value: string, field: string): void {
-	if (value.trim().length === 0) {
-		throw new MnemocyteError(
-			`${field} must be a non-empty string.`,
-			"VALIDATION",
-		);
+export function assertNonEmptyString(
+	value: unknown,
+	field: string,
+	code: "CONFIG" | "VALIDATION" = "VALIDATION",
+): asserts value is string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new MnemocyteError(`${field} must be a non-empty string.`, code);
 	}
 }
 
@@ -68,7 +69,7 @@ export function assertEmbedder(embedder: Embedder): void {
 			"CONFIG",
 		);
 	}
-	assertNonEmptyString(embedder.model, "embedder.model");
+	assertNonEmptyString(embedder.model, "embedder.model", "CONFIG");
 	if (!Number.isInteger(embedder.dimensions) || embedder.dimensions < 1) {
 		throw new MnemocyteError(
 			"embedder.dimensions must be a positive integer.",

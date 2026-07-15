@@ -1,5 +1,6 @@
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { MnemocyteError } from "../errors.js";
 import * as schema from "./schema.js";
 
 export type MnemocyteDatabase = PostgresJsDatabase<typeof schema>;
@@ -38,7 +39,16 @@ function parseSslFromUrl(url: URL): ValidPostgresSsl | undefined {
 }
 
 export function createDatabase(databaseUrl: string): DatabaseHandle {
-	const url = new URL(databaseUrl);
+	let url: URL;
+	try {
+		url = new URL(databaseUrl);
+	} catch (error) {
+		throw new MnemocyteError(
+			"databaseUrl must be a valid Postgres connection URL.",
+			"CONFIG",
+			error,
+		);
+	}
 	const ssl = parseSslFromUrl(url);
 
 	const isPooler =

@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 2/16 items closed; working on configuration error normalization.
+**Checkpoint:** 3/16 items closed; working on the lint/format CI gate.
 
 ## Validation contract
 
@@ -146,12 +146,15 @@ the main architecture status agree that 0.2.0 is published and the internal
   Resolved with single/batch regression tests and finite-component validation;
   `checktypes`, `lint`, `test` (15 files/31 tests), `build`, `pack:check`, and
   the environment-gated integration project all passed.
-- [ ] **ERR-02 (med): Normalize client configuration errors.** An explicitly
+- [x] **ERR-02 (med): Normalize client configuration errors.** An explicitly
   empty `databaseUrl` currently selects the in-memory backend despite the
   documented validation error; a malformed URL leaks native `TypeError`; and an
   empty `embedder.model` is categorized as `VALIDATION` although malformed
   embedder configuration is documented as `CONFIG`. Add regression tests and
   preserve synchronous construction.
+  Resolved with three failing-first regression cases and typed synchronous
+  validation; all required gates passed (16 test files/34 tests, with the
+  database scenario skipped because `DATABASE_URL` is absent).
 - [ ] **ERR-03 (low): Clear the in-memory audit buffer on close.** The in-memory
   store clears memories but retains its audit array after the client is closed,
   unnecessarily retaining metadata for the remaining client lifetime.

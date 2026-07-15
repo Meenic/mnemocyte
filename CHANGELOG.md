@@ -28,6 +28,9 @@ behavioural changes documented in their entries.
 - **Invalid embedding components fail before storage.** Single and batched
   embedder output now rejects `NaN` and infinite vector values with error code
   `"EMBEDDING"` before either backend can persist them.
+- **Client configuration failures are consistently typed.** Explicitly empty
+  database URLs fail with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`,
+  and malformed embedder models remain in the `"CONFIG"` category.
 - **In-memory results no longer leak embeddings.** Public `Memory`,
   `MemoryWithScore`, and duplicate-pair results are mapped through explicit
   public-memory clones that omit internal vectors at runtime.

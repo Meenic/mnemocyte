@@ -295,7 +295,11 @@ export class MnemocyteError extends Error {
 }
 ```
 
-`"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"` covers both invalid embedder configuration and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call argument errors (including the explicit guard in `prune({})` and `consolidate({ supersededIds: [] })`).
+`"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
+covers invalid embedder/database URL configuration and the Postgres-backend
+dimensionality check; `"VALIDATION"` covers per-call argument errors (including
+the explicit guard in `prune({})` and `consolidate({ supersededIds: [] })`) plus
+an explicitly empty `databaseUrl`.
 
 Known pre-v1 gap: `MnemocyteError` is the intended recovery boundary, but not
 every database/driver failure is wrapped consistently yet. Before v1, expected

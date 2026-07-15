@@ -12,8 +12,8 @@ import {
 	insertMemories as insertMemoryRows,
 	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
+	markMemoriesAccessed,
 	markMemoriesSuperseded,
-	markMemoryAccessed,
 	type PruneFilter,
 	pruneMemories,
 	setMemoryTags,
@@ -256,7 +256,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		},
 		async markMemoriesAccessed(memoryIds) {
 			return runPostgresOperation(() =>
-				markMemoryAccessed(handle.db, memoryIds),
+				markMemoriesAccessed(handle.db, memoryIds),
 			);
 		},
 		async deleteMemory(entityId, memoryId) {

@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 6/16 items closed; working on internal naming consistency.
+**Checkpoint:** 7/16 items closed; working on pgvector serialization deduplication.
 
 ## Validation contract
 
@@ -68,10 +68,13 @@ are thin, and tests mirror product areas. New Postgres SQL belongs under
 
 ## Naming & consistency
 
-- [ ] **NAM-01 (low): Make the batch access-update query name plural.**
+- [x] **NAM-01 (low): Make the batch access-update query name plural.**
   `markMemoryAccessed(db, memoryIds)` updates multiple records while the
   `MemoryStore` method and caller use `markMemoriesAccessed`; align the internal
   query name with its actual cardinality.
+  Renamed the private Postgres query and its adapter import; all required gates
+  passed (16 test files/34 tests, with the database scenario skipped because
+  `DATABASE_URL` is absent).
 
 Evidence checked: public APIs consistently use object parameters except the
 documented `rememberMany(inputs)` compatibility exception; types use

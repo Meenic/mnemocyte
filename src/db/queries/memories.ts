@@ -486,7 +486,7 @@ export async function setMemoryTags(
 		);
 }
 
-export async function markMemoryAccessed(
+export async function markMemoriesAccessed(
 	db: MnemocyteDatabase,
 	memoryIds: readonly string[],
 ): Promise<void> {

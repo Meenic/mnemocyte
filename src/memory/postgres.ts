@@ -28,7 +28,6 @@ import type {
 	EntityStats,
 	GlobalStats,
 	ImportanceLevel,
-	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
 	PruneInput,

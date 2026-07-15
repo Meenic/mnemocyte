@@ -76,10 +76,6 @@ export function createLexicalScorer(
 	return (content) => lexicalScoreWithTerms(content, terms);
 }
 
-export function lexicalScore(content: string, query: string): number {
-	return lexicalScoreWithTerms(content, tokenizeQuery(query));
-}
-
 function clampScore(value: number): number {
 	if (!Number.isFinite(value)) {
 		return 0;
@@ -207,20 +203,4 @@ export function toScoredMemoryWithConfig(
 				}
 			: null,
 	};
-}
-
-export function toScoredMemory(
-	memory: Memory,
-	vector: number,
-	lexical: number,
-	input: RecallInput,
-	config?: RetrievalConfig,
-): MemoryWithScore {
-	return toScoredMemoryWithConfig(
-		memory,
-		vector,
-		lexical,
-		input,
-		createScoringConfig(config),
-	);
 }

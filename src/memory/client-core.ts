@@ -41,11 +41,7 @@ import {
 	validateRecallInput,
 	validateRememberInput,
 } from "./shared.js";
-import type {
-	MemoryStore,
-	StoreLexicalCandidate,
-	StoreVectorCandidate,
-} from "./store.js";
+import type { MemoryStore } from "./store.js";
 
 interface ScoredCandidate {
 	memory: Memory;

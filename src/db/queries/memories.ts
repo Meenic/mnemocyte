@@ -3,7 +3,6 @@ import {
 	count,
 	countDistinct,
 	eq,
-	gt,
 	inArray,
 	isNotNull,
 	isNull,
@@ -11,7 +10,6 @@ import {
 	or,
 	sql,
 } from "drizzle-orm";
-import { MnemocyteError } from "../../errors.js";
 import type { ImportanceLevel, MemoryType } from "../../types.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
@@ -141,34 +139,6 @@ function emptyMemoryStatsCounts(): MemoryStatsCounts {
 	};
 }
 
-function filterConditions(filter: MemoryFilter) {
-	return and(
-		eq(memoriesTable.entityId, filter.entityId),
-		filter.includeSuperseded ? undefined : isNull(memoriesTable.supersededBy),
-		filter.includeExpired
-			? undefined
-			: sql`(${memoriesTable.expiresAt} IS NULL OR ${memoriesTable.expiresAt} > now())`,
-		filter.types && filter.types.length > 0
-			? inArray(memoriesTable.type, [...filter.types])
-			: undefined,
-		tagsContainAll(filter.tags),
-		filter.before ? lt(memoriesTable.createdAt, filter.before) : undefined,
-		filter.after ? gt(memoriesTable.createdAt, filter.after) : undefined,
-	);
-}
-
-export async function insertMemory(
-	db: MnemocyteDatabase,
-	row: NewMemoryRow,
-): Promise<MemoryRow> {
-	const result = await db.insert(memoriesTable).values(row).returning();
-	const inserted = result[0];
-	if (!inserted) {
-		throw new MnemocyteError("Memory insert returned no rows.", "DB");
-	}
-	return inserted;
-}
-
 export async function insertMemories(
 	db: MnemocyteDatabase,
 	rows: NewMemoryRow[],
@@ -192,13 +162,6 @@ export async function getMemoryById(
 		)
 		.limit(1);
 	return result[0] ?? null;
-}
-
-export async function listMemories(
-	db: MnemocyteDatabase,
-	filter: MemoryFilter,
-): Promise<MemoryRow[]> {
-	return db.select().from(memoriesTable).where(filterConditions(filter));
 }
 
 export async function getEntityMemoryStatsCounts(

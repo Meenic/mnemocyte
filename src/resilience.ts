@@ -15,16 +15,6 @@ const DEFAULT_BASE_DELAY_MS = 100;
 const DEFAULT_MAX_DELAY_MS = 2000;
 
 /**
- * Internal helper: returns the AbortSignal as a typed value if available,
- * otherwise `undefined`. Used so call sites can stay narrow.
- */
-export function getSignal(
-	source: { signal?: AbortSignal } | undefined,
-): AbortSignal | undefined {
-	return source?.signal;
-}
-
-/**
  * Throw a {@link MnemocyteError} with code `"ABORTED"` if `signal` is
  * already aborted. Safe to call with `undefined`.
  */

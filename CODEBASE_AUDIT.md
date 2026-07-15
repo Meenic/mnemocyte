@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 3/16 items closed; working on the lint/format CI gate.
+**Checkpoint:** 4/16 items closed; working on the lint/format CI gate.
 
 ## Validation contract
 
@@ -74,12 +74,16 @@ follow stable camelCase/PascalCase conventions.
 
 ## Duplication & dead code
 
-- [ ] **DED-01 (med): Remove confirmed orphaned internal helpers and imports.**
+- [x] **DED-01 (med): Remove confirmed orphaned internal helpers and imports.**
   Repository-wide reference counts find no callers for `getSignal`,
   `insertMemory`, `listMemories`, `deleteEventsForEntity`, the standalone
   `lexicalScore`, or `toScoredMemory`. The first migration-store refactor also
   left two unused candidate imports and one unused `Memory` import. None are
   exported from the package root or its embedder subpaths.
+  Removed the helpers, their cascading private filter, and unused imports after
+  a repository-wide reference check; all required gates passed (16 test
+  files/34 tests, with the database scenario skipped because `DATABASE_URL` is
+  absent).
 - [ ] **DED-02 (low): Centralize pgvector component serialization.**
   `formatVectorComponent` is duplicated byte-for-byte in `db/schema.ts` and
   `db/queries/memories.ts`. Move it to a focused database utility and add direct

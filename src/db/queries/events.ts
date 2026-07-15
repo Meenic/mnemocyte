@@ -39,14 +39,3 @@ export async function listEvents(
 		.orderBy(desc(eventsTable.timestamp))
 		.limit(filter.limit ?? 50);
 }
-
-export async function deleteEventsForEntity(
-	db: MnemocyteDatabase,
-	entityId: string,
-): Promise<number> {
-	const result = await db
-		.delete(eventsTable)
-		.where(eq(eventsTable.entityId, entityId))
-		.returning({ id: eventsTable.id });
-	return result.length;
-}

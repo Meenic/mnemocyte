@@ -13,6 +13,7 @@ import {
 import type { ImportanceLevel, MemoryType } from "../../types.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
+import { formatVectorComponent } from "../vector.js";
 
 export interface MemoryFilter {
 	entityId: string;
@@ -48,13 +49,6 @@ export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
 
 function vectorLiteral(embedding: readonly number[]): string {
 	return `[${embedding.map(formatVectorComponent).join(",")}]`;
-}
-
-function formatVectorComponent(value: number): string {
-	if (!Number.isFinite(value)) {
-		throw new Error("Vector values must be finite numbers.");
-	}
-	return Object.is(value, -0) ? "0" : value.toFixed(17);
 }
 
 type RawTimestamp = Date | string;

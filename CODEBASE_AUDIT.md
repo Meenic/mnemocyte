@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 7/16 items closed; working on pgvector serialization deduplication.
+**Checkpoint:** 8/16 items closed; working on benchmark migration setup.
 
 ## Validation contract
 
@@ -93,10 +93,14 @@ follow stable camelCase/PascalCase conventions.
   a repository-wide reference check; all required gates passed (16 test
   files/34 tests, with the database scenario skipped because `DATABASE_URL` is
   absent).
-- [ ] **DED-02 (low): Centralize pgvector component serialization.**
+- [x] **DED-02 (low): Centralize pgvector component serialization.**
   `formatVectorComponent` is duplicated byte-for-byte in `db/schema.ts` and
   `db/queries/memories.ts`. Move it to a focused database utility and add direct
   coverage for precision, negative zero, and non-finite rejection.
+  Both schema and raw-query serialization now use `db/vector.ts`; five focused
+  cases cover precision, negative zero, and each non-finite number category.
+  All required gates passed (17 test files/39 tests, with the database scenario
+  skipped because `DATABASE_URL` is absent).
 
 Evidence checked: all package-root exports are exercised by the package runtime
 or declaration tests. The duplicate public-memory clone is intentionally

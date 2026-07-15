@@ -125,6 +125,7 @@ src/
 +-- db/
 |   +-- index.ts              # postgres.js + drizzle setup (createDatabase)
 |   +-- schema.ts             # drizzle table definitions (memories, events, meta)
+|   +-- vector.ts             # precise pgvector component serialization
 |   +-- queries/
 |       +-- memories.ts       # memory CRUD, recall, prune, dedup, consolidate SQL
 |       +-- events.ts         # audit-event CRUD

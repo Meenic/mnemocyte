@@ -10,6 +10,7 @@ import {
 	text,
 	timestamp,
 } from "drizzle-orm/pg-core";
+import { formatVectorComponent } from "./vector.js";
 
 const vector = customType<{
 	data: number[];
@@ -27,13 +28,6 @@ const vector = customType<{
 		return value.slice(1, -1).split(",").filter(Boolean).map(Number);
 	},
 });
-
-function formatVectorComponent(value: number): string {
-	if (!Number.isFinite(value)) {
-		throw new Error("Vector values must be finite numbers.");
-	}
-	return Object.is(value, -0) ? "0" : value.toFixed(17);
-}
 
 export const memoriesTable = pgTable(
 	"mnemocyte_memories",

@@ -27,40 +27,6 @@ auth, model provider, and runtime boundaries.
 - **Stable core before broad distribution.** MCP and framework adapters become
   more valuable after the storage and embedder contracts are clean.
 
-## `0.1.x` - Maintenance
-
-The planned `0.1.x` hardening slice is complete for the `0.1.4` release. Future
-`0.1.x` work should be limited to critical fixes or documentation corrections.
-
-- Keep package docs aligned with the shipped surface.
-- Keep provider adapters dependency-light; provider SDKs should not enter the
-  core dependency graph.
-- Do not add new storage backends before the public `MemoryStore` adapter
-  contract exists.
-
-## `0.2.0` - Configurable Embedding Dimensions
-
-The `0.2.0` implementation line made embedding dimensions an
-installation-level setting instead of a hardcoded 1536-dimensional Postgres
-schema. This release is published; keep new planning focused on v1
-stabilization.
-
-- Add `mnemocyte_meta` to store installation metadata, including
-  `embedding_dimensions`.
-- Replace the hardcoded `vector(1536)` assumption with a migration template and
-  renderer that can create the selected vector dimension.
-- Validate `embedder.dimensions` against `mnemocyte_meta` before Postgres
-  embedding operations call external embedders.
-- Keep one embedding dimension per installation. Mixed dimensions in one table
-  remain out of scope until there is a separate retrieval design.
-- Document common dimensions for OpenAI, local, Cohere, Voyage, and Nomic-style
-  embedders.
-- Provide an upgrade guide for existing `0.1.x` deployments, which remain on
-  1536 unless the operator chooses a migration path.
-
-Keep only upgrade notes in release documentation and let the roadmap advance to
-v1 stabilization.
-
 ## v1 Stabilization Criteria
 
 These items are the practical v1 gate. They should either be completed before
@@ -90,21 +56,19 @@ Future considerations:
 - OpenTelemetry adapters built on the current observability hook.
 - Additional provider packages if core subpaths become too crowded.
 
-## `0.3.0` - `MemoryStore` Abstraction
+## `0.3.0` - Public `MemoryStore` Stabilization
 
-Separate memory orchestration from storage implementation. The local
-implementation for the next release now has an internal `MemoryStore` boundary;
-the type remains private until the public adapter surface is ready.
+The unreleased implementation has an internal `MemoryStore` boundary. Before
+exporting an adapter contract:
 
-- Introduced a `MemoryStore` interface responsible for persistence primitives,
-  recall candidates, audit events, and lifecycle operations.
-- Moved validation, embedding, scoring coordination, observability, retries, and
-  context building into shared core orchestration.
-- Reduced in-memory and Postgres implementations to `MemoryStore` adapters instead of
-  separate clients with duplicated behavior.
-- Kept `createMnemocyte()` as the main entry point while allowing future
-  adapter-backed construction.
-- Avoid adding a third backend before this lands.
+- Review transaction hooks, caller-owned connection lifecycle, and
+  runtime-specific Drizzle driver requirements.
+- Decide how applications provide a store while keeping `createMnemocyte()` the
+  simple default entry point.
+- Add public adapter contract tests and document which lifecycle
+  responsibilities belong to callers versus Mnemocyte.
+- Keep the type private and avoid a third backend until those decisions are
+  validated.
 
 This is the architectural hinge for the rest of the roadmap. It makes future
 database and runtime adapters possible without copying the client.
@@ -114,7 +78,8 @@ database and runtime adapters possible without copying the client.
 Let applications bring their own Drizzle database instance.
 
 - Add `drizzleStore(db, options)` for caller-owned Drizzle clients.
-- Support the current Postgres + pgvector schema through the `MemoryStore` adapter.
+- Support the current Postgres + pgvector schema through the `MemoryStore`
+  adapter.
 - Keep connection lifecycle ownership with the caller when a database instance
   is supplied.
 - Document tested driver/runtime combinations, starting with postgres.js and
@@ -137,8 +102,8 @@ Ship an official MCP adapter after the storage and embedder contracts are ready.
   `findDuplicates`, `consolidate`, `forget`, `prune`, `listAuditLog`, and
   `stats`.
 - Configure database and embedder through explicit environment/config inputs.
-- Use the core package and official `MemoryStore`/embedder adapters rather than maintaining a
-  parallel memory implementation.
+- Use the core package and official `MemoryStore`/embedder adapters rather than
+  maintaining a parallel memory implementation.
 - Document Claude Desktop, Cursor, and other host setup only after the package
   can be tested end to end.
 

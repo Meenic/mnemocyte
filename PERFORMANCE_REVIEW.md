@@ -12,16 +12,16 @@ parity, query-term precomputation, and per-recall scoring config normalization
 are complete. Database index and duplicate-search changes should be driven by
 query plans from representative data.
 
-This document does not set product sequencing. After the `0.1.4` hardening
-release, the active roadmap moves to `0.2.0` configurable embedding dimensions
-before larger architecture work such as `MemoryStore`, `drizzleStore(db)`, and
-MCP.
+This document does not set product sequencing. Version `0.2.0` is published,
+and the unreleased `0.3.0` line has the internal `MemoryStore` boundary. The
+active architecture decisions are whether that contract is ready to become
+public and how a future `drizzleStore(db)` should handle caller-owned resources.
 
 This file tracks performance only. The v1 architecture review also identified
-correctness and API-stability follow-ups, including public result mapping,
-timeout cancellation, database error wrapping, dimension-validation scope, and
-the planned `MemoryStore` boundary. Track those in `ARCHITECTURE.md`,
-`ROADMAP.md`, and `PROJECT_MEMORY.md`, not as performance backlog items.
+correctness and API-stability follow-ups, including public store design,
+runtime input validation, database/migration error normalization, and tuning
+semantics. Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
+`PROJECT_MEMORY.md`, not as performance backlog items.
 
 ## Active Priority List
 

@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 9/16 items closed; working on stale planning documentation.
+**Checkpoint:** 10/16 items closed; working on behavioral documentation details.
 
 ## Validation contract
 
@@ -138,12 +138,17 @@ easy isolated helpers.
   integration-shell, and responsibility-map guidance; all required gates passed
   (15 test files/31 tests, with Postgres skipped because `DATABASE_URL` is
   absent).
-- [ ] **DOC-02 (med): Remove stale planning and performance sequencing.**
+- [x] **DOC-02 (med): Remove stale planning and performance sequencing.**
   `PERFORMANCE_REVIEW.md` still says work moves from 0.1.4 to 0.2.0 before the
   `MemoryStore` boundary, although 0.2.0 is published and the boundary is
   implemented locally. `ROADMAP.md` retains shipped milestone checklists despite
   its own rule that shipped details belong in `CHANGELOG.md`; architecture also
   names the removed `useDatabase` helper.
+  The roadmap now contains active/future work only, the performance review
+  starts from the published `0.2.0` and current internal store boundary, and
+  current architecture prose no longer names the historical helper. All
+  required gates passed (17 test files/39 tests, with the database scenario
+  skipped because `DATABASE_URL` is absent).
 - [ ] **DOC-03 (low): Correct behavioral documentation details.**
   `TokenCounter` calls the default heuristic word-based although it is
   character-count based; `isMnemocyteError` claims cross-copy safety while its

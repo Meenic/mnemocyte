@@ -274,7 +274,9 @@ files such as `dist/embedders/index.d.mts` and
 
 **Escape hatches**
 
-- None. Internal helpers (`useDatabase`, `schema`, query builders) are not re-exported. If an unstable hatch is ever needed, expose it under `client.experimental.*`, never as a top-level export.
+- None. Internal database handles, schema definitions, and query builders are
+  not re-exported. If an unstable hatch is ever needed, expose it under
+  `client.experimental.*`, never as a top-level export.
 
 ## Error Model
 

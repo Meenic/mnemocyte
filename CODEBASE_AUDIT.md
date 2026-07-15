@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 8/16 items closed; working on benchmark migration setup.
+**Checkpoint:** 9/16 items closed; working on stale planning documentation.
 
 ## Validation contract
 
@@ -109,10 +109,14 @@ module boundary.
 
 ## Tests
 
-- [ ] **TST-01 (med): Make the Postgres retrieval benchmark initialize current
+- [x] **TST-01 (med): Make the Postgres retrieval benchmark initialize current
   metadata.** Its fresh-database setup applies only `0000_initial.sql`, but the
   current client requires `0001_add_mnemocyte_meta.sql`; a clean benchmark
   database therefore fails before measuring retrieval.
+  The benchmark now applies both migrations and inserts only a missing default
+  installation row, preserving an existing custom dimension. All required
+  gates passed (17 test files/39 tests, with the database scenario skipped
+  because `DATABASE_URL` is absent).
 
 Evidence checked: Vitest has separate unit, package, and serial integration
 projects; package exports and exported declarations are tested; migration

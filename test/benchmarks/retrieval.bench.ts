@@ -97,11 +97,11 @@ const postgresEmbedder = {
 	},
 };
 
-async function ensureMigration(sql: ReturnType<typeof postgres>) {
-	const migration = await readFile(
-		resolve("migrations", "0000_initial.sql"),
-		"utf8",
-	);
+async function applyMigration(
+	sql: ReturnType<typeof postgres>,
+	filename: string,
+) {
+	const migration = await readFile(resolve("migrations", filename), "utf8");
 	try {
 		await sql.unsafe(migration);
 	} catch (error) {
@@ -118,12 +118,22 @@ async function ensureMigration(sql: ReturnType<typeof postgres>) {
 	}
 }
 
+async function ensureMigrations(sql: ReturnType<typeof postgres>) {
+	await applyMigration(sql, "0000_initial.sql");
+	await applyMigration(sql, "0001_add_mnemocyte_meta.sql");
+	await sql`
+		INSERT INTO mnemocyte_meta (key, embedding_dimensions)
+		VALUES ('installation', 1536)
+		ON CONFLICT (key) DO NOTHING
+	`;
+}
+
 async function runPostgresBench(databaseUrl: string, memoryCount: number) {
 	const sql = postgres(databaseUrl, { max: 1 });
 	const entityId = `retrieval_bench_pg_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 	try {
-		await ensureMigration(sql);
+		await ensureMigrations(sql);
 		await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 

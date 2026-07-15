@@ -28,6 +28,9 @@ behavioural changes documented in their entries.
 - **Memory internals have focused module boundaries.** Defaults, embedding
   calls, in-memory filters, record mapping, and validation now live in separate
   leaf modules, with public-memory cloning shared by storage and scoring paths.
+- **Postgres benchmarks initialize current metadata.** Retrieval benchmarks now
+  apply both bundled migrations and create a missing default installation row
+  without overwriting an existing dimension selection.
 
 ### Fixed
 

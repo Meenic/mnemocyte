@@ -328,7 +328,7 @@ const client = createMnemocyte({
 
 Planned larger milestones:
 
-- `MemoryStore` abstraction
+- public `MemoryStore` adapter surface
 - `drizzleStore(db)` for caller-owned Drizzle clients
 - `@mnemocyte/mcp`
 
@@ -340,6 +340,9 @@ Current behavior:
 
 - `createMnemocyte()` selects either the in-memory backend or the
   Postgres/pgvector backend.
+- Both backends run through an internal `MemoryStore` boundary and shared
+  client orchestration; `MemoryStore` is not exported as a public adapter API
+  yet.
 - Postgres schema setup is explicit; the client does not create tables or
   indexes for you.
 - `findDuplicates`, audit-log workflows, and `experimental.consolidate` are
@@ -347,19 +350,19 @@ Current behavior:
 
 Known limitations before v1:
 
-- The two current backends share behavior by convention rather than through a
-  formal `MemoryStore` adapter boundary.
-- Configured provider timeouts fail the Mnemocyte operation with `"TIMEOUT"`;
-  actively aborting the underlying provider request on timeout remains a
-  pre-v1 hardening follow-up.
+- The internal `MemoryStore` boundary is not a public adapter API yet.
+  `drizzleStore(db)` is the planned first public store adapter.
+- Configured provider timeouts abort the per-attempt `AbortSignal`; the
+  underlying provider request only stops promptly when the embedder honors that
+  signal.
 - Postgres dimension metadata is installation-wide. Mixed embedding dimensions
   in one database are intentionally out of scope for now.
 
 Planned v1 direction:
 
-- Extract a `MemoryStore` boundary so storage adapters own persistence while
-  shared core code owns validation, embedding, scoring, observability,
-  resilience, and context building.
+- Keep storage adapters behind `MemoryStore` while shared core code owns
+  validation, embedding, scoring, observability, resilience, and context
+  building.
 - Keep root `mnemocyte` imports provider-SDK-free.
 - Keep migrations, dimensions, and production index choices explicit.
 

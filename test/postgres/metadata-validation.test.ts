@@ -18,6 +18,7 @@ interface FakeSelectChain {
 function createFakeHandle(options: {
 	rows?: unknown[];
 	error?: unknown;
+	executeError?: unknown;
 }): FakeHandle {
 	let selectCount = 0;
 	const chain: FakeSelectChain = {
@@ -38,6 +39,12 @@ function createFakeHandle(options: {
 	const db = {
 		select() {
 			return chain;
+		},
+		async execute() {
+			if (options.executeError) {
+				throw options.executeError;
+			}
+			return [];
 		},
 	} as unknown as MnemocyteDatabase;
 	return {
@@ -80,13 +87,13 @@ describe("Postgres metadata validation", () => {
 
 		await expect(
 			client.recall({ entityId: "alice", query: "hello" }),
-		).rejects.toThrow();
+		).resolves.toEqual([]);
 		expect(embedCalls).toEqual(["hello"]);
 		expect(fake.getSelectCount()).toBe(1);
 
 		await expect(
 			client.recall({ entityId: "alice", query: "again" }),
-		).rejects.toThrow();
+		).resolves.toEqual([]);
 		expect(embedCalls).toEqual(["hello", "again"]);
 		expect(fake.getSelectCount()).toBe(1);
 	});
@@ -145,7 +152,25 @@ describe("Postgres metadata validation", () => {
 		expect(embedCalls).toEqual([]);
 	});
 
-	test("reports a missing metadata table as a migration error", async () => {
+	test("allows non-embedding operations when metadata dimensions mismatch", async () => {
+		const embedCalls: string[] = [];
+		const fake = createFakeHandle({
+			rows: [{ key: "installation", embeddingDimensions: 1536 }],
+		});
+		const client = createPostgresClient(
+			createConfig(768, embedCalls),
+			fake.handle,
+		);
+
+		await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
+			entityId: "alice",
+			memoryCount: 0,
+		});
+		expect(embedCalls).toEqual([]);
+		expect(fake.getSelectCount()).toBe(0);
+	});
+
+	test("reports a missing metadata table as a migration error before embedding", async () => {
 		const embedCalls: string[] = [];
 		const fake = createFakeHandle({ error: { code: "42P01" } });
 		const client = createPostgresClient(
@@ -154,14 +179,14 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const error = await expectMnemocyteError(
-			client.stats({ entityId: "alice" }),
+			client.recall({ entityId: "alice", query: "hello" }),
 			"MIGRATION",
 		);
 		expect(error.message).toContain("mnemocyte_meta");
 		expect(embedCalls).toEqual([]);
 	});
 
-	test("reports a missing installation row as a migration error", async () => {
+	test("reports a missing installation row as a migration error before embedding", async () => {
 		const embedCalls: string[] = [];
 		const fake = createFakeHandle({ rows: [] });
 		const client = createPostgresClient(
@@ -170,10 +195,39 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const error = await expectMnemocyteError(
-			client.stats({ entityId: "alice" }),
+			client.recall({ entityId: "alice", query: "hello" }),
 			"MIGRATION",
 		);
 		expect(error.message).toContain("installation");
 		expect(embedCalls).toEqual([]);
+	});
+
+	test("wraps expected query failures in MnemocyteError", async () => {
+		const embedCalls: string[] = [];
+		const migrationFailure = createFakeHandle({
+			rows: [{ key: "installation", embeddingDimensions: 1536 }],
+			executeError: { code: "42P01" },
+		});
+		const migrationClient = createPostgresClient(
+			createConfig(1536, embedCalls),
+			migrationFailure.handle,
+		);
+		await expectMnemocyteError(
+			migrationClient.recall({ entityId: "alice", query: "hello" }),
+			"MIGRATION",
+		);
+
+		const dbFailure = createFakeHandle({
+			rows: [{ key: "installation", embeddingDimensions: 1536 }],
+			executeError: { code: "57P01" },
+		});
+		const dbClient = createPostgresClient(
+			createConfig(1536, embedCalls),
+			dbFailure.handle,
+		);
+		await expectMnemocyteError(
+			dbClient.recall({ entityId: "alice", query: "hello" }),
+			"DB",
+		);
 	});
 });

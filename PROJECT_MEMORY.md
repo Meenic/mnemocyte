@@ -3,6 +3,10 @@
 ## Current State
 
 - Package `v0.2.0` has been published and tagged.
+- The local tree contains unreleased `0.3.0` hardening work: internal
+  `MemoryStore` adapters, shared client orchestration, active provider timeout
+  aborts, narrower Postgres dimension checks, and in-memory public-result
+  vector leak fixes.
 - Package `v0.1.5` is the previous patch baseline for embedder export
   discoverability.
 - The test suite has been migrated fully to Vitest and TypeScript.
@@ -10,8 +14,8 @@
 - `CHANGELOG.md` has a `0.2.0` section dated `2026-06-10` for configurable
   Postgres embedding dimensions and the related migration/documentation work.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.2.0` as published; the next feature line is
-  `0.3.0` `MemoryStore` / v1 stabilization.
+- The current roadmap treats `0.2.0` as published and `0.3.0` as the active
+  `MemoryStore` / v1 stabilization line.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -21,11 +25,10 @@
 - `mnemocyte/embedders` is the editor-discoverable barrel export for embedder
   helpers. Provider-specific subpaths such as `mnemocyte/embedders/openai`
   remain supported through wildcard package exports.
-- For write and recall paths, Postgres schema and dimension validation must
-  happen before `embedder.embed()` so configuration or migration errors fail
-  before provider API usage. Before v1, split this from non-embedding
-  operations so cleanup, audit reads, and diagnostics can still run during
-  migration repair.
+- For write, recall, and duplicate-scan paths, Postgres embedding-dimension
+  validation must happen before provider usage or vector comparison.
+  Non-embedding operations should remain usable when only the configured
+  embedder dimension is mismatched.
 
 ## Important Commands
 
@@ -64,13 +67,11 @@ Current behavior to preserve:
 
 Known code follow-ups before v1:
 
-- Extract `MemoryStore` or equivalent shared orchestration so in-memory and
-  Postgres backends do not duplicate operation flow.
-- Strip internal embedding vectors from all public in-memory return paths.
-- Make provider timeouts actively abort underlying requests where supported.
-- Wrap expected database and migration failures in `MnemocyteError`.
-- Decide whether `rememberMany(inputs)` remains positional or moves to an
-  object-parameter shape.
+- Keep the internal `MemoryStore` private until the public adapter contract is
+  stable enough for `drizzleStore(db)`.
+- Continue tightening edge-case database and migration failure wrapping.
+- Preserve `rememberMany(inputs)` as the compatibility exception unless a v1 API
+  review decides otherwise.
 - Add runtime validation for JavaScript consumers where public inputs need
   stronger guards than TypeScript declarations.
 
@@ -90,6 +91,7 @@ when cutting the next version.
 
 ## Suggested Next Steps
 
-- Start the `0.3.0` `MemoryStore` / v1 stabilization line.
+- Finish validation and release prep for the unreleased `0.3.0` `MemoryStore`
+  / v1 stabilization line.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

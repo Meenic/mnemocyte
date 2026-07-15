@@ -1,71 +1,67 @@
-import { buildContext } from "../context/builder.js";
 import type { DatabaseHandle } from "../db/index.js";
 import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
 	countPruneMatches,
-	deleteMemoriesForEntity,
-	deleteMemory,
-	findDuplicatePairs,
+	deleteMemoriesForEntity as deleteMemoriesForEntityQuery,
+	deleteMemory as deleteMemoryQuery,
+	findDuplicatePairs as findDuplicatePairsQuery,
 	getEntityMemoryStatsCounts,
 	getGlobalMemoryStatsCounts,
 	getMemoryById,
-	insertMemories,
-	insertMemory,
+	getMemoryEmbeddings as getMemoryEmbeddingsQuery,
+	insertMemories as insertMemoryRows,
+	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
 	markMemoriesSuperseded,
+	markMemoryAccessed,
 	type PruneFilter,
 	pruneMemories,
 	setMemoryTags,
+	vectorSearch as vectorSearchQuery,
 } from "../db/queries/memories.js";
 import { getInstallationMeta } from "../db/queries/meta.js";
-import type { EventRow } from "../db/schema.js";
+import type { EventRow, NewMemoryRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
-import { observe } from "../observability.js";
-import { hybridRecall } from "../retrieval/index.js";
 import type {
 	AuditEvent,
-	ConsolidateInput,
-	ConsolidateResult,
-	DuplicatePair,
+	Embedder,
 	EntityStats,
-	ExperimentalMnemocyteClient,
-	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
-	ListAuditLogInput,
 	Memory,
 	MnemocyteClient,
 	MnemocyteConfig,
 	PruneInput,
-	PruneResult,
-	RememberInput,
 } from "../types.js";
+import { createMemoryClient } from "./client-core.js";
 import {
-	assertLimit,
-	assertMinScore,
-	assertNonEmptyString,
-	contextInputToRecallInput,
 	createEventId,
-	createId,
 	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
-	DEFAULT_IMPORTANCE,
-	DEFAULT_LIMIT,
-	DEFAULT_MIN_SCORE,
-	DEFAULT_TYPE,
-	embedMany,
-	embedOne,
 	IMPORTANCE_RANK,
-	normalizeTags,
 	rowToMemory,
-	validateConsolidateInput,
-	validateFindDuplicatesInput,
-	validateListAuditLogInput,
-	validatePruneInput,
-	validateRecallInput,
-	validateRememberInput,
+	type StoredMemory,
 } from "./shared.js";
+import type {
+	MemoryStore,
+	StoreConsolidateInput,
+	StoreConsolidateResult,
+	StoreDuplicatePair,
+	StoreLexicalCandidate,
+	StoreLexicalSearchInput,
+	StoreVectorCandidate,
+	StoreVectorSearchInput,
+} from "./store.js";
+
+const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
+	"low",
+	"normal",
+	"high",
+	"critical",
+];
+
+const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
 
 function rowToAuditEvent(row: EventRow): AuditEvent {
 	return {
@@ -76,13 +72,6 @@ function rowToAuditEvent(row: EventRow): AuditEvent {
 		timestamp: row.timestamp,
 	};
 }
-
-const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
-	"low",
-	"normal",
-	"high",
-	"critical",
-];
 
 function importanceCeilingLevels(
 	max: ImportanceLevel,
@@ -99,6 +88,40 @@ function hasPostgresErrorCode(error: unknown, code: string): boolean {
 		"code" in error &&
 		error.code === code
 	);
+}
+
+function getPostgresErrorCode(error: unknown): string | undefined {
+	return typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		typeof (error as { code?: unknown }).code === "string"
+		? (error as { code: string }).code
+		: undefined;
+}
+
+function normalizePostgresError(error: unknown): MnemocyteError {
+	if (error instanceof MnemocyteError) {
+		return error;
+	}
+	const code = getPostgresErrorCode(error);
+	if (code && MIGRATION_ERROR_CODES.has(code)) {
+		return new MnemocyteError(
+			"Postgres schema is missing or incompatible. Apply the bundled Mnemocyte migrations before using the Postgres backend.",
+			"MIGRATION",
+			error,
+		);
+	}
+	return new MnemocyteError("Postgres operation failed.", "DB", error);
+}
+
+async function runPostgresOperation<T>(
+	operation: () => Promise<T>,
+): Promise<T> {
+	try {
+		return await operation();
+	} catch (error) {
+		throw normalizePostgresError(error);
+	}
 }
 
 function toPruneFilter(input: PruneInput): PruneFilter {
@@ -130,26 +153,27 @@ function toPruneFilter(input: PruneInput): PruneFilter {
 	return filter;
 }
 
-export function createPostgresClient(
-	config: MnemocyteConfig,
-	handle: DatabaseHandle,
-): MnemocyteClient {
-	let closed = false;
+function toMemoryRow(memory: StoredMemory): NewMemoryRow {
+	return {
+		...memory,
+		tags: [...memory.tags],
+		metadata: { ...memory.metadata },
+		embedding: [...memory.embedding],
+	};
+}
+
+export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 	let schemaValidated = false;
 	let schemaValidationPromise: Promise<void> | undefined;
 
-	function assertOpen(): void {
-		if (closed) {
-			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
-		}
-	}
-
-	async function ensureSchemaMatchesEmbedder(): Promise<void> {
+	async function ensureEmbeddingCompatibility(
+		embedder: Embedder,
+	): Promise<void> {
 		if (schemaValidated) {
 			return;
 		}
 		if (!schemaValidationPromise) {
-			schemaValidationPromise = validateSchemaMatchesEmbedder().catch(
+			schemaValidationPromise = validateEmbeddingCompatibility(embedder).catch(
 				(error: unknown) => {
 					schemaValidationPromise = undefined;
 					throw error;
@@ -159,7 +183,9 @@ export function createPostgresClient(
 		await schemaValidationPromise;
 	}
 
-	async function validateSchemaMatchesEmbedder(): Promise<void> {
+	async function validateEmbeddingCompatibility(
+		embedder: Embedder,
+	): Promise<void> {
 		let meta: Awaited<ReturnType<typeof getInstallationMeta>>;
 		try {
 			meta = await getInstallationMeta(handle.db);
@@ -171,7 +197,7 @@ export function createPostgresClient(
 					error,
 				);
 			}
-			throw error;
+			throw normalizePostgresError(error);
 		}
 		if (!meta) {
 			throw new MnemocyteError(
@@ -179,478 +205,223 @@ export function createPostgresClient(
 				"MIGRATION",
 			);
 		}
-		if (meta.embeddingDimensions !== config.embedder.dimensions) {
+		if (meta.embeddingDimensions !== embedder.dimensions) {
 			throw new MnemocyteError(
-				`embedder.dimensions (${config.embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
+				`embedder.dimensions (${embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
 				"CONFIG",
 			);
 		}
 		schemaValidated = true;
 	}
 
-	async function recordAudit(
-		entityId: string,
-		description: string,
-		metadata: Record<string, unknown>,
-	): Promise<void> {
-		if (config.audit?.enabled !== true) {
-			return;
-		}
-		try {
-			await insertEvent(handle.db, {
-				id: createEventId(),
-				entityId,
-				description,
-				metadata,
-				timestamp: new Date(),
+	return {
+		backend: "postgres",
+		async ensureSchema() {},
+		ensureEmbeddingCompatibility,
+		async insertMemories(memories) {
+			return runPostgresOperation(async () => {
+				const rows = await insertMemoryRows(
+					handle.db,
+					memories.map(toMemoryRow),
+				);
+				return rows.map(rowToMemory);
 			});
-		} catch {
-			// Audit writes must not break the primary operation.
-		}
-	}
-
-	async function remember(input: RememberInput): Promise<Memory> {
-		return observe(
-			config,
-			"postgres",
-			"remember",
-			{ entityId: input.entityId },
-			async () => {
-				assertOpen();
-				validateRememberInput(input);
-				await ensureSchemaMatchesEmbedder();
-				const embedding = await embedOne(config.embedder, input.content, {
-					...(input.signal === undefined ? {} : { signal: input.signal }),
-					...(config.provider === undefined
-						? {}
-						: { resilience: config.provider }),
-				});
-				const now = new Date();
-				const row = await insertMemory(handle.db, {
-					id: createId(),
-					entityId: input.entityId,
-					content: input.content,
-					type: input.type ?? DEFAULT_TYPE,
-					importance: input.importance ?? DEFAULT_IMPORTANCE,
-					tags: normalizeTags(input.tags),
-					source: input.source ?? null,
-					metadata: input.metadata ?? {},
-					confidence: input.confidence ?? 1,
-					embedding,
-					embeddingModel: config.embedder.model,
-					embeddingDimensions: config.embedder.dimensions,
-					supersededBy: null,
-					supersededAt: null,
-					expiresAt: input.expiresAt ?? null,
-					lastAccessedAt: null,
-					accessCount: 0,
-					createdAt: now,
-					updatedAt: now,
-				});
-				const memory = rowToMemory(row);
-				await recordAudit(memory.entityId, "memory.created", {
-					memoryId: memory.id,
-					type: memory.type,
-					importance: memory.importance,
-				});
-				return memory;
-			},
-			(memory) => ({ memoryId: memory.id, count: 1 }),
-		);
-	}
-
-	const client: MnemocyteClient = {
-		remember,
-		async rememberMany(inputs) {
-			return observe(
-				config,
-				"postgres",
-				"rememberMany",
-				{ count: inputs.length },
-				async () => {
-					assertOpen();
-					if (inputs.length === 0) {
-						return [];
-					}
-					for (const input of inputs) {
-						validateRememberInput(input);
-					}
-					await ensureSchemaMatchesEmbedder();
-					const embeddings = await embedMany(
-						config.embedder,
-						inputs.map((i) => i.content),
-						{
-							...(inputs[0]?.signal === undefined
-								? {}
-								: { signal: inputs[0].signal }),
-							...(config.provider === undefined
-								? {}
-								: { resilience: config.provider }),
-						},
-					);
-					const now = new Date();
-					const rows = inputs.map((input, idx) => ({
-						id: createId(),
-						entityId: input.entityId,
-						content: input.content,
-						type: input.type ?? DEFAULT_TYPE,
-						importance: input.importance ?? DEFAULT_IMPORTANCE,
-						tags: normalizeTags(input.tags),
-						source: input.source ?? null,
-						metadata: input.metadata ?? {},
-						confidence: input.confidence ?? 1,
-						embedding: embeddings[idx] as number[],
-						embeddingModel: config.embedder.model,
-						embeddingDimensions: config.embedder.dimensions,
-						supersededBy: null,
-						supersededAt: null,
-						expiresAt: input.expiresAt ?? null,
-						lastAccessedAt: null,
-						accessCount: 0,
-						createdAt: now,
-						updatedAt: now,
-					}));
-					const inserted = await insertMemories(handle.db, rows);
-					const memories = inserted.map(rowToMemory);
-					for (const memory of memories) {
-						void recordAudit(memory.entityId, "memory.created", {
-							memoryId: memory.id,
-							type: memory.type,
-							importance: memory.importance,
-						});
-					}
-					return memories;
-				},
-				(result) => ({ count: result.length }),
+		},
+		async vectorSearch(input: StoreVectorSearchInput) {
+			return runPostgresOperation(async () => {
+				const rows = await vectorSearchQuery(handle.db, input);
+				return rows.map(
+					(row) =>
+						({
+							memory: rowToMemory(row),
+							vectorScore: row.vectorScore,
+						}) satisfies StoreVectorCandidate,
+				);
+			});
+		},
+		async lexicalSearch(input: StoreLexicalSearchInput) {
+			return runPostgresOperation(async () => {
+				const rows = await lexicalSearchQuery(handle.db, input);
+				return rows.map(
+					(row) =>
+						({
+							memory: rowToMemory(row),
+							lexicalScore: row.lexicalScore,
+						}) satisfies StoreLexicalCandidate,
+				);
+			});
+		},
+		async getMemoryEmbeddings(memoryIds) {
+			return runPostgresOperation(() =>
+				getMemoryEmbeddingsQuery(handle.db, memoryIds),
 			);
 		},
-		async recall(input) {
-			return observe(
-				config,
-				"postgres",
-				"recall",
-				{ entityId: input.entityId },
-				async () => {
-					assertOpen();
-					validateRecallInput(input);
-					const limit = input.limit ?? config.defaults?.limit ?? DEFAULT_LIMIT;
-					const minScore =
-						input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
-					assertLimit(limit);
-					assertMinScore(minScore);
-					await ensureSchemaMatchesEmbedder();
-					return hybridRecall({
-						db: handle.db,
-						embedder: config.embedder,
-						input,
-						limit,
-						minScore,
-						retrieval: config.retrieval,
-						...(input.signal === undefined ? {} : { signal: input.signal }),
-						...(config.provider === undefined
-							? {}
-							: { resilience: config.provider }),
-					});
-				},
-				(result) => ({ count: result.length }),
+		async markMemoriesAccessed(memoryIds) {
+			return runPostgresOperation(() =>
+				markMemoryAccessed(handle.db, memoryIds),
 			);
 		},
-		async buildContext(input) {
-			return observe(
-				config,
-				"postgres",
-				"buildContext",
-				{ entityId: input.entityId },
-				async () => {
-					assertOpen();
-					await ensureSchemaMatchesEmbedder();
-					return buildContext({
-						input,
-						recall: (contextInput) => {
-							const recallInput = contextInputToRecallInput(contextInput);
-							return client.recall(
-								input.signal === undefined
-									? recallInput
-									: { ...recallInput, signal: input.signal },
-							);
-						},
-					});
-				},
+		async deleteMemory(entityId, memoryId) {
+			return runPostgresOperation(() =>
+				deleteMemoryQuery(handle.db, entityId, memoryId),
 			);
 		},
-		async forget(input) {
-			return observe(
-				config,
-				"postgres",
-				"forget",
-				{ entityId: input.entityId, memoryId: input.memoryId },
-				async () => {
-					assertOpen();
-					assertNonEmptyString(input.entityId, "entityId");
-					assertNonEmptyString(input.memoryId, "memoryId");
-					await ensureSchemaMatchesEmbedder();
-					const deleted = await deleteMemory(
-						handle.db,
-						input.entityId,
-						input.memoryId,
-					);
-					if (!deleted) {
-						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
-					}
-					await recordAudit(input.entityId, "memory.deleted", {
-						memoryId: input.memoryId,
-					});
-				},
+		async deleteMemoriesForEntity(entityId) {
+			return runPostgresOperation(() =>
+				deleteMemoriesForEntityQuery(handle.db, entityId),
 			);
 		},
-		async forgetAll(input) {
-			return observe(
-				config,
-				"postgres",
-				"forgetAll",
-				{ entityId: input.entityId },
-				async () => {
-					assertOpen();
-					assertNonEmptyString(input.entityId, "entityId");
-					await ensureSchemaMatchesEmbedder();
-					const deletedCount = await deleteMemoriesForEntity(
-						handle.db,
-						input.entityId,
-					);
-					await recordAudit(input.entityId, "entity.cleared", {
-						count: deletedCount,
-					});
-					return deletedCount;
-				},
-				(count) => ({ count }),
-			).then(() => undefined);
-		},
-		async prune(input: PruneInput): Promise<PruneResult> {
-			return observe(
-				config,
-				"postgres",
-				"prune",
-				input.entityId === undefined ? {} : { entityId: input.entityId },
-				async () => {
-					assertOpen();
-					validatePruneInput(input);
-					await ensureSchemaMatchesEmbedder();
-					const filter = toPruneFilter(input);
-					const dryRun = input.dryRun === true;
-					if (dryRun) {
-						const matchedCount = await countPruneMatches(handle.db, filter);
-						return { matchedCount, deletedCount: 0, dryRun: true };
-					}
-					const deletedCount = await pruneMemories(handle.db, filter);
-					if (deletedCount > 0 && input.entityId !== undefined) {
-						await recordAudit(input.entityId, "memory.pruned", {
-							count: deletedCount,
-						});
-					}
+		async prune(input) {
+			return runPostgresOperation(async () => {
+				const filter = toPruneFilter(input);
+				const dryRun = input.dryRun === true;
+				if (dryRun) {
 					return {
-						matchedCount: deletedCount,
-						deletedCount,
-						dryRun: false,
+						matchedCount: await countPruneMatches(handle.db, filter),
+						deletedCount: 0,
+						dryRun: true,
 					};
-				},
-				(result) => ({ count: result.deletedCount }),
-			);
-		},
-		async findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]> {
-			return observe(
-				config,
-				"postgres",
-				"findDuplicates",
-				{ entityId: input.entityId },
-				async () => {
-					assertOpen();
-					validateFindDuplicatesInput(input);
-					await ensureSchemaMatchesEmbedder();
-					const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
-					const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
-					const rows = await findDuplicatePairs(handle.db, {
-						entityId: input.entityId,
-						threshold,
-						limit,
-						...(input.types === undefined ? {} : { types: input.types }),
-						...(input.tags === undefined ? {} : { tags: input.tags }),
-						...(input.includeSuperseded === undefined
-							? {}
-							: { includeSuperseded: input.includeSuperseded }),
-						...(input.includeExpired === undefined
-							? {}
-							: { includeExpired: input.includeExpired }),
-					});
-					return rows.map((row) => ({
-						a: rowToMemory(row.a),
-						b: rowToMemory(row.b),
-						similarity: Math.max(0, Math.min(1, row.similarity)),
-					}));
-				},
-				(result) => ({ count: result.length }),
-			);
-		},
-		async listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]> {
-			return observe(
-				config,
-				"postgres",
-				"listAuditLog",
-				{ entityId: input.entityId },
-				async () => {
-					assertOpen();
-					validateListAuditLogInput(input);
-					await ensureSchemaMatchesEmbedder();
-					const rows = await listEvents(handle.db, {
-						entityId: input.entityId,
-						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
-						...(input.before === undefined ? {} : { before: input.before }),
-						...(input.after === undefined ? {} : { after: input.after }),
-					});
-					return rows.map(rowToAuditEvent);
-				},
-				(result) => ({ count: result.length }),
-			);
-		},
-		async stats(input) {
-			return observe(
-				config,
-				"postgres",
-				"stats",
-				input?.entityId ? { entityId: input.entityId } : {},
-				async () => {
-					assertOpen();
-					await ensureSchemaMatchesEmbedder();
-					const now = new Date();
-					if (input?.entityId) {
-						const counts = await getEntityMemoryStatsCounts(
-							handle.db,
-							input.entityId,
-							now,
-						);
-						return {
-							entityId: input.entityId,
-							...counts,
-						} satisfies EntityStats;
-					}
-					return (await getGlobalMemoryStatsCounts(
-						handle.db,
-						now,
-					)) satisfies GlobalStats;
-				},
-			);
-		},
-		experimental: createExperimental(),
-		async close() {
-			return observe(config, "postgres", "close", {}, async () => {
-				closed = true;
-				await handle.close();
+				}
+				const deletedCount = await pruneMemories(handle.db, filter);
+				return {
+					matchedCount: deletedCount,
+					deletedCount,
+					dryRun: false,
+				};
 			});
 		},
-	};
-	return client;
-
-	function createExperimental(): ExperimentalMnemocyteClient {
-		return {
-			async consolidate(input: ConsolidateInput): Promise<ConsolidateResult> {
-				return observe(
-					config,
-					"postgres",
-					"consolidate",
-					{ entityId: input.entityId, memoryId: input.survivorId },
-					async () => {
-						assertOpen();
-						validateConsolidateInput(input);
-						await ensureSchemaMatchesEmbedder();
-						const survivor = await getMemoryById(
-							handle.db,
-							input.entityId,
-							input.survivorId,
-						);
-						if (!survivor) {
-							throw new MnemocyteError(
-								"Survivor memory was not found.",
-								"NOT_FOUND",
-							);
+		async findDuplicatePairs(input) {
+			return runPostgresOperation(async () => {
+				const rows = await findDuplicatePairsQuery(handle.db, {
+					entityId: input.entityId,
+					threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+					limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
+					...(input.types === undefined ? {} : { types: input.types }),
+					...(input.tags === undefined ? {} : { tags: input.tags }),
+					...(input.includeSuperseded === undefined
+						? {}
+						: { includeSuperseded: input.includeSuperseded }),
+					...(input.includeExpired === undefined
+						? {}
+						: { includeExpired: input.includeExpired }),
+				});
+				return rows.map(
+					(row) =>
+						({
+							a: rowToMemory(row.a),
+							b: rowToMemory(row.b),
+							similarity: Math.max(0, Math.min(1, row.similarity)),
+						}) satisfies StoreDuplicatePair,
+				);
+			});
+		},
+		async addAuditEvents(events) {
+			return runPostgresOperation(async () => {
+				for (const event of events) {
+					await insertEvent(handle.db, {
+						id: event.id,
+						entityId: event.entityId,
+						description: event.description,
+						metadata: event.metadata,
+						timestamp: event.timestamp,
+					});
+				}
+			});
+		},
+		async listAuditLog(input) {
+			return runPostgresOperation(async () => {
+				const rows = await listEvents(handle.db, {
+					entityId: input.entityId,
+					limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
+					...(input.before === undefined ? {} : { before: input.before }),
+					...(input.after === undefined ? {} : { after: input.after }),
+				});
+				return rows.map(rowToAuditEvent);
+			});
+		},
+		async getMemory(entityId, memoryId) {
+			return runPostgresOperation(async () => {
+				const row = await getMemoryById(handle.db, entityId, memoryId);
+				return row ? rowToMemory(row) : null;
+			});
+		},
+		async loadConsolidationTargets(entityId, ids) {
+			return runPostgresOperation(() =>
+				loadConsolidationTargets(handle.db, entityId, ids),
+			);
+		},
+		async consolidate(
+			input: StoreConsolidateInput,
+		): Promise<StoreConsolidateResult> {
+			return runPostgresOperation(async () => {
+				const newSupersededIds = await handle.db.transaction(async (tx) => {
+					const updated = await markMemoriesSuperseded(tx, {
+						survivorId: input.survivorId,
+						entityId: input.entityId,
+						ids: input.supersededIds,
+						now: input.now,
+					});
+					const ids = updated.map((row) => row.id);
+					if (input.auditEnabled) {
+						for (const id of ids) {
+							await insertEvent(tx, {
+								id: createEventId(),
+								entityId: input.entityId,
+								description: "memory.superseded",
+								metadata: { memoryId: id, supersededBy: input.survivorId },
+								timestamp: input.now,
+							});
 						}
-						if (survivor.supersededBy !== null) {
-							throw new MnemocyteError(
-								"Survivor memory is itself superseded.",
-								"VALIDATION",
-							);
-						}
-						const targets = await loadConsolidationTargets(
-							handle.db,
-							input.entityId,
-							input.supersededIds,
-						);
-						const foundIds = new Set(targets.map((t) => t.id));
-						for (const id of input.supersededIds) {
-							if (!foundIds.has(id)) {
-								throw new MnemocyteError(
-									"Superseded memory was not found.",
-									"NOT_FOUND",
-								);
+					}
+					if (input.mergeTags && updated.length > 0) {
+						const mergedTags = new Set(input.survivorTags);
+						for (const row of updated) {
+							for (const tag of row.tags) {
+								mergedTags.add(tag);
 							}
 						}
-						const losers = targets.filter(
-							(target) => target.supersededBy === null,
-						);
-						if (losers.length === 0) {
-							return {
-								survivorId: survivor.id,
-								supersededCount: 0,
-								supersededIds: [],
-							} satisfies ConsolidateResult;
+						if (mergedTags.size !== input.survivorTags.length) {
+							await setMemoryTags(tx, {
+								entityId: input.entityId,
+								memoryId: input.survivorId,
+								tags: [...mergedTags],
+								now: input.now,
+							});
 						}
-						const now = new Date();
-						const { newSupersededIds } = await handle.db.transaction(
-							async (tx) => {
-								const updated = await markMemoriesSuperseded(tx, {
-									survivorId: survivor.id,
-									entityId: input.entityId,
-									ids: losers.map((loser) => loser.id),
-									now,
-								});
-								const newSupersededIds = updated.map((row) => row.id);
-								if (config.audit?.enabled === true) {
-									for (const id of newSupersededIds) {
-										await insertEvent(tx, {
-											id: createEventId(),
-											entityId: input.entityId,
-											description: "memory.superseded",
-											metadata: { memoryId: id, supersededBy: survivor.id },
-											timestamp: now,
-										});
-									}
-								}
-								if (input.mergeTags !== false && updated.length > 0) {
-									const mergedTags = new Set(survivor.tags);
-									for (const row of updated) {
-										for (const tag of row.tags) {
-											mergedTags.add(tag);
-										}
-									}
-									if (mergedTags.size !== survivor.tags.length) {
-										await setMemoryTags(tx, {
-											entityId: input.entityId,
-											memoryId: survivor.id,
-											tags: [...mergedTags],
-											now,
-										});
-									}
-								}
-								return { updated, newSupersededIds };
-							},
-						);
-						return {
-							survivorId: survivor.id,
-							supersededCount: newSupersededIds.length,
-							supersededIds: newSupersededIds,
-						} satisfies ConsolidateResult;
-					},
-					(result) => ({ count: result.supersededCount }),
-				);
-			},
-		};
-	}
+					}
+					return ids;
+				});
+				return { supersededIds: newSupersededIds };
+			});
+		},
+		async stats(input, now) {
+			return runPostgresOperation(async () => {
+				if (input?.entityId) {
+					const counts = await getEntityMemoryStatsCounts(
+						handle.db,
+						input.entityId,
+						now,
+					);
+					return {
+						entityId: input.entityId,
+						...counts,
+					} satisfies EntityStats;
+				}
+				return (await getGlobalMemoryStatsCounts(
+					handle.db,
+					now,
+				)) satisfies GlobalStats;
+			});
+		},
+		async close() {
+			return runPostgresOperation(() => handle.close());
+		},
+	};
+}
+
+export function createPostgresClient(
+	config: MnemocyteConfig,
+	handle: DatabaseHandle,
+): MnemocyteClient {
+	return createMemoryClient(config, createPostgresStore(handle));
 }

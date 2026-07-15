@@ -8,6 +8,30 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal `MemoryStore` boundary.** Refactored in-memory and Postgres
+  backends behind internal storage adapters while keeping the public
+  `createMnemocyte()` and `MnemocyteClient` API unchanged.
+- **Shared client orchestration.** Validation, embedding calls, recall scoring,
+  observability, audit opt-in behavior, context building, lifecycle checks, and
+  public result mapping now run through one shared client path.
+- **Postgres metadata checks are narrower.** Embedding-dimension validation now
+  runs only for operations that call the embedder or compare stored embeddings,
+  so non-embedding recovery operations are not blocked solely by a dimension
+  mismatch.
+- **Provider timeouts actively abort attempts.** Configured provider timeouts
+  now abort the per-attempt `AbortSignal` passed to embedders.
+
+### Fixed
+
+- **In-memory results no longer leak embeddings.** Public `Memory`,
+  `MemoryWithScore`, and duplicate-pair results are mapped through explicit
+  public-memory clones that omit internal vectors at runtime.
+- **Postgres failures are normalized more consistently.** Expected missing
+  schema/migration failures are surfaced as `"MIGRATION"` and expected
+  storage/query failures as `"DB"` while preserving existing typed errors.
+
 ## [0.2.0] - 2026-06-10
 
 ### Added

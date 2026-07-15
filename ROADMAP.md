@@ -35,7 +35,8 @@ The planned `0.1.x` hardening slice is complete for the `0.1.4` release. Future
 - Keep package docs aligned with the shipped surface.
 - Keep provider adapters dependency-light; provider SDKs should not enter the
   core dependency graph.
-- Do not add new storage backends before the `MemoryStore` abstraction exists.
+- Do not add new storage backends before the public `MemoryStore` adapter
+  contract exists.
 
 ## `0.2.0` - Configurable Embedding Dimensions
 
@@ -65,20 +66,12 @@ v1 stabilization.
 These items are the practical v1 gate. They should either be completed before
 v1 or explicitly documented as deferred limitations.
 
-Critical before v1:
+Remaining critical before v1:
 
-- Extract `MemoryStore` or an equivalent shared orchestration path so in-memory
-  and Postgres behavior cannot drift.
-- Ensure public memory and recall results never expose internal embedding
-  vectors.
-- Normalize expected database, migration, timeout, abort, and provider failures
-  through `MnemocyteError`.
-- Make provider timeouts actively abort underlying requests where the runtime
-  and helper support cancellation.
-- Split schema availability checks from embedding-dimension checks so
-  non-embedding recovery operations remain usable during migration repair.
-- Decide whether `rememberMany(inputs)` stays as the one positional-style method
-  or moves to an object-parameter shape before the API freezes.
+- Keep tightening expected database, migration, timeout, abort, and provider
+  failures through `MnemocyteError`.
+- Decide when the internal `MemoryStore` type is stable enough to become a
+  public adapter contract.
 - Keep migration guidance explicit for default fresh installs, existing 0.1.x
   installs, and custom-dimension fresh installs.
 
@@ -99,15 +92,17 @@ Future considerations:
 
 ## `0.3.0` - `MemoryStore` Abstraction
 
-Separate memory orchestration from storage implementation.
+Separate memory orchestration from storage implementation. The local
+implementation for the next release now has an internal `MemoryStore` boundary;
+the type remains private until the public adapter surface is ready.
 
-- Introduce a `MemoryStore` interface responsible for persistence primitives,
+- Introduced a `MemoryStore` interface responsible for persistence primitives,
   recall candidates, audit events, and lifecycle operations.
-- Move validation, embedding, scoring coordination, observability, retries, and
+- Moved validation, embedding, scoring coordination, observability, retries, and
   context building into shared core orchestration.
-- Reduce in-memory and Postgres implementations to `MemoryStore` adapters instead of
+- Reduced in-memory and Postgres implementations to `MemoryStore` adapters instead of
   separate clients with duplicated behavior.
-- Keep `createMnemocyte()` as the main entry point while allowing future
+- Kept `createMnemocyte()` as the main entry point while allowing future
   adapter-backed construction.
 - Avoid adding a third backend before this lands.
 
@@ -177,7 +172,8 @@ provider helpers can move from core subpaths into focused packages such as
   default.
 - No multi-provider embedding mixture in one vector column until there is a
   clear retrieval and migration design.
-- No broad backend expansion before the `MemoryStore` interface exists.
+- No broad backend expansion before the public `MemoryStore` adapter contract
+  exists.
 
 ## Maintenance Rule
 

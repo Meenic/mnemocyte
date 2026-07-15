@@ -1,0 +1,541 @@
+import { buildContext } from "../context/builder.js";
+import { MnemocyteError } from "../errors.js";
+import { observe } from "../observability.js";
+import {
+	cosineSimilarity,
+	createLexicalScorer,
+	createScoringConfig,
+	DEFAULT_CANDIDATE_MULTIPLIER,
+	toScoredMemoryWithConfig,
+} from "../retrieval/scorer.js";
+import type {
+	AuditEvent,
+	ConsolidateInput,
+	ConsolidateResult,
+	DuplicatePair,
+	Memory,
+	MemoryWithScore,
+	MnemocyteClient,
+	MnemocyteConfig,
+	RememberInput,
+} from "../types.js";
+import {
+	assertLimit,
+	assertMinScore,
+	assertNonEmptyString,
+	cloneMemory,
+	contextInputToRecallInput,
+	createEventId,
+	createId,
+	DEFAULT_IMPORTANCE,
+	DEFAULT_LIMIT,
+	DEFAULT_MIN_SCORE,
+	DEFAULT_TYPE,
+	embedMany,
+	embedOne,
+	normalizeTags,
+	validateConsolidateInput,
+	validateFindDuplicatesInput,
+	validateListAuditLogInput,
+	validatePruneInput,
+	validateRecallInput,
+	validateRememberInput,
+} from "./shared.js";
+import type {
+	MemoryStore,
+	StoreLexicalCandidate,
+	StoreVectorCandidate,
+} from "./store.js";
+
+interface ScoredCandidate {
+	memory: Memory;
+	vectorScore: number;
+	lexicalScore: number;
+}
+
+function providerOptions(
+	config: MnemocyteConfig,
+	signal: AbortSignal | undefined,
+) {
+	return {
+		...(signal === undefined ? {} : { signal }),
+		...(config.provider === undefined ? {} : { resilience: config.provider }),
+	};
+}
+
+function createStoredMemory(
+	config: MnemocyteConfig,
+	input: RememberInput,
+	embedding: number[],
+	now: Date,
+) {
+	return {
+		id: createId(),
+		entityId: input.entityId,
+		content: input.content,
+		type: input.type ?? DEFAULT_TYPE,
+		importance: input.importance ?? DEFAULT_IMPORTANCE,
+		tags: normalizeTags(input.tags),
+		source: input.source ?? null,
+		metadata: input.metadata ?? {},
+		confidence: input.confidence ?? 1,
+		embeddingModel: config.embedder.model,
+		embeddingDimensions: config.embedder.dimensions,
+		supersededBy: null,
+		supersededAt: null,
+		expiresAt: input.expiresAt ?? null,
+		lastAccessedAt: null,
+		accessCount: 0,
+		createdAt: now,
+		updatedAt: now,
+		embedding,
+	};
+}
+
+function auditEvent(
+	entityId: string,
+	description: string,
+	metadata: Record<string, unknown>,
+	timestamp = new Date(),
+): AuditEvent {
+	return {
+		id: createEventId(),
+		entityId,
+		description,
+		metadata,
+		timestamp,
+	};
+}
+
+function toDuplicatePair(pair: {
+	a: Memory;
+	b: Memory;
+	similarity: number;
+}): DuplicatePair {
+	return {
+		a: cloneMemory(pair.a),
+		b: cloneMemory(pair.b),
+		similarity: Math.max(0, Math.min(1, pair.similarity)),
+	};
+}
+
+export function createMemoryClient(
+	config: MnemocyteConfig,
+	store: MemoryStore,
+): MnemocyteClient {
+	let closed = false;
+
+	function assertOpen(): void {
+		if (closed) {
+			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
+		}
+	}
+
+	async function ensureSchema(): Promise<void> {
+		await store.ensureSchema();
+	}
+
+	async function ensureEmbeddingCompatibility(): Promise<void> {
+		await store.ensureEmbeddingCompatibility(config.embedder);
+	}
+
+	async function recordAudit(events: readonly AuditEvent[]): Promise<void> {
+		if (events.length === 0 || config.audit?.enabled !== true) {
+			return;
+		}
+		try {
+			await store.addAuditEvents(events);
+		} catch {
+			// Audit writes must not break the primary operation.
+		}
+	}
+
+	async function remember(input: RememberInput): Promise<Memory> {
+		return observe(
+			config,
+			store.backend,
+			"remember",
+			{ entityId: input.entityId },
+			async () => {
+				assertOpen();
+				validateRememberInput(input);
+				await ensureEmbeddingCompatibility();
+				const embedding = await embedOne(
+					config.embedder,
+					input.content,
+					providerOptions(config, input.signal),
+				);
+				const [memory] = await store.insertMemories([
+					createStoredMemory(config, input, embedding, new Date()),
+				]);
+				if (!memory) {
+					throw new MnemocyteError("Memory insert returned no rows.", "DB");
+				}
+				await recordAudit([
+					auditEvent(memory.entityId, "memory.created", {
+						memoryId: memory.id,
+						type: memory.type,
+						importance: memory.importance,
+					}),
+				]);
+				return cloneMemory(memory);
+			},
+			(memory) => ({ memoryId: memory.id, count: 1 }),
+		);
+	}
+
+	const client: MnemocyteClient = {
+		remember,
+		async rememberMany(inputs) {
+			return observe(
+				config,
+				store.backend,
+				"rememberMany",
+				{ count: inputs.length },
+				async () => {
+					assertOpen();
+					if (inputs.length === 0) {
+						return [];
+					}
+					for (const input of inputs) {
+						validateRememberInput(input);
+					}
+					await ensureEmbeddingCompatibility();
+					const embeddings = await embedMany(
+						config.embedder,
+						inputs.map((input) => input.content),
+						providerOptions(config, inputs[0]?.signal),
+					);
+					const now = new Date();
+					const stored = inputs.map((input, idx) =>
+						createStoredMemory(config, input, embeddings[idx] as number[], now),
+					);
+					const memories = await store.insertMemories(stored);
+					await recordAudit(
+						memories.map((memory) =>
+							auditEvent(memory.entityId, "memory.created", {
+								memoryId: memory.id,
+								type: memory.type,
+								importance: memory.importance,
+							}),
+						),
+					);
+					return memories.map(cloneMemory);
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async recall(input) {
+			return observe(
+				config,
+				store.backend,
+				"recall",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateRecallInput(input);
+					const limit = input.limit ?? config.defaults?.limit ?? DEFAULT_LIMIT;
+					const minScore =
+						input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
+					assertLimit(limit);
+					assertMinScore(minScore);
+					await ensureEmbeddingCompatibility();
+					const queryEmbedding = await embedOne(
+						config.embedder,
+						input.query,
+						providerOptions(config, input.signal),
+					);
+					const candidateMultiplier =
+						config.retrieval?.candidateMultiplier ??
+						DEFAULT_CANDIDATE_MULTIPLIER;
+					const candidateLimit = Math.max(limit, limit * candidateMultiplier);
+					const scoreLexical = createLexicalScorer(input.query);
+					const scoringConfig = createScoringConfig(config.retrieval);
+					const [vectorCandidates, lexicalCandidates] = await Promise.all([
+						store.vectorSearch({
+							...input,
+							embedding: queryEmbedding,
+							limit: candidateLimit,
+							minScore: 0,
+						}),
+						store.lexicalSearch({ ...input, limit: candidateLimit }),
+					]);
+					const merged = new Map<string, ScoredCandidate>();
+					for (const candidate of vectorCandidates) {
+						merged.set(candidate.memory.id, {
+							memory: candidate.memory,
+							vectorScore: candidate.vectorScore,
+							lexicalScore: scoreLexical(candidate.memory.content),
+						});
+					}
+					const lexicalOnly = lexicalCandidates.filter(
+						(candidate) => !merged.has(candidate.memory.id),
+					);
+					const lexicalOnlyEmbeddings = await store.getMemoryEmbeddings(
+						lexicalOnly.map((candidate) => candidate.memory.id),
+					);
+					for (const candidate of lexicalCandidates) {
+						const existing = merged.get(candidate.memory.id);
+						if (existing) {
+							existing.lexicalScore = candidate.lexicalScore;
+							continue;
+						}
+						const embedding = lexicalOnlyEmbeddings.get(candidate.memory.id);
+						const similarity = embedding
+							? cosineSimilarity(embedding, queryEmbedding)
+							: 0;
+						merged.set(candidate.memory.id, {
+							memory: candidate.memory,
+							vectorScore: Math.max(0, similarity),
+							lexicalScore: candidate.lexicalScore,
+						});
+					}
+					const scored: MemoryWithScore[] = Array.from(merged.values())
+						.map((entry) =>
+							toScoredMemoryWithConfig(
+								entry.memory,
+								Math.max(0, entry.vectorScore),
+								Math.max(0, entry.lexicalScore),
+								input,
+								scoringConfig,
+							),
+						)
+						.filter((memory) => memory.score >= minScore)
+						.sort((a, b) => b.score - a.score)
+						.slice(0, limit);
+					await store.markMemoriesAccessed(scored.map((memory) => memory.id));
+					return scored;
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async buildContext(input) {
+			return observe(
+				config,
+				store.backend,
+				"buildContext",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					return buildContext({
+						input,
+						recall: (contextInput) => {
+							const recallInput = contextInputToRecallInput(contextInput);
+							return client.recall(
+								input.signal === undefined
+									? recallInput
+									: { ...recallInput, signal: input.signal },
+							);
+						},
+					});
+				},
+			);
+		},
+		async forget(input) {
+			return observe(
+				config,
+				store.backend,
+				"forget",
+				{ entityId: input.entityId, memoryId: input.memoryId },
+				async () => {
+					assertOpen();
+					assertNonEmptyString(input.entityId, "entityId");
+					assertNonEmptyString(input.memoryId, "memoryId");
+					await ensureSchema();
+					const deleted = await store.deleteMemory(
+						input.entityId,
+						input.memoryId,
+					);
+					if (!deleted) {
+						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+					}
+					await recordAudit([
+						auditEvent(input.entityId, "memory.deleted", {
+							memoryId: input.memoryId,
+						}),
+					]);
+				},
+			);
+		},
+		async forgetAll(input) {
+			return observe(
+				config,
+				store.backend,
+				"forgetAll",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					assertNonEmptyString(input.entityId, "entityId");
+					await ensureSchema();
+					const deletedCount = await store.deleteMemoriesForEntity(
+						input.entityId,
+					);
+					await recordAudit([
+						auditEvent(input.entityId, "entity.cleared", {
+							count: deletedCount,
+						}),
+					]);
+					return deletedCount;
+				},
+				(count) => ({ count }),
+			).then(() => undefined);
+		},
+		async prune(input) {
+			return observe(
+				config,
+				store.backend,
+				"prune",
+				input.entityId === undefined ? {} : { entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validatePruneInput(input);
+					await ensureSchema();
+					const result = await store.prune(input);
+					if (
+						result.deletedCount > 0 &&
+						input.entityId !== undefined &&
+						result.dryRun === false
+					) {
+						await recordAudit([
+							auditEvent(input.entityId, "memory.pruned", {
+								count: result.deletedCount,
+							}),
+						]);
+					}
+					return result;
+				},
+				(result) => ({ count: result.deletedCount }),
+			);
+		},
+		async findDuplicates(input) {
+			return observe(
+				config,
+				store.backend,
+				"findDuplicates",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateFindDuplicatesInput(input);
+					await ensureEmbeddingCompatibility();
+					const pairs = await store.findDuplicatePairs(input);
+					return pairs.map(toDuplicatePair);
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async listAuditLog(input) {
+			return observe(
+				config,
+				store.backend,
+				"listAuditLog",
+				{ entityId: input.entityId },
+				async () => {
+					assertOpen();
+					validateListAuditLogInput(input);
+					await ensureSchema();
+					const events = await store.listAuditLog(input);
+					return events.map((event) => ({
+						id: event.id,
+						entityId: event.entityId,
+						description: event.description,
+						metadata: { ...event.metadata },
+						timestamp: new Date(event.timestamp),
+					}));
+				},
+				(result) => ({ count: result.length }),
+			);
+		},
+		async stats(input) {
+			return observe(
+				config,
+				store.backend,
+				"stats",
+				input?.entityId ? { entityId: input.entityId } : {},
+				async () => {
+					assertOpen();
+					await ensureSchema();
+					return store.stats(input, new Date());
+				},
+			);
+		},
+		experimental: {
+			async consolidate(input: ConsolidateInput): Promise<ConsolidateResult> {
+				return observe(
+					config,
+					store.backend,
+					"consolidate",
+					{ entityId: input.entityId, memoryId: input.survivorId },
+					async () => {
+						assertOpen();
+						validateConsolidateInput(input);
+						await ensureSchema();
+						const survivor = await store.getMemory(
+							input.entityId,
+							input.survivorId,
+						);
+						if (!survivor) {
+							throw new MnemocyteError(
+								"Survivor memory was not found.",
+								"NOT_FOUND",
+							);
+						}
+						if (survivor.supersededBy !== null) {
+							throw new MnemocyteError(
+								"Survivor memory is itself superseded.",
+								"VALIDATION",
+							);
+						}
+						const targets = await store.loadConsolidationTargets(
+							input.entityId,
+							input.supersededIds,
+						);
+						const foundIds = new Set(targets.map((target) => target.id));
+						for (const id of input.supersededIds) {
+							if (!foundIds.has(id)) {
+								throw new MnemocyteError(
+									"Superseded memory was not found.",
+									"NOT_FOUND",
+								);
+							}
+						}
+						const losers = targets.filter(
+							(target) => target.supersededBy === null,
+						);
+						if (losers.length === 0) {
+							return {
+								survivorId: survivor.id,
+								supersededCount: 0,
+								supersededIds: [],
+							} satisfies ConsolidateResult;
+						}
+						const result = await store.consolidate({
+							entityId: input.entityId,
+							survivorId: survivor.id,
+							survivorTags: survivor.tags,
+							supersededIds: losers.map((loser) => loser.id),
+							mergeTags: input.mergeTags !== false,
+							now: new Date(),
+							auditEnabled: config.audit?.enabled === true,
+						});
+						return {
+							survivorId: survivor.id,
+							supersededCount: result.supersededIds.length,
+							supersededIds: result.supersededIds,
+						} satisfies ConsolidateResult;
+					},
+					(result) => ({ count: result.supersededCount }),
+				);
+			},
+		},
+		async close() {
+			return observe(config, store.backend, "close", {}, async () => {
+				if (!closed) {
+					closed = true;
+					await store.close();
+				}
+			});
+		},
+	};
+
+	return client;
+}

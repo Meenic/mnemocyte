@@ -139,21 +139,29 @@ function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
 	});
 }
 
+function timeoutError(timeoutMs: number): MnemocyteError {
+	return new MnemocyteError(
+		`Provider call timed out after ${timeoutMs}ms.`,
+		"TIMEOUT",
+	);
+}
+
 /**
- * Race `promise` against the configured `timeoutMs` and the caller's
- * `signal`. Rejects with `"TIMEOUT"` or `"ABORTED"` respectively. Resolves
- * with the original promise value if it settles first.
+ * Run one provider attempt with a signal linked to the caller's signal and
+ * Mnemocyte's configured timeout. Timeout aborts are actively propagated to
+ * providers that honor `AbortSignal`.
  */
-function withTimeout<T>(
-	promise: Promise<T>,
+function runAttempt<T>(
+	action: (signal: AbortSignal | undefined) => Promise<T>,
 	timeoutMs: number,
 	signal: AbortSignal | undefined,
 ): Promise<T> {
 	if (timeoutMs <= 0 && !signal) {
-		return promise;
+		return action(undefined);
 	}
 	return new Promise<T>((resolve, reject) => {
 		let settled = false;
+		const controller = new AbortController();
 		const timer =
 			timeoutMs > 0
 				? setTimeout(() => {
@@ -162,12 +170,8 @@ function withTimeout<T>(
 						}
 						settled = true;
 						signal?.removeEventListener("abort", onAbort);
-						reject(
-							new MnemocyteError(
-								`Provider call timed out after ${timeoutMs}ms.`,
-								"TIMEOUT",
-							),
-						);
+						controller.abort(timeoutError(timeoutMs));
+						reject(timeoutError(timeoutMs));
 					}, timeoutMs)
 				: undefined;
 		const onAbort = (): void => {
@@ -178,6 +182,7 @@ function withTimeout<T>(
 			if (timer) {
 				clearTimeout(timer);
 			}
+			controller.abort(signal?.reason);
 			reject(
 				new MnemocyteError("Operation was aborted.", "ABORTED", signal?.reason),
 			);
@@ -188,6 +193,7 @@ function withTimeout<T>(
 					clearTimeout(timer);
 				}
 				settled = true;
+				controller.abort(signal.reason);
 				reject(
 					new MnemocyteError(
 						"Operation was aborted.",
@@ -199,7 +205,7 @@ function withTimeout<T>(
 			}
 			signal.addEventListener("abort", onAbort, { once: true });
 		}
-		promise.then(
+		action(controller.signal).then(
 			(value) => {
 				if (settled) {
 					return;
@@ -268,11 +274,7 @@ export async function withResilience<T>(
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		throwIfAborted(externalSignal);
 		try {
-			return await withTimeout(
-				action(externalSignal),
-				timeoutMs,
-				externalSignal,
-			);
+			return await runAttempt(action, timeoutMs, externalSignal);
 		} catch (error) {
 			lastError = error;
 			if (error instanceof MnemocyteError && error.code === "ABORTED") {

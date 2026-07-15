@@ -23,6 +23,10 @@ Postgres installations use
 `0001_add_mnemocyte_meta.sql`, and custom fresh installs are rendered from
 `0000_initial.sql.template`.
 
+The local unreleased `0.3.0` line adds the internal `MemoryStore` boundary and
+shared client orchestration described below. The root public API remains
+unchanged.
+
 ## Goals
 
 - **Maintainability:** each module has one responsibility and clear boundaries.
@@ -45,7 +49,8 @@ Postgres installations use
 - No full autonomous memory consolidation in the core package.
 - No provider lock-in. Official embedder factories are convenience adapters,
   not the only supported path.
-- No broad backend expansion before a `MemoryStore` abstraction exists.
+- No broad backend expansion before a public `MemoryStore` adapter contract
+  exists.
 
 ## Package Strategy
 
@@ -128,12 +133,13 @@ src/
 |   +-- index.ts              # provider helper exports
 |   +-- openai.ts             # fetch-based OpenAI embeddings helper
 +-- retrieval/
-|   +-- index.ts              # hybridRecall orchestration
 |   +-- scorer.ts             # cosineSimilarity, lexical score, fused ranker
 +-- memory/
+|   +-- client-core.ts        # shared MnemocyteClient orchestration
+|   +-- store.ts              # internal MemoryStore boundary
 |   +-- shared.ts             # validation, mapping, embedding helpers (single + batch)
-|   +-- in-memory.ts          # in-memory backend (with audit log array)
-|   +-- postgres.ts           # Postgres-backed backend
+|   +-- in-memory.ts          # in-memory MemoryStore adapter
+|   +-- postgres.ts           # Postgres MemoryStore adapter
 +-- context/
     +-- builder.ts            # buildContext()
     +-- formatter.ts          # safe markdown/plain/xml formatting
@@ -158,24 +164,21 @@ provider-free, schema setup is explicit, the public API is compact, typed errors
 exist, package exports are tested, and Postgres/pgvector is treated as
 infrastructure rather than hidden magic.
 
-The main pre-v1 weakness is that orchestration is duplicated between
-`memory/in-memory.ts` and `memory/postgres.ts`. Validation, embedding,
-resilience wrapping, audit behavior, result mapping, and lifecycle checks should
-be shared by a single core path, with storage-specific behavior behind the
-planned `MemoryStore` boundary. Until that boundary exists, small behavior drift
-between backends remains easy to introduce.
+The `0.3.0` implementation line moves backend behavior behind an internal
+`MemoryStore` boundary. Validation, embedding, resilience wrapping, recall
+scoring, audit behavior, result mapping, context building, and lifecycle checks
+now run through `memory/client-core.ts`, while `memory/in-memory.ts` and
+`memory/postgres.ts` own storage-specific mechanics.
 
-Current unclear boundaries:
+Remaining unclear boundaries:
 
 - `memory/shared.ts` mixes validation, embedding helpers, row/result mapping,
   and backend-specific knowledge.
-- `retrieval/scorer.ts` imports cloning from `memory/shared.ts`, which makes the
-  retrieval layer depend on memory-layer utilities.
 - Postgres query modules own both SQL shape and some public result-shaping
   concerns.
-- Migration metadata validation currently protects write/recall paths, but the
-  same checks can also block non-embedding operations that should remain useful
-  during migration recovery.
+- The internal `MemoryStore` interface is not exported yet; before a public
+  adapter API, it needs more review around transaction hooks, caller-owned
+  connections, and runtime-specific Drizzle drivers.
 
 ## Public API Direction
 
@@ -497,13 +500,9 @@ Before v1, finish or explicitly defer:
 
 - one unambiguous migration guide for default installs, existing 0.1.x installs,
   and custom-dimension fresh installs
-- a `MemoryStore` boundary or equivalent shared orchestration that removes
-  backend behavior drift
-- public result mapping that never leaks internal embedding vectors
-- timeout behavior that actively aborts provider requests where the runtime and
-  provider helper support cancellation
-- consistent `MnemocyteError` wrapping for expected database, migration, and
-  provider failures
+- a public `MemoryStore` adapter contract once the internal boundary is stable
+- continued tightening of expected database, migration, and provider failure
+  wrapping
 - runtime input validation for JavaScript consumers where TypeScript cannot help
 - package export smoke tests
 - Postgres + pgvector integration tests
@@ -537,11 +536,12 @@ Status: released as `v0.2.0`.
 
 ### `0.3.0` - `MemoryStore` / v1 Stabilization
 
-- Extract storage primitives into a `MemoryStore` interface.
-- Move shared orchestration into one core path.
-- Reduce in-memory and Postgres backends to adapters.
-- Fix the known pre-v1 gaps around public result mapping, timeout cancellation,
-  database error wrapping, and dimension-validation scope.
+- Status: implemented locally for the next release.
+- Extracted storage primitives into an internal `MemoryStore` interface.
+- Moved shared orchestration into one core path.
+- Reduced in-memory and Postgres backends to adapters.
+- Fixed the known pre-v1 gaps around public result mapping, timeout
+  cancellation, database error wrapping, and dimension-validation scope.
 - Defer any third backend until this boundary exists.
 
 ### `0.4.0` - `drizzleStore(db)`
@@ -561,19 +561,16 @@ Status: released as `v0.2.0`.
 ## Known limitations
 
 - **Postgres supports one embedding dimension per installation.** The default migration creates `embedding vector(1536)`, and custom dimensions must be rendered explicitly from the migration template. `createMnemocyte` stays synchronous; the Postgres client validates `embedder.dimensions` against `mnemocyte_meta` before the first storage operation.
-- **Backend orchestration is duplicated before `MemoryStore`.** The in-memory and
-  Postgres backends share helper functions, but each still owns its own
-  operation flow. Treat this as a v1 stabilization issue, not as a reason to add
-  more backends.
-- **Provider timeout cancellation is not fully active cancellation yet.** The
-  resilience layer can fail an operation with `"TIMEOUT"`, but provider helpers
-  should also abort the underlying request where possible before v1.
-- **Database error wrapping is not comprehensive yet.** Consumers should expect
-  typed `MnemocyteError` for documented validation/configuration failures, while
-  broader DB/driver normalization remains pre-v1 hardening.
+- **`MemoryStore` is internal.** The in-memory and Postgres backends now use a
+  shared internal adapter boundary, but it is not a public adapter API yet.
+- **Provider timeout cancellation depends on signal support.** The resilience
+  layer aborts the per-attempt signal on `"TIMEOUT"`; embedder implementations
+  must honor `AbortSignal` for the underlying request to stop promptly.
+- **Database error wrapping is broader but still conservative.** Expected
+  missing schema and storage failures are normalized, while unusual driver
+  failures may still surface through their original cause.
 - **`rememberMany(inputs)` is the remaining positional-style public method.**
-  Decide before v1 whether to preserve it as-is or move it behind an
-  object-parameter shape.
+  It is preserved as the compatibility exception for `0.3.0`.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
@@ -595,9 +592,9 @@ Status: released as `v0.2.0`.
 - [x] Add Postgres + pgvector integration tests.
 - [x] Add safe context formatting and token counting.
 - [x] Keep consolidation under `client.experimental.*` until it graduates.
-- [ ] Strip internal embedding vectors from all public in-memory results.
-- [ ] Split schema availability checks from embedding-dimension checks.
-- [ ] Actively abort provider requests on timeout where supported.
-- [ ] Wrap expected database and migration failures in `MnemocyteError`.
-- [ ] Decide the v1 shape for `rememberMany`.
-- [ ] Extract `MemoryStore` or equivalent shared orchestration before v1.
+- [x] Strip internal embedding vectors from all public in-memory results.
+- [x] Split schema availability checks from embedding-dimension checks.
+- [x] Actively abort provider requests on timeout where supported.
+- [x] Wrap expected database and migration failures in `MnemocyteError`.
+- [x] Decide the v1 shape for `rememberMany`.
+- [x] Extract `MemoryStore` or equivalent shared orchestration before v1.

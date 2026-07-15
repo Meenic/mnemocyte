@@ -136,7 +136,48 @@ describe("resilience", () => {
 			}
 		}
 
-		// 5. AbortSignal cancels the operation with ABORTED and disables retry.
+		// 5. Timeout aborts the per-attempt provider signal.
+		{
+			let calls = 0;
+			let sawAbort = false;
+			const client = createMnemocyte({
+				embedder: {
+					model: "timeout-abort-test",
+					dimensions: 2,
+					async embed(_texts, options = {}) {
+						calls += 1;
+						return new Promise<number[][]>((_resolve, reject) => {
+							options.signal?.addEventListener(
+								"abort",
+								() => {
+									sawAbort = true;
+									reject(
+										Object.assign(new Error("Aborted"), { name: "AbortError" }),
+									);
+								},
+								{ once: true },
+							);
+						});
+					},
+				},
+				provider: { timeoutMs: 10, retries: 0 },
+			});
+			try {
+				await expectMnemocyteError(
+					client.remember({
+						entityId: "timeout_signal",
+						content: "slow embedder",
+					}),
+					"TIMEOUT",
+				);
+				expect(calls).toBe(1);
+				expect(sawAbort).toBe(true);
+			} finally {
+				await client.close();
+			}
+		}
+
+		// 6. AbortSignal cancels the operation with ABORTED and disables retry.
 		{
 			const counter = createCountingEmbedder({ delayMs: 80 });
 			const client = createMnemocyte({
@@ -160,7 +201,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 6. Custom shouldRetry can opt out of retrying.
+		// 7. Custom shouldRetry can opt out of retrying.
 		{
 			const counter = createCountingEmbedder({ failures: 5 });
 			let predicateCalls = 0;
@@ -190,7 +231,7 @@ describe("resilience", () => {
 			}
 		}
 
-		// 7. Already-aborted signal short-circuits before calling the embedder.
+		// 8. Already-aborted signal short-circuits before calling the embedder.
 		{
 			const counter = createCountingEmbedder();
 			const client = createMnemocyte({ embedder: counter.embedder });

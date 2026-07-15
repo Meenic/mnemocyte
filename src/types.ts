@@ -220,7 +220,8 @@ export interface Embedder {
 	readonly dimensions: number;
 	/**
 	 * Embed one or more texts. Implementations MUST return one vector per
-	 * input, in the same order, each of length {@link Embedder.dimensions}.
+	 * input, in the same order, each of length {@link Embedder.dimensions} and
+	 * containing only finite numeric values.
 	 *
 	 * The optional `options.signal` is forwarded by Mnemocyte when the
 	 * caller passes a `signal` on a {@link RememberInput} / {@link RecallInput}

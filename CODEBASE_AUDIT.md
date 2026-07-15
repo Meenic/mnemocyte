@@ -1,7 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 0/16 items closed; Phase 1 audit complete, Phase 2 starting with
-the highest-severity items.
+**Checkpoint:** 1/16 items closed; working on developer onboarding.
 
 ## Validation contract
 
@@ -135,11 +134,14 @@ the main architecture status agree that 0.2.0 is published and the internal
 
 ## Error handling & logging
 
-- [ ] **ERR-01 (high): Reject non-finite embedder output as `EMBEDDING`.**
+- [x] **ERR-01 (high): Reject non-finite embedder output as `EMBEDDING`.**
   `embedOne` and `embedMany` validate result count and dimensions but accept
   `NaN`/infinite components. In memory this stores invalid vectors and degrades
   scoring silently; Postgres later fails serialization and reports the wrong
   `DB` category. Add focused regression coverage before the fix.
+  Resolved with single/batch regression tests and finite-component validation;
+  `checktypes`, `lint`, `test` (15 files/31 tests), `build`, `pack:check`, and
+  the environment-gated integration project all passed.
 - [ ] **ERR-02 (med): Normalize client configuration errors.** An explicitly
   empty `databaseUrl` currently selects the in-memory backend despite the
   documented validation error; a malformed URL leaks native `TypeError`; and an

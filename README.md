@@ -70,6 +70,9 @@ When `databaseUrl` is omitted, Mnemocyte uses the in-memory backend.
 ## Embedder
 
 Mnemocyte accepts any embedder that returns one vector per input text.
+Each vector must match `embedder.dimensions` and contain only finite numbers;
+invalid provider output fails with `MnemocyteError` code `"EMBEDDING"` before
+anything is stored.
 
 ```ts
 const client = createMnemocyte({

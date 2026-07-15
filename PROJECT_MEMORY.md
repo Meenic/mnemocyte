@@ -29,6 +29,8 @@
   validation must happen before provider usage or vector comparison.
   Non-embedding operations should remain usable when only the configured
   embedder dimension is mismatched.
+- Single and batched embedder output must contain only finite vector values;
+  invalid components fail with `"EMBEDDING"` before storage.
 
 ## Important Commands
 

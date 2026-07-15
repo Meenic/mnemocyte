@@ -173,6 +173,24 @@ export function rowToMemory(row: MemoryLikeRow): Memory {
 	};
 }
 
+function validateEmbedding(
+	embedding: readonly number[],
+	dimensions: number,
+): void {
+	if (embedding.length !== dimensions) {
+		throw new MnemocyteError(
+			"Embedder returned an embedding with unexpected dimensions.",
+			"EMBEDDING",
+		);
+	}
+	if (embedding.some((component) => !Number.isFinite(component))) {
+		throw new MnemocyteError(
+			"Embedder returned an embedding with non-finite values.",
+			"EMBEDDING",
+		);
+	}
+}
+
 export async function embedOne(
 	embedder: Embedder,
 	text: string,
@@ -208,12 +226,7 @@ export async function embedOne(
 	if (!embedding) {
 		throw new MnemocyteError("Embedder returned no embedding.", "EMBEDDING");
 	}
-	if (embedding.length !== embedder.dimensions) {
-		throw new MnemocyteError(
-			"Embedder returned an embedding with unexpected dimensions.",
-			"EMBEDDING",
-		);
-	}
+	validateEmbedding(embedding, embedder.dimensions);
 	return embedding;
 }
 
@@ -258,12 +271,7 @@ export async function embedMany(
 		);
 	}
 	for (const embedding of embeddings) {
-		if (embedding.length !== embedder.dimensions) {
-			throw new MnemocyteError(
-				"Embedder returned an embedding with unexpected dimensions.",
-				"EMBEDDING",
-			);
-		}
+		validateEmbedding(embedding, embedder.dimensions);
 	}
 	return embeddings;
 }

@@ -31,6 +31,9 @@ behavioural changes documented in their entries.
 - **Postgres benchmarks initialize current metadata.** Retrieval benchmarks now
   apply both bundled migrations and create a missing default installation row
   without overwriting an existing dimension selection.
+- **Node declarations match the support floor.** Development now uses Node 22
+  type declarations, reducing the chance of accidentally depending on APIs
+  unavailable at the minimum supported Node `22.18` runtime.
 
 ### Fixed
 

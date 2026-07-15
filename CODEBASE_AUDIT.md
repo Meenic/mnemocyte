@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 12/16 items closed; working on Node declaration alignment.
+**Checkpoint:** 13/16 items closed; documenting deferred behavior decisions.
 
 ## Validation contract
 
@@ -218,11 +218,15 @@ explicit under `DOC-03`. No console logging occurs in runtime code.
 
 ## Dependencies
 
-- [ ] **DEP-01 (med): Align Node type declarations with the minimum tested
+- [x] **DEP-01 (med): Align Node type declarations with the minimum tested
   runtime.** The package promises Node `>=22.18` and CI tests Node 22.18/24, but
   development currently uses `@types/node` 25.x, allowing accidental use of
   APIs unavailable on the minimum runtime. Pin the declaration major to Node 22
   and regenerate the lockfile.
+  The manifest now specifies `@types/node ^22.18.0`, the lockfile resolves
+  `22.20.1`, and the installed declaration package was verified at that version.
+  All required gates passed (18 test files/40 tests, with the database scenario
+  skipped because `DATABASE_URL` is absent).
 
 Evidence checked against npm on 2026-07-15: `drizzle-orm` 0.45.2,
 `postgres` 3.4.9, and `drizzle-kit` 0.31.10 are current stable releases;

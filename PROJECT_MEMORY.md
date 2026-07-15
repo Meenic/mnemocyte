@@ -41,6 +41,8 @@
   `client-core.ts` and backend mechanics in the adapters.
 - Ordinary audit writes are best-effort; Postgres consolidation audit events
   remain transaction-coupled to the consolidation mutation.
+- Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported
+  runtime; CI also covers Node 24.
 
 ## Important Commands
 

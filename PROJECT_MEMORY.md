@@ -34,6 +34,8 @@
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.
+- `pnpm lint` is a read-only Biome check that fails on warnings;
+  `pnpm lint:fix` applies safe formatting, lint, and import fixes.
 
 ## Important Commands
 

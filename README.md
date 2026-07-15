@@ -411,7 +411,9 @@ pnpm run pack:check
 ```
 
 `pnpm test` builds the package, runs unit behavior, verifies package exports,
-and type-checks the public declarations. The Postgres suite is separate:
+and type-checks the public declarations. `pnpm lint` is a read-only formatting,
+lint, and import-order check; use `pnpm lint:fix` to apply its safe fixes. The
+Postgres suite is separate:
 
 ```bash
 DATABASE_URL=postgres://... pnpm run test:integration

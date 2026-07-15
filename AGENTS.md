@@ -71,7 +71,7 @@ pnpm tsc -p tsconfig.test.json
 
 Notes:
 
-- `pnpm lint` and `pnpm format` use `--write`.
+- `pnpm lint` is read-only; `pnpm lint:fix` and `pnpm format` use `--write`.
 - `test:integration` needs a compatible Postgres + pgvector `DATABASE_URL`.
 - Do not print `.env` contents or database credentials.
 - Local integration may fail if the configured database is unavailable.

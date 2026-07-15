@@ -22,6 +22,9 @@ behavioural changes documented in their entries.
   mismatch.
 - **Provider timeouts actively abort attempts.** Configured provider timeouts
   now abort the per-attempt `AbortSignal` passed to embedders.
+- **Lint validation is read-only.** `pnpm lint` now checks formatting, lint
+  rules, and import organization without modifying files, fails on warnings,
+  and leaves fixes to `pnpm lint:fix`.
 
 ### Fixed
 

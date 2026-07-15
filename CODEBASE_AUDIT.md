@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 4/16 items closed; working on the lint/format CI gate.
+**Checkpoint:** 5/16 items closed; working on the shared-memory module split.
 
 ## Validation contract
 
@@ -16,8 +16,8 @@ pnpm run test:integration
 ```
 
 - `pnpm checktypes` runs strict source and test TypeScript checks.
-- `pnpm lint` currently runs Biome with `--write`; item `FMT-01` will make the
-  validation gate non-mutating and include formatting/import checks.
+- `pnpm lint` runs a read-only Biome formatting, lint, and import check and
+  fails on warnings; `pnpm lint:fix` applies its safe fixes.
 - `pnpm test` delegates to `test:ci`, which builds and runs the Vitest `unit`
   and `package` projects with type checking.
 - `pnpm build` produces the ESM root and embedder subpath artifacts through
@@ -210,12 +210,16 @@ keys, tokens, private keys, or production endpoints were found.
 
 ## Formatting & lint
 
-- [ ] **FMT-01 (med): Make lint a read-only, comprehensive CI gate.** The
+- [x] **FMT-01 (med): Make lint a read-only, comprehensive CI gate.** The
   current `lint` script uses `--write`, so CI can mutate its checkout instead of
   proving it was clean; it also omits formatting/import-assist checks and allows
   the two unused-import warnings. Use a non-writing Biome check that fails on
   warnings, add an explicit fix script, and correct the stale command fact in
   `AGENTS.md` without restructuring that file.
+  `pnpm lint` now runs `biome check --error-on-warnings .`, `pnpm lint:fix`
+  owns write mode, and contributor/maintainer docs state the distinction; all
+  required gates passed (16 test files/34 tests, with the database scenario
+  skipped because `DATABASE_URL` is absent).
 
 Evidence checked: `.editorconfig` and Biome agree on tabs for code and spaces
 for Markdown/YAML; quote style and import organization are configured; all 53

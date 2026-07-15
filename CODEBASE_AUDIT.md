@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 5/16 items closed; working on the shared-memory module split.
+**Checkpoint:** 6/16 items closed; working on internal naming consistency.
 
 ## Validation contract
 
@@ -46,13 +46,19 @@ Baseline on 2026-07-15:
 
 ## Structure & organization
 
-- [ ] **STR-01 (med): Split the mixed `memory/shared.ts` utility module.** The
-  489-line module combines defaults, runtime validation, ID/result mapping,
+- [x] **STR-01 (med): Split the mixed `memory/shared.ts` utility module.** The
+  500-plus-line module combines defaults, runtime validation, ID/result mapping,
   embedding-provider orchestration, and backend filters. `ARCHITECTURE.md`
   already calls this boundary unclear, and `retrieval/scorer.ts` duplicates its
   public-memory clone to avoid importing the mixed module. Split these
   responsibilities into named internal modules, centralize public-memory
   cloning, and update the architecture map without changing the public API.
+  Split the module into focused defaults, embeddings, filters, records,
+  Postgres-record mapping, and validation leaves; all live references were
+  redirected before deletion, the duplicate scorer clone was centralized, and
+  the architecture map now names each responsibility. All required gates
+  passed (16 test files/34 tests, with the database scenario skipped because
+  `DATABASE_URL` is absent).
 
 Evidence checked: the remaining directory layout follows responsibility
 (`context`, `db`, `embedders`, `memory`, and `retrieval`), package entrypoints

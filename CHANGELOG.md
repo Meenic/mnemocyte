@@ -25,6 +25,9 @@ behavioural changes documented in their entries.
 - **Lint validation is read-only.** `pnpm lint` now checks formatting, lint
   rules, and import organization without modifying files, fails on warnings,
   and leaves fixes to `pnpm lint:fix`.
+- **Memory internals have focused module boundaries.** Defaults, embedding
+  calls, in-memory filters, record mapping, and validation now live in separate
+  leaf modules, with public-memory cloning shared by storage and scoring paths.
 
 ### Fixed
 

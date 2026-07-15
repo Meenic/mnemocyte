@@ -11,7 +11,7 @@ import type {
 	PruneResult,
 	RecallInput,
 } from "../types.js";
-import type { StoredMemory } from "./shared.js";
+import type { StoredMemory } from "./records.js";
 
 export interface StoreVectorSearchInput extends RecallInput {
 	embedding: readonly number[];

@@ -137,7 +137,12 @@ src/
 +-- memory/
 |   +-- client-core.ts        # shared MnemocyteClient orchestration
 |   +-- store.ts              # internal MemoryStore boundary
-|   +-- shared.ts             # validation, mapping, embedding helpers (single + batch)
+|   +-- defaults.ts           # shared internal defaults and importance ordering
+|   +-- embeddings.ts         # resilient single and batch embedding calls
+|   +-- filters.ts            # in-memory recall, prune, and duplicate filters
+|   +-- records.ts            # stored/public memory mapping, cloning, and ids
+|   +-- postgres-records.ts   # Postgres row-to-public-memory mapping
+|   +-- validation.ts         # client configuration and operation validation
 |   +-- in-memory.ts          # in-memory MemoryStore adapter
 |   +-- postgres.ts           # Postgres MemoryStore adapter
 +-- context/
@@ -168,12 +173,12 @@ The `0.3.0` implementation line moves backend behavior behind an internal
 `MemoryStore` boundary. Validation, embedding, resilience wrapping, recall
 scoring, audit behavior, result mapping, context building, and lifecycle checks
 now run through `memory/client-core.ts`, while `memory/in-memory.ts` and
-`memory/postgres.ts` own storage-specific mechanics.
+`memory/postgres.ts` own storage-specific mechanics. Focused leaf modules under
+`memory/` own defaults, embedding calls, filters, record mapping, and validation
+without importing the client orchestrator or backend adapters.
 
 Remaining unclear boundaries:
 
-- `memory/shared.ts` mixes validation, embedding helpers, row/result mapping,
-  and backend-specific knowledge.
 - Postgres query modules own both SQL shape and some public result-shaping
   concerns.
 - The internal `MemoryStore` interface is not exported yet; before a public

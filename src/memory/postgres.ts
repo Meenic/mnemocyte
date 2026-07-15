@@ -34,14 +34,13 @@ import type {
 } from "../types.js";
 import { createMemoryClient } from "./client-core.js";
 import {
-	createEventId,
 	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
 	IMPORTANCE_RANK,
-	rowToMemory,
-	type StoredMemory,
-} from "./shared.js";
+} from "./defaults.js";
+import { rowToMemory } from "./postgres-records.js";
+import { createEventId, type StoredMemory } from "./records.js";
 import type {
 	MemoryStore,
 	StoreConsolidateInput,

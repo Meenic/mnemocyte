@@ -36,6 +36,9 @@
   remains synchronous.
 - `pnpm lint` is a read-only Biome check that fails on warnings;
   `pnpm lint:fix` applies safe formatting, lint, and import fixes.
+- Memory defaults, embedding calls, filters, record mapping, and validation
+  live in focused leaf modules under `src/memory/`; keep orchestration in
+  `client-core.ts` and backend mechanics in the adapters.
 
 ## Important Commands
 

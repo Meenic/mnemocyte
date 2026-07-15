@@ -9,17 +9,17 @@ import type {
 } from "../types.js";
 import { createMemoryClient } from "./client-core.js";
 import {
-	cloneMemory,
-	createEventId,
 	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
+} from "./defaults.js";
+import {
 	isExpired,
 	matchesDuplicateFilter,
 	matchesPruneFilter,
 	matchesRecallFilter,
-	type StoredMemory,
-} from "./shared.js";
+} from "./filters.js";
+import { cloneMemory, createEventId, type StoredMemory } from "./records.js";
 import type {
 	MemoryStore,
 	StoreConsolidateInput,

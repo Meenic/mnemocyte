@@ -1,7 +1,7 @@
 ﻿import { createDatabase } from "./db/index.js";
 import { createInMemoryClient } from "./memory/in-memory.js";
 import { createPostgresClient } from "./memory/postgres.js";
-import { assertEmbedder, assertNonEmptyString } from "./memory/shared.js";
+import { assertEmbedder, assertNonEmptyString } from "./memory/validation.js";
 import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
 
 /**

@@ -20,28 +20,31 @@ import type {
 	RememberInput,
 } from "../types.js";
 import {
-	assertLimit,
-	assertMinScore,
-	assertNonEmptyString,
-	cloneMemory,
-	contextInputToRecallInput,
-	createEventId,
-	createId,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_LIMIT,
 	DEFAULT_MIN_SCORE,
 	DEFAULT_TYPE,
-	embedMany,
-	embedOne,
+} from "./defaults.js";
+import { embedMany, embedOne } from "./embeddings.js";
+import {
+	cloneMemory,
+	createEventId,
+	createId,
 	normalizeTags,
+} from "./records.js";
+import type { MemoryStore } from "./store.js";
+import {
+	assertLimit,
+	assertMinScore,
+	assertNonEmptyString,
+	contextInputToRecallInput,
 	validateConsolidateInput,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
 	validatePruneInput,
 	validateRecallInput,
 	validateRememberInput,
-} from "./shared.js";
-import type { MemoryStore } from "./store.js";
+} from "./validation.js";
 
 interface ScoredCandidate {
 	memory: Memory;

@@ -371,15 +371,78 @@ Planned v1 direction:
 
 ## Development
 
+### Prerequisites
+
+- Node.js 22.18 or newer. CI tests the minimum 22.18 release and Node 24.
+- pnpm 11.1.1, matching the `packageManager` field in `package.json`.
+- Postgres with pgvector only when you want to run the integration suite.
+
+Clone the repository and install its locked dependencies:
+
+```bash
+git clone https://github.com/Meenic/mnemocyte.git
+cd mnemocyte
+pnpm install --frozen-lockfile
+```
+
+Mnemocyte is a library, not a standalone server. Use the quick-start example
+from a consuming TypeScript project, or run the repository build in watch mode
+while developing:
+
+```bash
+pnpm dev
+```
+
+Create the publishable ESM artifacts in `dist/` with:
+
+```bash
+pnpm build
+```
+
+### Validation
+
+Run the same main gates used by CI before committing:
+
 ```bash
 pnpm checktypes
 pnpm lint
 pnpm test
-pnpm run test:integration
 pnpm run pack:check
 ```
 
-`test:integration` skips when `DATABASE_URL` is not set.
+`pnpm test` builds the package, runs unit behavior, verifies package exports,
+and type-checks the public declarations. The Postgres suite is separate:
+
+```bash
+DATABASE_URL=postgres://... pnpm run test:integration
+```
+
+On PowerShell, set the environment variable for the current process first:
+
+```powershell
+$env:DATABASE_URL = "postgres://..."
+pnpm run test:integration
+```
+
+`test:integration` skips when `DATABASE_URL` is not set. The database must have
+pgvector available; the test applies the bundled migrations.
+
+### Where changes belong
+
+- Public exports and types: `src/index.ts`, `src/types.ts`, and `src/errors.ts`.
+- Shared client behavior: `src/memory/client-core.ts`; backend mechanics stay
+  in `src/memory/in-memory.ts` or `src/memory/postgres.ts`.
+- Postgres schema and SQL: `src/db/schema.ts` and `src/db/queries/`. Schema
+  changes require an explicit file under `migrations/`.
+- Provider helpers: `src/embedders/`; keep the root package provider-SDK-free.
+- Retrieval and context rendering: `src/retrieval/` and `src/context/`.
+- Tests: mirror the affected responsibility under `test/`; package boundary
+  checks live under `test/package/`, and real Postgres coverage under
+  `test/integration/`.
+
+See [AGENTS.md](./AGENTS.md) for repository rules and the validation/release
+policy. Read [ARCHITECTURE.md](./ARCHITECTURE.md) before changing module
+boundaries or the public surface.
 
 ## Architecture
 

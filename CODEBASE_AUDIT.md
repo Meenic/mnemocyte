@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 1/16 items closed; working on developer onboarding.
+**Checkpoint:** 2/16 items closed; working on configuration error normalization.
 
 ## Validation contract
 
@@ -108,11 +108,15 @@ easy isolated helpers.
 
 ## Documentation
 
-- [ ] **DOC-01 (high): Add a clone-to-build developer path to `README.md`.**
+- [x] **DOC-01 (high): Add a clone-to-build developer path to `README.md`.**
   The README documents consumer installation and API use, but not repository
   prerequisites, dependency installation, watch/build commands, validation
   semantics, or where new source/tests/migrations belong. A new contributor
   cannot currently follow one complete setup path.
+  Resolved with prerequisites, clone/install, watch/build, validation,
+  integration-shell, and responsibility-map guidance; all required gates passed
+  (15 test files/31 tests, with Postgres skipped because `DATABASE_URL` is
+  absent).
 - [ ] **DOC-02 (med): Remove stale planning and performance sequencing.**
   `PERFORMANCE_REVIEW.md` still says work moves from 0.1.4 to 0.2.0 before the
   `MemoryStore` boundary, although 0.2.0 is published and the boundary is

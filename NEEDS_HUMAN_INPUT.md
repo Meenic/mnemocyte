@@ -23,3 +23,26 @@ current signature temporarily if compatibility is required.
 **Why deferred:** Each option changes observable cancellation behavior or the
 public method shape; the codebase audit is not authorized to choose that
 contract.
+
+## BUG-02: Choose tuning validation and fallback policy
+
+**Decision required:** Should explicitly invalid numeric tuning be rejected,
+clamped, or replaced by defaults?
+
+Options:
+
+1. Reject invalid values with typed errors at configuration/operation
+   boundaries.
+2. Fall back to defaults for invalid configuration and treat `maxTokens <= 0`
+   as unlimited.
+3. Clamp values into supported ranges and document the normalization.
+
+**Recommendation:** Reject invalid values. At client construction, use
+`"CONFIG"` for non-finite or negative weights, an effective weight total of
+zero, non-finite/non-positive recency and access settings, and a
+`candidateMultiplier` that is not an integer of at least one. At
+`buildContext`, require `maxTokens` to be a positive integer when supplied and
+use `"VALIDATION"`; omission remains the explicit unlimited/default path.
+
+**Why deferred:** The current API accepts these values, and choosing rejection,
+fallback, or clamping changes public behavior and error timing.

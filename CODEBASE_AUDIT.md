@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 14/16 items closed; documenting tuning-validation decisions.
+**Checkpoint:** 15/16 items closed; documenting metadata-semantics decisions.
 
 ## Validation contract
 
@@ -194,11 +194,6 @@ the main architecture status agree that 0.2.0 is published and the internal
   events, and the buffer is cleared alongside memories. All required gates
   passed (18 test files/40 tests, with the database scenario skipped because
   `DATABASE_URL` is absent).
-- [ ] **BUG-02 (med): Define runtime tuning validation.** Zero/negative
-  `maxTokens`, non-positive recency/access settings, negative/non-finite
-  weights, and invalid candidate multipliers can produce ignored budgets,
-  `NaN` scores, or invalid store limits. The accepted ranges and fallback-vs-
-  rejection policy need maintainer judgment; record repros and a recommendation.
 - [ ] **BUG-03 (med): Define metadata cloning/serialization semantics.**
   In-memory result cloning is shallow, so nested metadata can still alias caller
   objects, while Postgres JSONB serialization deep-copies only JSON-compatible
@@ -261,6 +256,11 @@ clean; no lint/type suppressions or prohibited test assertions exist.
 
 - [x] **BUG-01 (med): Decide `rememberMany` cancellation semantics — Deferred.**
   Per-item versus batch-level cancellation changes the public contract; the
+  reproduction and recommendation are recorded in `BUGS_FOUND.md` and
+  `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
+  with the database scenario skipped because `DATABASE_URL` is absent).
+- [x] **BUG-02 (med): Define runtime tuning validation — Deferred.** Choosing
+  rejection, fallback, or clamping changes accepted public inputs; the
   reproduction and recommendation are recorded in `BUGS_FOUND.md` and
   `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
   with the database scenario skipped because `DATABASE_URL` is absent).

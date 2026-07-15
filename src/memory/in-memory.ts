@@ -318,6 +318,7 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async close() {
 			memories.clear();
+			auditLog.length = 0;
 		},
 	};
 }

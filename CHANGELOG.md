@@ -40,6 +40,8 @@ behavioural changes documented in their entries.
 - **Client configuration failures are consistently typed.** Explicitly empty
   database URLs fail with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`,
   and malformed embedder models remain in the `"CONFIG"` category.
+- **In-memory close releases audit metadata.** Closing the in-memory store now
+  clears its audit-event buffer alongside stored memories.
 - **In-memory results no longer leak embeddings.** Public `Memory`,
   `MemoryWithScore`, and duplicate-pair results are mapped through explicit
   public-memory clones that omit internal vectors at runtime.

@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 11/16 items closed; working on in-memory close cleanup.
+**Checkpoint:** 12/16 items closed; working on Node declaration alignment.
 
 ## Validation contract
 
@@ -187,9 +187,13 @@ the main architecture status agree that 0.2.0 is published and the internal
   Resolved with three failing-first regression cases and typed synchronous
   validation; all required gates passed (16 test files/34 tests, with the
   database scenario skipped because `DATABASE_URL` is absent).
-- [ ] **ERR-03 (low): Clear the in-memory audit buffer on close.** The in-memory
+- [x] **ERR-03 (low): Clear the in-memory audit buffer on close.** The in-memory
   store clears memories but retains its audit array after the client is closed,
   unnecessarily retaining metadata for the remaining client lifetime.
+  A failing-first store lifecycle test now verifies that close releases audit
+  events, and the buffer is cleared alongside memories. All required gates
+  passed (18 test files/40 tests, with the database scenario skipped because
+  `DATABASE_URL` is absent).
 - [ ] **BUG-01 (med): Decide `rememberMany` cancellation semantics.** Each
   `RememberInput` accepts a signal, but the batch call forwards only the first
   input's signal to the single embedder request. Record a reproduction and

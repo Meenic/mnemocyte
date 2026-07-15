@@ -80,3 +80,40 @@ await client.recall({ entityId: "u1", query: "preferences", limit: 3 });
 Invalid JavaScript input can silently disable a budget, corrupt ranking, or
 create backend-specific query failures instead of producing one typed error at
 the public boundary.
+
+## BUG-03: Nested metadata aliases in memory and diverges from JSONB
+
+**Status:** Deferred pending a metadata value contract.
+
+Public-memory cloning copies only the top-level metadata object. Nested arrays
+and objects remain shared with caller input, stored in-memory records, and
+returned results. Postgres introduces a JSON serialization boundary instead,
+which deep-copies JSON-compatible data and rejects or transforms unsupported
+values.
+
+### Reproduction
+
+```ts
+const metadata = { profile: { tier: "gold" } };
+const memory = await client.remember({
+  entityId: "u1",
+  content: "account tier",
+  metadata,
+});
+
+metadata.profile.tier = "free";
+// On the in-memory backend, the stored memory now also reports "free".
+
+(memory.metadata.profile as { tier: string }).tier = "trial";
+// Mutating a returned nested value can also mutate later in-memory results.
+```
+
+The public type also accepts `{ sequence: 1n }` or cyclic objects. The
+in-memory backend can retain those values, while Postgres JSONB serialization
+cannot persist them consistently.
+
+### Impact
+
+Caller-side mutation can change stored in-memory state without a Mnemocyte
+write, and the same typed metadata value can behave differently across
+backends.

@@ -46,3 +46,27 @@ use `"VALIDATION"`; omission remains the explicit unlimited/default path.
 
 **Why deferred:** The current API accepts these values, and choosing rejection,
 fallback, or clamping changes public behavior and error timing.
+
+## BUG-03: Choose metadata value and cloning semantics
+
+**Decision required:** Is metadata JSON-compatible value data, arbitrary
+JavaScript data, or explicitly caller-owned shallow data?
+
+Options:
+
+1. Define recursive `JsonValue`/`JsonObject` types, reject non-JSON values, and
+   deep-clone metadata at write and result boundaries for backend parity.
+2. Keep `Record<string, unknown>` and use `structuredClone` in memory, accepting
+   that Postgres still cannot represent every supported in-memory value.
+3. Document shallow cloning and require callers not to mutate nested values,
+   preserving the current backend difference.
+
+**Recommendation:** Treat metadata as JSON-compatible persisted value data.
+Validate it with a shared helper, reject unsupported/cyclic values with
+`"VALIDATION"`, and deep-clone on ingress and egress. That matches JSONB's
+natural contract and prevents returned values from mutating stored state. A
+pre-v1 migration can introduce recursive JSON types while compatibility risk is
+still manageable.
+
+**Why deferred:** Narrowing `Record<string, unknown>` and changing clone/error
+behavior affects public types, accepted inputs, and backend compatibility.

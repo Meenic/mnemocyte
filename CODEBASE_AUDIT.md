@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 15/16 items closed; documenting metadata-semantics decisions.
+**Checkpoint:** 16/16 items closed; final repository verification pending.
 
 ## Validation contract
 
@@ -194,12 +194,6 @@ the main architecture status agree that 0.2.0 is published and the internal
   events, and the buffer is cleared alongside memories. All required gates
   passed (18 test files/40 tests, with the database scenario skipped because
   `DATABASE_URL` is absent).
-- [ ] **BUG-03 (med): Define metadata cloning/serialization semantics.**
-  In-memory result cloning is shallow, so nested metadata can still alias caller
-  objects, while Postgres JSONB serialization deep-copies only JSON-compatible
-  values. Choosing deep-clone behavior also decides whether non-JSON metadata is
-  supported; record this rather than silently changing behavior.
-
 Evidence checked: Postgres operations normalize expected schema failures to
 `MIGRATION` and other storage failures to `DB`; provider timeouts and aborts are
 typed; observability hook failures are explicitly swallowed so telemetry cannot
@@ -264,3 +258,9 @@ clean; no lint/type suppressions or prohibited test assertions exist.
   reproduction and recommendation are recorded in `BUGS_FOUND.md` and
   `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
   with the database scenario skipped because `DATABASE_URL` is absent).
+- [x] **BUG-03 (med): Define metadata cloning/serialization semantics —
+  Deferred.** JSON-only versus arbitrary JavaScript metadata changes public
+  types and backend compatibility; the reproduction and recommendation are
+  recorded in `BUGS_FOUND.md` and `NEEDS_HUMAN_INPUT.md`. All required gates
+  passed (18 test files/40 tests, with the database scenario skipped because
+  `DATABASE_URL` is absent).

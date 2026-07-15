@@ -9,6 +9,8 @@ import type {
 	Embedder,
 	ExperimentalMnemocyteClient,
 	FindDuplicatesInput,
+	JsonObject,
+	JsonValue,
 	ListAuditLogInput,
 	MnemocyteClient,
 	MnemocyteConfig,
@@ -41,7 +43,13 @@ const embedder: Embedder = {
 };
 const config: MnemocyteConfig = { embedder, retrieval };
 const client: MnemocyteClient = createMnemocyte(config);
-const remember: RememberInput = { entityId: "entity", content: "content" };
+const jsonValue: JsonValue = ["value", 1, true, null, { nested: "value" }];
+const jsonObject: JsonObject = { value: jsonValue };
+const remember: RememberInput = {
+	entityId: "entity",
+	content: "content",
+	metadata: jsonObject,
+};
 const recall: RecallInput = { entityId: "entity", query: "query" };
 const context: BuildContextInput = {
 	entityId: "entity",
@@ -156,6 +164,8 @@ const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
+void jsonValue;
+void jsonObject;
 void remember;
 void recall;
 void context;

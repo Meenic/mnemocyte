@@ -1,4 +1,5 @@
 import type { Memory } from "../types.js";
+import { cloneJsonObject } from "./json.js";
 
 export interface StoredMemory extends Memory {
 	embedding: number[];
@@ -29,7 +30,7 @@ export function cloneMemory(memory: Memory): Memory {
 		importance: memory.importance,
 		tags: [...memory.tags],
 		source: memory.source,
-		metadata: { ...memory.metadata },
+		metadata: cloneJsonObject(memory.metadata),
 		confidence: memory.confidence,
 		embeddingModel: memory.embeddingModel,
 		embeddingDimensions: memory.embeddingDimensions,

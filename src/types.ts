@@ -38,6 +38,25 @@ export type ImportanceLevel = "low" | "normal" | "high" | "critical";
 export type ContextFormat = "markdown" | "plain" | "xml";
 
 /**
+ * A value that can be persisted losslessly as JSON.
+ *
+ * Metadata rejects unsupported runtime values such as `undefined`, functions,
+ * symbols, bigints, non-finite numbers, class instances, and cyclic objects.
+ */
+export type JsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| JsonObject
+	| JsonValue[];
+
+/** A JSON-compatible object used for persisted memory and audit metadata. */
+export interface JsonObject {
+	[key: string]: JsonValue;
+}
+
+/**
  * Identifies which backend a {@link MnemocyteClient} is using.
  *
  * Selected automatically by {@link createMnemocyte} based on whether
@@ -256,8 +275,8 @@ export interface Memory {
 	tags: string[];
 	/** Optional human-readable source attribution (e.g. `"chat:2024-04-12"`). */
 	source: string | null;
-	/** Arbitrary user-provided metadata persisted alongside the memory. */
-	metadata: Record<string, unknown>;
+	/** JSON-compatible metadata persisted by value alongside the memory. */
+	metadata: JsonObject;
 	/** Confidence in `[0, 1]`. Used in retrieval ranking. */
 	confidence: number;
 	/** {@link Embedder.model} value at write time. */
@@ -402,8 +421,8 @@ export interface RememberInput {
 	tags?: string[];
 	/** Optional human-readable source attribution. */
 	source?: string;
-	/** Arbitrary metadata persisted alongside the memory. */
-	metadata?: Record<string, unknown>;
+	/** JSON-compatible metadata persisted by value alongside the memory. */
+	metadata?: JsonObject;
 	/** Confidence in `[0, 1]`. @defaultValue `1` */
 	confidence?: number;
 	/** Optional expiry; expired memories are filtered out by default. */
@@ -621,8 +640,8 @@ export interface AuditEvent {
 	 * `"entity.cleared"`.
 	 */
 	description: string;
-	/** Free-form structured details about the change. */
-	metadata: Record<string, unknown>;
+	/** JSON-compatible structured details persisted by value with the change. */
+	metadata: JsonObject;
 	/** When the change was recorded. */
 	timestamp: Date;
 }

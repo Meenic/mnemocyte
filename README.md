@@ -194,6 +194,12 @@ await client.remember({
 });
 ```
 
+Memory metadata is persisted JSON value data. Use the exported `JsonObject`
+and `JsonValue` types; unsupported values such as `undefined`, functions,
+bigints, non-finite numbers, class instances, or cyclic objects are rejected
+with `MnemocyteError` code `"VALIDATION"`. Mnemocyte deep-clones metadata when
+writing and reading, so later mutations do not change stored state.
+
 ### `recall`
 
 ```ts

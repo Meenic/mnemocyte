@@ -266,6 +266,8 @@ files such as `dist/embedders/index.d.mts` and
 **Types**
 
 - `Memory` (canonical record, includes `supersededBy` and `supersededAt`), `MemoryWithScore`, `RetrievalScores`, `RetrievalExplanation`, `EntityStats`, `GlobalStats`.
+- JSON metadata: recursive `JsonObject` and `JsonValue`; persisted metadata is
+  validated and deep-cloned at storage ingress and public-result egress.
 - Input types: `RememberInput`, `RecallInput`, `BuildContextInput`, `PruneInput`, `FindDuplicatesInput`, `ListAuditLogInput`, `ConsolidateInput`.
 - Result types: `PruneResult`, `ConsolidateResult`.
 - Observability: `MnemocyteObservation`, `MnemocyteOperation`, `MnemocyteObservationPhase`, `MnemocyteBackend`, `ObservabilityConfig`.
@@ -306,8 +308,8 @@ export class MnemocyteError extends Error {
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
 covers invalid embedder/database URL configuration and the Postgres-backend
 dimensionality check; `"VALIDATION"` covers per-call argument errors (including
-the explicit guard in `prune({})` and `consolidate({ supersededIds: [] })`) plus
-an explicitly empty `databaseUrl`.
+JSON-incompatible or cyclic metadata, the explicit guard in `prune({})`, and
+`consolidate({ supersededIds: [] })`) plus an explicitly empty `databaseUrl`.
 
 Known pre-v1 gap: `MnemocyteError` is the intended recovery boundary, but not
 every database/driver failure is wrapped consistently yet. Before v1, expected
@@ -413,11 +415,11 @@ embedder dimension does not match the installation.
 
 Current write flow:
 
-1. Validate input.
+1. Validate input, including JSON metadata.
 2. Embed content.
 3. Verify embedding count and dimension.
-4. Insert the complete memory row.
-5. Return the stored memory.
+4. Deep-clone metadata and insert the complete memory row.
+5. Return a public record with independently cloned metadata.
 
 Do not hold a database transaction open while calling an external embedding API. If asynchronous embedding is needed later, model it explicitly with an `embedding_status` field and retry/repair tooling.
 

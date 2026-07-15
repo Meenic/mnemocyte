@@ -31,6 +31,10 @@
   embedder dimension is mismatched.
 - Single and batched embedder output must contain only finite vector values;
   invalid components fail with `"EMBEDDING"` before storage.
+- Persisted memory and audit metadata uses the recursive public `JsonObject` /
+  `JsonValue` types. Unsupported or cyclic runtime values fail with
+  `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and
+  egress.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

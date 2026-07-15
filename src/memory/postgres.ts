@@ -39,6 +39,7 @@ import {
 	DEFAULT_DUPLICATE_THRESHOLD,
 	IMPORTANCE_RANK,
 } from "./defaults.js";
+import { cloneJsonObject } from "./json.js";
 import { rowToMemory } from "./postgres-records.js";
 import { createEventId, type StoredMemory } from "./records.js";
 import type {
@@ -66,7 +67,7 @@ function rowToAuditEvent(row: EventRow): AuditEvent {
 		id: row.id,
 		entityId: row.entityId,
 		description: row.description,
-		metadata: row.metadata as Record<string, unknown>,
+		metadata: cloneJsonObject(row.metadata),
 		timestamp: row.timestamp,
 	};
 }
@@ -155,7 +156,7 @@ function toMemoryRow(memory: StoredMemory): NewMemoryRow {
 	return {
 		...memory,
 		tags: [...memory.tags],
-		metadata: { ...memory.metadata },
+		metadata: cloneJsonObject(memory.metadata),
 		embedding: [...memory.embedding],
 	};
 }
@@ -320,7 +321,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						id: event.id,
 						entityId: event.entityId,
 						description: event.description,
-						metadata: event.metadata,
+						metadata: cloneJsonObject(event.metadata),
 						timestamp: event.timestamp,
 					});
 				}

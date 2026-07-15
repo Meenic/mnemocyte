@@ -1,5 +1,6 @@
 import type { MemoryRow } from "../db/schema.js";
 import type { ImportanceLevel, Memory, MemoryType } from "../types.js";
+import { cloneJsonObject } from "./json.js";
 
 type MemoryRowTimestamp = Date | string;
 
@@ -36,7 +37,7 @@ export function rowToMemory(row: MemoryLikeRow): Memory {
 		importance: row.importance as ImportanceLevel,
 		tags: row.tags,
 		source: row.source,
-		metadata: row.metadata as Record<string, unknown>,
+		metadata: cloneJsonObject(row.metadata),
 		confidence: row.confidence,
 		embeddingModel: row.embeddingModel,
 		embeddingDimensions: row.embeddingDimensions,

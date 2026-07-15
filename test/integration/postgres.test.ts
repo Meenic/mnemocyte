@@ -5,6 +5,7 @@ import {
 	createMnemocyte,
 	type EntityStats,
 	type GlobalStats,
+	type JsonObject,
 	type MnemocyteObservation,
 	type MnemocyteOperation,
 } from "mnemocyte";
@@ -113,11 +114,15 @@ async function main(databaseUrl: string) {
 			expect(emptyEntityStats.supersededMemoryCount).toBe(0);
 
 			// 1. Basic remember/recall.
+			const metadata = {
+				profile: { tier: "gold" },
+			} satisfies JsonObject;
 			const memory = await client.remember({
 				entityId,
 				content: "Prefers concise answers about TypeScript libraries.",
 				type: "preference",
 				tags: ["dx", "typescript"],
+				metadata,
 				confidence: 0.9,
 			});
 
@@ -125,6 +130,15 @@ async function main(databaseUrl: string) {
 			expect(memory.embeddingModel).toBe("integration-test");
 			expect(memory.embeddingDimensions).toBe(1536);
 			expect(memory.supersededAt).toBe(null);
+			metadata.profile.tier = "changed after write";
+			const returnedProfile = memory.metadata.profile;
+			if (
+				returnedProfile !== null &&
+				typeof returnedProfile === "object" &&
+				!Array.isArray(returnedProfile)
+			) {
+				returnedProfile.tier = "changed after read";
+			}
 
 			// 2. rememberMany and a near-duplicate to feed findDuplicates.
 			const remembered = await client.rememberMany([
@@ -186,6 +200,7 @@ async function main(databaseUrl: string) {
 			expect(recalled[0]?.id).toBe(memory.id);
 			expect(recalled[0]?.score ?? 0).toBeGreaterThan(0);
 			expect(recalled[0]?.explanation).toBeTruthy();
+			expect(recalled[0]?.metadata).toEqual({ profile: { tier: "gold" } });
 
 			// 4. findDuplicates returns the dup pair (cosine 1.0 between identical content).
 			const pairs = await client.findDuplicates({

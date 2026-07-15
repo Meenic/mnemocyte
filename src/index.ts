@@ -52,6 +52,8 @@ export type {
 	FindDuplicatesInput,
 	GlobalStats,
 	ImportanceLevel,
+	JsonObject,
+	JsonValue,
 	ListAuditLogInput,
 	Memory,
 	MemoryType,

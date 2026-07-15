@@ -19,6 +19,7 @@ import {
 	matchesPruneFilter,
 	matchesRecallFilter,
 } from "./filters.js";
+import { cloneJsonObject } from "./json.js";
 import { cloneMemory, createEventId, type StoredMemory } from "./records.js";
 import type {
 	MemoryStore,
@@ -43,7 +44,7 @@ function cloneAuditEvent(event: AuditEvent): AuditEvent {
 		id: event.id,
 		entityId: event.entityId,
 		description: event.description,
-		metadata: { ...event.metadata },
+		metadata: cloneJsonObject(event.metadata),
 		timestamp: new Date(event.timestamp),
 	};
 }

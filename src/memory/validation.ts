@@ -9,6 +9,7 @@ import type {
 	RecallInput,
 	RememberInput,
 } from "../types.js";
+import { validateJsonObject } from "./json.js";
 
 export function assertNonEmptyString(
 	value: unknown,
@@ -54,6 +55,9 @@ export function assertEmbedder(embedder: Embedder): void {
 export function validateRememberInput(input: RememberInput): void {
 	assertNonEmptyString(input.entityId, "entityId");
 	assertNonEmptyString(input.content, "content");
+	if (input.metadata !== undefined) {
+		validateJsonObject(input.metadata);
+	}
 	if (
 		input.confidence !== undefined &&
 		(!Number.isFinite(input.confidence) ||

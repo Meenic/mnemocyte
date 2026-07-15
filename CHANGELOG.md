@@ -8,6 +8,15 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **BUG-03 — Metadata uses JSON value semantics.** `Memory.metadata`,
+  `RememberInput.metadata`, and `AuditEvent.metadata` now use the exported
+  recursive `JsonObject` / `JsonValue` types instead of
+  `Record<string, unknown>`. Unsupported or cyclic values fail with
+  `"VALIDATION"`, and metadata is deep-cloned at write and read boundaries in
+  both backends.
+
 ### Changed
 
 - **Internal `MemoryStore` boundary.** Refactored in-memory and Postgres

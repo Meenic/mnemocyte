@@ -13,6 +13,7 @@ import type {
 	ConsolidateInput,
 	ConsolidateResult,
 	DuplicatePair,
+	JsonObject,
 	Memory,
 	MemoryWithScore,
 	MnemocyteClient,
@@ -26,6 +27,7 @@ import {
 	DEFAULT_TYPE,
 } from "./defaults.js";
 import { embedMany, embedOne } from "./embeddings.js";
+import { cloneJsonObject } from "./json.js";
 import {
 	cloneMemory,
 	createEventId,
@@ -76,7 +78,7 @@ function createStoredMemory(
 		importance: input.importance ?? DEFAULT_IMPORTANCE,
 		tags: normalizeTags(input.tags),
 		source: input.source ?? null,
-		metadata: input.metadata ?? {},
+		metadata: cloneJsonObject(input.metadata ?? {}),
 		confidence: input.confidence ?? 1,
 		embeddingModel: config.embedder.model,
 		embeddingDimensions: config.embedder.dimensions,
@@ -94,14 +96,14 @@ function createStoredMemory(
 function auditEvent(
 	entityId: string,
 	description: string,
-	metadata: Record<string, unknown>,
+	metadata: JsonObject,
 	timestamp = new Date(),
 ): AuditEvent {
 	return {
 		id: createEventId(),
 		entityId,
 		description,
-		metadata,
+		metadata: cloneJsonObject(metadata),
 		timestamp,
 	};
 }
@@ -150,22 +152,26 @@ export function createMemoryClient(
 	}
 
 	async function remember(input: RememberInput): Promise<Memory> {
+		const preparedInput: RememberInput = {
+			...input,
+			metadata: cloneJsonObject(input.metadata ?? {}),
+		};
 		return observe(
 			config,
 			store.backend,
 			"remember",
-			{ entityId: input.entityId },
+			{ entityId: preparedInput.entityId },
 			async () => {
 				assertOpen();
-				validateRememberInput(input);
+				validateRememberInput(preparedInput);
 				await ensureEmbeddingCompatibility();
 				const embedding = await embedOne(
 					config.embedder,
-					input.content,
-					providerOptions(config, input.signal),
+					preparedInput.content,
+					providerOptions(config, preparedInput.signal),
 				);
 				const [memory] = await store.insertMemories([
-					createStoredMemory(config, input, embedding, new Date()),
+					createStoredMemory(config, preparedInput, embedding, new Date()),
 				]);
 				if (!memory) {
 					throw new MnemocyteError("Memory insert returned no rows.", "DB");
@@ -186,27 +192,33 @@ export function createMemoryClient(
 	const client: MnemocyteClient = {
 		remember,
 		async rememberMany(inputs) {
+			const preparedInputs = inputs.map(
+				(input): RememberInput => ({
+					...input,
+					metadata: cloneJsonObject(input.metadata ?? {}),
+				}),
+			);
 			return observe(
 				config,
 				store.backend,
 				"rememberMany",
-				{ count: inputs.length },
+				{ count: preparedInputs.length },
 				async () => {
 					assertOpen();
-					if (inputs.length === 0) {
+					if (preparedInputs.length === 0) {
 						return [];
 					}
-					for (const input of inputs) {
+					for (const input of preparedInputs) {
 						validateRememberInput(input);
 					}
 					await ensureEmbeddingCompatibility();
 					const embeddings = await embedMany(
 						config.embedder,
-						inputs.map((input) => input.content),
-						providerOptions(config, inputs[0]?.signal),
+						preparedInputs.map((input) => input.content),
+						providerOptions(config, preparedInputs[0]?.signal),
 					);
 					const now = new Date();
-					const stored = inputs.map((input, idx) =>
+					const stored = preparedInputs.map((input, idx) =>
 						createStoredMemory(config, input, embeddings[idx] as number[], now),
 					);
 					const memories = await store.insertMemories(stored);
@@ -437,7 +449,7 @@ export function createMemoryClient(
 						id: event.id,
 						entityId: event.entityId,
 						description: event.description,
-						metadata: { ...event.metadata },
+						metadata: cloneJsonObject(event.metadata),
 						timestamp: new Date(event.timestamp),
 					}));
 				},

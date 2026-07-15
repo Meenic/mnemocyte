@@ -10,6 +10,7 @@ import {
 	text,
 	timestamp,
 } from "drizzle-orm/pg-core";
+import type { JsonObject } from "../types.js";
 import { formatVectorComponent } from "./vector.js";
 
 const vector = customType<{
@@ -39,7 +40,7 @@ export const memoriesTable = pgTable(
 		importance: text("importance").notNull().default("normal"),
 		tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
 		source: text("source"),
-		metadata: jsonb("metadata").notNull().default({}),
+		metadata: jsonb("metadata").$type<JsonObject>().notNull().default({}),
 		confidence: real("confidence").notNull().default(1),
 		embedding: vector("embedding", { dimensions: 1536 }),
 		embeddingModel: text("embedding_model").notNull(),
@@ -74,7 +75,7 @@ export const eventsTable = pgTable(
 		id: text("id").primaryKey(),
 		entityId: text("entity_id").notNull(),
 		description: text("description").notNull(),
-		metadata: jsonb("metadata").notNull().default({}),
+		metadata: jsonb("metadata").$type<JsonObject>().notNull().default({}),
 		timestamp: timestamp("timestamp", { withTimezone: true })
 			.notNull()
 			.defaultNow(),

@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 10/16 items closed; working on behavioral documentation details.
+**Checkpoint:** 11/16 items closed; working on in-memory close cleanup.
 
 ## Validation contract
 
@@ -149,12 +149,18 @@ easy isolated helpers.
   current architecture prose no longer names the historical helper. All
   required gates passed (17 test files/39 tests, with the database scenario
   skipped because `DATABASE_URL` is absent).
-- [ ] **DOC-03 (low): Correct behavioral documentation details.**
+- [x] **DOC-03 (low): Correct behavioral documentation details.**
   `TokenCounter` calls the default heuristic word-based although it is
   character-count based; `isMnemocyteError` claims cross-copy safety while its
   implementation is `instanceof`; and audit writes are intentionally
   best-effort but that failure behavior is not stated in the README audit
   section.
+  Public API comments now describe the character-count heuristic and same-copy
+  `instanceof` guard accurately; README documents best-effort audit writes and
+  the transactional consolidation exception. The stale architecture statement
+  about dimension-validation scope was also corrected. All required gates
+  passed (17 test files/39 tests, with the database scenario skipped because
+  `DATABASE_URL` is absent).
 
 Evidence checked: README package exports, migrations, dimensions, HNSW
 tradeoffs, provider-free OpenAI helper, error codes, and current pre-v1 surface

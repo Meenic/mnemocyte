@@ -404,11 +404,10 @@ migrations are possible. Supporting multiple embedding dimensions in one
 database remains a later production feature, likely through separate columns,
 tables, or partitions.
 
-Known pre-v1 gap: dimension validation is currently tied to backend operations
-more broadly than necessary. v1 should separate schema/migration availability
-checks from embedding-dimension checks so non-embedding operations such as
-cleanup, audit reads, or diagnostics can still run when an installation needs
-repair.
+Embedding-dimension validation runs only before operations that call the
+embedder or compare stored embeddings. Non-embedding recovery operations such
+as cleanup, audit reads, or diagnostics remain available when the configured
+embedder dimension does not match the installation.
 
 ## Write Path
 

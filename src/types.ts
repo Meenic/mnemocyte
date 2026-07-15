@@ -453,8 +453,8 @@ export interface RecallInput {
 /**
  * Pluggable token counter used by {@link MnemocyteClient.buildContext} to
  * enforce {@link BuildContextInput.maxTokens}. Plug in your model's real
- * tokenizer (e.g. `tiktoken`) for accurate budgeting; a simple word-based
- * heuristic is used when omitted.
+ * tokenizer (e.g. `tiktoken`) for accurate budgeting; a simple character-count
+ * heuristic (approximately one token per four characters) is used when omitted.
  */
 export interface TokenCounter {
 	/** Return the number of tokens in `text`. */

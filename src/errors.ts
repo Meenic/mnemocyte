@@ -61,8 +61,9 @@ export class MnemocyteError extends Error {
 /**
  * Type guard for {@link MnemocyteError}.
  *
- * Prefer this over `instanceof` when working across module boundaries or
- * bundlers where multiple copies of the class may exist.
+ * This guard uses `instanceof` and recognizes errors created by the same loaded
+ * Mnemocyte class. It does not recognize structurally similar errors or errors
+ * created by another installed copy of the package.
  *
  * @param error - Value to test (typically a caught `unknown`).
  * @returns `true` if `error` is a {@link MnemocyteError}.

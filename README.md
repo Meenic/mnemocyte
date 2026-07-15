@@ -255,6 +255,12 @@ const events = await client.listAuditLog({
 });
 ```
 
+Ordinary audit writes are best-effort: an audit storage failure does not fail
+the primary client operation, so `listAuditLog` returns only events that were
+successfully persisted. Postgres consolidation is the exception; its
+`"memory.superseded"` events share the consolidation transaction and commit or
+roll back with it.
+
 ### `experimental.consolidate`
 
 ```ts

@@ -39,6 +39,8 @@
 - Memory defaults, embedding calls, filters, record mapping, and validation
   live in focused leaf modules under `src/memory/`; keep orchestration in
   `client-core.ts` and backend mechanics in the adapters.
+- Ordinary audit writes are best-effort; Postgres consolidation audit events
+  remain transaction-coupled to the consolidation mutation.
 
 ## Important Commands
 

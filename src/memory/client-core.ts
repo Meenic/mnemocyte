@@ -19,6 +19,7 @@ import type {
 	MnemocyteClient,
 	MnemocyteConfig,
 	RememberInput,
+	RememberManyInput,
 } from "../types.js";
 import {
 	DEFAULT_IMPORTANCE,
@@ -53,6 +54,12 @@ interface ScoredCandidate {
 	memory: Memory;
 	vectorScore: number;
 	lexicalScore: number;
+}
+
+function isPositionalRememberManyInput(
+	input: RememberManyInput | readonly RememberInput[],
+): input is readonly RememberInput[] {
+	return Array.isArray(input);
 }
 
 function providerOptions(
@@ -190,53 +197,60 @@ export function createMemoryClient(
 		);
 	}
 
+	async function rememberMany(
+		input: RememberManyInput | readonly RememberInput[],
+	): Promise<Memory[]> {
+		const positional = isPositionalRememberManyInput(input);
+		const inputs = positional ? input : input.inputs;
+		const signal = positional ? input[0]?.signal : input.signal;
+		const preparedInputs = inputs.map(
+			(item): RememberInput => ({
+				...item,
+				metadata: cloneJsonObject(item.metadata ?? {}),
+			}),
+		);
+		return observe(
+			config,
+			store.backend,
+			"rememberMany",
+			{ count: preparedInputs.length },
+			async () => {
+				assertOpen();
+				if (preparedInputs.length === 0) {
+					return [];
+				}
+				for (const item of preparedInputs) {
+					validateRememberInput(item);
+				}
+				await ensureEmbeddingCompatibility();
+				const embeddings = await embedMany(
+					config.embedder,
+					preparedInputs.map((item) => item.content),
+					providerOptions(config, signal),
+				);
+				const now = new Date();
+				const stored = preparedInputs.map((item, idx) =>
+					createStoredMemory(config, item, embeddings[idx] as number[], now),
+				);
+				const memories = await store.insertMemories(stored);
+				await recordAudit(
+					memories.map((memory) =>
+						auditEvent(memory.entityId, "memory.created", {
+							memoryId: memory.id,
+							type: memory.type,
+							importance: memory.importance,
+						}),
+					),
+				);
+				return memories.map(cloneMemory);
+			},
+			(result) => ({ count: result.length }),
+		);
+	}
+
 	const client: MnemocyteClient = {
 		remember,
-		async rememberMany(inputs) {
-			const preparedInputs = inputs.map(
-				(input): RememberInput => ({
-					...input,
-					metadata: cloneJsonObject(input.metadata ?? {}),
-				}),
-			);
-			return observe(
-				config,
-				store.backend,
-				"rememberMany",
-				{ count: preparedInputs.length },
-				async () => {
-					assertOpen();
-					if (preparedInputs.length === 0) {
-						return [];
-					}
-					for (const input of preparedInputs) {
-						validateRememberInput(input);
-					}
-					await ensureEmbeddingCompatibility();
-					const embeddings = await embedMany(
-						config.embedder,
-						preparedInputs.map((input) => input.content),
-						providerOptions(config, preparedInputs[0]?.signal),
-					);
-					const now = new Date();
-					const stored = preparedInputs.map((input, idx) =>
-						createStoredMemory(config, input, embeddings[idx] as number[], now),
-					);
-					const memories = await store.insertMemories(stored);
-					await recordAudit(
-						memories.map((memory) =>
-							auditEvent(memory.entityId, "memory.created", {
-								memoryId: memory.id,
-								type: memory.type,
-								importance: memory.importance,
-							}),
-						),
-					);
-					return memories.map(cloneMemory);
-				},
-				(result) => ({ count: result.length }),
-			);
-		},
+		rememberMany,
 		async recall(input) {
 			return observe(
 				config,

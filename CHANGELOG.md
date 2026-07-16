@@ -22,6 +22,12 @@ behavioural changes documented in their entries.
   `candidateMultiplier` that is not an integer of at least 1. Supplying a
   `maxTokens` value that is not a positive integer now throws `"VALIDATION"`;
   omission keeps the existing default path.
+- **BUG-01 — `rememberMany` has one batch cancellation signal.** The canonical
+  call is now `rememberMany({ inputs, signal })`; item inputs do not own
+  cancellation, and aborting `signal` cancels the whole batch without changing
+  its return shape. The positional `rememberMany(inputs)` signature remains as
+  a deprecated pre-v1 compatibility overload and continues treating the first
+  item's signal as the batch signal.
 
 ### Changed
 

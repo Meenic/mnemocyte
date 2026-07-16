@@ -243,10 +243,11 @@ export interface Embedder {
 	 * containing only finite numeric values.
 	 *
 	 * The optional `options.signal` is forwarded by Mnemocyte when the
-	 * caller passes a `signal` on a {@link RememberInput} / {@link RecallInput}
-	 * / {@link BuildContextInput}, or when Mnemocyte's own provider timeout
-	 * fires. Implementations that integrate with `fetch` should forward
-	 * the signal to it so requests can be cancelled promptly.
+	 * caller passes a `signal` on a {@link RememberInput} /
+	 * {@link RememberManyInput} / {@link RecallInput} /
+	 * {@link BuildContextInput}, or when Mnemocyte's own provider timeout fires.
+	 * Implementations that integrate with `fetch` should forward the signal to
+	 * it so requests can be cancelled promptly.
 	 */
 	embed(
 		texts: readonly string[],
@@ -434,6 +435,19 @@ export interface RememberInput {
 	 * aborted, the operation throws a {@link MnemocyteError} with code
 	 * `"ABORTED"`.
 	 */
+	signal?: AbortSignal;
+}
+
+/**
+ * Batch-level input for {@link MnemocyteClient.rememberMany}.
+ *
+ * Cancellation belongs to the whole batch. Individual items accept every
+ * {@link RememberInput} field except `signal`.
+ */
+export interface RememberManyInput {
+	/** Memories to persist in order. */
+	inputs: readonly Omit<RememberInput, "signal">[];
+	/** Optional cancellation signal for the entire batch. */
 	signal?: AbortSignal;
 }
 
@@ -766,7 +780,14 @@ export interface MnemocyteClient {
 	remember(input: RememberInput): Promise<Memory>;
 	/**
 	 * Persist multiple memories in one round-trip. Returns the stored records
-	 * in the same order as `inputs`.
+	 * in the same order as `input.inputs`; `input.signal` cancels the batch.
+	 */
+	rememberMany(input: RememberManyInput): Promise<Memory[]>;
+	/**
+	 * Positional compatibility overload retained during pre-v1. The first
+	 * item's `signal`, when present, acts as the batch signal.
+	 *
+	 * @deprecated Use `rememberMany({ inputs, signal })`.
 	 */
 	rememberMany(inputs: readonly RememberInput[]): Promise<Memory[]>;
 	/**

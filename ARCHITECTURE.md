@@ -245,7 +245,8 @@ files such as `dist/embedders/index.d.mts` and
 
 **Client (stable)**
 
-- `remember(input)` / `rememberMany(inputs)`
+- `remember(input)` / `rememberMany({ inputs, signal })`; the positional batch
+  form remains a deprecated pre-v1 compatibility overload.
 - `recall(input)` — hybrid vector + lexical, with `RetrievalExplanation` when `explain: true`.
 - `buildContext(input)` — markdown / plain / xml with token-budget trimming.
 - `forget({ entityId, memoryId })`, `forgetAll({ entityId })`
@@ -585,8 +586,9 @@ Status: released as `v0.2.0`.
 - **Database error wrapping is broader but still conservative.** Expected
   missing schema and storage failures are normalized, while unusual driver
   failures may still surface through their original cause.
-- **`rememberMany(inputs)` is the remaining positional-style public method.**
-  It is preserved as the compatibility exception for `0.3.0`.
+- **`rememberMany({ inputs, signal })` owns cancellation at the batch level.**
+  The former positional form remains a deprecated pre-v1 compatibility
+  overload; its first item signal is treated as the batch signal.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.

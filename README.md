@@ -200,6 +200,22 @@ bigints, non-finite numbers, class instances, or cyclic objects are rejected
 with `MnemocyteError` code `"VALIDATION"`. Mnemocyte deep-clones metadata when
 writing and reading, so later mutations do not change stored state.
 
+For batches, cancellation belongs to the whole operation:
+
+```ts
+const memories = await client.rememberMany({
+  inputs: [
+    { entityId: "user_123", content: "Likes concise answers." },
+    { entityId: "user_123", content: "Uses TypeScript." },
+  ],
+  signal: abortController.signal,
+});
+```
+
+The positional `rememberMany(inputs)` form remains as a deprecated pre-v1
+compatibility overload. New code should use `{ inputs, signal }`; individual
+items in the object form do not have cancellation signals.
+
 ### `recall`
 
 ```ts

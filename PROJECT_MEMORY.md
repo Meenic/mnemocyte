@@ -39,6 +39,9 @@
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied non-positive or fractional `buildContext.maxTokens`
   fails per call with `"VALIDATION"`; omission keeps the default path.
+- `rememberMany({ inputs, signal })` is the canonical batch API, with one
+  cancellation signal for the entire operation. The positional form remains a
+  deprecated pre-v1 overload and maps its first item signal to the batch.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.
@@ -92,8 +95,8 @@ Known code follow-ups before v1:
 - Keep the internal `MemoryStore` private until the public adapter contract is
   stable enough for `drizzleStore(db)`.
 - Continue tightening edge-case database and migration failure wrapping.
-- Preserve `rememberMany(inputs)` as the compatibility exception unless a v1 API
-  review decides otherwise.
+- Preserve the deprecated positional `rememberMany(inputs)` overload through
+  pre-v1; new code uses `rememberMany({ inputs, signal })`.
 - Add runtime validation for JavaScript consumers where public inputs need
   stronger guards than TypeScript declarations.
 

@@ -16,6 +16,7 @@ import type {
 	MnemocyteConfig,
 	RecallInput,
 	RememberInput,
+	RememberManyInput,
 	RetrievalConfig,
 	RetrievalExplanation,
 	RetrievalScores,
@@ -49,6 +50,10 @@ const remember: RememberInput = {
 	entityId: "entity",
 	content: "content",
 	metadata: jsonObject,
+};
+const rememberMany: RememberManyInput = {
+	inputs: [remember],
+	signal: new AbortController().signal,
 };
 const recall: RecallInput = { entityId: "entity", query: "query" };
 const context: BuildContextInput = {
@@ -167,6 +172,9 @@ void client;
 void jsonValue;
 void jsonObject;
 void remember;
+void rememberMany;
+void client.rememberMany(rememberMany);
+void client.rememberMany([remember]);
 void recall;
 void context;
 void explanation;

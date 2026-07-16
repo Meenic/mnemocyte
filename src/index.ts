@@ -70,6 +70,7 @@ export type {
 	PruneResult,
 	RecallInput,
 	RememberInput,
+	RememberManyInput,
 	RetrievalConfig,
 	RetrievalExplanation,
 	RetrievalScores,

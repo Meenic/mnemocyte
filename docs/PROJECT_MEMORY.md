@@ -31,6 +31,10 @@
   embedder dimension is mismatched.
 - Single and batched embedder output must contain only finite vector values;
   invalid components fail with `"EMBEDDING"` before storage.
+- Postgres vector inserts and raw query literals share a shortest
+  round-trip-safe finite-number formatter. Do not use fixed decimal precision:
+  it can collapse valid small components to zero before pgvector's float4
+  conversion.
 - Persisted memory and audit metadata use the recursive public `JsonObject` /
   `JsonValue` types. Unsupported or cyclic runtime values fail with
   `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and

@@ -29,6 +29,10 @@ behavioural changes documented in their entries.
   arrays do not count as selectors, and both adapters reject an empty internal
   filter before scanning or issuing SQL, preventing malformed inputs from
   becoming unbounded deletes.
+- **SERIALIZATION-01 — Postgres vectors preserve small finite components.**
+  Vector inserts and raw query literals now use a shortest round-trip-safe
+  number representation, so finite values such as `1e-20` are no longer
+  rounded to zero before pgvector applies its native float4 conversion.
 
 ## [0.3.0] - 2026-07-16
 

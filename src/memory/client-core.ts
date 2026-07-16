@@ -1,6 +1,7 @@
 import { buildContext } from "../context/builder.js";
 import { MnemocyteError } from "../errors.js";
 import { observe } from "../observability.js";
+import { throwIfAborted } from "../resilience.js";
 import {
 	cosineSimilarity,
 	createLexicalScorer,
@@ -78,6 +79,10 @@ function providerOptions(
 		...(signal === undefined ? {} : { signal }),
 		...(config.provider === undefined ? {} : { resilience: config.provider }),
 	};
+}
+
+function storeOptions(signal: AbortSignal | undefined) {
+	return signal === undefined ? undefined : { signal };
 }
 
 function createStoredMemory(
@@ -533,9 +538,13 @@ export function createMemoryClient(
 						input.entityId === undefined ? {} : { entityId: input.entityId },
 						async () => {
 							assertOpen();
+							throwIfAborted(input.signal);
 							validatePruneInput(input);
 							await ensureSchema();
-							const result = await store.prune(input);
+							const result = await store.prune(
+								input,
+								storeOptions(input.signal),
+							);
 							if (
 								result.deletedCount > 0 &&
 								input.entityId !== undefined &&
@@ -562,9 +571,13 @@ export function createMemoryClient(
 					{ entityId: input.entityId },
 					async () => {
 						assertOpen();
+						throwIfAborted(input.signal);
 						validateFindDuplicatesInput(input);
 						await ensureEmbeddingCompatibility();
-						const pairs = await store.findDuplicatePairs(input);
+						const pairs = await store.findDuplicatePairs(
+							input,
+							storeOptions(input.signal),
+						);
 						return pairs.map(toDuplicatePair);
 					},
 					(result) => ({ count: result.length }),
@@ -580,9 +593,13 @@ export function createMemoryClient(
 					{ entityId: input.entityId },
 					async () => {
 						assertOpen();
+						throwIfAborted(input.signal);
 						validateListAuditLogInput(input);
 						await ensureSchema();
-						const events = await store.listAuditLog(input);
+						const events = await store.listAuditLog(
+							input,
+							storeOptions(input.signal),
+						);
 						return events.map((event) => ({
 							id: event.id,
 							entityId: event.entityId,
@@ -626,12 +643,15 @@ export function createMemoryClient(
 							{ entityId: input.entityId, memoryId: input.survivorId },
 							async () => {
 								assertOpen();
+								throwIfAborted(input.signal);
 								validateConsolidateInput(input);
 								await ensureSchema();
 								const survivor = await store.getMemory(
 									input.entityId,
 									input.survivorId,
+									storeOptions(input.signal),
 								);
+								throwIfAborted(input.signal);
 								if (!survivor) {
 									throw new MnemocyteError(
 										"Survivor memory was not found.",
@@ -647,7 +667,9 @@ export function createMemoryClient(
 								const targets = await store.loadConsolidationTargets(
 									input.entityId,
 									input.supersededIds,
+									storeOptions(input.signal),
 								);
+								throwIfAborted(input.signal);
 								const foundIds = new Set(targets.map((target) => target.id));
 								for (const id of input.supersededIds) {
 									if (!foundIds.has(id)) {
@@ -667,15 +689,18 @@ export function createMemoryClient(
 										supersededIds: [],
 									} satisfies ConsolidateResult;
 								}
-								const result = await store.consolidate({
-									entityId: input.entityId,
-									survivorId: survivor.id,
-									survivorTags: survivor.tags,
-									supersededIds: losers.map((loser) => loser.id),
-									mergeTags: input.mergeTags !== false,
-									now: new Date(),
-									auditEnabled: config.audit?.enabled === true,
-								});
+								const result = await store.consolidate(
+									{
+										entityId: input.entityId,
+										survivorId: survivor.id,
+										survivorTags: survivor.tags,
+										supersededIds: losers.map((loser) => loser.id),
+										mergeTags: input.mergeTags !== false,
+										now: new Date(),
+										auditEnabled: config.audit?.enabled === true,
+									},
+									storeOptions(input.signal),
+								);
 								return {
 									survivorId: survivor.id,
 									supersededCount: result.supersededIds.length,

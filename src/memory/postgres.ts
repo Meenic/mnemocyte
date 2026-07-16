@@ -22,6 +22,7 @@ import {
 import { getInstallationMeta } from "../db/queries/meta.js";
 import type { EventRow, NewMemoryRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
+import { throwIfAborted } from "../resilience.js";
 import type {
 	AuditEvent,
 	Embedder,
@@ -270,18 +271,27 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				deleteMemoriesForEntityQuery(handle.db, entityId),
 			);
 		},
-		async prune(input) {
+		async prune(input, options) {
 			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
 				const filter = toPruneFilter(input);
 				const dryRun = input.dryRun === true;
 				if (dryRun) {
 					return {
-						matchedCount: await countPruneMatches(handle.db, filter),
+						matchedCount: await countPruneMatches(
+							handle.db,
+							filter,
+							options?.signal,
+						),
 						deletedCount: 0,
 						dryRun: true,
 					};
 				}
-				const deletedCount = await pruneMemories(handle.db, filter);
+				const deletedCount = await pruneMemories(
+					handle.db,
+					filter,
+					options?.signal,
+				);
 				return {
 					matchedCount: deletedCount,
 					deletedCount,
@@ -289,21 +299,25 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				};
 			});
 		},
-		async findDuplicatePairs(input) {
+		async findDuplicatePairs(input, options) {
 			return runPostgresOperation(async () => {
-				const rows = await findDuplicatePairsQuery(handle.db, {
-					entityId: input.entityId,
-					threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
-					limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
-					...(input.types === undefined ? {} : { types: input.types }),
-					...(input.tags === undefined ? {} : { tags: input.tags }),
-					...(input.includeSuperseded === undefined
-						? {}
-						: { includeSuperseded: input.includeSuperseded }),
-					...(input.includeExpired === undefined
-						? {}
-						: { includeExpired: input.includeExpired }),
-				});
+				const rows = await findDuplicatePairsQuery(
+					handle.db,
+					{
+						entityId: input.entityId,
+						threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+						limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
+						...(input.types === undefined ? {} : { types: input.types }),
+						...(input.tags === undefined ? {} : { tags: input.tags }),
+						...(input.includeSuperseded === undefined
+							? {}
+							: { includeSuperseded: input.includeSuperseded }),
+						...(input.includeExpired === undefined
+							? {}
+							: { includeExpired: input.includeExpired }),
+					},
+					options?.signal,
+				);
 				return rows.map(
 					(row) =>
 						({
@@ -327,42 +341,60 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				}
 			});
 		},
-		async listAuditLog(input) {
+		async listAuditLog(input, options) {
 			return runPostgresOperation(async () => {
-				const rows = await listEvents(handle.db, {
-					entityId: input.entityId,
-					limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
-					...(input.before === undefined ? {} : { before: input.before }),
-					...(input.after === undefined ? {} : { after: input.after }),
-				});
+				const rows = await listEvents(
+					handle.db,
+					{
+						entityId: input.entityId,
+						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
+						...(input.before === undefined ? {} : { before: input.before }),
+						...(input.after === undefined ? {} : { after: input.after }),
+					},
+					options?.signal,
+				);
 				return rows.map(rowToAuditEvent);
 			});
 		},
-		async getMemory(entityId, memoryId) {
+		async getMemory(entityId, memoryId, options) {
 			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
 				const row = await getMemoryById(handle.db, entityId, memoryId);
+				throwIfAborted(options?.signal);
 				return row ? rowToMemory(row) : null;
 			});
 		},
-		async loadConsolidationTargets(entityId, ids) {
-			return runPostgresOperation(() =>
-				loadConsolidationTargets(handle.db, entityId, ids),
-			);
+		async loadConsolidationTargets(entityId, ids, options) {
+			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
+				const targets = await loadConsolidationTargets(
+					handle.db,
+					entityId,
+					ids,
+				);
+				throwIfAborted(options?.signal);
+				return targets;
+			});
 		},
 		async consolidate(
 			input: StoreConsolidateInput,
+			options,
 		): Promise<StoreConsolidateResult> {
 			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
 				const newSupersededIds = await handle.db.transaction(async (tx) => {
+					throwIfAborted(options?.signal);
 					const updated = await markMemoriesSuperseded(tx, {
 						survivorId: input.survivorId,
 						entityId: input.entityId,
 						ids: input.supersededIds,
 						now: input.now,
 					});
+					throwIfAborted(options?.signal);
 					const ids = updated.map((row) => row.id);
 					if (input.auditEnabled) {
 						for (const id of ids) {
+							throwIfAborted(options?.signal);
 							await insertEvent(tx, {
 								id: createEventId(),
 								entityId: input.entityId,
@@ -370,24 +402,29 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 								metadata: { memoryId: id, supersededBy: input.survivorId },
 								timestamp: input.now,
 							});
+							throwIfAborted(options?.signal);
 						}
 					}
 					if (input.mergeTags && updated.length > 0) {
 						const mergedTags = new Set(input.survivorTags);
 						for (const row of updated) {
+							throwIfAborted(options?.signal);
 							for (const tag of row.tags) {
 								mergedTags.add(tag);
 							}
 						}
 						if (mergedTags.size !== input.survivorTags.length) {
+							throwIfAborted(options?.signal);
 							await setMemoryTags(tx, {
 								entityId: input.entityId,
 								memoryId: input.survivorId,
 								tags: [...mergedTags],
 								now: input.now,
 							});
+							throwIfAborted(options?.signal);
 						}
 					}
+					throwIfAborted(options?.signal);
 					return ids;
 				});
 				return { supersededIds: newSupersededIds };

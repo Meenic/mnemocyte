@@ -1,5 +1,6 @@
-import { and, desc, eq, gt, lt } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { MnemocyteError } from "../../errors.js";
+import { executeCancelableSql } from "../cancellation.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type EventRow, eventsTable, type NewEventRow } from "../schema.js";
 
@@ -25,17 +26,24 @@ export async function insertEvent(
 export async function listEvents(
 	db: MnemocyteDatabase,
 	filter: EventFilter,
+	signal?: AbortSignal,
 ): Promise<EventRow[]> {
-	return db
-		.select()
-		.from(eventsTable)
-		.where(
-			and(
-				eq(eventsTable.entityId, filter.entityId),
-				filter.before ? lt(eventsTable.timestamp, filter.before) : undefined,
-				filter.after ? gt(eventsTable.timestamp, filter.after) : undefined,
-			),
-		)
-		.orderBy(desc(eventsTable.timestamp))
-		.limit(filter.limit ?? 50);
+	return executeCancelableSql<EventRow[]>(
+		db,
+		sql`
+			SELECT
+				id,
+				entity_id AS "entityId",
+				description,
+				metadata,
+				timestamp
+			FROM mnemocyte_events
+			WHERE entity_id = ${filter.entityId}
+				${filter.before ? sql`AND timestamp < ${filter.before}` : sql``}
+				${filter.after ? sql`AND timestamp > ${filter.after}` : sql``}
+			ORDER BY timestamp DESC
+			LIMIT ${filter.limit ?? 50}
+		`,
+		signal,
+	);
 }

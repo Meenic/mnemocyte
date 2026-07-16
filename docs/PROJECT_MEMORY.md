@@ -42,6 +42,13 @@
 - `rememberMany({ inputs, signal })` is the canonical batch API, with one
   cancellation signal for the entire operation. The positional form remains a
   deprecated pre-v1 overload and maps its first item signal to the batch.
+- `prune`, `findDuplicates`, `listAuditLog`, and
+  `experimental.consolidate` reject pre-aborted signals before store work.
+  In-memory scans check cooperatively; standalone Postgres maintenance queries
+  request postgres.js cancellation. Postgres consolidation checks between
+  transaction steps and before its transaction callback returns, so an
+  in-flight statement may finish before rollback. An abort after the final
+  check, including during commit, may still leave the mutation committed.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

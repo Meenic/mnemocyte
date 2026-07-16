@@ -569,7 +569,11 @@ export interface PruneInput {
 	 * @defaultValue `false`
 	 */
 	dryRun?: boolean;
-	/** Optional cancellation signal. */
+	/**
+	 * Optional cancellation signal. A pre-aborted signal prevents storage work.
+	 * In-flight Postgres pruning requests server-query cancellation, but a
+	 * deletion that has already committed cannot be undone.
+	 */
 	signal?: AbortSignal;
 }
 
@@ -619,7 +623,10 @@ export interface FindDuplicatesInput {
 	includeSuperseded?: boolean;
 	/** Include expired memories in the scan. @defaultValue `false` */
 	includeExpired?: boolean;
-	/** Optional cancellation signal. */
+	/**
+	 * Optional cancellation signal. In-memory scans check it cooperatively;
+	 * Postgres requests cancellation of the active duplicate-search query.
+	 */
 	signal?: AbortSignal;
 }
 
@@ -679,7 +686,10 @@ export interface ListAuditLogInput {
 	before?: Date;
 	/** Only return entries strictly after this timestamp. */
 	after?: Date;
-	/** Optional cancellation signal. */
+	/**
+	 * Optional cancellation signal. In-memory scans check it cooperatively;
+	 * Postgres requests cancellation of the active audit-log query.
+	 */
 	signal?: AbortSignal;
 }
 
@@ -709,7 +719,13 @@ export interface ConsolidateInput {
 	 * @defaultValue `true`
 	 */
 	mergeTags?: boolean;
-	/** Optional cancellation signal. */
+	/**
+	 * Optional cancellation signal. Postgres checks it between transaction
+	 * steps and immediately before the transaction callback returns. A
+	 * statement already in flight may finish before the next check rolls the
+	 * transaction back. An abort after the final check, including while commit
+	 * is in flight, may still leave the consolidation committed.
+	 */
 	signal?: AbortSignal;
 }
 

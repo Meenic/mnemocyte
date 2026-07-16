@@ -11,6 +11,7 @@ import {
 	sql,
 } from "drizzle-orm";
 import type { ImportanceLevel, MemoryType } from "../../types.js";
+import { executeCancelableSql } from "../cancellation.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
 import { formatVectorComponent } from "../vector.js";
@@ -253,18 +254,36 @@ function pruneConditions(filter: PruneFilter) {
 export async function countPruneMatches(
 	db: MnemocyteDatabase,
 	filter: PruneFilter,
+	signal?: AbortSignal,
 ): Promise<number> {
-	return db.$count(memoriesTable, pruneConditions(filter));
+	const conditions = pruneConditions(filter);
+	const rows = await executeCancelableSql<Array<{ count: number | string }>>(
+		db,
+		sql`
+			SELECT count(*)::int AS count
+			FROM ${memoriesTable}
+			${conditions ? sql`WHERE ${conditions}` : sql``}
+		`,
+		signal,
+	);
+	return Number(rows[0]?.count ?? 0);
 }
 
 export async function pruneMemories(
 	db: MnemocyteDatabase,
 	filter: PruneFilter,
+	signal?: AbortSignal,
 ): Promise<number> {
-	const result = await db
-		.delete(memoriesTable)
-		.where(pruneConditions(filter))
-		.returning({ id: memoriesTable.id });
+	const conditions = pruneConditions(filter);
+	const result = await executeCancelableSql<Array<{ id: string }>>(
+		db,
+		sql`
+			DELETE FROM ${memoriesTable}
+			${conditions ? sql`WHERE ${conditions}` : sql``}
+			RETURNING id
+		`,
+		signal,
+	);
 	return result.length;
 }
 
@@ -281,76 +300,80 @@ export interface DuplicateSearchInput {
 export async function findDuplicatePairs(
 	db: MnemocyteDatabase,
 	input: DuplicateSearchInput,
+	signal?: AbortSignal,
 ): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
-	const rows = await db.execute(sql`
-		SELECT
-			a.id AS "aId",
-			a.entity_id AS "aEntityId",
-			a.content AS "aContent",
-			a.type AS "aType",
-			a.importance AS "aImportance",
-			a.tags AS "aTags",
-			a.source AS "aSource",
-			a.metadata AS "aMetadata",
-			a.confidence AS "aConfidence",
-			a.embedding AS "aEmbedding",
-			a.embedding_model AS "aEmbeddingModel",
-			a.embedding_dimensions AS "aEmbeddingDimensions",
-			a.superseded_by AS "aSupersededBy",
-			a.superseded_at AS "aSupersededAt",
-			a.expires_at AS "aExpiresAt",
-			a.last_accessed_at AS "aLastAccessedAt",
-			a.access_count AS "aAccessCount",
-			a.created_at AS "aCreatedAt",
-			a.updated_at AS "aUpdatedAt",
-			b.id AS "bId",
-			b.entity_id AS "bEntityId",
-			b.content AS "bContent",
-			b.type AS "bType",
-			b.importance AS "bImportance",
-			b.tags AS "bTags",
-			b.source AS "bSource",
-			b.metadata AS "bMetadata",
-			b.confidence AS "bConfidence",
-			b.embedding AS "bEmbedding",
-			b.embedding_model AS "bEmbeddingModel",
-			b.embedding_dimensions AS "bEmbeddingDimensions",
-			b.superseded_by AS "bSupersededBy",
-			b.superseded_at AS "bSupersededAt",
-			b.expires_at AS "bExpiresAt",
-			b.last_accessed_at AS "bLastAccessedAt",
-			b.access_count AS "bAccessCount",
-			b.created_at AS "bCreatedAt",
-			b.updated_at AS "bUpdatedAt",
-			1 - (a.embedding <=> b.embedding) AS "similarity"
-		FROM mnemocyte_memories a
-		JOIN mnemocyte_memories b
-			ON b.entity_id = a.entity_id
-			AND a.id < b.id
-			AND a.embedding IS NOT NULL
-			AND b.embedding IS NOT NULL
-		WHERE
-			a.entity_id = ${input.entityId}
-			${input.includeSuperseded ? sql`` : sql`AND a.superseded_by IS NULL AND b.superseded_by IS NULL`}
-			${input.includeExpired ? sql`` : sql`AND (a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())`}
-			${
-				input.types && input.types.length > 0
-					? sql`AND a.type IN (${sql.join(
-							input.types.map((type) => sql`${type}`),
-							sql`, `,
-						)}) AND b.type IN (${sql.join(
-							input.types.map((type) => sql`${type}`),
-							sql`, `,
-						)})`
-					: sql``
-			}
-			${duplicateTagsFilter(input.tags)}
-			AND 1 - (a.embedding <=> b.embedding) >= ${input.threshold}
-		ORDER BY "similarity" DESC
-		LIMIT ${input.limit}
-	`);
-	const records = rows as unknown as Array<Record<string, unknown>>;
-	return records.map((row) => {
+	const rows = await executeCancelableSql<Array<Record<string, unknown>>>(
+		db,
+		sql`
+			SELECT
+				a.id AS "aId",
+				a.entity_id AS "aEntityId",
+				a.content AS "aContent",
+				a.type AS "aType",
+				a.importance AS "aImportance",
+				a.tags AS "aTags",
+				a.source AS "aSource",
+				a.metadata AS "aMetadata",
+				a.confidence AS "aConfidence",
+				a.embedding AS "aEmbedding",
+				a.embedding_model AS "aEmbeddingModel",
+				a.embedding_dimensions AS "aEmbeddingDimensions",
+				a.superseded_by AS "aSupersededBy",
+				a.superseded_at AS "aSupersededAt",
+				a.expires_at AS "aExpiresAt",
+				a.last_accessed_at AS "aLastAccessedAt",
+				a.access_count AS "aAccessCount",
+				a.created_at AS "aCreatedAt",
+				a.updated_at AS "aUpdatedAt",
+				b.id AS "bId",
+				b.entity_id AS "bEntityId",
+				b.content AS "bContent",
+				b.type AS "bType",
+				b.importance AS "bImportance",
+				b.tags AS "bTags",
+				b.source AS "bSource",
+				b.metadata AS "bMetadata",
+				b.confidence AS "bConfidence",
+				b.embedding AS "bEmbedding",
+				b.embedding_model AS "bEmbeddingModel",
+				b.embedding_dimensions AS "bEmbeddingDimensions",
+				b.superseded_by AS "bSupersededBy",
+				b.superseded_at AS "bSupersededAt",
+				b.expires_at AS "bExpiresAt",
+				b.last_accessed_at AS "bLastAccessedAt",
+				b.access_count AS "bAccessCount",
+				b.created_at AS "bCreatedAt",
+				b.updated_at AS "bUpdatedAt",
+				1 - (a.embedding <=> b.embedding) AS "similarity"
+			FROM mnemocyte_memories a
+			JOIN mnemocyte_memories b
+				ON b.entity_id = a.entity_id
+				AND a.id < b.id
+				AND a.embedding IS NOT NULL
+				AND b.embedding IS NOT NULL
+			WHERE
+				a.entity_id = ${input.entityId}
+				${input.includeSuperseded ? sql`` : sql`AND a.superseded_by IS NULL AND b.superseded_by IS NULL`}
+				${input.includeExpired ? sql`` : sql`AND (a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())`}
+				${
+					input.types && input.types.length > 0
+						? sql`AND a.type IN (${sql.join(
+								input.types.map((type) => sql`${type}`),
+								sql`, `,
+							)}) AND b.type IN (${sql.join(
+								input.types.map((type) => sql`${type}`),
+								sql`, `,
+							)})`
+						: sql``
+				}
+				${duplicateTagsFilter(input.tags)}
+				AND 1 - (a.embedding <=> b.embedding) >= ${input.threshold}
+			ORDER BY "similarity" DESC
+			LIMIT ${input.limit}
+		`,
+		signal,
+	);
+	return rows.map((row) => {
 		const a = {
 			id: row.aId,
 			entityId: row.aEntityId,

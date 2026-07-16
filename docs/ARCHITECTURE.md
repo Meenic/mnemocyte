@@ -126,6 +126,7 @@ src/
 +-- resilience.ts             # withResilience helper (timeout/retry/caller abort)
 +-- db/
 |   +-- index.ts              # postgres.js + drizzle setup (createDatabase)
+|   +-- cancellation.ts       # AbortSignal-aware postgres.js query execution
 |   +-- schema.ts             # drizzle table definitions (memories, events, meta)
 |   +-- vector.ts             # precise pgvector component serialization
 |   +-- queries/
@@ -317,6 +318,16 @@ and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call
 argument errors (including invalid `maxTokens`, JSON-incompatible or cyclic
 metadata, the explicit guard in `prune({})`, and
 `consolidate({ supersededIds: [] })`) plus an explicitly empty `databaseUrl`.
+
+Maintenance-operation signals are checked before store access. In-memory
+pruning, duplicate scans, audit-log scans, and consolidation preparation check
+cooperatively during their synchronous work. Postgres prune, duplicate-search,
+and audit-log statements use the underlying postgres.js query cancellation
+hook. Postgres consolidation instead checks between transactional statements
+and immediately before the transaction callback returns: a statement already
+in flight may finish before the next check triggers rollback. An abort after
+the final check, including while commit is in flight, may still leave the
+transaction committed.
 
 Known pre-v1 gap: `MnemocyteError` is the intended recovery boundary, but not
 every database/driver failure is wrapped consistently yet. Before v1, expected
@@ -597,6 +608,12 @@ Status: released as `v0.2.0`.
 - **Provider timeout cancellation depends on signal support.** The resilience
   layer aborts the per-attempt signal on `"TIMEOUT"`; embedder implementations
   must honor `AbortSignal` for the underlying request to stop promptly.
+- **Database cancellation has an explicit commit boundary.** Standalone
+  maintenance queries request postgres.js cancellation. Consolidation checks
+  cancellation between transaction steps and before its transaction callback
+  returns. An in-flight statement can finish before rollback; an abort after
+  the final check, including during commit, may still leave the mutation
+  committed.
 - **Database error wrapping is broader but still conservative.** Expected
   missing schema and storage failures are normalized, while unusual driver
   failures may still surface through their original cause.

@@ -15,6 +15,14 @@ behavioural changes documented in their entries.
   before closing the store, and shares one promise across concurrent/idempotent
   close calls. If the store close fails, operation admission reopens so callers
   can retry `close()`.
+- **CANCELLATION-01 — Maintenance-operation signals are now enforced.**
+  `prune`, `findDuplicates`, `listAuditLog`, and `experimental.consolidate`
+  reject pre-aborted signals before store work. In-memory scans check
+  cooperatively; standalone Postgres maintenance queries request postgres.js
+  cancellation. Postgres consolidation checks cancellation between transaction
+  steps and before its transaction callback returns, so in-flight statements
+  may finish before rollback. An abort after the final check, including during
+  commit, may still leave the mutation committed.
 
 ## [0.3.0] - 2026-07-16
 

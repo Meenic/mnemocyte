@@ -327,6 +327,17 @@ await client.remember({
 });
 ```
 
+Pre-aborted signals reject with `"ABORTED"` before storage work begins.
+In-memory maintenance scans check cancellation cooperatively. For Postgres,
+standalone prune, duplicate-search, and audit-log queries request postgres.js
+query cancellation while they are in flight.
+
+Postgres consolidation has a transaction-specific boundary: cancellation is
+checked between mutation steps and immediately before the transaction callback
+returns. If a statement is already in flight, it may finish before the next
+check throws and rolls the transaction back. An abort after the final check,
+including while commit is in flight, may still leave the mutation committed.
+
 Common `MnemocyteError` codes:
 
 ```txt

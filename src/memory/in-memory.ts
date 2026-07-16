@@ -1,3 +1,4 @@
+import { throwIfAborted } from "../resilience.js";
 import { cosineSimilarity, createLexicalScorer } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
@@ -133,16 +134,19 @@ export function createInMemoryStore(): MemoryStore {
 			}
 			return deleted;
 		},
-		async prune(input) {
+		async prune(input, options) {
+			throwIfAborted(options?.signal);
 			const now = new Date();
 			const matched: string[] = [];
 			for (const memory of memories.values()) {
+				throwIfAborted(options?.signal);
 				if (matchesPruneFilter(memory, input, now)) {
 					matched.push(memory.id);
 				}
 			}
 			const dryRun = input.dryRun === true;
 			if (!dryRun) {
+				throwIfAborted(options?.signal);
 				for (const id of matched) {
 					memories.delete(id);
 				}
@@ -153,20 +157,24 @@ export function createInMemoryStore(): MemoryStore {
 				dryRun,
 			};
 		},
-		async findDuplicatePairs(input) {
+		async findDuplicatePairs(input, options) {
+			throwIfAborted(options?.signal);
 			const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
 			const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
 			const now = new Date();
-			const candidates = Array.from(memories.values()).filter((memory) =>
-				matchesDuplicateFilter(memory, input, now),
-			);
+			const candidates = Array.from(memories.values()).filter((memory) => {
+				throwIfAborted(options?.signal);
+				return matchesDuplicateFilter(memory, input, now);
+			});
 			const pairs: StoreDuplicatePair[] = [];
 			for (let i = 0; i < candidates.length; i += 1) {
+				throwIfAborted(options?.signal);
 				const a = candidates[i];
 				if (a === undefined) {
 					continue;
 				}
 				for (let j = i + 1; j < candidates.length; j += 1) {
+					throwIfAborted(options?.signal);
 					const b = candidates[j];
 					if (b === undefined) {
 						continue;
@@ -190,11 +198,13 @@ export function createInMemoryStore(): MemoryStore {
 		async addAuditEvents(events) {
 			auditLog.push(...events.map(cloneAuditEvent));
 		},
-		async listAuditLog(input) {
+		async listAuditLog(input, options) {
+			throwIfAborted(options?.signal);
 			const limit = input.limit ?? DEFAULT_AUDIT_LOG_LIMIT;
 			const indexed = auditLog.map((event, idx) => ({ event, idx }));
 			return indexed
 				.filter(({ event }) => {
+					throwIfAborted(options?.signal);
 					if (event.entityId !== input.entityId) {
 						return false;
 					}
@@ -219,14 +229,16 @@ export function createInMemoryStore(): MemoryStore {
 				.slice(0, limit)
 				.map(({ event }) => cloneAuditEvent(event));
 		},
-		async getMemory(entityId, memoryId) {
+		async getMemory(entityId, memoryId, options) {
+			throwIfAborted(options?.signal);
 			const memory = memories.get(memoryId);
 			return memory && memory.entityId === entityId
 				? cloneMemory(memory)
 				: null;
 		},
-		async loadConsolidationTargets(entityId, ids) {
+		async loadConsolidationTargets(entityId, ids, options) {
 			return ids.flatMap((id) => {
+				throwIfAborted(options?.signal);
 				const memory = memories.get(id);
 				if (!memory || memory.entityId !== entityId) {
 					return [];
@@ -242,10 +254,13 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async consolidate(
 			input: StoreConsolidateInput,
+			options,
 		): Promise<StoreConsolidateResult> {
+			throwIfAborted(options?.signal);
 			const survivor = memories.get(input.survivorId);
-			const newlySuperseded: string[] = [];
+			const newlySuperseded: StoredMemory[] = [];
 			for (const id of input.supersededIds) {
+				throwIfAborted(options?.signal);
 				const memory = memories.get(id);
 				if (!memory || memory.entityId !== input.entityId) {
 					continue;
@@ -253,38 +268,47 @@ export function createInMemoryStore(): MemoryStore {
 				if (memory.supersededBy !== null) {
 					continue;
 				}
-				memory.supersededBy = input.survivorId;
-				memory.supersededAt = input.now;
-				memory.updatedAt = input.now;
-				newlySuperseded.push(memory.id);
+				newlySuperseded.push(memory);
 			}
+			let mergedSurvivorTags: string[] | undefined;
 			if (survivor && input.mergeTags && newlySuperseded.length > 0) {
 				const mergedTags = new Set(input.survivorTags);
-				for (const id of newlySuperseded) {
-					const memory = memories.get(id);
-					if (memory) {
-						for (const tag of memory.tags) {
-							mergedTags.add(tag);
-						}
+				for (const memory of newlySuperseded) {
+					throwIfAborted(options?.signal);
+					for (const tag of memory.tags) {
+						mergedTags.add(tag);
 					}
 				}
 				if (mergedTags.size !== survivor.tags.length) {
-					survivor.tags = [...mergedTags];
-					survivor.updatedAt = input.now;
+					mergedSurvivorTags = [...mergedTags];
 				}
 			}
-			if (input.auditEnabled) {
-				for (const id of newlySuperseded) {
-					auditLog.push({
+			const auditEvents = input.auditEnabled
+				? newlySuperseded.map((memory) => ({
 						id: createEventId(),
 						entityId: input.entityId,
 						description: "memory.superseded",
-						metadata: { memoryId: id, supersededBy: input.survivorId },
+						metadata: {
+							memoryId: memory.id,
+							supersededBy: input.survivorId,
+						},
 						timestamp: input.now,
-					});
-				}
+					}))
+				: [];
+			throwIfAborted(options?.signal);
+			for (const memory of newlySuperseded) {
+				memory.supersededBy = input.survivorId;
+				memory.supersededAt = input.now;
+				memory.updatedAt = input.now;
 			}
-			return { supersededIds: newlySuperseded };
+			if (survivor && mergedSurvivorTags) {
+				survivor.tags = mergedSurvivorTags;
+				survivor.updatedAt = input.now;
+			}
+			if (input.auditEnabled) {
+				auditLog.push(...auditEvents);
+			}
+			return { supersededIds: newlySuperseded.map((memory) => memory.id) };
 		},
 		async stats(input, now) {
 			const allMemories = Array.from(memories.values());

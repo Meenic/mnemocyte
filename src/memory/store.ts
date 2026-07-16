@@ -59,6 +59,10 @@ export interface StoreConsolidateResult {
 	supersededIds: readonly string[];
 }
 
+export interface StoreOperationOptions {
+	signal?: AbortSignal;
+}
+
 /**
  * Internal storage adapter boundary used by the shared client orchestration.
  *
@@ -83,18 +87,35 @@ export interface MemoryStore {
 
 	deleteMemory(entityId: string, memoryId: string): Promise<boolean>;
 	deleteMemoriesForEntity(entityId: string): Promise<number>;
-	prune(input: PruneInput): Promise<PruneResult>;
-	findDuplicatePairs(input: FindDuplicatesInput): Promise<StoreDuplicatePair[]>;
+	prune(
+		input: PruneInput,
+		options?: StoreOperationOptions,
+	): Promise<PruneResult>;
+	findDuplicatePairs(
+		input: FindDuplicatesInput,
+		options?: StoreOperationOptions,
+	): Promise<StoreDuplicatePair[]>;
 
 	addAuditEvents(events: readonly AuditEvent[]): Promise<void>;
-	listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]>;
+	listAuditLog(
+		input: ListAuditLogInput,
+		options?: StoreOperationOptions,
+	): Promise<AuditEvent[]>;
 
-	getMemory(entityId: string, memoryId: string): Promise<Memory | null>;
+	getMemory(
+		entityId: string,
+		memoryId: string,
+		options?: StoreOperationOptions,
+	): Promise<Memory | null>;
 	loadConsolidationTargets(
 		entityId: string,
 		ids: readonly string[],
+		options?: StoreOperationOptions,
 	): Promise<StoreConsolidationTarget[]>;
-	consolidate(input: StoreConsolidateInput): Promise<StoreConsolidateResult>;
+	consolidate(
+		input: StoreConsolidateInput,
+		options?: StoreOperationOptions,
+	): Promise<StoreConsolidateResult>;
 
 	stats(
 		input: { entityId?: string } | undefined,

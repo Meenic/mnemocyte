@@ -12,10 +12,10 @@ parity, query-term precomputation, and per-recall scoring config normalization
 are complete. Database index and duplicate-search changes should be driven by
 query plans from representative data.
 
-This document does not set product sequencing. Version `0.2.0` is published,
-and the unreleased `0.3.0` line has the internal `MemoryStore` boundary. The
-active architecture decisions are whether that contract is ready to become
-public and how a future `drizzleStore(db)` should handle caller-owned resources.
+This document does not set product sequencing. Version `0.3.0` is published
+with the internal `MemoryStore` boundary. The active architecture decisions are
+whether that contract is ready to become public and how a future
+`drizzleStore(db)` should handle caller-owned resources.
 
 This file tracks performance only. The v1 architecture review also identified
 correctness and API-stability follow-ups, including public store design,

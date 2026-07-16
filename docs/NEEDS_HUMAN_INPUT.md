@@ -79,3 +79,21 @@ still manageable.
 
 **Resolution:** Added recursive `JsonObject` / `JsonValue` types, shared runtime
 validation, typed rejection, and deep cloning at both storage boundaries.
+
+## Round 2: Deferred documentation judgments
+
+Re-verified on 2026-07-16. These items remain deferred because current source,
+tests, and synthetic benchmarks cannot settle them without maintainer judgment
+or representative production workload evidence.
+
+- **DOCS-DEF-01 — In-memory duplicate scale:** Define the per-entity size at
+  which quadratic in-memory duplicate detection is no longer acceptable.
+- **DOCS-DEF-02 — Performance priorities:** Choose production-relevant priority,
+  risk, and “worth doing” thresholds for the performance backlog.
+- **DOCS-DEF-03 — Provider package direction:** Decide whether provider adapters
+  should eventually move from package subpaths into separate monorepo packages.
+- **DOCS-DEF-04 — Adapter milestone sequencing:** Confirm or revise the planned
+  ordering and version targets for public `MemoryStore`, `drizzleStore(db)`, and
+  MCP adapter work.
+
+No option was selected or changed during round-two verification.

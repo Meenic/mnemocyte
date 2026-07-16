@@ -56,10 +56,10 @@ Future considerations:
 - OpenTelemetry adapters built on the current observability hook.
 - Additional provider packages if core subpaths become too crowded.
 
-## `0.3.0` - Public `MemoryStore` Stabilization
+## Next - Public `MemoryStore` Stabilization
 
-The unreleased implementation has an internal `MemoryStore` boundary. Before
-exporting an adapter contract:
+Version `0.3.0` shipped the internal `MemoryStore` boundary. Before exporting
+an adapter contract:
 
 - Review transaction hooks, caller-owned connection lifecycle, and
   runtime-specific Drizzle driver requirements.

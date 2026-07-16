@@ -2,20 +2,20 @@
 
 ## Current State
 
-- Package `v0.2.0` has been published and tagged.
-- The local tree contains unreleased `0.3.0` hardening work: internal
-  `MemoryStore` adapters, shared client orchestration, active provider timeout
-  aborts, narrower Postgres dimension checks, and in-memory public-result
-  vector leak fixes.
-- Package `v0.1.5` is the previous patch baseline for embedder export
-  discoverability.
+- Package `v0.3.0` has been published, tagged, and is the npm `latest` release.
+- The `0.3.0` release includes internal `MemoryStore` adapters, shared client
+  orchestration, active provider timeout aborts, narrower Postgres dimension
+  checks, JSON metadata value semantics, runtime tuning validation, batch-level
+  `rememberMany` cancellation, and in-memory public-result vector leak fixes.
+- Package `v0.2.0` is the previous minor baseline for configurable Postgres
+  embedding dimensions.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
-- `../CHANGELOG.md` has a `0.2.0` section dated `2026-06-10` for configurable
-  Postgres embedding dimensions and the related migration/documentation work.
+- `../CHANGELOG.md` has a `0.3.0` section dated `2026-07-16` for the internal
+  store refactor, approved pre-v1 behavior changes, and hardening fixes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.2.0` as published and `0.3.0` as the active
-  `MemoryStore` / v1 stabilization line.
+- The current roadmap treats `0.3.0` as published and public `MemoryStore`
+  stabilization as the next architectural decision.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -111,13 +111,13 @@ Documentation follow-ups:
 
 ## Release Status
 
-`v0.2.0` is published. Track changes after `v0.2.0` under the
-`../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md` release guidance
-when cutting the next version.
+`v0.3.0` is published. Track changes after `v0.3.0` under the
+`../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md` release
+guidance when cutting the next version.
 
 ## Suggested Next Steps
 
-- Complete the remaining release prep for the unreleased `0.3.0` `MemoryStore`
-  / v1 stabilization line.
+- Decide when the internal `MemoryStore` contract is stable enough to become a
+  public adapter surface.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

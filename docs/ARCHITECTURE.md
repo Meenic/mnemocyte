@@ -16,17 +16,16 @@ The current package is intentionally explicit: callers supply the embedder, the
 Postgres schema is applied through migrations, and the client does not hide
 infrastructure setup behind constructor side effects.
 
-The current published package is the `0.2.0` configurable-dimensions line:
-Postgres installations use
-`mnemocyte_meta.embedding_dimensions` as installation metadata, the default
-1536-dimensional install is represented by `0000_initial.sql` plus
-`0001_add_mnemocyte_meta.sql`, and custom fresh installs are rendered from
-`0000_initial.sql.template`.
-
-The local unreleased `0.3.0` line adds the internal `MemoryStore` boundary and
-shared client orchestration described below. It also contains documented pre-v1
+The current published package is `0.3.0`. It includes the configurable
+Postgres-dimension work from `0.2.0`, the internal `MemoryStore` boundary and
+shared client orchestration described below, and the documented pre-v1
 breaking changes for JSON metadata types, retrieval-tuning rejection, and the
 canonical `rememberMany({ inputs, signal })` batch API.
+
+Postgres installations use `mnemocyte_meta.embedding_dimensions` as
+installation metadata. The default 1536-dimensional install is represented by
+`0000_initial.sql` plus `0001_add_mnemocyte_meta.sql`, and custom fresh installs
+are rendered from `0000_initial.sql.template`.
 
 ## Goals
 
@@ -174,7 +173,7 @@ provider-free, schema setup is explicit, the public API is compact, typed errors
 exist, package exports are tested, and Postgres/pgvector is treated as
 infrastructure rather than hidden magic.
 
-The `0.3.0` implementation line moves backend behavior behind an internal
+The `0.3.0` release moves backend behavior behind an internal
 `MemoryStore` boundary. Validation, embedding, resilience wrapping, recall
 scoring, audit behavior, result mapping, context building, and lifecycle checks
 now run through `memory/client-core.ts`, while `memory/in-memory.ts` and
@@ -562,7 +561,7 @@ Status: released as `v0.2.0`.
 
 ### `0.3.0` - `MemoryStore` / v1 Stabilization
 
-- Status: implemented locally for the next release.
+- Status: released as `v0.3.0`.
 - Extracted storage primitives into an internal `MemoryStore` interface.
 - Moved shared orchestration into one core path.
 - Reduced in-memory and Postgres backends to adapters.

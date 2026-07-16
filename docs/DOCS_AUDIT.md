@@ -1,8 +1,13 @@
 # Documentation Audit
 
-Scope: every Markdown file in the repository after the root-document move.
-Each entry records the claims that must be checked against current source,
-tests, configuration, Git history, or repository layout before it is closed.
+Historical scope: every Markdown file in the repository immediately after the
+root-document move. Each entry records the claims that were checked against
+source, tests, configuration, Git history, or repository layout before the
+audit was closed.
+
+Round-two verification later added `VERIFICATION_ROUND2.md`. The 12-file count
+below is therefore the completed move-audit snapshot, not the current repository
+Markdown count.
 
 ## Phase 0 move verification
 

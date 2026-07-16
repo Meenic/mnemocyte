@@ -2,6 +2,12 @@
 
 Date: 2026-07-16
 
+> Historical snapshot: commit hashes, HEAD/tag equality, file/test counts,
+> Markdown inventory, and environment results below describe this verification
+> run at its recorded revision. They are not claims about the current HEAD.
+> Use `README.md`, `CHANGELOG.md`, `ARCHITECTURE.md`, and `PROJECT_MEMORY.md`
+> for current behavior and release state.
+
 Scope: independent re-verification of the cleanup checkpoint, the three
 approved bug fixes, the `0.3.0` release notes, and the documentation move.
 Historical summaries were used only to enumerate claims; results below come

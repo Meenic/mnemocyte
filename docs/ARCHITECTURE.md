@@ -136,7 +136,7 @@ src/
 |   +-- queries/
 |       +-- memories.ts       # memory CRUD, recall, prune, dedup, consolidate SQL
 |       +-- events.ts         # audit-event CRUD
-|       +-- meta.ts           # installation metadata reads
+|       +-- meta.ts           # installation metadata reads and model recording
 +-- embedders/
 |   +-- index.ts              # provider helper exports
 |   +-- openai.ts             # fetch-based OpenAI embeddings helper
@@ -147,6 +147,7 @@ src/
 |   +-- store.ts              # internal MemoryStore boundary
 |   +-- defaults.ts           # shared internal defaults and importance ordering
 |   +-- embeddings.ts         # resilient single and batch embedding calls
+|   +-- deletion.ts           # typed consolidation-dependent deletion conflict
 |   +-- filters.ts            # in-memory recall, prune, and duplicate filters
 |   +-- json.ts               # JSON metadata validation and deep cloning
 |   +-- records.ts            # stored/public memory mapping, cloning, and ids
@@ -156,7 +157,7 @@ src/
 |   +-- postgres.ts           # Postgres MemoryStore adapter
 +-- context/
     +-- builder.ts            # buildContext()
-    +-- formatter.ts          # safe markdown/plain/xml formatting
+    +-- formatter.ts          # markdown/plain/xml context formatting
     +-- tokens.ts             # token counting abstraction
 ```
 
@@ -417,7 +418,8 @@ CREATE TABLE mnemocyte_events (
 
 CREATE TABLE mnemocyte_meta (
   key text PRIMARY KEY,
-  embedding_dimensions integer NOT NULL
+  embedding_dimensions integer NOT NULL,
+  embedding_model text
 );
 
 INSERT INTO mnemocyte_meta (key, embedding_dimensions)
@@ -554,12 +556,16 @@ The context builder assembles model-ready memory context. It must treat memory c
 Requirements:
 
 - Escape XML output.
-- Safely delimit Markdown/plain output.
+- Choose a Markdown fence that cannot collide with included memory content.
+- Treat plain-text framing as a known pre-v1 limitation: it currently uses
+  fixed visible delimiters and does not escape delimiter-looking content.
 - Support a default heuristic token counter.
 - Allow callers to provide a model-specific token counter.
 - Reject a supplied `maxTokens` unless it is a positive integer; omission keeps
   the default budget path.
-- Trim deterministically by priority and token budget.
+- Trim deterministically by priority and token budget. The current fallback
+  truncation marker can exceed extremely small budgets, so a hard
+  `count(result) <= maxTokens` postcondition remains pre-v1 work.
 
 ```ts
 export interface TokenCounter {
@@ -667,6 +673,12 @@ Status: released as `v0.2.0`.
 - **`rememberMany({ inputs, signal })` owns cancellation at the batch level.**
   The former positional form remains a deprecated pre-v1 compatibility
   overload; its first item signal is treated as the batch signal.
+- **Plain-text context framing is not collision-proof yet.** Markdown chooses a
+  content-safe fence and XML escapes content, but plain output uses fixed
+  delimiters that untrusted memory text can imitate.
+- **Tiny context budgets are not a hard postcondition yet.** If no formatted
+  content fits, the fallback truncation marker can itself exceed an extremely
+  small `maxTokens` budget.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.

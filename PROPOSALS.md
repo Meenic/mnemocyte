@@ -3,6 +3,11 @@
 Fresh audit date: 2026-07-16
 Audited revision: `16c2d13`
 
+The findings and baseline counts below are the dated audit snapshot from that
+revision. Approval and status fields are maintained afterward: blank approval
+fields remain pending, while resolved entries link their implementation
+commits.
+
 This pass inspected the current source, tests, migrations, package boundary,
 CI, prior audit records, and the `0.3.0` release changes. Resolved items from
 `docs/CODEBASE_AUDIT.md`, `docs/BUGS_FOUND.md`, and `CHANGELOG.md` are not
@@ -257,6 +262,9 @@ files were retained.
 - approval: yes (option 1 — reject delete while dependents exist)
 - status: resolved in
   [`a95d641`](https://github.com/Meenic/mnemocyte/commit/a95d64187e120eacec857f1bed9fcdfd5e525a43)
+- resolution: Deletion now rejects atomically with `"CONFLICT"` while any
+  memory references the selected survivor. No cascade, detach, or repoint
+  behavior was added.
 
 ## Medium risk
 

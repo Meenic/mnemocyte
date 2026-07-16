@@ -2,6 +2,9 @@
 
 Behavioral defects discovered during the codebase audit. All three were
 subsequently resolved after their public-contract decisions were approved.
+Later findings and their approval/status records live in
+[`PROPOSALS.md`](../PROPOSALS.md); this file remains the historical record for
+the original three cleanup defects.
 
 ## BUG-01: `rememberMany` observes only the first input signal
 

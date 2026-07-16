@@ -48,8 +48,8 @@ Read these files before substantial changes:
   planned next.
 - For Postgres/index work, document operational tradeoffs and avoid adding
   default indexes without representative benchmark or `EXPLAIN` evidence.
-- Use `MemoryStore` when referring to the future backend abstraction; avoid the
-  generic name `Store` for that concept.
+- Use `MemoryStore` when referring to the existing internal or future public
+  backend abstraction; avoid the generic name `Store` for that concept.
 
 ## Commands
 

@@ -14,6 +14,10 @@ high-risk proposals. Each issue was independently reproduced, implemented,
 fully validated against real Postgres + pgvector, and committed before the next
 fix began.
 
+Counts, environment details, and scope statements in the older sections below
+are snapshots of their named runs. The consolidation-deletion section above is
+the latest completed implementation snapshot in this document.
+
 ## Consolidation survivor deletion policy
 
 **CONSOLIDATION-DELETE-01** landed in
@@ -100,9 +104,10 @@ integration files with six real Postgres tests. A separate pre-`0002`
 migration check confirmed that one historical model is recorded and mixed
 historical models remain unset.
 
-Implementation and documentation changes were limited to SERIALIZATION-01,
-EMBED-01, RETRIEVAL-01, and EMBED-02. No other proposal was implemented or
-modified; specifically, `CONSOLIDATION-DELETE-01` was not touched or resolved.
+During that vector-only run, implementation and documentation changes were
+limited to SERIALIZATION-01, EMBED-01, RETRIEVAL-01, and EMBED-02. No other
+proposal was implemented or modified; specifically,
+`CONSOLIDATION-DELETE-01` was not touched or resolved.
 
 ## Approved proposal execution
 
@@ -221,8 +226,9 @@ removed.
 
 - Added a complete clone/install/watch/build/test contributor path and source
   responsibility map to `README.md`.
-- Removed shipped milestone checklists from the forward-looking roadmap and
-  updated performance sequencing to the current unreleased `0.3.0` line.
+- Removed shipped milestone checklists from the forward-looking roadmap and,
+  at that cleanup checkpoint, updated performance sequencing to the then-
+  unreleased `0.3.0` line.
 - Corrected token-heuristic, error-guard, audit-write, dimension-validation, and
   removed-helper descriptions.
 - Updated architecture, changelog, roadmap, performance, and maintainer memory
@@ -320,11 +326,13 @@ documentation audit:
 - `pnpm run test:integration` (entrypoint passed; its one Postgres scenario
   skipped because `DATABASE_URL` is not set locally)
 
-The final documentation checks found 12 Markdown files, no broken local links,
-only `AGENTS.md`, `README.md`, and `CHANGELOG.md` at root, and no old root-doc
-path in source, tests, package metadata, CI, migrations, or scripts. Repository
-changes are limited to Markdown moves, corrections, and the new audit file.
+At that documentation-audit snapshot, the checks found 12 Markdown files, no
+broken local links, only `AGENTS.md`, `README.md`, and `CHANGELOG.md` at root,
+and no old root-doc path in source, tests, package metadata, CI, migrations, or
+scripts. Repository changes in that run were limited to Markdown moves,
+corrections, and the new audit file.
 
-The available bundled/host runtime is Node 22.17, below the declared `>=22.18`
-engine, so nested pnpm invocations emit the existing engine warning even though
-all commands exit successfully. CI continues to cover Node 22.18 and Node 24.
+The host runtime used for that audit was Node 22.17, below the declared
+`>=22.18` engine, so nested pnpm invocations emitted an engine warning even
+though all commands exited successfully. CI continues to cover Node 22.18 and
+Node 24.

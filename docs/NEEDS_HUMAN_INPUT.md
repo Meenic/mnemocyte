@@ -3,6 +3,11 @@
 Decisions that exceeded the behavior-preserving cleanup pass. Option 1 was
 approved and implemented for all three entries.
 
+This file records the original cleanup decisions and the round-two
+documentation judgments. Current unapproved implementation proposals are
+tracked in [`PROPOSALS.md`](../PROPOSALS.md) so their approval fields and
+resolution commits remain in one place.
+
 ## BUG-01: Choose batch cancellation semantics
 
 **Status:** Resolved with option 1 in

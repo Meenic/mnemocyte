@@ -26,6 +26,11 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **Documentation reflects the current pre-v1 state.** Architecture and
+  maintainer docs now include the consolidation deletion helper and complete
+  metadata schema, document the current plain-text framing and tiny-token-budget
+  limitations, and label dated audit counts and Git-state claims as historical
+  snapshots.
 - **LIFECYCLE-01 — `close()` coordinates with in-flight operations.** Closing a
   client now rejects newly started work, waits for already-started operations
   before closing the store, and shares one promise across concurrent/idempotent

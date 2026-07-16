@@ -168,8 +168,10 @@ easy isolated helpers.
 Evidence checked: `../README.md` package exports, migrations, dimensions, HNSW
 tradeoffs, provider-free OpenAI helper, error codes, and current pre-v1 surface
 match the source and packed artifact. `../CHANGELOG.md`, `PROJECT_MEMORY.md`, and
-the main architecture status agree that 0.2.0 is published and the internal
-0.3.0 `MemoryStore` work is unreleased.
+the main architecture status agreed at this cleanup checkpoint that 0.2.0 was
+published and the internal 0.3.0 `MemoryStore` work was unreleased. Version
+0.3.0 was published later; the current status lives in `PROJECT_MEMORY.md` and
+`ARCHITECTURE.md`.
 
 ## Error handling & logging
 

@@ -7,7 +7,9 @@ audit was closed.
 
 Round-two verification later added `VERIFICATION_ROUND2.md`. The 12-file count
 below is therefore the completed move-audit snapshot, not the current repository
-Markdown count.
+Markdown count. `PROPOSALS.md` was also added later; the current repository has
+14 Markdown files, with `AGENTS.md`, `CHANGELOG.md`, `PROPOSALS.md`, and
+`README.md` at the root.
 
 ## Phase 0 move verification
 

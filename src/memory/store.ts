@@ -15,10 +15,10 @@ import type {
 } from "../types.js";
 import type { StoredMemory } from "./records.js";
 
-export interface StoreVectorSearchInput extends RecallInput {
+export interface StoreVectorSearchInput extends Omit<RecallInput, "minScore"> {
 	embedding: readonly number[];
 	limit: number;
-	minScore?: number;
+	minVectorScore?: number;
 }
 
 export interface StoreLexicalSearchInput extends RecallInput {
@@ -27,6 +27,7 @@ export interface StoreLexicalSearchInput extends RecallInput {
 
 export interface StoreVectorCandidate {
 	memory: Memory;
+	/** Finite cosine component clamped to the inclusive range `[0, 1]`. */
 	vectorScore: number;
 }
 

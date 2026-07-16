@@ -86,6 +86,10 @@ function clampScore(value: number): number {
 	return Math.max(0, Math.min(1, value));
 }
 
+export function toVectorScore(cosineSimilarity: number): number {
+	return clampScore(cosineSimilarity);
+}
+
 function normalizeWeights(
 	weights: RetrievalScoreWeights | undefined,
 ): Required<RetrievalScoreWeights> {

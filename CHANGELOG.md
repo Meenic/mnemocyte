@@ -37,6 +37,11 @@ behavioural changes documented in their entries.
   validation now rejects exact all-zero vectors with `"EMBEDDING"` before
   storage, recall comparison, or duplicate-search participation in either
   backend. Tiny nonzero vectors remain valid.
+- **RETRIEVAL-01 — Signed cosine candidates have backend parity.** The
+  internal vector-search contract now returns only finite components clamped
+  to `[0, 1]`. Postgres applies its vector cutoff to that clamped component,
+  so negative-cosine candidates can still participate in shared score fusion;
+  public `minScore` remains a final fused-score filter.
 
 ## [0.3.0] - 2026-07-16
 

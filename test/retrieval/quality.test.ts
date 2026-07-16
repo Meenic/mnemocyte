@@ -98,4 +98,66 @@ describe("retrieval quality", () => {
 			}
 		}
 	});
+
+	test("clamps negative cosine candidates before final-score filtering", async () => {
+		const vectorByText = new Map<string, number[]>([
+			["positive", [1, 0]],
+			["orthogonal", [0, 1]],
+			["slightly-negative", [-1e-9, 1]],
+			["opposite", [-1, 0]],
+			["query", [1, 0]],
+		]);
+		const client = createMnemocyte({
+			embedder: {
+				model: "signed-vector-test",
+				dimensions: 2,
+				async embed(texts) {
+					return texts.map((text) => vectorByText.get(text) ?? [1, 0]);
+				},
+			},
+		});
+
+		try {
+			for (const content of [
+				"positive",
+				"orthogonal",
+				"slightly-negative",
+				"opposite",
+			]) {
+				await client.remember({ entityId: "signed", content });
+			}
+
+			const all = await client.recall({
+				entityId: "signed",
+				query: "query",
+				limit: 4,
+				explain: true,
+			});
+			expect(all).toHaveLength(4);
+			const vectorScores = new Map(
+				all.map((memory) => [memory.content, memory.scores.vector]),
+			);
+			expect(vectorScores.get("positive")).toBe(1);
+			expect(vectorScores.get("orthogonal")).toBe(0);
+			expect(vectorScores.get("slightly-negative")).toBe(0);
+			expect(vectorScores.get("opposite")).toBe(0);
+			expect(
+				all
+					.filter((memory) => memory.content !== "positive")
+					.every((memory) => memory.score > 0),
+			).toBe(true);
+
+			const finalScoreFiltered = await client.recall({
+				entityId: "signed",
+				query: "query",
+				limit: 4,
+				minScore: 0.2,
+			});
+			expect(finalScoreFiltered.map((memory) => memory.content)).toEqual([
+				"positive",
+			]);
+		} finally {
+			await client.close();
+		}
+	});
 });

@@ -37,6 +37,10 @@
   round-trip-safe finite-number formatter. Do not use fixed decimal precision:
   it can collapse valid small components to zero before pgvector's float4
   conversion.
+- `MemoryStore.vectorSearch()` returns a finite vector component clamped to
+  `[0, 1]` in both adapters. Postgres filters that clamped component rather
+  than raw signed cosine; public recall `minScore` remains a shared final-score
+  filter.
 - Persisted memory and audit metadata use the recursive public `JsonObject` /
   `JsonValue` types. Unsupported or cyclic runtime values fail with
   `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and

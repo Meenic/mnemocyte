@@ -473,6 +473,10 @@ export interface MemoryFilter {
 Use cosine distance with pgvector. Recall queries should project only the
 fields needed to build `Memory` plus the score; stored embeddings are used for
 distance calculation but are not returned in the main candidate result set.
+The `MemoryStore` vector candidate contract exposes a finite component in
+`[0, 1]`: negative cosine and non-finite database values clamp to `0`, and any
+store-level vector cutoff applies to that component. Public `RecallInput`
+`minScore` is applied only to the final fused score in shared orchestration.
 
 ```sql
 SELECT id, entity_id, content, type, importance, tags, source, metadata,

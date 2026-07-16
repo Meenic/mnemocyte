@@ -1,5 +1,9 @@
 import { throwIfAborted } from "../resilience.js";
-import { cosineSimilarity, createLexicalScorer } from "../retrieval/scorer.js";
+import {
+	cosineSimilarity,
+	createLexicalScorer,
+	toVectorScore,
+} from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
 	EntityStats,
@@ -70,17 +74,16 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			const now = new Date();
-			const minScore = input.minScore ?? 0;
+			const minVectorScore = input.minVectorScore ?? 0;
 			return Array.from(memories.values())
 				.filter((memory) => matchesRecallFilter(memory, input, now))
 				.map((memory) => ({
 					memory: cloneMemory(memory),
-					vectorScore: Math.max(
-						0,
+					vectorScore: toVectorScore(
 						cosineSimilarity(memory.embedding, input.embedding),
 					),
 				}))
-				.filter((candidate) => candidate.vectorScore >= minScore)
+				.filter((candidate) => candidate.vectorScore >= minVectorScore)
 				.sort((a, b) => b.vectorScore - a.vectorScore)
 				.slice(0, input.limit) satisfies StoreVectorCandidate[];
 		},

@@ -29,7 +29,7 @@ export interface MemoryFilter {
 export interface VectorSearchInput extends MemoryFilter {
 	embedding: readonly number[];
 	limit: number;
-	minScore?: number;
+	minVectorScore?: number;
 }
 
 export interface LexicalSearchInput extends MemoryFilter {
@@ -50,6 +50,22 @@ export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
 
 function vectorLiteral(embedding: readonly number[]): string {
 	return `[${embedding.map(formatVectorComponent).join(",")}]`;
+}
+
+function clampedVectorScore(embedding: string) {
+	const rawScore = sql`1 - (embedding <=> ${embedding}::vector)`;
+	return sql<number>`
+		CASE
+			WHEN ${rawScore} = 'NaN'::double precision
+				OR ${rawScore} = 'Infinity'::double precision
+				OR ${rawScore} = '-Infinity'::double precision
+				THEN 0::double precision
+			ELSE GREATEST(
+				0::double precision,
+				LEAST(1::double precision, ${rawScore})
+			)
+		END
+	`;
 }
 
 type RawTimestamp = Date | string;
@@ -545,7 +561,8 @@ export async function vectorSearch(
 	input: VectorSearchInput,
 ): Promise<VectorSearchRow[]> {
 	const embedding = vectorLiteral(input.embedding);
-	const minScore = input.minScore ?? 0;
+	const vectorScore = clampedVectorScore(embedding);
+	const minVectorScore = input.minVectorScore ?? 0;
 	const rows = await db.execute(sql`
 		SELECT
 			id,
@@ -566,7 +583,7 @@ export async function vectorSearch(
 			access_count AS "accessCount",
 			created_at AS "createdAt",
 			updated_at AS "updatedAt",
-			1 - (embedding <=> ${embedding}::vector) AS "vectorScore"
+			${vectorScore} AS "vectorScore"
 		FROM mnemocyte_memories
 		WHERE
 			entity_id = ${input.entityId}
@@ -584,7 +601,7 @@ export async function vectorSearch(
 			${rawTagsFilter(input.tags)}
 			${input.before ? sql`AND created_at < ${timestampParam(input.before)}` : sql``}
 			${input.after ? sql`AND created_at > ${timestampParam(input.after)}` : sql``}
-			AND 1 - (embedding <=> ${embedding}::vector) >= ${minScore}
+			AND ${vectorScore} >= ${minVectorScore}
 		ORDER BY embedding <=> ${embedding}::vector
 		LIMIT ${input.limit}
 	`);

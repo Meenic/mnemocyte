@@ -8,6 +8,7 @@ import {
 	createScoringConfig,
 	DEFAULT_CANDIDATE_MULTIPLIER,
 	toScoredMemoryWithConfig,
+	toVectorScore,
 } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
@@ -383,7 +384,7 @@ export function createMemoryClient(
 						...input,
 						embedding: queryEmbedding,
 						limit: candidateLimit,
-						minScore: 0,
+						minVectorScore: 0,
 					}),
 					store.lexicalSearch({ ...input, limit: candidateLimit }),
 				]);
@@ -413,7 +414,7 @@ export function createMemoryClient(
 						: 0;
 					merged.set(candidate.memory.id, {
 						memory: candidate.memory,
-						vectorScore: Math.max(0, similarity),
+						vectorScore: toVectorScore(similarity),
 						lexicalScore: candidate.lexicalScore,
 					});
 				}

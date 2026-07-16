@@ -15,8 +15,73 @@ fully validated against real Postgres + pgvector, and committed before the next
 fix began.
 
 Counts, environment details, and scope statements in the older sections below
-are snapshots of their named runs. The consolidation-deletion section above is
-the latest completed implementation snapshot in this document.
+are snapshots of their named runs. The remember-input, provider-config,
+observability, and metadata-ownership section below is the latest completed
+implementation snapshot in this document.
+
+## Approved remember input, config, observability, and metadata fixes
+
+The verified dependency order matched the requested sequence:
+
+1. **INPUT-01** landed in
+   [`33ba44a`](https://github.com/Meenic/mnemocyte/commit/33ba44a69a0848a71b6549e8eb4fd7badebed171).
+   Single and batch remember calls now synchronously snapshot caller-owned
+   tags, metadata, expiration dates, and primitive fields before awaiting
+   provider or storage work.
+2. **INPUT-02** landed in
+   [`000043f`](https://github.com/Meenic/mnemocyte/commit/000043f9e5cc3104a8ce60376d18620141f2961b).
+   Remember rejects unknown type/importance values, malformed tags/source
+   values, and invalid expiration dates with `"VALIDATION"` before embedding
+   or storage. Recall, duplicate-search, and prune type filters share the same
+   runtime memory-type validation.
+3. **CONFIG-01** landed in
+   [`e586024`](https://github.com/Meenic/mnemocyte/commit/e58602487294d7c9a0b781f594809982ab761dd9).
+   Provider timeout/delay values, retry counts, and retry predicates are now
+   validated synchronously with `"CONFIG"`. The existing policy that raises
+   `maxDelayMs` to `baseDelayMs` when needed remains supported.
+4. **OBSERVABILITY-01** landed in
+   [`e159618`](https://github.com/Meenic/mnemocyte/commit/e1596181d4b62d1963bb7abcdcb167d054a5a9f7).
+   Remember preparation and validation failures now emit exactly one
+   `"start"` and one `"error"` event carrying the same thrown value. Input
+   snapshots still complete before awaiting user hooks, and closed-client
+   errors retain precedence over malformed input.
+5. **REFACTOR-01** landed in
+   [`a2fcf8b`](https://github.com/Meenic/mnemocyte/commit/a2fcf8b5f27a39d5f7d6c8c5b5fbaa5b2942f693).
+   An internal validated/owned JSON type now carries remember metadata through
+   record construction and storage. Single and batch writes perform one
+   validating ingress traversal and one detached public-egress traversal per
+   memory in both adapters; audit events retain one adapter-ingress clone and
+   one public-egress clone.
+
+Each issue was reproduced before implementation:
+
+- INPUT-01 stored tags and dates mutated while a gated embedder was pending in
+  both adapters.
+- INPUT-02 accepted and persisted an unknown memory type instead of rejecting
+  before provider/storage work.
+- CONFIG-01 with `retries: NaN` called the provider zero times and surfaced an
+  `"EMBEDDING"` error with no cause instead of rejecting construction.
+- OBSERVABILITY-01 produced no operation events for cyclic metadata during
+  synchronous remember preparation.
+- REFACTOR-01 traversed one memory metadata object six times between public
+  ingress and the returned remember result in both adapters.
+
+Every implementation commit independently passed `pnpm checktypes`,
+`pnpm lint`, `pnpm test`, `pnpm build`, `pnpm run pack:check`, and
+`pnpm run test:integration` using the configured real Postgres + pgvector
+database. The final implementation gate contained 26 passing unit/package
+files with 99 tests and six passing integration files with ten tests.
+
+The metadata refactor removed only traversals covered by the explicit ownership
+contract and instrumentation. Recall scoring and duplicate-pair mapping retain
+their separate clones because their multi-candidate ownership paths were not
+proven redundant.
+
+Changes in this run were limited to INPUT-01, INPUT-02, CONFIG-01,
+OBSERVABILITY-01, REFACTOR-01, their tests and current-behavior documentation,
+the five matching proposal approvals/statuses, and this summary.
+`CONSOLIDATION-01` was not modified or implemented, and no other unapproved
+`PROPOSALS.md` entry was touched.
 
 ## Consolidation survivor deletion policy
 

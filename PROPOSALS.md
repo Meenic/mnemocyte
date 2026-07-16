@@ -388,7 +388,9 @@ files were retained.
   metadata, and dates after method invocation, then assert stored/public values
   reflect the original call-time snapshot in both backends and both single and
   batch paths.
-- approval:
+- approval: yes
+- status: resolved in
+  [`33ba44a`](https://github.com/Meenic/mnemocyte/commit/33ba44a69a0848a71b6549e8eb4fd7badebed171)
 
 ### INPUT-02 — Validate stored enums and date fields at runtime
 
@@ -412,7 +414,9 @@ files were retained.
 - how-verified: Add JavaScript-style invalid-input cases for every field and
   assert `"VALIDATION"` before embedder/store calls. Add accepted-domain tests
   to ensure all documented enum values still store and score correctly.
-- approval:
+- approval: yes
+- status: resolved in
+  [`000043f`](https://github.com/Meenic/mnemocyte/commit/000043f9e5cc3104a8ce60376d18620141f2961b)
 
 ### OBSERVABILITY-01 — Include preparation and validation failures in operation events
 
@@ -437,7 +441,9 @@ files were retained.
   provider, and store failures and assert exactly one start plus one terminal
   event with the same thrown value. Add explicit cyclic-metadata and
   closed-plus-invalid-input cases for single and batch remember.
-- approval:
+- approval: yes
+- status: resolved in
+  [`e159618`](https://github.com/Meenic/mnemocyte/commit/e1596181d4b62d1963bb7abcdcb167d054a5a9f7)
 
 ### STORE-01 — Make batch insert cardinality and ordering an explicit store contract
 
@@ -510,7 +516,9 @@ files were retained.
   fractions, and malformed predicates. Assert `"CONFIG"` at construction and
   zero provider calls, plus boundary success cases for zero and valid positive
   values.
-- approval:
+- approval: yes
+- status: resolved in
+  [`e586024`](https://github.com/Meenic/mnemocyte/commit/e58602487294d7c9a0b781f594809982ab761dd9)
 
 ### REFACTOR-01 — Remove redundant metadata clone/validation passes
 
@@ -538,7 +546,9 @@ files were retained.
   for both backends. Add focused instrumentation or an injected clone helper in
   an internal test to assert one ingress validation traversal and one public
   egress clone per result, including batch and audit paths.
-- approval:
+- approval: yes
+- status: resolved in
+  [`a2fcf8b`](https://github.com/Meenic/mnemocyte/commit/a2fcf8b5f27a39d5f7d6c8c5b5fbaa5b2942f693)
 
 ## Low risk
 

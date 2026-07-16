@@ -16,8 +16,68 @@ fix began.
 
 Counts, environment details, and scope statements in the older sections below
 are snapshots of their named runs. The remember-input, provider-config,
-observability, and metadata-ownership section below is the latest completed
-implementation snapshot in this document.
+observability, and metadata-ownership section remains its own historical
+snapshot; the section below is the latest completed implementation run.
+
+## Approved store, retrieval, audit, and context fixes
+
+The dependency order was verified against the current code before editing and
+matched the requested sequence:
+
+1. **STORE-01** landed in
+   [`ee557b4`](https://github.com/Meenic/mnemocyte/commit/ee557b47be698fefd96fbb0d386dd423bdde62ef).
+   Shared orchestration now validates that batch inserts return exactly one
+   known memory per prepared ID, rejects missing, duplicate, or unknown IDs
+   with `"DB"`, and restores input order.
+2. **RETRIEVAL-02** landed in
+   [`caefcda`](https://github.com/Meenic/mnemocyte/commit/caefcda0485ab37d332fd5995b982ddb4d178dfc).
+   Recall now patches selected results with the exact post-update
+   `accessCount`, `lastAccessedAt`, and `updatedAt` returned by the store while
+   retaining pre-access counts for ranking and explanations.
+3. **AUDIT-01** landed in
+   [`3a16c09`](https://github.com/Meenic/mnemocyte/commit/3a16c092ed425172a82d5b1dab2d4d95f5ce56a0).
+   Prune store results now carry validated per-entity deletion counts, and
+   shared orchestration emits one best-effort `"memory.pruned"` event per
+   affected entity for both scoped and global non-dry runs.
+4. **AUDIT-02** landed in
+   [`dbe655e`](https://github.com/Meenic/mnemocyte/commit/dbe655ea622d4c2dc1d16ce7a130e6b8940e678f).
+   The experimental `AuditLogCursor` and `beforeCursor` / `afterCursor` inputs
+   page by `(timestamp, event ID)` with deterministic ordering and tuple
+   comparisons. Timestamp-only `before` / `after` remain strict filters and
+   are documented as incomplete cursors when timestamps tie.
+5. **CONTEXT-01** landed in
+   [`26b5beb`](https://github.com/Meenic/mnemocyte/commit/26b5beb2456a8ccf0453e3505e0dcaf992357e1f).
+   Plain-text context now chooses a deterministic `=` fence longer than every
+   run in the query, rendered metadata, and included content. Markdown and XML
+   formatting were not changed.
+
+Each issue was reproduced before implementation:
+
+- STORE-01 let reversed results escape in store order and accepted missing,
+  duplicate, and unknown returned IDs.
+- RETRIEVAL-02 returned access count `0` on the first recall while both stores
+  had already advanced it to `1`.
+- AUDIT-01 deleted expired memories across two entities without attempting any
+  prune audit write.
+- AUDIT-02 skipped the remaining same-timestamp consolidation events with a
+  timestamp-only page boundary; the Postgres reproduction also exposed the raw
+  timestamp parameter binding in that query path.
+- CONTEXT-01 produced eight apparent fixed boundary lines for two memories
+  when adversarial content supplied its own start/end markers.
+
+Every implementation commit independently passed `pnpm checktypes`,
+`pnpm lint`, `pnpm test`, `pnpm build`, `pnpm run pack:check`, and
+`pnpm run test:integration` using the configured real Postgres + pgvector
+database. At the final implementation commit, the unit/package suite contained
+30 passing files with 110 tests, and the integration suite contained 10
+passing files with 14 tests.
+
+Changes in this run were limited to STORE-01, RETRIEVAL-02, AUDIT-01,
+AUDIT-02, CONTEXT-01, their focused tests, and current-behavior documentation.
+No migration or default index was added. No other proposal was implemented or
+resolved. In particular, `CONSOLIDATION-01` retains its blank approval, has no
+resolution status, and its open survivor-specific idempotency question was not
+changed.
 
 ## Approved remember input, config, observability, and metadata fixes
 

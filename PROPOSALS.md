@@ -291,7 +291,9 @@ files were retained.
   are `1` and `2`, timestamps are present, and direct stored state matches.
   Cover multiple returned IDs and confirm scoring still uses the count from
   before the current recall.
-- approval:
+- approval: yes
+- status: resolved in
+  [`caefcda`](https://github.com/Meenic/mnemocyte/commit/caefcda0485ab37d332fd5995b982ddb4d178dfc)
 
 ### AUDIT-01 — Audit global prune mutations per affected entity
 
@@ -314,7 +316,9 @@ files were retained.
   both backends. Assert one correctly counted event per affected entity, no
   events for unaffected entities/dry runs, and primary deletion still succeeds
   when best-effort audit insertion fails.
-- approval:
+- approval: yes
+- status: resolved in
+  [`3a16c09`](https://github.com/Meenic/mnemocyte/commit/3a16c092ed425172a82d5b1dab2d4d95f5ce56a0)
 
 ### AUDIT-02 — Use a stable composite cursor for equal-timestamp events
 
@@ -338,7 +342,9 @@ files were retained.
 - how-verified: Insert more same-timestamp events than the page limit and page
   through all of them without duplicates or omissions in both backends.
   Repeat with mixed timestamps and verify deterministic newest-first ordering.
-- approval:
+- approval: yes
+- status: resolved in
+  [`dbe655e`](https://github.com/Meenic/mnemocyte/commit/dbe655ea622d4c2dc1d16ce7a130e6b8940e678f)
 
 ### CONSOLIDATION-01 — Decide whether idempotency is survivor-specific
 
@@ -470,7 +476,9 @@ files were retained.
   row, duplicate a row, and return an unknown ID. Assert reversed complete
   results are normalized to input order and malformed cardinality fails
   predictably. Run the same contract suite against both real adapters.
-- approval:
+- approval: yes
+- status: resolved in
+  [`ee557b4`](https://github.com/Meenic/mnemocyte/commit/ee557b47be698fefd96fbb0d386dd423bdde62ef)
 
 ### CONTEXT-01 — Prevent plain-text memory content from spoofing frame boundaries
 
@@ -492,7 +500,9 @@ files were retained.
   multiline marker variants, omission text, and repeated delimiters. Assert a
   parser—or focused structural test—can identify exactly the memories emitted
   and no content can terminate its own frame.
-- approval:
+- approval: yes
+- status: resolved in
+  [`26b5beb`](https://github.com/Meenic/mnemocyte/commit/26b5beb2456a8ccf0453e3505e0dcaf992357e1f)
 
 ### CONFIG-01 — Validate provider resilience numbers synchronously
 

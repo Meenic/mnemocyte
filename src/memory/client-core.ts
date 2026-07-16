@@ -86,6 +86,24 @@ function storeOptions(signal: AbortSignal | undefined) {
 	return signal === undefined ? undefined : { signal };
 }
 
+function snapshotRememberInput(input: RememberInput): RememberInput {
+	return {
+		...input,
+		...(input.tags === undefined
+			? {}
+			: { tags: Array.isArray(input.tags) ? [...input.tags] : input.tags }),
+		metadata: cloneJsonObject(input.metadata ?? {}),
+		...(input.expiresAt === undefined
+			? {}
+			: {
+					expiresAt:
+						input.expiresAt instanceof Date
+							? new Date(input.expiresAt)
+							: input.expiresAt,
+				}),
+	};
+}
+
 function createStoredMemory(
 	config: MnemocyteConfig,
 	input: RememberInput,
@@ -250,10 +268,7 @@ export function createMemoryClient(
 
 	function remember(input: RememberInput): Promise<Memory> {
 		return runOperation("remember", { entityId: input.entityId }, () => {
-			const preparedInput: RememberInput = {
-				...input,
-				metadata: cloneJsonObject(input.metadata ?? {}),
-			};
+			const preparedInput = snapshotRememberInput(input);
 			return observe(
 				config,
 				store.backend,
@@ -302,12 +317,7 @@ export function createMemoryClient(
 				const positional = isPositionalRememberManyInput(input);
 				const inputs = positional ? input : input.inputs;
 				const signal = positional ? input[0]?.signal : input.signal;
-				const preparedInputs = inputs.map(
-					(item): RememberInput => ({
-						...item,
-						metadata: cloneJsonObject(item.metadata ?? {}),
-					}),
-				);
+				const preparedInputs = inputs.map(snapshotRememberInput);
 				return observe(
 					config,
 					store.backend,

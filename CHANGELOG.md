@@ -26,6 +26,10 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **INPUT-01 — `remember` snapshots mutable inputs at invocation.** Single and
+  batch writes now own copies of caller-supplied tags, metadata, and expiration
+  dates before awaiting embedding or storage, so mutations made while a write
+  is pending cannot change the stored memory.
 - **Documentation reflects the current pre-v1 state.** Architecture and
   maintainer docs now include the consolidation deletion helper and complete
   metadata schema, document the current plain-text framing and tiny-token-budget

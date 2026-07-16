@@ -535,7 +535,10 @@ export interface BuildContextInput {
  * Input for {@link MnemocyteClient.prune}. All fields are optional, but
  * at least one selector must be set; calling `prune({})` is rejected with
  * a `"VALIDATION"` {@link MnemocyteError} so memories cannot be deleted
- * accidentally. Specified filters are combined with AND semantics.
+ * accidentally. Runtime values are validated before storage access; malformed
+ * dates, enums, arrays, booleans, and signals are rejected. `false` selector
+ * flags and empty selector arrays do not count as effective selectors after
+ * normalization. Specified filters are combined with AND semantics.
  */
 export interface PruneInput {
 	/** Restrict pruning to a single entity. */

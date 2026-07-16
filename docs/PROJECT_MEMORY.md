@@ -49,6 +49,11 @@
   transaction steps and before its transaction callback returns, so an
   in-flight statement may finish before rollback. An abort after the final
   check, including during commit, may still leave the mutation committed.
+- `prune` exhaustively validates runtime selectors and normalizes them into an
+  internal filter before the `MemoryStore` boundary. Invalid dates, enums,
+  arrays, booleans, or signals fail with `"VALIDATION"`; false flags and empty
+  arrays do not count as selectors. Both adapters reject an empty internal
+  filter before scanning or issuing SQL.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

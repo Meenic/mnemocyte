@@ -1,13 +1,15 @@
+import { MnemocyteError } from "../errors.js";
 import type {
 	AuditEvent,
 	Embedder,
 	EntityStats,
 	FindDuplicatesInput,
 	GlobalStats,
+	ImportanceLevel,
 	ListAuditLogInput,
 	Memory,
+	MemoryType,
 	MnemocyteBackend,
-	PruneInput,
 	PruneResult,
 	RecallInput,
 } from "../types.js";
@@ -63,6 +65,42 @@ export interface StoreOperationOptions {
 	signal?: AbortSignal;
 }
 
+export interface ValidatedPruneFilter {
+	readonly entityId?: string;
+	readonly expired?: true;
+	readonly superseded?: true;
+	readonly createdBefore?: Date;
+	readonly notAccessedSince?: Date;
+	readonly types?: readonly MemoryType[];
+	readonly tags?: readonly string[];
+	readonly maxImportance?: ImportanceLevel;
+	readonly dryRun: boolean;
+}
+
+export function hasPruneSelector(filter: ValidatedPruneFilter): boolean {
+	return (
+		filter.entityId !== undefined ||
+		filter.expired === true ||
+		filter.superseded === true ||
+		filter.createdBefore !== undefined ||
+		filter.notAccessedSince !== undefined ||
+		(filter.types !== undefined && filter.types.length > 0) ||
+		(filter.tags !== undefined && filter.tags.length > 0) ||
+		filter.maxImportance !== undefined
+	);
+}
+
+export function assertPruneFilterHasSelector(
+	filter: ValidatedPruneFilter,
+): void {
+	if (!hasPruneSelector(filter)) {
+		throw new MnemocyteError(
+			"prune requires at least one selector (entityId, expired, superseded, createdBefore, notAccessedSince, types, tags, or maxImportance).",
+			"VALIDATION",
+		);
+	}
+}
+
 /**
  * Internal storage adapter boundary used by the shared client orchestration.
  *
@@ -88,7 +126,7 @@ export interface MemoryStore {
 	deleteMemory(entityId: string, memoryId: string): Promise<boolean>;
 	deleteMemoriesForEntity(entityId: string): Promise<number>;
 	prune(
-		input: PruneInput,
+		input: ValidatedPruneFilter,
 		options?: StoreOperationOptions,
 	): Promise<PruneResult>;
 	findDuplicatePairs(

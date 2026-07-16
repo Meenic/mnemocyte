@@ -22,15 +22,16 @@ import {
 } from "./filters.js";
 import { cloneJsonObject } from "./json.js";
 import { cloneMemory, createEventId, type StoredMemory } from "./records.js";
-import type {
-	MemoryStore,
-	StoreConsolidateInput,
-	StoreConsolidateResult,
-	StoreDuplicatePair,
-	StoreLexicalCandidate,
-	StoreLexicalSearchInput,
-	StoreVectorCandidate,
-	StoreVectorSearchInput,
+import {
+	assertPruneFilterHasSelector,
+	type MemoryStore,
+	type StoreConsolidateInput,
+	type StoreConsolidateResult,
+	type StoreDuplicatePair,
+	type StoreLexicalCandidate,
+	type StoreLexicalSearchInput,
+	type StoreVectorCandidate,
+	type StoreVectorSearchInput,
 } from "./store.js";
 
 function cloneStoredMemory(memory: StoredMemory): StoredMemory {
@@ -136,6 +137,7 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async prune(input, options) {
 			throwIfAborted(options?.signal);
+			assertPruneFilterHasSelector(input);
 			const now = new Date();
 			const matched: string[] = [];
 			for (const memory of memories.values()) {

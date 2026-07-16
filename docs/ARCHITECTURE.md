@@ -316,8 +316,13 @@ export class MnemocyteError extends Error {
 covers invalid embedder/database URL configuration, invalid retrieval tuning,
 and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call
 argument errors (including invalid `maxTokens`, JSON-incompatible or cyclic
-metadata, the explicit guard in `prune({})`, and
+metadata, malformed or selector-free prune input, and
 `consolidate({ supersededIds: [] })`) plus an explicitly empty `databaseUrl`.
+
+Prune validation produces a normalized internal filter before the
+`MemoryStore` boundary. Both adapters accept that internal filter rather than
+the public `PruneInput`, and independently reject an empty filter so a
+validation regression cannot reach an unbounded delete.
 
 Maintenance-operation signals are checked before store access. In-memory
 pruning, duplicate scans, audit-log scans, and consolidation preparation check

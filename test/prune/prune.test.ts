@@ -1,8 +1,112 @@
-import { createMnemocyte, type MnemocyteObservation } from "mnemocyte";
+import {
+	createMnemocyte,
+	type MnemocyteObservation,
+	type PruneInput,
+} from "mnemocyte";
 import { describe, expect, test } from "vitest";
+import { createMemoryClient } from "../../src/memory/client-core.js";
+import { createInMemoryStore } from "../../src/memory/in-memory.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 describe("prune", () => {
+	test("rejects malformed fields before the store can prune", async () => {
+		const baseStore = createInMemoryStore();
+		let pruneCalls = 0;
+		const client = createMemoryClient(
+			{
+				embedder: {
+					model: "prune-validation-test",
+					dimensions: 2,
+					async embed(texts) {
+						return texts.map((text) => [text.length, 1]);
+					},
+				},
+			},
+			{
+				...baseStore,
+				async prune(filter, options) {
+					pruneCalls += 1;
+					return baseStore.prune(filter, options);
+				},
+			},
+		);
+		const malformedInputs: unknown[] = [
+			{ entityId: " " },
+			{ createdBefore: new Date("invalid") },
+			{ notAccessedSince: new Date("invalid") },
+			{ entityId: "alice", createdBefore: "2026-01-01" },
+			{ entityId: "alice", notAccessedSince: 0 },
+			{ maxImportance: "bogus" },
+			{ types: ["bogus"] },
+			{ entityId: "alice", types: "fact" },
+			{ tags: [""] },
+			{ tags: [1] },
+			{ entityId: "alice", tags: "tag" },
+			{ entityId: "alice", expired: "true" },
+			{ entityId: "alice", superseded: 1 },
+			{ entityId: "alice", dryRun: "false" },
+			{ entityId: "alice", signal: {} },
+			{ expired: false },
+			{ superseded: false },
+			{ types: [] },
+			{ tags: [] },
+			{ dryRun: true },
+		];
+
+		try {
+			await client.rememberMany({
+				inputs: [
+					{ entityId: "alice", content: "one" },
+					{ entityId: "bob", content: "two" },
+				],
+			});
+
+			for (const input of malformedInputs) {
+				await expectMnemocyteError(
+					client.prune(input as PruneInput),
+					"VALIDATION",
+				);
+				expect(pruneCalls).toBe(0);
+				await expect(client.stats()).resolves.toMatchObject({
+					memoryCount: 2,
+				});
+			}
+		} finally {
+			await client.close();
+		}
+	});
+
+	test("normalizes valid tag selectors before pruning", async () => {
+		const client = createMnemocyte({
+			embedder: {
+				model: "prune-normalization-test",
+				dimensions: 2,
+				async embed(texts) {
+					return texts.map((text) => [text.length, 1]);
+				},
+			},
+		});
+
+		try {
+			await client.remember({
+				entityId: "alice",
+				content: "tagged",
+				tags: ["spam"],
+			});
+			const result = await client.prune({
+				tags: [" spam ", "spam"],
+				dryRun: true,
+			});
+			expect(result).toEqual({
+				matchedCount: 1,
+				deletedCount: 0,
+				dryRun: true,
+			});
+		} finally {
+			await client.close();
+		}
+	});
+
 	test("validates and deletes selected memories", async () => {
 		function createClient() {
 			return createMnemocyte({

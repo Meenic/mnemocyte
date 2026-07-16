@@ -5,7 +5,9 @@ import type {
 	ConsolidateInput,
 	Embedder,
 	FindDuplicatesInput,
+	ImportanceLevel,
 	ListAuditLogInput,
+	MemoryType,
 	PruneInput,
 	RecallInput,
 	RememberInput,
@@ -13,6 +15,26 @@ import type {
 	RetrievalScoreWeights,
 } from "../types.js";
 import { validateJsonObject } from "./json.js";
+import {
+	assertPruneFilterHasSelector,
+	type ValidatedPruneFilter,
+} from "./store.js";
+
+const MEMORY_TYPES = [
+	"fact",
+	"preference",
+	"instruction",
+	"backstory",
+	"episode",
+	"session",
+] as const satisfies readonly MemoryType[];
+
+const IMPORTANCE_LEVELS = [
+	"low",
+	"normal",
+	"high",
+	"critical",
+] as const satisfies readonly ImportanceLevel[];
 
 export function assertNonEmptyString(
 	value: unknown,
@@ -184,29 +206,113 @@ export function contextInputToRecallInput(
 }
 
 /**
- * Validate a {@link PruneInput} and throw a `"VALIDATION"`
- * {@link MnemocyteError} when no selector is supplied. Mnemocyte
- * deliberately rejects `prune({})` to avoid surprise full-table deletes.
+ * Validate and normalize a {@link PruneInput}. Throws a `"VALIDATION"`
+ * {@link MnemocyteError} for malformed fields or when normalization leaves no
+ * effective selector, preventing surprise full-table deletes.
  */
-export function validatePruneInput(input: PruneInput): void {
+export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	if (input.entityId !== undefined) {
 		assertNonEmptyString(input.entityId, "entityId");
 	}
-	const hasSelector =
-		input.entityId !== undefined ||
-		input.expired === true ||
-		input.superseded === true ||
-		input.createdBefore !== undefined ||
-		input.notAccessedSince !== undefined ||
-		(input.types !== undefined && input.types.length > 0) ||
-		(input.tags !== undefined && input.tags.length > 0) ||
-		input.maxImportance !== undefined;
-	if (!hasSelector) {
+	for (const [field, value] of [
+		["expired", input.expired],
+		["superseded", input.superseded],
+		["dryRun", input.dryRun],
+	] as const) {
+		if (value !== undefined && typeof value !== "boolean") {
+			throw new MnemocyteError(`${field} must be a boolean.`, "VALIDATION");
+		}
+	}
+	for (const [field, value] of [
+		["createdBefore", input.createdBefore],
+		["notAccessedSince", input.notAccessedSince],
+	] as const) {
+		if (
+			value !== undefined &&
+			(!(value instanceof Date) || !Number.isFinite(value.getTime()))
+		) {
+			throw new MnemocyteError(`${field} must be a valid Date.`, "VALIDATION");
+		}
+	}
+	let types: readonly MemoryType[] | undefined;
+	if (input.types !== undefined) {
+		if (!Array.isArray(input.types)) {
+			throw new MnemocyteError("types must be an array.", "VALIDATION");
+		}
+		const normalized = new Set<MemoryType>();
+		for (const value of input.types as readonly unknown[]) {
+			if (
+				typeof value !== "string" ||
+				!(MEMORY_TYPES as readonly string[]).includes(value)
+			) {
+				throw new MnemocyteError(
+					"types must contain only known memory types.",
+					"VALIDATION",
+				);
+			}
+			normalized.add(value as MemoryType);
+		}
+		if (normalized.size > 0) {
+			types = [...normalized];
+		}
+	}
+	let tags: readonly string[] | undefined;
+	if (input.tags !== undefined) {
+		if (!Array.isArray(input.tags)) {
+			throw new MnemocyteError("tags must be an array.", "VALIDATION");
+		}
+		const normalized = new Set<string>();
+		for (const value of input.tags as readonly unknown[]) {
+			if (typeof value !== "string" || value.trim().length === 0) {
+				throw new MnemocyteError(
+					"tags must contain only non-empty strings.",
+					"VALIDATION",
+				);
+			}
+			normalized.add(value.trim());
+		}
+		if (normalized.size > 0) {
+			tags = [...normalized];
+		}
+	}
+	if (
+		input.maxImportance !== undefined &&
+		!(IMPORTANCE_LEVELS as readonly string[]).includes(input.maxImportance)
+	) {
 		throw new MnemocyteError(
-			"prune requires at least one selector (entityId, expired, superseded, createdBefore, notAccessedSince, types, tags, or maxImportance).",
+			"maxImportance must be a known importance level.",
 			"VALIDATION",
 		);
 	}
+	if (
+		input.signal !== undefined &&
+		(typeof input.signal !== "object" ||
+			input.signal === null ||
+			typeof input.signal.aborted !== "boolean" ||
+			typeof input.signal.addEventListener !== "function" ||
+			typeof input.signal.removeEventListener !== "function")
+	) {
+		throw new MnemocyteError("signal must be an AbortSignal.", "VALIDATION");
+	}
+	const filter: ValidatedPruneFilter = {
+		...(input.entityId === undefined ? {} : { entityId: input.entityId }),
+		...(input.expired === true ? { expired: true as const } : {}),
+		...(input.superseded === true ? { superseded: true as const } : {}),
+		...(input.createdBefore === undefined
+			? {}
+			: { createdBefore: new Date(input.createdBefore) }),
+		...(input.notAccessedSince === undefined
+			? {}
+			: { notAccessedSince: new Date(input.notAccessedSince) }),
+		...(types === undefined ? {} : { types }),
+		...(tags === undefined ? {} : { tags }),
+		...(input.maxImportance === undefined
+			? {}
+			: { maxImportance: input.maxImportance }),
+		dryRun: input.dryRun === true,
+	};
+	assertPruneFilterHasSelector(filter);
+	return filter;
 }
 
 /**

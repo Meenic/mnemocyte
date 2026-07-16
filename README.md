@@ -259,6 +259,13 @@ await client.prune({
 });
 ```
 
+Prune selectors are validated and normalized before either backend is called.
+Dates must be valid `Date` instances, enum values must be known, arrays must
+contain valid values, and boolean fields must be actual booleans. `false`
+selector flags and empty selector arrays do not count toward the required
+selector; malformed or selector-free input rejects with `"VALIDATION"` without
+deleting anything. Tag selectors are trimmed and deduplicated.
+
 ### `findDuplicates`
 
 ```ts

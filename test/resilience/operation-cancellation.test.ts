@@ -92,6 +92,12 @@ describe("operation cancellation", () => {
 				get reason() {
 					return controller.signal.reason;
 				},
+				addEventListener: controller.signal.addEventListener.bind(
+					controller.signal,
+				),
+				removeEventListener: controller.signal.removeEventListener.bind(
+					controller.signal,
+				),
 			} as unknown as AbortSignal;
 
 			await expectMnemocyteError(

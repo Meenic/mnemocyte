@@ -539,10 +539,10 @@ export function createMemoryClient(
 						async () => {
 							assertOpen();
 							throwIfAborted(input.signal);
-							validatePruneInput(input);
+							const filter = validatePruneInput(input);
 							await ensureSchema();
 							const result = await store.prune(
-								input,
+								filter,
 								storeOptions(input.signal),
 							);
 							if (

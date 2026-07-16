@@ -31,7 +31,6 @@ import type {
 	ImportanceLevel,
 	MnemocyteClient,
 	MnemocyteConfig,
-	PruneInput,
 } from "../types.js";
 import { createMemoryClient } from "./client-core.js";
 import {
@@ -43,15 +42,17 @@ import {
 import { cloneJsonObject } from "./json.js";
 import { rowToMemory } from "./postgres-records.js";
 import { createEventId, type StoredMemory } from "./records.js";
-import type {
-	MemoryStore,
-	StoreConsolidateInput,
-	StoreConsolidateResult,
-	StoreDuplicatePair,
-	StoreLexicalCandidate,
-	StoreLexicalSearchInput,
-	StoreVectorCandidate,
-	StoreVectorSearchInput,
+import {
+	assertPruneFilterHasSelector,
+	type MemoryStore,
+	type StoreConsolidateInput,
+	type StoreConsolidateResult,
+	type StoreDuplicatePair,
+	type StoreLexicalCandidate,
+	type StoreLexicalSearchInput,
+	type StoreVectorCandidate,
+	type StoreVectorSearchInput,
+	type ValidatedPruneFilter,
 } from "./store.js";
 
 const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
@@ -124,7 +125,7 @@ async function runPostgresOperation<T>(
 	}
 }
 
-function toPruneFilter(input: PruneInput): PruneFilter {
+function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
 	const filter: PruneFilter = {};
 	if (input.entityId !== undefined) {
 		filter.entityId = input.entityId;
@@ -274,6 +275,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async prune(input, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
+				assertPruneFilterHasSelector(input);
 				const filter = toPruneFilter(input);
 				const dryRun = input.dryRun === true;
 				if (dryRun) {

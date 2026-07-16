@@ -23,6 +23,12 @@ behavioural changes documented in their entries.
   steps and before its transaction callback returns, so in-flight statements
   may finish before rollback. An abort after the final check, including during
   commit, may still leave the mutation committed.
+- **PRUNE-01 — Malformed prune selectors fail before storage access.** Prune
+  now validates dates, enum values, arrays, booleans, and signals, then passes
+  only a normalized internal filter to storage adapters. False flags and empty
+  arrays do not count as selectors, and both adapters reject an empty internal
+  filter before scanning or issuing SQL, preventing malformed inputs from
+  becoming unbounded deletes.
 
 ## [0.3.0] - 2026-07-16
 

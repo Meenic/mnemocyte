@@ -8,10 +8,11 @@ import {
 	type JsonObject,
 	type MnemocyteObservation,
 	type MnemocyteOperation,
+	type PruneInput,
 } from "mnemocyte";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -187,7 +188,33 @@ async function main(databaseUrl: string) {
 				globalBefore.supersededMemoryCount,
 			);
 
-			// 3. recall surfaces the original by tag+type filter.
+			// 3. Malformed prune selectors fail before reaching Postgres.
+			const malformedPrunes: unknown[] = [
+				{ createdBefore: new Date("invalid") },
+				{ notAccessedSince: new Date("invalid") },
+				{ maxImportance: "bogus" },
+				{ types: ["bogus"] },
+				{ tags: [1] },
+				{ entityId, expired: "true" },
+				{ entityId, superseded: 1 },
+				{ entityId, dryRun: "false" },
+				{ entityId, signal: {} },
+				{ expired: false },
+				{ types: [] },
+				{ tags: [] },
+			];
+			for (const input of malformedPrunes) {
+				await expectMnemocyteError(
+					client.prune(input as PruneInput),
+					"VALIDATION",
+				);
+				await expect(client.stats({ entityId })).resolves.toMatchObject({
+					memoryCount: 4,
+					supersededMemoryCount: 0,
+				});
+			}
+
+			// 4. recall surfaces the original by tag+type filter.
 			const recalled = await client.recall({
 				entityId,
 				query: "TypeScript library answer style",
@@ -202,7 +229,7 @@ async function main(databaseUrl: string) {
 			expect(recalled[0]?.explanation).toBeTruthy();
 			expect(recalled[0]?.metadata).toEqual({ profile: { tier: "gold" } });
 
-			// 4. findDuplicates returns the dup pair (cosine 1.0 between identical content).
+			// 5. findDuplicates returns the dup pair (cosine 1.0 between identical content).
 			const pairs = await client.findDuplicates({
 				entityId,
 				threshold: 0.99,
@@ -213,7 +240,7 @@ async function main(databaseUrl: string) {
 			expect(pairIds).toEqual([memory.id, dup.id].sort());
 			expect(pair.similarity).toBeGreaterThanOrEqual(0.99);
 
-			// 5. experimental.consolidate collapses the duplicate.
+			// 6. experimental.consolidate collapses the duplicate.
 			const consolidated = await client.experimental.consolidate({
 				entityId,
 				survivorId: memory.id,
@@ -228,7 +255,7 @@ async function main(databaseUrl: string) {
 			expect(afterConsolidateStats.expiredMemoryCount).toBe(1);
 			expect(afterConsolidateStats.supersededMemoryCount).toBe(1);
 
-			// 6. Recall now excludes the loser by default.
+			// 7. Recall now excludes the loser by default.
 			const recalledAfter = await client.recall({
 				entityId,
 				query: "TypeScript",
@@ -237,7 +264,7 @@ async function main(databaseUrl: string) {
 			expect(recalledIds).toContain(memory.id);
 			expect(recalledIds).not.toContain(dup.id);
 
-			// 7. Including superseded surfaces the loser with supersededAt set.
+			// 8. Including superseded surfaces the loser with supersededAt set.
 			const includingSuperseded = await client.recall({
 				entityId,
 				query: "TypeScript",
@@ -249,7 +276,7 @@ async function main(databaseUrl: string) {
 			expect(supersededLoser.supersededBy).toBe(memory.id);
 			expect(supersededLoser.supersededAt).toBeInstanceOf(Date);
 
-			// 8. buildContext returns a non-empty string.
+			// 9. buildContext returns a non-empty string.
 			const context = await client.buildContext({
 				entityId,
 				query: "TypeScript",
@@ -258,7 +285,7 @@ async function main(databaseUrl: string) {
 			expect(typeof context).toBe("string");
 			expect(context.length).toBeGreaterThan(0);
 
-			// 9. listAuditLog surfaces the recorded events.
+			// 10. listAuditLog surfaces the recorded events.
 			const log = await client.listAuditLog({ entityId, limit: 50 });
 			const descriptions = log.map((event) => event.description).sort();
 			expect(descriptions).toContain("memory.created");
@@ -269,7 +296,7 @@ async function main(databaseUrl: string) {
 			expect(superseded?.metadata.memoryId).toBe(dup.id);
 			expect(superseded?.metadata.supersededBy).toBe(memory.id);
 
-			// 10. prune the superseded memory by selector.
+			// 11. prune the superseded memory by selector.
 			const pruneResult = await client.prune({
 				entityId,
 				superseded: true,
@@ -281,7 +308,7 @@ async function main(databaseUrl: string) {
 			expect(afterPrune.expiredMemoryCount).toBe(1);
 			expect(afterPrune.supersededMemoryCount).toBe(0);
 
-			// 11. forgetAll wipes remaining memories but keeps audit history.
+			// 12. forgetAll wipes remaining memories but keeps audit history.
 			await client.forgetAll({ entityId });
 			const afterForget = await client.stats({ entityId });
 			expect(afterForget.memoryCount).toBe(0);
@@ -308,7 +335,7 @@ async function main(databaseUrl: string) {
 				logAfterForget.some((event) => event.description === "memory.created"),
 			).toBeTruthy();
 
-			// 12. Observability captured at least one success event for each op exercised.
+			// 13. Observability captured at least one success event for each op exercised.
 			const operations = new Set(
 				events
 					.filter((event) => event.phase === "success")

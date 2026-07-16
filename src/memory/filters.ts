@@ -1,10 +1,6 @@
-import type {
-	FindDuplicatesInput,
-	Memory,
-	PruneInput,
-	RecallInput,
-} from "../types.js";
+import type { FindDuplicatesInput, Memory, RecallInput } from "../types.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
+import type { ValidatedPruneFilter } from "./store.js";
 
 export function isExpired(memory: Memory, now: Date): boolean {
 	return (
@@ -13,7 +9,7 @@ export function isExpired(memory: Memory, now: Date): boolean {
 }
 
 /**
- * Test whether `memory` matches a {@link PruneInput}. All specified
+ * Test whether `memory` matches a validated prune filter. All specified
  * selectors are AND-combined; unspecified selectors do not restrict.
  *
  * `now` is supplied by the caller so callers can share a consistent
@@ -21,7 +17,7 @@ export function isExpired(memory: Memory, now: Date): boolean {
  */
 export function matchesPruneFilter(
 	memory: Memory,
-	input: PruneInput,
+	input: ValidatedPruneFilter,
 	now: Date,
 ): boolean {
 	if (input.entityId !== undefined && memory.entityId !== input.entityId) {

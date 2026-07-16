@@ -39,6 +39,12 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **REFACTOR-01 — Metadata ownership avoids redundant traversals.** Remember
+  inputs now carry an internal validated/owned JSON type through record
+  creation and storage, freshly created in-memory rows transfer ownership to
+  the adapter, and adapter-returned detached memories/audit events are no
+  longer cloned again by shared client orchestration. Public validation,
+  snapshot, and mutation-isolation behavior is unchanged.
 - **OBSERVABILITY-01 — Remember preparation failures emit operation events.**
   `remember` and `rememberMany` now emit exactly one `"start"` and one
   `"error"` event when synchronous snapshotting or validation fails, using the

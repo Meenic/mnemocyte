@@ -15,7 +15,7 @@ import type {
 	RetrievalConfig,
 	RetrievalScoreWeights,
 } from "../types.js";
-import { validateJsonObject } from "./json.js";
+import type { OwnedJsonObject } from "./json.js";
 import {
 	assertPruneFilterHasSelector,
 	type ValidatedPruneFilter,
@@ -36,6 +36,10 @@ const IMPORTANCE_LEVELS = [
 	"high",
 	"critical",
 ] as const satisfies readonly ImportanceLevel[];
+
+export interface PreparedRememberInput extends Omit<RememberInput, "metadata"> {
+	metadata: OwnedJsonObject;
+}
 
 function isMemoryType(value: unknown): value is MemoryType {
 	return (
@@ -260,7 +264,7 @@ export function validateBuildContextInput(input: BuildContextInput): void {
 	}
 }
 
-export function validateRememberInput(input: RememberInput): void {
+export function validateRememberInput(input: PreparedRememberInput): void {
 	assertNonEmptyString(input.entityId, "entityId");
 	assertNonEmptyString(input.content, "content");
 	if (input.type !== undefined) {
@@ -284,9 +288,6 @@ export function validateRememberInput(input: RememberInput): void {
 	}
 	if (input.source !== undefined && typeof input.source !== "string") {
 		throw new MnemocyteError("source must be a string.", "VALIDATION");
-	}
-	if (input.metadata !== undefined) {
-		validateJsonObject(input.metadata);
 	}
 	if (
 		input.confidence !== undefined &&

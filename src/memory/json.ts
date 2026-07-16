@@ -1,6 +1,13 @@
 import { MnemocyteError } from "../errors.js";
 import type { JsonObject, JsonValue } from "../types.js";
 
+declare const ownedJsonObject: unique symbol;
+
+/** Internal marker for a JSON object that Mnemocyte has validated and cloned. */
+export type OwnedJsonObject = JsonObject & {
+	readonly [ownedJsonObject]: true;
+};
+
 function invalidJsonValue(path: string, cause?: unknown): MnemocyteError {
 	return new MnemocyteError(
 		`${path} must contain only JSON-compatible value data.`,
@@ -81,24 +88,19 @@ function cloneJsonValue(
 }
 
 /** Validate and deep-clone a JSON-compatible object. */
-export function cloneJsonObject(value: unknown, path = "metadata"): JsonObject {
+export function cloneJsonObject(
+	value: unknown,
+	path = "metadata",
+): OwnedJsonObject {
 	try {
 		if (value === null || typeof value !== "object" || Array.isArray(value)) {
 			throw invalidJsonValue(path);
 		}
-		return cloneJsonValue(value, path, new Set()) as JsonObject;
+		return cloneJsonValue(value, path, new Set()) as OwnedJsonObject;
 	} catch (error) {
 		if (error instanceof MnemocyteError) {
 			throw error;
 		}
 		throw invalidJsonValue(path, error);
 	}
-}
-
-/** Assert that a runtime value is a JSON-compatible object. */
-export function validateJsonObject(
-	value: unknown,
-	path = "metadata",
-): asserts value is JsonObject {
-	cloneJsonObject(value, path);
 }

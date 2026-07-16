@@ -45,8 +45,10 @@
   filter.
 - Persisted memory and audit metadata use the recursive public `JsonObject` /
   `JsonValue` types. Unsupported or cyclic runtime values fail with
-  `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and
-  egress.
+  `"VALIDATION"`. Memory metadata is validated/cloned once at public ingress,
+  transferred through the internal owned-value contract, and cloned once in
+  the detached adapter result. Audit adapters retain independent ingress and
+  egress clones.
 - `remember` and `rememberMany` snapshot mutable tags, metadata, and expiration
   dates before awaiting. Their shared runtime boundary rejects unknown memory
   types or importance levels, malformed tags/source values, and invalid
@@ -100,6 +102,9 @@
 - Memory defaults, embedding calls, filters, record mapping, and validation
   live in focused leaf modules under `src/memory/`; keep orchestration in
   `client-core.ts` and backend mechanics in the adapters.
+- Retrieval scoring and duplicate-pair mapping still retain separate public
+  clones because their multi-candidate ownership paths were not proven
+  redundant by the remember/audit metadata traversal audit.
 - Ordinary audit writes are best-effort; Postgres consolidation audit events
   remain transaction-coupled to the consolidation mutation.
 - Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported

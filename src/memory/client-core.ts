@@ -45,6 +45,7 @@ import {
 	assertMinScore,
 	assertNonEmptyString,
 	contextInputToRecallInput,
+	type PreparedRememberInput,
 	validateBuildContextInput,
 	validateConsolidateInput,
 	validateFindDuplicatesInput,
@@ -86,7 +87,7 @@ function storeOptions(signal: AbortSignal | undefined) {
 	return signal === undefined ? undefined : { signal };
 }
 
-function snapshotRememberInput(input: RememberInput): RememberInput {
+function snapshotRememberInput(input: RememberInput): PreparedRememberInput {
 	return {
 		...input,
 		...(input.tags === undefined
@@ -106,7 +107,7 @@ function snapshotRememberInput(input: RememberInput): RememberInput {
 
 function createStoredMemory(
 	config: MnemocyteConfig,
-	input: RememberInput,
+	input: PreparedRememberInput,
 	embedding: number[],
 	now: Date,
 ) {
@@ -118,7 +119,7 @@ function createStoredMemory(
 		importance: input.importance ?? DEFAULT_IMPORTANCE,
 		tags: normalizeTags(input.tags),
 		source: input.source ?? null,
-		metadata: cloneJsonObject(input.metadata ?? {}),
+		metadata: input.metadata,
 		confidence: input.confidence ?? 1,
 		embeddingModel: config.embedder.model,
 		embeddingDimensions: config.embedder.dimensions,
@@ -143,7 +144,7 @@ function auditEvent(
 		id: createEventId(),
 		entityId,
 		description,
-		metadata: cloneJsonObject(metadata),
+		metadata,
 		timestamp,
 	};
 }
@@ -296,7 +297,7 @@ export function createMemoryClient(
 							importance: memory.importance,
 						}),
 					]);
-					return cloneMemory(memory);
+					return memory;
 				},
 				(memory) => ({ memoryId: memory.id, count: 1 }),
 			),
@@ -351,7 +352,7 @@ export function createMemoryClient(
 							}),
 						),
 					);
-					return memories.map(cloneMemory);
+					return memories;
 				},
 				(result) => ({ count: result.length }),
 			),
@@ -605,13 +606,7 @@ export function createMemoryClient(
 							input,
 							storeOptions(input.signal),
 						);
-						return events.map((event) => ({
-							id: event.id,
-							entityId: event.entityId,
-							description: event.description,
-							metadata: cloneJsonObject(event.metadata),
-							timestamp: new Date(event.timestamp),
-						}));
+						return events;
 					},
 					(result) => ({ count: result.length }),
 				),

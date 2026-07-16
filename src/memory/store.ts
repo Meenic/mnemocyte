@@ -114,6 +114,10 @@ export interface MemoryStore {
 	ensureSchema(): Promise<void>;
 	ensureEmbeddingCompatibility(embedder: Embedder): Promise<void>;
 
+	/**
+	 * Takes ownership of freshly prepared rows and returns detached public
+	 * records. Callers must not mutate or reuse rows after passing them here.
+	 */
 	insertMemories(memories: readonly StoredMemory[]): Promise<Memory[]>;
 	vectorSearch(input: StoreVectorSearchInput): Promise<StoreVectorCandidate[]>;
 	lexicalSearch(
@@ -137,7 +141,9 @@ export interface MemoryStore {
 		options?: StoreOperationOptions,
 	): Promise<StoreDuplicatePair[]>;
 
+	/** Persists independent copies of audit events supplied by shared core. */
 	addAuditEvents(events: readonly AuditEvent[]): Promise<void>;
+	/** Returns detached audit events safe to expose through the public client. */
 	listAuditLog(
 		input: ListAuditLogInput,
 		options?: StoreOperationOptions,

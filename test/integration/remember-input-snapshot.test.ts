@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
 import postgres from "postgres";
 import { describe, test } from "vitest";
+import { verifyMetadataTraversalCounts } from "../fixtures/metadata-traversals.js";
 import {
 	createGatedEmbedder,
 	verifyRememberInputSnapshots,
@@ -91,6 +92,34 @@ describe("Postgres remember input snapshots", () => {
 			} finally {
 				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
+				await sql.end();
+			}
+		},
+		60_000,
+	);
+
+	test.skipIf(!databaseUrl)(
+		"validates metadata once at ingress and clones once at public egress",
+		async () => {
+			const sql = postgres(databaseUrl ?? "", { max: 1 });
+			const entityPrefix = `traversal_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			await applyMigrations(sql);
+			const counter = createCountingEmbedder(
+				"mnemocyte-integration-test",
+				1536,
+			);
+			const client = createMnemocyte({
+				databaseUrl: databaseUrl ?? "",
+				embedder: counter.embedder,
+				audit: { enabled: true },
+			});
+
+			try {
+				await verifyMetadataTraversalCounts(client, entityPrefix);
+			} finally {
+				await client.close();
+				await sql`DELETE FROM mnemocyte_memories WHERE entity_id LIKE ${`${entityPrefix}%`}`;
+				await sql`DELETE FROM mnemocyte_events WHERE entity_id LIKE ${`${entityPrefix}%`}`;
 				await sql.end();
 			}
 		},

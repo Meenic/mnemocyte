@@ -77,7 +77,7 @@ function rowToAuditEvent(row: EventRow): AuditEvent {
 		entityId: row.entityId,
 		description: row.description,
 		metadata: cloneJsonObject(row.metadata),
-		timestamp: row.timestamp,
+		timestamp: new Date(row.timestamp),
 	};
 }
 
@@ -193,7 +193,6 @@ function toMemoryRow(memory: StoredMemory): NewMemoryRow {
 	return {
 		...memory,
 		tags: [...memory.tags],
-		metadata: cloneJsonObject(memory.metadata),
 		embedding: [...memory.embedding],
 	};
 }

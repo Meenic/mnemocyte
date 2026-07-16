@@ -497,6 +497,14 @@ caller-owned values; if preparation itself fails, the hook still receives one
 Closed-client admission remains earlier than preparation, matching other
 operations' lifecycle precedence.
 
+The ingress metadata clone carries an internal validated/owned type through
+record construction. `MemoryStore.insertMemories()` takes ownership of those
+fresh rows and returns detached public records, so shared orchestration does not
+repeat the metadata traversal. Audit events retain one adapter-ingress clone
+and one detached public-egress clone. Retrieval scoring and duplicate-pair
+mapping keep their separate clones until those multi-candidate ownership paths
+are audited independently.
+
 Do not hold a database transaction open while calling an external embedding API. If asynchronous embedding is needed later, model it explicitly with an `embedding_status` field and retry/repair tooling.
 
 ## Retrieval Architecture

@@ -39,13 +39,6 @@ import {
 	type StoreVectorSearchInput,
 } from "./store.js";
 
-function cloneStoredMemory(memory: StoredMemory): StoredMemory {
-	return {
-		...cloneMemory(memory),
-		embedding: [...memory.embedding],
-	};
-}
-
 function cloneAuditEvent(event: AuditEvent): AuditEvent {
 	return {
 		id: event.id,
@@ -78,9 +71,8 @@ export function createInMemoryStore(): MemoryStore {
 		async insertMemories(rows) {
 			const inserted: Memory[] = [];
 			for (const row of rows) {
-				const stored = cloneStoredMemory(row);
-				memories.set(stored.id, stored);
-				inserted.push(cloneMemory(stored));
+				memories.set(row.id, row);
+				inserted.push(cloneMemory(row));
 			}
 			return inserted;
 		},

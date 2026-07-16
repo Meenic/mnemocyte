@@ -339,6 +339,11 @@ with `"CONFLICT"` if any matching memory still has consolidation dependents,
 and the entire prune batch remains unchanged; unrelated matching rows are not
 partially deleted.
 
+When audit logging is enabled, every successful non-dry prune writes one
+best-effort `"memory.pruned"` event per affected entity, including global
+prunes without an `entityId`. Dry runs and zero-deletion runs do not write prune
+events.
+
 ### `findDuplicates`
 
 ```ts

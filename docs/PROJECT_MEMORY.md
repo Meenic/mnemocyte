@@ -92,6 +92,10 @@
   arrays, booleans, or signals fail with `"VALIDATION"`; false flags and empty
   arrays do not count as selectors. Both adapters reject an empty internal
   filter before scanning or issuing SQL.
+- Store prune results include validated per-entity deletion counts. Shared
+  orchestration emits one best-effort `"memory.pruned"` event for every
+  affected entity in entity-scoped and global non-dry runs; dry runs and
+  zero-deletion runs emit none.
 - Consolidation survivors cannot be deleted while another memory's
   `supersededBy` points to them. `forget`, `forgetAll`, and non-dry-run `prune`
   reject atomically with `"CONFLICT"` in both adapters; deleting losers and

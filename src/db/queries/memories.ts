@@ -49,6 +49,7 @@ export interface GuardedDeleteResult {
 	matchedCount: number;
 	deletedCount: number;
 	hasDependents: boolean;
+	deletedByEntity: Array<{ entityId: string; deletedCount: number }>;
 }
 
 export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
@@ -307,12 +308,14 @@ async function deleteMemoriesWithDependentGuard(
 			matchedCount: number | string;
 			deletedCount: number | string;
 			hasDependents: boolean;
+			entityId: string | null;
+			entityDeletedCount: number | string | null;
 		}>
 	>(
 		db,
 		sql`
 			WITH candidates AS MATERIALIZED (
-				SELECT id
+				SELECT id, entity_id
 				FROM ${memoriesTable}
 				${conditions ? sql`WHERE ${conditions}` : sql``}
 			),
@@ -327,12 +330,28 @@ async function deleteMemoriesWithDependentGuard(
 				DELETE FROM ${memoriesTable}
 				WHERE ${memoriesTable.id} IN (SELECT id FROM candidates)
 					AND NOT EXISTS (SELECT 1 FROM dependents)
-				RETURNING id
+				RETURNING id, entity_id
+			),
+			deleted_counts AS (
+				SELECT entity_id, count(*)::int AS deleted_count
+				FROM deleted
+				GROUP BY entity_id
+			),
+			summary AS (
+				SELECT
+					(SELECT count(*)::int FROM candidates) AS matched_count,
+					(SELECT count(*)::int FROM deleted) AS deleted_count,
+					EXISTS (SELECT 1 FROM dependents) AS has_dependents
 			)
 			SELECT
-				(SELECT count(*)::int FROM candidates) AS "matchedCount",
-				(SELECT count(*)::int FROM deleted) AS "deletedCount",
-				EXISTS (SELECT 1 FROM dependents) AS "hasDependents"
+				summary.matched_count AS "matchedCount",
+				summary.deleted_count AS "deletedCount",
+				summary.has_dependents AS "hasDependents",
+				deleted_counts.entity_id AS "entityId",
+				deleted_counts.deleted_count AS "entityDeletedCount"
+			FROM summary
+			LEFT JOIN deleted_counts ON true
+			ORDER BY deleted_counts.entity_id
 		`,
 		signal,
 	);
@@ -341,6 +360,16 @@ async function deleteMemoriesWithDependentGuard(
 		matchedCount: Number(row?.matchedCount ?? 0),
 		deletedCount: Number(row?.deletedCount ?? 0),
 		hasDependents: row?.hasDependents === true,
+		deletedByEntity: rows.flatMap((detail) =>
+			detail.entityId === null
+				? []
+				: [
+						{
+							entityId: detail.entityId,
+							deletedCount: Number(detail.entityDeletedCount ?? 0),
+						},
+					],
+		),
 	};
 }
 

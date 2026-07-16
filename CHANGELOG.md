@@ -39,6 +39,11 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **AUDIT-01 — Global prune writes per-entity audit events.** When audit is
+  enabled, a successful non-dry global prune now records one
+  `"memory.pruned"` event with the deleted count for each affected entity.
+  Dry runs, zero-deletion runs, and unaffected entities still produce no prune
+  event; audit persistence remains best-effort.
 - **RETRIEVAL-02 — Recall returns post-update access metadata.** Successful
   recall results now expose the `accessCount`, `lastAccessedAt`, and
   `updatedAt` written by that recall instead of values from the preceding

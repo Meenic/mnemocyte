@@ -381,6 +381,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						),
 						deletedCount: 0,
 						dryRun: true,
+						deletedByEntity: [],
 					};
 				}
 				const result = await pruneMemories(handle.db, filter, options?.signal);
@@ -391,6 +392,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 					matchedCount: result.matchedCount,
 					deletedCount: result.deletedCount,
 					dryRun: false,
+					deletedByEntity: result.deletedByEntity,
 				};
 			});
 		},

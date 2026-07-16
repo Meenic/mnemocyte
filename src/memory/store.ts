@@ -49,6 +49,15 @@ export interface StoreAccessUpdate {
 	updatedAt: Date;
 }
 
+export interface StorePruneEntityDeletion {
+	entityId: string;
+	deletedCount: number;
+}
+
+export interface StorePruneResult extends PruneResult {
+	deletedByEntity: readonly StorePruneEntityDeletion[];
+}
+
 export interface StoreConsolidationTarget {
 	id: string;
 	tags: readonly string[];
@@ -151,7 +160,7 @@ export interface MemoryStore {
 	prune(
 		input: ValidatedPruneFilter,
 		options?: StoreOperationOptions,
-	): Promise<PruneResult>;
+	): Promise<StorePruneResult>;
 	findDuplicatePairs(
 		input: FindDuplicatesInput,
 		options?: StoreOperationOptions,

@@ -39,7 +39,11 @@ import {
 	createId,
 	normalizeTags,
 } from "./records.js";
-import type { MemoryStore } from "./store.js";
+import type {
+	MemoryStore,
+	StorePruneEntityDeletion,
+	StorePruneResult,
+} from "./store.js";
 import {
 	assertLimit,
 	assertMinScore,
@@ -177,6 +181,45 @@ function normalizeStoreRows<T extends { id: string }>(
 		}
 		return returnedRow;
 	});
+}
+
+function normalizePruneEntityDeletions(
+	result: StorePruneResult,
+	expectedEntityId: string | undefined,
+): StorePruneEntityDeletion[] {
+	const seenEntityIds = new Set<string>();
+	let detailedDeletedCount = 0;
+
+	for (const detail of result.deletedByEntity) {
+		if (
+			detail.entityId.length === 0 ||
+			!Number.isInteger(detail.deletedCount) ||
+			detail.deletedCount <= 0 ||
+			seenEntityIds.has(detail.entityId) ||
+			(expectedEntityId !== undefined && detail.entityId !== expectedEntityId)
+		) {
+			throw new MnemocyteError(
+				"Memory prune returned invalid per-entity deletion details.",
+				"DB",
+			);
+		}
+		seenEntityIds.add(detail.entityId);
+		detailedDeletedCount += detail.deletedCount;
+	}
+
+	if (
+		detailedDeletedCount !== result.deletedCount ||
+		(result.dryRun && result.deletedByEntity.length > 0)
+	) {
+		throw new MnemocyteError(
+			"Memory prune deletion details did not match the deleted count.",
+			"DB",
+		);
+	}
+
+	return [...result.deletedByEntity].sort((a, b) =>
+		a.entityId.localeCompare(b.entityId),
+	);
 }
 
 function toDuplicatePair(pair: {
@@ -611,18 +654,24 @@ export function createMemoryClient(
 								filter,
 								storeOptions(input.signal),
 							);
-							if (
-								result.deletedCount > 0 &&
-								input.entityId !== undefined &&
-								result.dryRun === false
-							) {
-								await recordAudit([
-									auditEvent(input.entityId, "memory.pruned", {
-										count: result.deletedCount,
-									}),
-								]);
+							const deletedByEntity = normalizePruneEntityDeletions(
+								result,
+								input.entityId,
+							);
+							if (result.deletedCount > 0 && result.dryRun === false) {
+								await recordAudit(
+									deletedByEntity.map((detail) =>
+										auditEvent(detail.entityId, "memory.pruned", {
+											count: detail.deletedCount,
+										}),
+									),
+								);
 							}
-							return result;
+							return {
+								matchedCount: result.matchedCount,
+								deletedCount: result.deletedCount,
+								dryRun: result.dryRun,
+							};
 						},
 						(result) => ({ count: result.deletedCount }),
 					),

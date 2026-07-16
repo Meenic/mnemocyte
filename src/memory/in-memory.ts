@@ -36,6 +36,7 @@ import {
 	type StoreDuplicatePair,
 	type StoreLexicalCandidate,
 	type StoreLexicalSearchInput,
+	type StorePruneEntityDeletion,
 	type StoreVectorCandidate,
 	type StoreVectorSearchInput,
 } from "./store.js";
@@ -158,25 +159,39 @@ export function createInMemoryStore(): MemoryStore {
 			throwIfAborted(options?.signal);
 			assertPruneFilterHasSelector(input);
 			const now = new Date();
-			const matched: string[] = [];
+			const matched: StoredMemory[] = [];
 			for (const memory of memories.values()) {
 				throwIfAborted(options?.signal);
 				if (matchesPruneFilter(memory, input, now)) {
-					matched.push(memory.id);
+					matched.push(memory);
 				}
 			}
 			const dryRun = input.dryRun === true;
+			let deletedByEntity: StorePruneEntityDeletion[] = [];
 			if (!dryRun) {
 				throwIfAborted(options?.signal);
-				assertNoDependentMemories(memories, new Set(matched));
-				for (const id of matched) {
-					memories.delete(id);
+				assertNoDependentMemories(
+					memories,
+					new Set(matched.map((memory) => memory.id)),
+				);
+				const deletedCounts = new Map<string, number>();
+				for (const memory of matched) {
+					memories.delete(memory.id);
+					deletedCounts.set(
+						memory.entityId,
+						(deletedCounts.get(memory.entityId) ?? 0) + 1,
+					);
 				}
+				deletedByEntity = Array.from(
+					deletedCounts,
+					([entityId, deletedCount]) => ({ entityId, deletedCount }),
+				).sort((a, b) => a.entityId.localeCompare(b.entityId));
 			}
 			return {
 				matchedCount: matched.length,
 				deletedCount: dryRun ? 0 : matched.length,
 				dryRun,
+				deletedByEntity,
 			};
 		},
 		async findDuplicatePairs(input, options) {

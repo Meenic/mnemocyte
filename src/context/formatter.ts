@@ -32,6 +32,16 @@ function markdownFence(value: string): string {
 	return "`".repeat(Math.max(3, longestBacktickRun + 1));
 }
 
+function plainFence(values: readonly string[]): string {
+	const longestEqualsRun = Math.max(
+		0,
+		...values.flatMap((value) =>
+			Array.from(value.matchAll(/=+/g), (match) => match[0].length),
+		),
+	);
+	return "=".repeat(Math.max(8, longestEqualsRun + 1));
+}
+
 function formatMarkdown(
 	memories: readonly MemoryWithScore[],
 	query: string,
@@ -65,6 +75,17 @@ function formatPlain(
 	query: string,
 	omittedCount: number,
 ): string {
+	const formattedMemories = memories.map((memory) => ({
+		memory,
+		metadata: formatMetadata(memory),
+	}));
+	const fence = plainFence([
+		query,
+		...formattedMemories.flatMap(({ memory, metadata }) => [
+			metadata,
+			memory.content,
+		]),
+	]);
 	const lines = [
 		"MEMORY CONTEXT",
 		"",
@@ -72,13 +93,13 @@ function formatPlain(
 		"",
 		"RELEVANT MEMORIES",
 	];
-	for (const [index, memory] of memories.entries()) {
+	for (const [index, { memory, metadata }] of formattedMemories.entries()) {
 		lines.push(
 			"",
-			`--- MEMORY ${index + 1} START ---`,
-			formatMetadata(memory),
+			`${fence} MEMORY ${index + 1} START ${fence}`,
+			metadata,
 			memory.content,
-			`--- MEMORY ${index + 1} END ---`,
+			`${fence} MEMORY ${index + 1} END ${fence}`,
 		);
 	}
 	if (omittedCount > 0) {

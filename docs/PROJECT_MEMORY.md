@@ -101,9 +101,10 @@
   reject atomically with `"CONFLICT"` in both adapters; deleting losers and
   memories with no dependents remains valid. Postgres retains the
   `ON DELETE NO ACTION` foreign key as a race-condition backstop.
-- Markdown context chooses a content-safe fence and XML escapes content. Plain
-  context still uses fixed visible delimiters that untrusted memory text can
-  imitate; `CONTEXT-01` in `../PROPOSALS.md` tracks that pre-v1 gap.
+- Markdown context chooses a content-safe backtick fence, plain context chooses
+  a deterministic `=` fence longer than every run in the query, rendered
+  metadata, and included content, and XML escapes content. Untrusted plain text
+  cannot reproduce its active frame delimiter.
 - `buildContext.maxTokens` rejects invalid values, but the fallback truncation
   marker can exceed an extremely small valid budget. `CONTEXT-02` tracks the
   missing hard postcondition.

@@ -20,6 +20,12 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **CONTEXT-01 — Plain-text memory delimiters are now collision-free.** Plain
+  context no longer uses the fixed `--- MEMORY N START/END ---` lines. It
+  chooses a deterministic `=` fence longer than every run in the query,
+  metadata, and included memory content, so untrusted text cannot terminate its
+  own frame. Callers parsing the old fixed plain-text delimiters must update;
+  Markdown and XML formatting are unchanged.
 - **CONFIG-01 — Invalid provider resilience numbers reject at construction.**
   `timeoutMs`, `baseDelayMs`, and `maxDelayMs` must be finite and
   non-negative; `retries` must also be an integer; and `shouldRetry` must be

@@ -588,8 +588,8 @@ Requirements:
 
 - Escape XML output.
 - Choose a Markdown fence that cannot collide with included memory content.
-- Treat plain-text framing as a known pre-v1 limitation: it currently uses
-  fixed visible delimiters and does not escape delimiter-looking content.
+- Choose a deterministic plain-text fence that cannot occur in the query,
+  rendered metadata, or included memory content.
 - Support a default heuristic token counter.
 - Allow callers to provide a model-specific token counter.
 - Reject a supplied `maxTokens` unless it is a positive integer; omission keeps
@@ -704,9 +704,6 @@ Status: released as `v0.2.0`.
 - **`rememberMany({ inputs, signal })` owns cancellation at the batch level.**
   The former positional form remains a deprecated pre-v1 compatibility
   overload; its first item signal is treated as the batch signal.
-- **Plain-text context framing is not collision-proof yet.** Markdown chooses a
-  content-safe fence and XML escapes content, but plain output uses fixed
-  delimiters that untrusted memory text can imitate.
 - **Tiny context budgets are not a hard postcondition yet.** If no formatted
   content fits, the fallback truncation marker can itself exceed an extremely
   small `maxTokens` budget.

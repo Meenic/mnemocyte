@@ -291,6 +291,12 @@ const context = await client.buildContext({
 });
 ```
 
+Plain-text context uses a deterministic `=` fence longer than any `=` run in
+the query, rendered metadata, or included memory content. The resulting
+`MEMORY N START/END` boundaries cannot be reproduced by untrusted content.
+Markdown continues to choose a content-safe backtick fence, and XML continues
+to escape content.
+
 When supplied, `maxTokens` must be a positive integer or `buildContext` rejects
 with `"VALIDATION"`. Omitting it keeps the default token-budget path.
 
@@ -519,9 +525,6 @@ Known limitations before v1:
 
 - The internal `MemoryStore` boundary is not a public adapter API yet.
   `drizzleStore(db)` is the planned first public store adapter.
-- Plain-text context uses visible fixed memory delimiters. Delimiter-looking
-  untrusted memory content is not escaped yet, so prefer Markdown or XML when
-  the framing itself is security-sensitive.
 - For extremely small `maxTokens` values, the current truncation marker may
   exceed the requested budget. Do not treat `buildContext` as a hard token
   postcondition for tiny budgets until this pre-v1 edge case is resolved.

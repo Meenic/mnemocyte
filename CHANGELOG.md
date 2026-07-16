@@ -8,6 +8,14 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **LIFECYCLE-01 — `close()` coordinates with in-flight operations.** Closing a
+  client now rejects newly started work, waits for already-started operations
+  before closing the store, and shares one promise across concurrent/idempotent
+  close calls. If the store close fails, operation admission reopens so callers
+  can retry `close()`.
+
 ## [0.3.0] - 2026-07-16
 
 ### Breaking Changes

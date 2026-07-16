@@ -1,5 +1,7 @@
 import { createMnemocyte, type MnemocyteObservation } from "mnemocyte";
 import { describe, expect, test } from "vitest";
+import { createMemoryClient } from "../../src/memory/client-core.js";
+import { createInMemoryStore } from "../../src/memory/in-memory.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 describe("lifecycle", () => {
@@ -110,5 +112,111 @@ describe("lifecycle", () => {
 			);
 			expect(errorEvent?.backend).toBe("in-memory");
 		}
+	});
+
+	test("waits for in-flight operations and rejects new work while closing", async () => {
+		let releaseEmbedder: (() => void) | undefined;
+		let resolveEmbedderStarted: (() => void) | undefined;
+		const embedderStarted = new Promise<void>((resolve) => {
+			resolveEmbedderStarted = resolve;
+		});
+		const baseStore = createInMemoryStore();
+		let storeCloseStarted = false;
+		const store = {
+			...baseStore,
+			async insertMemories(
+				memories: Parameters<typeof baseStore.insertMemories>[0],
+			) {
+				expect(storeCloseStarted).toBe(false);
+				return baseStore.insertMemories(memories);
+			},
+			async close() {
+				storeCloseStarted = true;
+				await baseStore.close();
+			},
+		};
+		const client = createMemoryClient(
+			{
+				embedder: {
+					model: "lifecycle-in-flight",
+					dimensions: 1,
+					async embed() {
+						resolveEmbedderStarted?.();
+						return new Promise<number[][]>((resolve) => {
+							releaseEmbedder = () => resolve([[1]]);
+						});
+					},
+				},
+			},
+			store,
+		);
+
+		const rememberPromise = client.remember({
+			entityId: "alice",
+			content: "complete before close",
+		});
+		await embedderStarted;
+
+		const firstClose = client.close();
+		const concurrentClose = client.close();
+		expect(concurrentClose).toBe(firstClose);
+		let closeSettled = false;
+		void firstClose.then(() => {
+			closeSettled = true;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(closeSettled).toBe(false);
+		expect(storeCloseStarted).toBe(false);
+		await expectMnemocyteError(client.stats(), "DB");
+
+		releaseEmbedder?.();
+		await expect(rememberPromise).resolves.toMatchObject({
+			content: "complete before close",
+		});
+		await firstClose;
+
+		expect(storeCloseStarted).toBe(true);
+		await expectMnemocyteError(client.stats(), "DB");
+	});
+
+	test("reopens admission after store close fails so close can be retried", async () => {
+		const baseStore = createInMemoryStore();
+		let closeAttempts = 0;
+		const store = {
+			...baseStore,
+			async close() {
+				closeAttempts += 1;
+				if (closeAttempts === 1) {
+					throw new Error("close failed");
+				}
+				await baseStore.close();
+			},
+		};
+		const client = createMemoryClient(
+			{
+				embedder: {
+					model: "lifecycle-close-retry",
+					dimensions: 1,
+					async embed(texts) {
+						return texts.map(() => [1]);
+					},
+				},
+			},
+			store,
+		);
+
+		const failedClose = client.close();
+		expect(client.close()).toBe(failedClose);
+		await expect(failedClose).rejects.toThrow("close failed");
+		await expect(client.stats()).resolves.toMatchObject({ memoryCount: 0 });
+
+		const retryClose = client.close();
+		expect(retryClose).not.toBe(failedClose);
+		expect(client.close()).toBe(retryClose);
+		await retryClose;
+		expect(closeAttempts).toBe(2);
+		expect(client.close()).toBe(retryClose);
 	});
 });

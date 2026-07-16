@@ -886,7 +886,10 @@ export interface MnemocyteClient {
 	stats(input?: { entityId?: string }): Promise<EntityStats | GlobalStats>;
 	/**
 	 * Release any underlying resources (e.g. the Postgres connection pool).
-	 * Safe to call multiple times. The client must not be used afterward.
+	 * New operations are rejected once closing starts. The returned promise
+	 * waits for operations that already started, then closes the store. Safe to
+	 * call multiple times; concurrent calls share the same close operation.
+	 * If closing the store fails, the client reopens so callers may retry.
 	 */
 	close(): Promise<void>;
 }

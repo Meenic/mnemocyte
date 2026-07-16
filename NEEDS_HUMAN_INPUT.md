@@ -1,11 +1,15 @@
 # Needs Human Input
 
-Decisions that exceed a behavior-preserving cleanup pass.
+Decisions that exceeded the behavior-preserving cleanup pass. Option 1 was
+approved and implemented for all three entries.
 
 ## BUG-01: Choose batch cancellation semantics
 
-**Decision required:** Is cancellation owned by the batch or by each
-`RememberInput`?
+**Status:** Resolved with option 1 in
+[`cf79854`](https://github.com/Meenic/mnemocyte/commit/cf798545f6c9b023e64a7fb5275c69cb91df3dae).
+
+**Decision resolved:** Cancellation is owned by the batch, not by each
+`RememberInput`.
 
 Options:
 
@@ -20,14 +24,16 @@ request and insert operation cannot provide truthful per-item cancellation, and
 an object-parameter form leaves room for future batch options. Preserve the
 current signature temporarily if compatibility is required.
 
-**Why deferred:** Each option changes observable cancellation behavior or the
-public method shape; the codebase audit is not authorized to choose that
-contract.
+**Resolution:** Added `rememberMany({ inputs, signal })` and retained the
+positional signature as a deprecated pre-v1 compatibility overload.
 
 ## BUG-02: Choose tuning validation and fallback policy
 
-**Decision required:** Should explicitly invalid numeric tuning be rejected,
-clamped, or replaced by defaults?
+**Status:** Resolved with option 1 in
+[`51cae0d`](https://github.com/Meenic/mnemocyte/commit/51cae0d8afc8d36039ffa4f7aa8b331ae18efd1f).
+
+**Decision resolved:** Explicitly invalid numeric tuning is rejected with typed
+errors.
 
 Options:
 
@@ -44,13 +50,16 @@ zero, non-finite/non-positive recency and access settings, and a
 `buildContext`, require `maxTokens` to be a positive integer when supplied and
 use `"VALIDATION"`; omission remains the explicit unlimited/default path.
 
-**Why deferred:** The current API accepts these values, and choosing rejection,
-fallback, or clamping changes public behavior and error timing.
+**Resolution:** Construction uses `"CONFIG"` for the approved invalid retrieval
+settings, while `buildContext` uses `"VALIDATION"` for an invalid supplied
+`maxTokens`.
 
 ## BUG-03: Choose metadata value and cloning semantics
 
-**Decision required:** Is metadata JSON-compatible value data, arbitrary
-JavaScript data, or explicitly caller-owned shallow data?
+**Status:** Resolved with option 1 in
+[`43baf7d`](https://github.com/Meenic/mnemocyte/commit/43baf7d86c60e4563dbbf80924cd4eb79ea7b7ff).
+
+**Decision resolved:** Metadata is JSON-compatible persisted value data.
 
 Options:
 
@@ -68,5 +77,5 @@ natural contract and prevents returned values from mutating stored state. A
 pre-v1 migration can introduce recursive JSON types while compatibility risk is
 still manageable.
 
-**Why deferred:** Narrowing `Record<string, unknown>` and changing clone/error
-behavior affects public types, accepted inputs, and backend compatibility.
+**Resolution:** Added recursive `JsonObject` / `JsonValue` types, shared runtime
+validation, typed rejection, and deep cloning at both storage boundaries.

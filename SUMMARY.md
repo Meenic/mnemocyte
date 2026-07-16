@@ -1,8 +1,38 @@
-# Codebase Cleanup Summary
+# Codebase Cleanup and Approved Fixes Summary
 
-All 16 audit items are closed: 13 were resolved and 3 were explicitly deferred
-after documenting their reproductions, policy choices, and recommendations.
-Each audit item was committed separately after its project validation gate.
+The original cleanup closed all 16 audit items: 13 were resolved and 3 were
+deferred after documenting their reproductions and required policy choices.
+The follow-up behavior run approved option 1 for each deferred item and has now
+resolved all three. Each behavior fix was validated and committed separately.
+
+## Approved behavior fixes
+
+The implementation order was BUG-03, BUG-02, then BUG-01. This was verified
+against the actual file overlap before editing:
+
+1. **BUG-03 — metadata semantics** touched the deepest shared surface: public
+   types, JSON validation/cloning, memory records, database schema typing, both
+   storage adapters, client orchestration, and package/integration tests. It
+   landed first in
+   [`43baf7d`](https://github.com/Meenic/mnemocyte/commit/43baf7d86c60e4563dbbf80924cd4eb79ea7b7ff).
+2. **BUG-02 — tuning validation** built on the shared validation boundary and
+   then changed constructor and `buildContext` rejection behavior. It landed
+   second in
+   [`51cae0d`](https://github.com/Meenic/mnemocyte/commit/51cae0d8afc8d36039ffa4f7aa8b331ae18efd1f).
+3. **BUG-01 — batch cancellation** was the narrowest change, limited to the
+   public batch input shape, batch orchestration, compatibility typing, and
+   focused cancellation coverage. It landed third in
+   [`cf79854`](https://github.com/Meenic/mnemocyte/commit/cf798545f6c9b023e64a7fb5275c69cb91df3dae).
+
+Before implementation, each historical reproduction in `BUGS_FOUND.md` was
+rerun against the starting branch and failed for its documented reason. The
+updated tests now enforce the approved behavior rather than merely checking
+that the old failure disappeared.
+
+No behavior, refactor, dependency, schema migration, or feature outside these
+three approved items was added. The positional `rememberMany(inputs)` overload
+was retained as a deprecated pre-v1 compatibility path; it was not silently
+removed.
 
 ## Dead code removed
 
@@ -63,18 +93,14 @@ Resolved during cleanup:
   backend selection or error categories.
 - Closing the in-memory store retained audit metadata.
 
-Deferred behavioral findings are reproduced in [BUGS_FOUND.md](./BUGS_FOUND.md):
-
-- `rememberMany` observes only the first input's cancellation signal.
-- Runtime tuning accepts numeric values that can disable budgets, corrupt
-  scores, or produce invalid candidate limits.
-- Nested in-memory metadata aliases caller/result objects and does not share
-  Postgres JSONB serialization semantics.
+The three formerly deferred findings remain documented with their historical
+reproductions in [BUGS_FOUND.md](./BUGS_FOUND.md), and each is now marked
+resolved with a link to its behavior commit.
 
 ## Needs human input
 
-[NEEDS_HUMAN_INPUT.md](./NEEDS_HUMAN_INPUT.md) records the recommended policy
-for each deferred item:
+[NEEDS_HUMAN_INPUT.md](./NEEDS_HUMAN_INPUT.md) records the approved option 1
+decision and resolution commit for each item:
 
 - Use one explicit batch-level cancellation signal.
 - Reject invalid tuning with typed configuration/validation errors.
@@ -83,15 +109,17 @@ for each deferred item:
 
 ## Validation
 
-The final gate passed with the supported bundled Node 24 runtime:
+The complete required gate passed after each behavior fix and again on the
+final state:
 
 - `pnpm checktypes`
-- `pnpm lint` (63 files, no fixes or warnings)
-- `pnpm test` (18 files, 40 tests)
+- `pnpm lint` (66 files, no fixes or warnings)
+- `pnpm test` (20 files, 71 tests)
 - `pnpm build`
 - `pnpm run pack:check`
 - `pnpm run test:integration` (entrypoint passed; its one Postgres scenario
   skipped because `DATABASE_URL` is not set locally)
 
-The host's default Node 22.17 remains below the declared `>=22.18` engine and
-emits a warning in nested pnpm invocations; CI covers Node 22.18 and Node 24.
+The available bundled/host runtime is Node 22.17, below the declared `>=22.18`
+engine, so nested pnpm invocations emit the existing engine warning even though
+all commands exit successfully. CI continues to cover Node 22.18 and Node 24.

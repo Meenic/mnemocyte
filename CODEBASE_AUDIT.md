@@ -247,21 +247,14 @@ for Markdown/YAML; quote style and import organization are configured; all 53
 applicable files pass the formatter; `git diff --check` and whitespace scans are
 clean; no lint/type suppressions or prohibited test assertions exist.
 
-## Deferred
+## Deferred during cleanup (resolved in approved follow-up)
 
-- [x] **BUG-01 (med): Decide `rememberMany` cancellation semantics — Deferred.**
-  Per-item versus batch-level cancellation changes the public contract; the
-  reproduction and recommendation are recorded in `BUGS_FOUND.md` and
-  `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
-  with the database scenario skipped because `DATABASE_URL` is absent).
-- [x] **BUG-02 (med): Define runtime tuning validation — Deferred.** Choosing
-  rejection, fallback, or clamping changes accepted public inputs; the
-  reproduction and recommendation are recorded in `BUGS_FOUND.md` and
-  `NEEDS_HUMAN_INPUT.md`. All required gates passed (18 test files/40 tests,
-  with the database scenario skipped because `DATABASE_URL` is absent).
+- [x] **BUG-01 (med): Decide `rememberMany` cancellation semantics — Resolved.**
+  Option 1 was approved and implemented in
+  [`cf79854`](https://github.com/Meenic/mnemocyte/commit/cf798545f6c9b023e64a7fb5275c69cb91df3dae).
+- [x] **BUG-02 (med): Define runtime tuning validation — Resolved.** Option 1
+  was approved and implemented in
+  [`51cae0d`](https://github.com/Meenic/mnemocyte/commit/51cae0d8afc8d36039ffa4f7aa8b331ae18efd1f).
 - [x] **BUG-03 (med): Define metadata cloning/serialization semantics —
-  Deferred.** JSON-only versus arbitrary JavaScript metadata changes public
-  types and backend compatibility; the reproduction and recommendation are
-  recorded in `BUGS_FOUND.md` and `NEEDS_HUMAN_INPUT.md`. All required gates
-  passed (18 test files/40 tests, with the database scenario skipped because
-  `DATABASE_URL` is absent).
+  Resolved.** Option 1 was approved and implemented in
+  [`43baf7d`](https://github.com/Meenic/mnemocyte/commit/43baf7d86c60e4563dbbf80924cd4eb79ea7b7ff).

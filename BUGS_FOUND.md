@@ -1,18 +1,19 @@
 # Bugs Found
 
-Behavioral defects discovered during the codebase audit that were not changed
-because their fixes require a public-contract decision.
+Behavioral defects discovered during the codebase audit. All three were
+subsequently resolved after their public-contract decisions were approved.
 
 ## BUG-01: `rememberMany` observes only the first input signal
 
-**Status:** Deferred pending a batch-cancellation contract.
+**Status:** Resolved in
+[`cf79854`](https://github.com/Meenic/mnemocyte/commit/cf798545f6c9b023e64a7fb5275c69cb91df3dae).
 
 `RememberInput.signal` is documented for every item, but `rememberMany(inputs)`
 makes one embedder call and passes only `inputs[0]?.signal`. Aborting any later
 input does not cancel that call; aborting the first input cancels the whole
 batch.
 
-### Reproduction
+### Historical reproduction
 
 ```ts
 const first = new AbortController();
@@ -36,9 +37,16 @@ Callers can believe an individual batch item was cancelled when the item is
 still embedded and persisted. Combining signals automatically would instead
 make one item cancel every item, which is also a user-visible semantic choice.
 
+### Resolution
+
+`rememberMany({ inputs, signal })` now owns cancellation at the batch level.
+The positional form remains as a deprecated pre-v1 compatibility overload and
+continues treating its first item signal as the batch signal.
+
 ## BUG-02: Runtime tuning accepts invalid numeric ranges
 
-**Status:** Deferred pending validation and fallback policy.
+**Status:** Resolved in
+[`51cae0d`](https://github.com/Meenic/mnemocyte/commit/51cae0d8afc8d36039ffa4f7aa8b331ae18efd1f).
 
 Public tuning fields are typed as `number` but are not validated at runtime.
 Representative outcomes include:
@@ -52,7 +60,7 @@ Representative outcomes include:
 - Fractional or non-finite `candidateMultiplier` values produce fractional or
   `NaN` store limits; the in-memory and Postgres paths need not fail alike.
 
-### Reproduction
+### Historical reproduction
 
 ```ts
 const client = createMnemocyte({
@@ -81,9 +89,16 @@ Invalid JavaScript input can silently disable a budget, corrupt ranking, or
 create backend-specific query failures instead of producing one typed error at
 the public boundary.
 
+### Resolution
+
+Client construction now rejects invalid retrieval tuning with `"CONFIG"`, and
+`buildContext` rejects an invalid supplied `maxTokens` with `"VALIDATION"`.
+Omitting `maxTokens` keeps the existing default path.
+
 ## BUG-03: Nested metadata aliases in memory and diverges from JSONB
 
-**Status:** Deferred pending a metadata value contract.
+**Status:** Resolved in
+[`43baf7d`](https://github.com/Meenic/mnemocyte/commit/43baf7d86c60e4563dbbf80924cd4eb79ea7b7ff).
 
 Public-memory cloning copies only the top-level metadata object. Nested arrays
 and objects remain shared with caller input, stored in-memory records, and
@@ -91,7 +106,7 @@ returned results. Postgres introduces a JSON serialization boundary instead,
 which deep-copies JSON-compatible data and rejects or transforms unsupported
 values.
 
-### Reproduction
+### Historical reproduction
 
 ```ts
 const metadata = { profile: { tier: "gold" } };
@@ -117,3 +132,9 @@ cannot persist them consistently.
 Caller-side mutation can change stored in-memory state without a Mnemocyte
 write, and the same typed metadata value can behave differently across
 backends.
+
+### Resolution
+
+Persisted metadata now uses recursive `JsonObject` / `JsonValue` types, rejects
+unsupported or cyclic values with `"VALIDATION"`, and is deep-cloned at ingress
+and egress in both backends.

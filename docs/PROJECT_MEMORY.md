@@ -53,6 +53,10 @@
   expiration dates with `"VALIDATION"` before provider or store work. Recall,
   duplicate-search, and prune type filters share the same memory-type domain
   validator.
+- Remember snapshot and validation failures emit the documented observability
+  lifecycle: exactly one `"start"` plus one `"error"` carrying the caller's
+  thrown value. Snapshotting still completes before awaiting user hooks, while
+  closed-client admission errors retain precedence over malformed input.
 - Retrieval tuning is validated synchronously at client construction and fails
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied `buildContext.maxTokens` that is not a positive

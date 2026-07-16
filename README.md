@@ -240,6 +240,11 @@ storage. Mutable tags, metadata, and expiration dates are snapshotted when
 `remember` or `rememberMany` is invoked, so later caller mutations cannot
 change the pending write.
 
+When observability is configured, snapshot and validation failures follow the
+same operation lifecycle as provider or storage failures: one `"start"` event
+and one `"error"` event carrying the thrown value. Snapshotting remains
+synchronous before any awaited `onEvent` hook.
+
 For batches, cancellation belongs to the whole operation:
 
 ```ts

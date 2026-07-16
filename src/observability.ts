@@ -34,15 +34,15 @@ async function emitObservation(
 	}
 }
 
-export async function observe<T>(
+async function observeFromStartedAt<T>(
 	config: MnemocyteConfig,
 	backend: MnemocyteBackend,
 	operation: MnemocyteOperation,
 	metadata: ObservationMetadata,
+	startedAt: number,
 	action: () => Promise<T>,
 	successMetadata?: (result: T) => ObservationMetadata,
 ): Promise<T> {
-	const startedAt = Date.now();
 	await emitObservation(
 		config,
 		withMetadata(
@@ -87,5 +87,59 @@ export async function observe<T>(
 			),
 		);
 		throw error;
+	}
+}
+
+export function observe<T>(
+	config: MnemocyteConfig,
+	backend: MnemocyteBackend,
+	operation: MnemocyteOperation,
+	metadata: ObservationMetadata,
+	action: () => Promise<T>,
+	successMetadata?: (result: T) => ObservationMetadata,
+): Promise<T> {
+	return observeFromStartedAt(
+		config,
+		backend,
+		operation,
+		metadata,
+		Date.now(),
+		action,
+		successMetadata,
+	);
+}
+
+export function observePrepared<Prepared, Result>(
+	config: MnemocyteConfig,
+	backend: MnemocyteBackend,
+	operation: MnemocyteOperation,
+	metadata: ObservationMetadata,
+	prepare: () => Prepared,
+	action: (prepared: Prepared) => Promise<Result>,
+	successMetadata?: (result: Result) => ObservationMetadata,
+): Promise<Result> {
+	const startedAt = Date.now();
+	try {
+		const prepared = prepare();
+		return observeFromStartedAt(
+			config,
+			backend,
+			operation,
+			metadata,
+			startedAt,
+			() => action(prepared),
+			successMetadata,
+		);
+	} catch (error) {
+		return observeFromStartedAt(
+			config,
+			backend,
+			operation,
+			metadata,
+			startedAt,
+			async () => {
+				throw error;
+			},
+		);
 	}
 }

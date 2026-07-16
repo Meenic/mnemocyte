@@ -39,6 +39,12 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **OBSERVABILITY-01 — Remember preparation failures emit operation events.**
+  `remember` and `rememberMany` now emit exactly one `"start"` and one
+  `"error"` event when synchronous snapshotting or validation fails, using the
+  same thrown value exposed to the caller. Call-time snapshots still happen
+  before awaiting observability hooks, and closed-client errors retain
+  precedence over invalid input.
 - **INPUT-01 — `remember` snapshots mutable inputs at invocation.** Single and
   batch writes now own copies of caller-supplied tags, metadata, and expiration
   dates before awaiting embedding or storage, so mutations made while a write

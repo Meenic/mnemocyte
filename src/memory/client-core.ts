@@ -1,6 +1,6 @@
 import { buildContext } from "../context/builder.js";
 import { MnemocyteError } from "../errors.js";
-import { observe } from "../observability.js";
+import { observe, observePrepared } from "../observability.js";
 import { throwIfAborted } from "../resilience.js";
 import {
 	cosineSimilarity,
@@ -267,14 +267,14 @@ export function createMemoryClient(
 	}
 
 	function remember(input: RememberInput): Promise<Memory> {
-		return runOperation("remember", { entityId: input.entityId }, () => {
-			const preparedInput = snapshotRememberInput(input);
-			return observe(
+		return runOperation("remember", { entityId: input.entityId }, () =>
+			observePrepared(
 				config,
 				store.backend,
 				"remember",
-				{ entityId: preparedInput.entityId },
-				async () => {
+				{ entityId: input.entityId },
+				() => snapshotRememberInput(input),
+				async (preparedInput) => {
 					assertOpen();
 					validateRememberInput(preparedInput);
 					await ensureEmbeddingCompatibility();
@@ -299,68 +299,62 @@ export function createMemoryClient(
 					return cloneMemory(memory);
 				},
 				(memory) => ({ memoryId: memory.id, count: 1 }),
-			);
-		});
+			),
+		);
 	}
 
 	function rememberMany(
 		input: RememberManyInput | readonly RememberInput[],
 	): Promise<Memory[]> {
-		return runOperation(
-			"rememberMany",
-			{
-				count: isPositionalRememberManyInput(input)
-					? input.length
-					: input.inputs.length,
-			},
-			() => {
-				const positional = isPositionalRememberManyInput(input);
-				const inputs = positional ? input : input.inputs;
-				const signal = positional ? input[0]?.signal : input.signal;
-				const preparedInputs = inputs.map(snapshotRememberInput);
-				return observe(
-					config,
-					store.backend,
-					"rememberMany",
-					{ count: preparedInputs.length },
-					async () => {
-						assertOpen();
-						if (preparedInputs.length === 0) {
-							return [];
-						}
-						for (const item of preparedInputs) {
-							validateRememberInput(item);
-						}
-						await ensureEmbeddingCompatibility();
-						const embeddings = await embedMany(
-							config.embedder,
-							preparedInputs.map((item) => item.content),
-							providerOptions(config, signal),
-						);
-						const now = new Date();
-						const stored = preparedInputs.map((item, idx) =>
-							createStoredMemory(
-								config,
-								item,
-								embeddings[idx] as number[],
-								now,
-							),
-						);
-						const memories = await store.insertMemories(stored);
-						await recordAudit(
-							memories.map((memory) =>
-								auditEvent(memory.entityId, "memory.created", {
-									memoryId: memory.id,
-									type: memory.type,
-									importance: memory.importance,
-								}),
-							),
-						);
-						return memories.map(cloneMemory);
-					},
-					(result) => ({ count: result.length }),
-				);
-			},
+		const count = isPositionalRememberManyInput(input)
+			? input.length
+			: input.inputs.length;
+		return runOperation("rememberMany", { count }, () =>
+			observePrepared(
+				config,
+				store.backend,
+				"rememberMany",
+				{ count },
+				() => {
+					const positional = isPositionalRememberManyInput(input);
+					const inputs = positional ? input : input.inputs;
+					return {
+						preparedInputs: inputs.map(snapshotRememberInput),
+						signal: positional ? input[0]?.signal : input.signal,
+					};
+				},
+				async ({ preparedInputs, signal }) => {
+					assertOpen();
+					if (preparedInputs.length === 0) {
+						return [];
+					}
+					for (const item of preparedInputs) {
+						validateRememberInput(item);
+					}
+					await ensureEmbeddingCompatibility();
+					const embeddings = await embedMany(
+						config.embedder,
+						preparedInputs.map((item) => item.content),
+						providerOptions(config, signal),
+					);
+					const now = new Date();
+					const stored = preparedInputs.map((item, idx) =>
+						createStoredMemory(config, item, embeddings[idx] as number[], now),
+					);
+					const memories = await store.insertMemories(stored);
+					await recordAudit(
+						memories.map((memory) =>
+							auditEvent(memory.entityId, "memory.created", {
+								memoryId: memory.id,
+								type: memory.type,
+								importance: memory.importance,
+							}),
+						),
+					);
+					return memories.map(cloneMemory);
+				},
+				(result) => ({ count: result.length }),
+			),
 		);
 	}
 

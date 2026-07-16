@@ -490,6 +490,13 @@ Current write flow:
 5. Insert the complete memory row through the selected adapter.
 6. Return a public record with independently cloned metadata.
 
+The observation start timestamp is captured before synchronous write
+preparation. Preparation completes before an awaited user hook can mutate
+caller-owned values; if preparation itself fails, the hook still receives one
+`"start"` event followed by one `"error"` event carrying the same thrown value.
+Closed-client admission remains earlier than preparation, matching other
+operations' lifecycle precedence.
+
 Do not hold a database transaction open while calling an external embedding API. If asynchronous embedding is needed later, model it explicitly with an `embedding_status` field and retry/repair tooling.
 
 ## Retrieval Architecture

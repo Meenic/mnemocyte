@@ -1,6 +1,6 @@
 # Codebase Audit
 
-**Checkpoint:** 16/16 items closed; final repository verification passed on
+**Cleanup checkpoint:** 16/16 items closed; final repository verification passed on
 2026-07-16.
 
 ## Validation contract
@@ -77,10 +77,12 @@ are thin, and tests mirror product areas. New Postgres SQL belongs under
   passed (16 test files/34 tests, with the database scenario skipped because
   `DATABASE_URL` is absent).
 
-Evidence checked: public APIs consistently use object parameters except the
-documented `rememberMany(inputs)` compatibility exception; types use
-`MemoryStore` for the planned abstraction; files and exported symbols otherwise
-follow stable camelCase/PascalCase conventions.
+Evidence checked: public APIs consistently use object parameters, with
+`rememberMany({ inputs, signal })` now canonical and
+`rememberMany(inputs)` retained as a deprecated compatibility overload. The
+existing internal and planned public adapter boundaries use the `MemoryStore`
+name; files and exported symbols otherwise follow stable
+camelCase/PascalCase conventions.
 
 ## Duplication & dead code
 
@@ -130,7 +132,7 @@ easy isolated helpers.
 
 ## Documentation
 
-- [x] **DOC-01 (high): Add a clone-to-build developer path to `README.md`.**
+- [x] **DOC-01 (high): Add a clone-to-build developer path to `../README.md`.**
   The README documents consumer installation and API use, but not repository
   prerequisites, dependency installation, watch/build commands, validation
   semantics, or where new source/tests/migrations belong. A new contributor
@@ -143,7 +145,7 @@ easy isolated helpers.
   `PERFORMANCE_REVIEW.md` still says work moves from 0.1.4 to 0.2.0 before the
   `MemoryStore` boundary, although 0.2.0 is published and the boundary is
   implemented locally. `ROADMAP.md` retains shipped milestone checklists despite
-  its own rule that shipped details belong in `CHANGELOG.md`; architecture also
+  its own rule that shipped details belong in `../CHANGELOG.md`; architecture also
   names the removed `useDatabase` helper.
   The roadmap now contains active/future work only, the performance review
   starts from the published `0.2.0` and current internal store boundary, and
@@ -154,7 +156,7 @@ easy isolated helpers.
   `TokenCounter` calls the default heuristic word-based although it is
   character-count based; `isMnemocyteError` claims cross-copy safety while its
   implementation is `instanceof`; and audit writes are intentionally
-  best-effort but that failure behavior is not stated in the README audit
+  best-effort but that failure behavior is not stated in the `../README.md` audit
   section.
   Public API comments now describe the character-count heuristic and same-copy
   `instanceof` guard accurately; README documents best-effort audit writes and
@@ -163,9 +165,9 @@ easy isolated helpers.
   passed (17 test files/39 tests, with the database scenario skipped because
   `DATABASE_URL` is absent).
 
-Evidence checked: README package exports, migrations, dimensions, HNSW
+Evidence checked: `../README.md` package exports, migrations, dimensions, HNSW
 tradeoffs, provider-free OpenAI helper, error codes, and current pre-v1 surface
-match the source and packed artifact. `CHANGELOG.md`, `PROJECT_MEMORY.md`, and
+match the source and packed artifact. `../CHANGELOG.md`, `PROJECT_MEMORY.md`, and
 the main architecture status agree that 0.2.0 is published and the internal
 0.3.0 `MemoryStore` work is unreleased.
 
@@ -236,7 +238,7 @@ keys, tokens, private keys, or production endpoints were found.
   proving it was clean; it also omits formatting/import-assist checks and allows
   the two unused-import warnings. Use a non-writing Biome check that fails on
   warnings, add an explicit fix script, and correct the stale command fact in
-  `AGENTS.md` without restructuring that file.
+  `../AGENTS.md` without restructuring that file.
   `pnpm lint` now runs `biome check --error-on-warnings .`, `pnpm lint:fix`
   owns write mode, and contributor/maintainer docs state the distinction; all
   required gates passed (16 test files/34 tests, with the database scenario

@@ -16,7 +16,7 @@ logs, and duplicate-consolidation tools on top of your existing infrastructure.
 - Hybrid recall with vector similarity, lexical matching, recency, confidence,
   access count, and importance.
 - Prompt-ready context output in Markdown, plain text, or XML.
-- Provider retries, operation timeouts, and caller `AbortSignal` cancellation.
+- Provider retries, per-attempt timeouts, and caller `AbortSignal` cancellation.
 - Pruning, duplicate detection, audit logs, and experimental consolidation.
 
 Mnemocyte is ESM-only. Use `import`, not CommonJS `require`.
@@ -152,11 +152,11 @@ Inside this repository, the equivalent development shortcut is:
 pnpm migration:render -- --dimensions 768 --out migrations/0000_initial.768.sql
 ```
 
-The Postgres backend supports one embedding dimension per installation. On the
-first Postgres operation, Mnemocyte reads `mnemocyte_meta` and validates it
-against `embedder.dimensions` before calling the embedder. A mismatch throws a
-`MnemocyteError` with code `"CONFIG"`; missing v0.2.0 metadata throws code
-`"MIGRATION"`.
+The Postgres backend supports one embedding dimension per installation. Before
+the first embedding-dependent Postgres operation, Mnemocyte reads
+`mnemocyte_meta` and validates it against `embedder.dimensions` before calling
+the embedder. A mismatch throws a `MnemocyteError` with code `"CONFIG"`; missing
+v0.2.0 metadata throws code `"MIGRATION"`.
 
 Use the embedding dimension documented for your chosen model, render or apply a
 matching schema, and keep one dimension per Mnemocyte installation.
@@ -203,6 +203,8 @@ writing and reading, so later mutations do not change stored state.
 For batches, cancellation belongs to the whole operation:
 
 ```ts
+const abortController = new AbortController();
+
 const memories = await client.rememberMany({
   inputs: [
     { entityId: "user_123", content: "Likes concise answers." },
@@ -213,8 +215,9 @@ const memories = await client.rememberMany({
 ```
 
 The positional `rememberMany(inputs)` form remains as a deprecated pre-v1
-compatibility overload. New code should use `{ inputs, signal }`; individual
-items in the object form do not have cancellation signals.
+compatibility overload and treats its first item's signal as the batch signal.
+New code should use `{ inputs, signal }`; individual items in the object form do
+not have cancellation signals.
 
 ### `recall`
 
@@ -372,7 +375,7 @@ Planned larger milestones:
 - `drizzleStore(db)` for caller-owned Drizzle clients
 - `@mnemocyte/mcp`
 
-See [ROADMAP.md](./ROADMAP.md).
+See [ROADMAP.md](./docs/ROADMAP.md).
 
 ## Pre-v1 Notes
 
@@ -480,9 +483,9 @@ pgvector available; the test applies the bundled migrations.
   `test/integration/`.
 
 See [AGENTS.md](./AGENTS.md) for repository rules and the validation/release
-policy. Read [ARCHITECTURE.md](./ARCHITECTURE.md) before changing module
+policy. Read [ARCHITECTURE.md](./docs/ARCHITECTURE.md) before changing module
 boundaries or the public surface.
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md).
+See [ARCHITECTURE.md](./docs/ARCHITECTURE.md).

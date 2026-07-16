@@ -1,4 +1,4 @@
-# Codebase Cleanup and Approved Fixes Summary
+# Codebase Cleanup, Approved Fixes, and Documentation Audit Summary
 
 The original cleanup closed all 16 audit items: 13 were resolved and 3 were
 deferred after documenting their reproductions and required policy choices.
@@ -76,6 +76,54 @@ removed.
 - Updated architecture, changelog, roadmap, performance, and maintainer memory
   where their current facts changed.
 
+## Documentation audit and root move
+
+The documentation-only audit moved every root Markdown file except `AGENTS.md`,
+`README.md`, and the follow-up-requested root `CHANGELOG.md` into `docs/` with
+`git mv`. The final Markdown inventory and evidence checklist live in
+[DOCS_AUDIT.md](./DOCS_AUDIT.md). Changes and reference updates are grouped by
+file:
+
+- **`AGENTS.md`:** Kept at root; updated required-reading and documentation-rule
+  paths to `docs/`, and corrected `MemoryStore` from wholly planned to an
+  existing internal boundary with a future public contract.
+- **`README.md`:** Kept at root; redirected architecture and roadmap links to
+  `docs/`, corrected per-attempt timeout and embedding-dependent dimension
+  validation wording, and made the canonical and compatibility
+  `rememberMany` signal behavior executable and explicit.
+- **`docs/ARCHITECTURE.md`:** Moved from root; corrected unreleased API status,
+  Node declarations/support, module and public-type maps, internal filter array
+  mutability, migration prerequisite, metadata write order, dimension-check
+  scope, remaining production work, and the current `0.3.0` implementation
+  boundary.
+- **`docs/BUGS_FOUND.md`:** Moved from root; historical reproductions,
+  resolutions, API behavior, and commit links were source- and test-verified
+  without factual edits.
+- **`CHANGELOG.md`:** Kept at root by follow-up request; only `[Unreleased]` was
+  corrected to distinguish the API-preserving internal store refactor from the
+  separate breaking changes. Published history and compare links were left
+  unchanged.
+- **`docs/CODEBASE_AUDIT.md`:** Moved from root; labeled its dated cleanup
+  checkpoint, corrected current `MemoryStore` and `rememberMany` evidence, and
+  redirected root `README.md` / `AGENTS.md` path references.
+- **`docs/NEEDS_HUMAN_INPUT.md`:** Moved from root; approved decisions,
+  implemented behavior, errors, public types, compatibility choice, and commit
+  links were verified without factual edits.
+- **`docs/PERFORMANCE_REVIEW.md`:** Moved from root; removed resolved tuning
+  semantics from the outstanding architecture follow-ups after verifying the
+  implementation paths, query shapes, benchmarks, and remaining risks.
+- **`docs/PROJECT_MEMORY.md`:** Moved from root; corrected metadata grammar,
+  the complete positive-integer `maxTokens` rule, internal/public `MemoryStore`
+  status, release-prep status, and root README/AGENTS paths.
+- **`docs/ROADMAP.md`:** Moved from root; current and planned feature status,
+  names, migration direction, and links were verified without factual edits;
+  future version sequencing remains explicitly planning intent.
+- **`docs/SUMMARY.md`:** Moved from root and updated with this grouped account;
+  its earlier cleanup, fix sequencing, commits, and behavior scope were checked
+  against Git history and the current branch.
+- **`docs/DOCS_AUDIT.md`:** Added as the complete final-file checklist, move and
+  old-path verification record, evidence summary, and Deferred register.
+
 ## Config changes
 
 - Made `pnpm lint` a read-only Biome formatting/lint/import gate that fails on
@@ -109,8 +157,8 @@ decision and resolution commit for each item:
 
 ## Validation
 
-The complete required gate passed after each behavior fix and again on the
-final state:
+The complete required gate passed after each behavior fix and again after the
+documentation audit:
 
 - `pnpm checktypes`
 - `pnpm lint` (66 files, no fixes or warnings)
@@ -119,6 +167,11 @@ final state:
 - `pnpm run pack:check`
 - `pnpm run test:integration` (entrypoint passed; its one Postgres scenario
   skipped because `DATABASE_URL` is not set locally)
+
+The final documentation checks found 12 Markdown files, no broken local links,
+only `AGENTS.md`, `README.md`, and `CHANGELOG.md` at root, and no old root-doc
+path in source, tests, package metadata, CI, migrations, or scripts. Repository
+changes are limited to Markdown moves, corrections, and the new audit file.
 
 The available bundled/host runtime is Node 22.17, below the declared `>=22.18`
 engine, so nested pnpm invocations emit the existing engine warning even though

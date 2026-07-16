@@ -32,8 +32,8 @@ behavioural changes documented in their entries.
 ### Changed
 
 - **Internal `MemoryStore` boundary.** Refactored in-memory and Postgres
-  backends behind internal storage adapters while keeping the public
-  `createMnemocyte()` and `MnemocyteClient` API unchanged.
+  backends behind internal storage adapters. That refactor preserved the public
+  API; the separate pre-v1 breaking changes are listed above.
 - **Shared client orchestration.** Validation, embedding calls, recall scoring,
   observability, audit opt-in behavior, context building, lifecycle checks, and
   public result mapping now run through one shared client path.

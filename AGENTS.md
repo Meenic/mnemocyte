@@ -11,16 +11,16 @@ The package is intentionally infrastructure-native:
 - Postgres + pgvector is the first persistent backend
 - migrations are explicit and live in `migrations/`
 - provider SDKs should not enter the core dependency graph
-- future backend work should use the `MemoryStore` name for the planned storage
-  abstraction
+- the shared internal storage abstraction is named `MemoryStore`; future public
+  backend work should retain that name
 
 Read these files before substantial changes:
 
 - `README.md` for user-facing behavior
-- `ARCHITECTURE.md` for module boundaries and public API
-- `ROADMAP.md` for forward-looking direction
+- `docs/ARCHITECTURE.md` for module boundaries and public API
+- `docs/ROADMAP.md` for forward-looking direction
 - `CHANGELOG.md` for release notes
-- `PROJECT_MEMORY.md` for maintainer notes
+- `docs/PROJECT_MEMORY.md` for maintainer notes
 
 ## Engineering Rules
 
@@ -39,9 +39,11 @@ Read these files before substantial changes:
 
 ## Documentation Rules
 
-- Keep `README.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `PROJECT_MEMORY.md`, and
-  `CHANGELOG.md` consistent after public behavior changes.
-- `ROADMAP.md` is forward-looking; shipped work belongs in `CHANGELOG.md`.
+- Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`,
+  `docs/PROJECT_MEMORY.md`, and `CHANGELOG.md` consistent after public
+  behavior changes.
+- `docs/ROADMAP.md` is forward-looking; shipped work belongs in
+  `CHANGELOG.md`.
 - Keep limitations concrete: what works now, what fails fast, and what is
   planned next.
 - For Postgres/index work, document operational tradeoffs and avoid adding

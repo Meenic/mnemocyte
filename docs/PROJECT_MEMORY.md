@@ -11,7 +11,7 @@
   discoverability.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
-- `CHANGELOG.md` has a `0.2.0` section dated `2026-06-10` for configurable
+- `../CHANGELOG.md` has a `0.2.0` section dated `2026-06-10` for configurable
   Postgres embedding dimensions and the related migration/documentation work.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
 - The current roadmap treats `0.2.0` as published and `0.3.0` as the active
@@ -31,14 +31,14 @@
   embedder dimension is mismatched.
 - Single and batched embedder output must contain only finite vector values;
   invalid components fail with `"EMBEDDING"` before storage.
-- Persisted memory and audit metadata uses the recursive public `JsonObject` /
+- Persisted memory and audit metadata use the recursive public `JsonObject` /
   `JsonValue` types. Unsupported or cyclic runtime values fail with
   `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and
   egress.
 - Retrieval tuning is validated synchronously at client construction and fails
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
-  multipliers. A supplied non-positive or fractional `buildContext.maxTokens`
-  fails per call with `"VALIDATION"`; omission keeps the default path.
+  multipliers. A supplied `buildContext.maxTokens` that is not a positive
+  integer fails per call with `"VALIDATION"`; omission keeps the default path.
 - `rememberMany({ inputs, signal })` is the canonical batch API, with one
   cancellation signal for the entire operation. The positional form remains a
   deprecated pre-v1 overload and maps its first item signal to the batch.
@@ -88,7 +88,8 @@ Current behavior to preserve:
   `fetch`-based.
 - Schema setup stays explicit; constructors must not create hidden tables,
   extensions, or indexes.
-- `MemoryStore` is the intended name for the planned storage abstraction.
+- The shared internal storage abstraction is named `MemoryStore`; the planned
+  public adapter contract should retain that name.
 
 Known code follow-ups before v1:
 
@@ -102,21 +103,21 @@ Known code follow-ups before v1:
 
 Documentation follow-ups:
 
-- Keep migration guidance aligned across README, architecture notes, changelog,
-  and package contents.
+- Keep migration guidance aligned across `../README.md`, architecture notes,
+  changelog, and package contents.
 - Keep planned v1 work labeled as planned until implemented and validated.
-- Move shipped roadmap items into `CHANGELOG.md` instead of letting the roadmap
+- Move shipped roadmap items into `../CHANGELOG.md` instead of letting the roadmap
   become release history.
 
 ## Release Status
 
 `v0.2.0` is published. Track changes after `v0.2.0` under the
-`CHANGELOG.md` `[Unreleased]` section and follow `AGENTS.md` release guidance
+`../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md` release guidance
 when cutting the next version.
 
 ## Suggested Next Steps
 
-- Finish validation and release prep for the unreleased `0.3.0` `MemoryStore`
+- Complete the remaining release prep for the unreleased `0.3.0` `MemoryStore`
   / v1 stabilization line.
 - Keep the future monorepo direction in mind: provider adapters can later move
   from subpaths to packages such as `@mnemocyte/openai`.

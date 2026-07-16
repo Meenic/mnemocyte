@@ -24,8 +24,9 @@ Postgres installations use
 `0000_initial.sql.template`.
 
 The local unreleased `0.3.0` line adds the internal `MemoryStore` boundary and
-shared client orchestration described below. The root public API remains
-unchanged.
+shared client orchestration described below. It also contains documented pre-v1
+breaking changes for JSON metadata types, retrieval-tuning rejection, and the
+canonical `rememberMany({ inputs, signal })` batch API.
 
 ## Goals
 
@@ -70,8 +71,9 @@ package ships:
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
-surface. After the configurable-dimensions line, the planned order is
-`MemoryStore`, `drizzleStore(db)`, and then `@mnemocyte/mcp`.
+surface. The internal `MemoryStore` boundary is now present; the remaining
+planned order is a public `MemoryStore` contract, `drizzleStore(db)`, and then
+`@mnemocyte/mcp`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -87,7 +89,7 @@ Use `postgres` for the database driver. In this document, `postgres` means the p
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
-    "@types/node": "^25.9.0",
+    "@types/node": "^22.18.0",
     "drizzle-kit": "^0.31.10",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.3",
@@ -110,7 +112,8 @@ Current strict options worth keeping:
 - `declaration`
 - `declarationMap`
 
-Before production, choose a stable Node target policy. `nodenext` is acceptable while the package is early, but a library should document the supported Node range and test it in CI.
+The package uses `nodenext`, declares Node `>=22.18`, and tests Node 22.18 and
+Node 24 in CI.
 
 ## Module Structure
 
@@ -141,6 +144,7 @@ src/
 |   +-- defaults.ts           # shared internal defaults and importance ordering
 |   +-- embeddings.ts         # resilient single and batch embedding calls
 |   +-- filters.ts            # in-memory recall, prune, and duplicate filters
+|   +-- json.ts               # JSON metadata validation and deep cloning
 |   +-- records.ts            # stored/public memory mapping, cloning, and ids
 |   +-- postgres-records.ts   # Postgres row-to-public-memory mapping
 |   +-- validation.ts         # client configuration and operation validation
@@ -269,7 +273,9 @@ files such as `dist/embedders/index.d.mts` and
 - `Memory` (canonical record, includes `supersededBy` and `supersededAt`), `MemoryWithScore`, `RetrievalScores`, `RetrievalExplanation`, `EntityStats`, `GlobalStats`.
 - JSON metadata: recursive `JsonObject` and `JsonValue`; persisted metadata is
   validated and deep-cloned at storage ingress and public-result egress.
-- Input types: `RememberInput`, `RecallInput`, `BuildContextInput`, `PruneInput`, `FindDuplicatesInput`, `ListAuditLogInput`, `ConsolidateInput`.
+- Input types: `RememberInput`, `RememberManyInput`, `RecallInput`,
+  `BuildContextInput`, `PruneInput`, `FindDuplicatesInput`,
+  `ListAuditLogInput`, `ConsolidateInput`.
 - Result types: `PruneResult`, `ConsolidateResult`.
 - Observability: `MnemocyteObservation`, `MnemocyteOperation`, `MnemocyteObservationPhase`, `MnemocyteBackend`, `ObservabilityConfig`.
 - Resilience: `ProviderResilienceConfig`.
@@ -323,6 +329,10 @@ preserving the original cause.
 Postgres is the source of truth. pgvector is used for vector similarity search. Migrations are first-class and must be explicit; the main client constructor must not silently create extensions or tables.
 
 ### Schema Baseline
+
+The `CREATE EXTENSION` statement below is an explicit deployment prerequisite;
+the bundled migration assumes pgvector is already enabled and starts with table
+creation.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -402,7 +412,8 @@ only after measuring tag-heavy queries in the target workload.
 The current package supports one embedding dimension per installation.
 `mnemocyte_meta` is the installation-level source of truth for the configured
 dimension, and the Postgres client validates it against `embedder.dimensions`
-before write/recall paths call the embedder. Store `embedding_model` and
+before embedding-dependent operations call the embedder or compare stored
+vectors. Store `embedding_model` and
 `embedding_dimensions` on every memory so mismatches are detectable and future
 migrations are possible. Supporting multiple embedding dimensions in one
 database remains a later production feature, likely through separate columns,
@@ -417,11 +428,12 @@ embedder dimension does not match the installation.
 
 Current write flow:
 
-1. Validate input, including JSON metadata.
-2. Embed content.
-3. Verify embedding count and dimension.
-4. Deep-clone metadata and insert the complete memory row.
-5. Return a public record with independently cloned metadata.
+1. Validate and deep-clone JSON metadata at call ingress.
+2. Validate the remaining input.
+3. Check Postgres embedding compatibility and embed content.
+4. Verify embedding count, dimensions, and finite components.
+5. Insert the complete memory row through the selected adapter.
+6. Return a public record with independently cloned metadata.
 
 Do not hold a database transaction open while calling an external embedding API. If asynchronous embedding is needed later, model it explicitly with an `embedding_status` field and retry/repair tooling.
 
@@ -432,8 +444,8 @@ Retrieval uses a shared canonical filter object so vector and lexical paths cann
 ```ts
 export interface MemoryFilter {
   entityId: string;
-  types?: MemoryType[];
-  tags?: string[];
+  types?: readonly MemoryType[];
+  tags?: readonly string[];
   before?: Date;
   after?: Date;
   includeSuperseded?: boolean;
@@ -507,7 +519,7 @@ export interface TokenCounter {
 
 The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`. The current `createDatabase()` path uses postgres.js over TCP, parses common `sslmode` values, and disables prepared statements for pooler-style URLs (`:6543` or `pgbouncer=true`).
 
-The planned `MemoryStore` and `drizzleStore(db)` milestones move
+The planned public `MemoryStore` contract and `drizzleStore(db)` milestone move
 caller-managed database clients into the public architecture for apps that
 already own pools or need runtime-specific Drizzle drivers.
 
@@ -515,18 +527,15 @@ already own pools or need runtime-specific Drizzle drivers.
 
 Before v1, finish or explicitly defer:
 
-- one unambiguous migration guide for default installs, existing 0.1.x installs,
-  and custom-dimension fresh installs
 - a public `MemoryStore` adapter contract once the internal boundary is stable
 - continued tightening of expected database, migration, and provider failure
   wrapping
-- runtime input validation for JavaScript consumers where TypeScript cannot help
-- package export smoke tests
-- Postgres + pgvector integration tests
-- CI across the supported Node range
-- retrieval evaluation fixtures
-- full-text/search and filtered-vector index guidance
-- npm provenance or trusted publishing workflow
+- remaining runtime input validation for JavaScript consumers where TypeScript
+  cannot help
+- representative benchmark or `EXPLAIN` evidence before adding more default
+  full-text, tag, or filtered-vector indexes
+- provenance verification on the next manual publish or a trusted-publishing
+  workflow
 
 ## Implementation Roadmap
 
@@ -559,7 +568,13 @@ Status: released as `v0.2.0`.
 - Reduced in-memory and Postgres backends to adapters.
 - Fixed the known pre-v1 gaps around public result mapping, timeout
   cancellation, database error wrapping, and dimension-validation scope.
-- Defer any third backend until this boundary exists.
+- Added JSON-only metadata value semantics with deep cloning and typed
+  validation failures.
+- Rejected invalid retrieval tuning and supplied invalid `maxTokens` values at
+  their public boundaries.
+- Added `rememberMany({ inputs, signal })` while retaining the deprecated
+  positional compatibility overload.
+- Defer any third backend until the public adapter contract exists.
 
 ### `0.4.0` - `drizzleStore(db)`
 
@@ -577,7 +592,7 @@ Status: released as `v0.2.0`.
 
 ## Known limitations
 
-- **Postgres supports one embedding dimension per installation.** The default migration creates `embedding vector(1536)`, and custom dimensions must be rendered explicitly from the migration template. `createMnemocyte` stays synchronous; the Postgres client validates `embedder.dimensions` against `mnemocyte_meta` before the first storage operation.
+- **Postgres supports one embedding dimension per installation.** The default migration creates `embedding vector(1536)`, and custom dimensions must be rendered explicitly from the migration template. `createMnemocyte` stays synchronous; the Postgres client validates `embedder.dimensions` against `mnemocyte_meta` before the first embedding-dependent operation.
 - **`MemoryStore` is internal.** The in-memory and Postgres backends now use a
   shared internal adapter boundary, but it is not a public adapter API yet.
 - **Provider timeout cancellation depends on signal support.** The resilience

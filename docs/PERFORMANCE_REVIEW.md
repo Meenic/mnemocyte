@@ -19,8 +19,8 @@ public and how a future `drizzleStore(db)` should handle caller-owned resources.
 
 This file tracks performance only. The v1 architecture review also identified
 correctness and API-stability follow-ups, including public store design,
-runtime input validation, database/migration error normalization, and tuning
-semantics. Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
+remaining runtime input validation, and database/migration error normalization.
+Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
 `PROJECT_MEMORY.md`, not as performance backlog items.
 
 ## Active Priority List

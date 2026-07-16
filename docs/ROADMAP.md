@@ -2,7 +2,7 @@
 
 This roadmap tracks the planned direction for Mnemocyte before v1.0. It is a
 forward-looking planning document, not a release history. Shipped work belongs
-in [CHANGELOG.md](./CHANGELOG.md).
+in [CHANGELOG.md](../CHANGELOG.md).
 
 Mnemocyte's direction is infrastructure-native and deliberately composable:
 bring your own database, bring your own embedder, and keep the core package
@@ -143,6 +143,6 @@ provider helpers can move from core subpaths into focused packages such as
 ## Maintenance Rule
 
 When planned work ships, move the release details to
-[CHANGELOG.md](./CHANGELOG.md) and delete or revise the roadmap section. The
+[CHANGELOG.md](../CHANGELOG.md) and delete or revise the roadmap section. The
 roadmap should stay short, current, and biased toward the next architectural
 decision.

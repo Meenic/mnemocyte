@@ -59,6 +59,10 @@
   lifecycle: exactly one `"start"` plus one `"error"` carrying the caller's
   thrown value. Snapshotting still completes before awaiting user hooks, while
   closed-client admission errors retain precedence over malformed input.
+- `MemoryStore.insertMemories()` must return exactly one detached memory for
+  every prepared input ID. Shared orchestration rejects missing, duplicate, or
+  unknown IDs with `"DB"` and restores prepared-input order before returning
+  single or batched remember results.
 - Retrieval tuning is validated synchronously at client construction and fails
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied `buildContext.maxTokens` that is not a positive

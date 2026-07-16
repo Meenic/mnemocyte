@@ -149,6 +149,35 @@ function auditEvent(
 	};
 }
 
+function normalizeInsertedMemories(
+	expected: readonly { id: string }[],
+	inserted: readonly Memory[],
+): Memory[] {
+	const expectedIds = new Set(expected.map((memory) => memory.id));
+	const insertedById = new Map<string, Memory>();
+
+	for (const memory of inserted) {
+		if (!expectedIds.has(memory.id)) {
+			throw new MnemocyteError("Memory insert returned an unknown ID.", "DB");
+		}
+		if (insertedById.has(memory.id)) {
+			throw new MnemocyteError("Memory insert returned a duplicate ID.", "DB");
+		}
+		insertedById.set(memory.id, memory);
+	}
+
+	return expected.map((memory) => {
+		const insertedMemory = insertedById.get(memory.id);
+		if (!insertedMemory) {
+			throw new MnemocyteError(
+				"Memory insert did not return every inserted ID.",
+				"DB",
+			);
+		}
+		return insertedMemory;
+	});
+}
+
 function toDuplicatePair(pair: {
 	a: Memory;
 	b: Memory;
@@ -284,11 +313,18 @@ export function createMemoryClient(
 						preparedInput.content,
 						providerOptions(config, preparedInput.signal),
 					);
-					const [memory] = await store.insertMemories([
+					const stored = [
 						createStoredMemory(config, preparedInput, embedding, new Date()),
-					]);
+					];
+					const [memory] = normalizeInsertedMemories(
+						stored,
+						await store.insertMemories(stored),
+					);
 					if (!memory) {
-						throw new MnemocyteError("Memory insert returned no rows.", "DB");
+						throw new MnemocyteError(
+							"Memory insert did not return the inserted ID.",
+							"DB",
+						);
 					}
 					await recordAudit([
 						auditEvent(memory.entityId, "memory.created", {
@@ -342,7 +378,10 @@ export function createMemoryClient(
 					const stored = preparedInputs.map((item, idx) =>
 						createStoredMemory(config, item, embeddings[idx] as number[], now),
 					);
-					const memories = await store.insertMemories(stored);
+					const memories = normalizeInsertedMemories(
+						stored,
+						await store.insertMemories(stored),
+					);
 					await recordAudit(
 						memories.map((memory) =>
 							auditEvent(memory.entityId, "memory.created", {

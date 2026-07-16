@@ -115,8 +115,11 @@ export interface MemoryStore {
 	ensureEmbeddingCompatibility(embedder: Embedder): Promise<void>;
 
 	/**
-	 * Takes ownership of freshly prepared rows and returns detached public
-	 * records. Callers must not mutate or reuse rows after passing them here.
+	 * Takes ownership of freshly prepared rows and returns exactly one detached
+	 * public record for every input ID. Return order is not trusted; shared
+	 * orchestration validates the ID set and restores input order. Missing,
+	 * duplicate, or unknown returned IDs are storage-contract violations.
+	 * Callers must not mutate or reuse rows after passing them here.
 	 */
 	insertMemories(memories: readonly StoredMemory[]): Promise<Memory[]>;
 	vectorSearch(input: StoreVectorSearchInput): Promise<StoreVectorCandidate[]>;

@@ -39,6 +39,10 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **STORE-01 — Batch inserts validate the store return contract.** Shared
+  orchestration now requires exactly one returned memory for every prepared
+  input ID, rejects missing, duplicate, or unknown IDs with `"DB"`, and
+  restores input order before returning `rememberMany()` results.
 - **REFACTOR-01 — Metadata ownership avoids redundant traversals.** Remember
   inputs now carry an internal validated/owned JSON type through record
   creation and storage, freshly created in-memory rows transfer ownership to

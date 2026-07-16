@@ -40,6 +40,7 @@ import {
 	assertMinScore,
 	assertNonEmptyString,
 	contextInputToRecallInput,
+	validateBuildContextInput,
 	validateConsolidateInput,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
@@ -328,6 +329,7 @@ export function createMemoryClient(
 				{ entityId: input.entityId },
 				async () => {
 					assertOpen();
+					validateBuildContextInput(input);
 					return buildContext({
 						input,
 						recall: (contextInput) => {

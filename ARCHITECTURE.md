@@ -306,9 +306,10 @@ export class MnemocyteError extends Error {
 ```
 
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
-covers invalid embedder/database URL configuration and the Postgres-backend
-dimensionality check; `"VALIDATION"` covers per-call argument errors (including
-JSON-incompatible or cyclic metadata, the explicit guard in `prune({})`, and
+covers invalid embedder/database URL configuration, invalid retrieval tuning,
+and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call
+argument errors (including invalid `maxTokens`, JSON-incompatible or cyclic
+metadata, the explicit guard in `prune({})`, and
 `consolidate({ supersededIds: [] })`) plus an explicitly empty `databaseUrl`.
 
 Known pre-v1 gap: `MnemocyteError` is the intended recovery boundary, but not
@@ -491,6 +492,8 @@ Requirements:
 - Safely delimit Markdown/plain output.
 - Support a default heuristic token counter.
 - Allow callers to provide a model-specific token counter.
+- Reject a supplied `maxTokens` unless it is a positive integer; omission keeps
+  the default budget path.
 - Trim deterministically by priority and token budget.
 
 ```ts

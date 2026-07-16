@@ -1,5 +1,6 @@
 import { createMnemocyte } from "mnemocyte";
 import { describe, expect, test } from "vitest";
+import { expectMnemocyteError } from "../helpers.js";
 
 describe("context builder", () => {
 	test("formats and trims memory context", async () => {
@@ -83,6 +84,47 @@ describe("context builder", () => {
 				limit: 1,
 			});
 			expect(detached).toMatch(/RELEVANT MEMORIES/);
+		} finally {
+			await client.close();
+		}
+	});
+
+	test("rejects invalid maxTokens while preserving omission as the default path", async () => {
+		let embedCalls = 0;
+		const client = createMnemocyte({
+			embedder: {
+				model: "context-validation-test",
+				dimensions: 1,
+				async embed(texts) {
+					embedCalls += 1;
+					return texts.map(() => [1]);
+				},
+			},
+		});
+
+		try {
+			await expect(
+				client.buildContext({ entityId: "alice", query: "default budget" }),
+			).resolves.toEqual(expect.any(String));
+			expect(embedCalls).toBe(1);
+
+			for (const maxTokens of [
+				0,
+				-1,
+				1.5,
+				Number.NaN,
+				Number.POSITIVE_INFINITY,
+			]) {
+				await expectMnemocyteError(
+					client.buildContext({
+						entityId: "alice",
+						query: "invalid budget",
+						maxTokens,
+					}),
+					"VALIDATION",
+				);
+			}
+			expect(embedCalls).toBe(1);
 		} finally {
 			await client.close();
 		}

@@ -35,6 +35,10 @@
   `JsonValue` types. Unsupported or cyclic runtime values fail with
   `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and
   egress.
+- Retrieval tuning is validated synchronously at client construction and fails
+  with `"CONFIG"` for invalid weights, decay/access settings, or candidate
+  multipliers. A supplied non-positive or fractional `buildContext.maxTokens`
+  fails per call with `"VALIDATION"`; omission keeps the default path.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

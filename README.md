@@ -222,6 +222,9 @@ const context = await client.buildContext({
 });
 ```
 
+When supplied, `maxTokens` must be a positive integer or `buildContext` rejects
+with `"VALIDATION"`. Omitting it keeps the default token-budget path.
+
 ### `prune`
 
 ```ts
@@ -338,6 +341,12 @@ const client = createMnemocyte({
   },
 });
 ```
+
+Retrieval weights must be finite and non-negative, with a non-zero effective
+total after defaults are applied. `recencyHalfLifeDays` and `accessSaturation`
+must be positive finite numbers, and `candidateMultiplier` must be an integer
+of at least 1. Invalid tuning is rejected at client construction with
+`MnemocyteError` code `"CONFIG"`.
 
 ## Roadmap
 

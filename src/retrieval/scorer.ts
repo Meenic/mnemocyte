@@ -15,7 +15,9 @@ const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
 	critical: 1,
 };
 
-const DEFAULT_WEIGHTS: Required<RetrievalScoreWeights> = {
+export const DEFAULT_RETRIEVAL_WEIGHTS: Readonly<
+	Required<RetrievalScoreWeights>
+> = {
 	vector: 0.55,
 	lexical: 0.2,
 	recency: 0.1,
@@ -87,7 +89,7 @@ function clampScore(value: number): number {
 function normalizeWeights(
 	weights: RetrievalScoreWeights | undefined,
 ): Required<RetrievalScoreWeights> {
-	const merged = { ...DEFAULT_WEIGHTS, ...weights };
+	const merged = { ...DEFAULT_RETRIEVAL_WEIGHTS, ...weights };
 	const total =
 		merged.vector +
 		merged.lexical +
@@ -96,7 +98,7 @@ function normalizeWeights(
 		merged.access +
 		merged.importance;
 	if (total <= 0) {
-		return DEFAULT_WEIGHTS;
+		return { ...DEFAULT_RETRIEVAL_WEIGHTS };
 	}
 	return {
 		vector: merged.vector / total,

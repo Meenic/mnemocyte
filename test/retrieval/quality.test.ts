@@ -53,16 +53,6 @@ describe("retrieval quality", () => {
 		{
 			const client = createMnemocyte({
 				embedder: testEmbedder,
-				retrieval: {
-					weights: {
-						vector: 0,
-						lexical: 0,
-						recency: 0,
-						confidence: 0,
-						access: 0,
-						importance: 0,
-					},
-				},
 			});
 			const entityId = `retrieval_scoring_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 

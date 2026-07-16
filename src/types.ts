@@ -326,21 +326,22 @@ export interface RetrievalScores {
 
 /**
  * Optional overrides for the per-component retrieval weights. Missing keys
- * fall back to library defaults. Weights need not sum to 1; the final
- * score is computed as a weighted sum of {@link RetrievalScores}.
+ * fall back to library defaults. Weights must be finite and non-negative, and
+ * their effective total must be greater than zero. They need not sum to 1;
+ * the final score is computed as a weighted sum of {@link RetrievalScores}.
  */
 export interface RetrievalScoreWeights {
-	/** Weight applied to {@link RetrievalScores.vector}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.vector}. */
 	vector?: number;
-	/** Weight applied to {@link RetrievalScores.lexical}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.lexical}. */
 	lexical?: number;
-	/** Weight applied to {@link RetrievalScores.recency}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.recency}. */
 	recency?: number;
-	/** Weight applied to {@link RetrievalScores.confidence}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.confidence}. */
 	confidence?: number;
-	/** Weight applied to {@link RetrievalScores.access}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.access}. */
 	access?: number;
-	/** Weight applied to {@link RetrievalScores.importance}. */
+	/** Non-negative finite weight applied to {@link RetrievalScores.importance}. */
 	importance?: number;
 }
 
@@ -351,13 +352,14 @@ export interface RetrievalScoreWeights {
 export interface RetrievalConfig {
 	/** Per-component score weights. See {@link RetrievalScoreWeights}. */
 	weights?: RetrievalScoreWeights;
-	/** Half-life (days) for the time-decay recency component. */
+	/** Positive finite half-life (days) for the time-decay recency component. */
 	recencyHalfLifeDays?: number;
-	/** Access count at which the access score is considered saturated. */
+	/** Positive finite access count at which the access score is saturated. */
 	accessSaturation?: number;
 	/**
 	 * Multiplier applied to {@link RecallInput.limit} to determine how many
 	 * candidates are fetched from the underlying store before re-ranking.
+	 * Must be an integer greater than or equal to 1.
 	 */
 	candidateMultiplier?: number;
 }
@@ -491,7 +493,7 @@ export interface BuildContextInput {
 	query: string;
 	/** Output format. @defaultValue `"markdown"` */
 	format?: ContextFormat;
-	/** Optional token budget; memories are dropped from the tail until the budget fits. */
+	/** Optional positive-integer token budget; omission uses the default path. */
 	maxTokens?: number;
 	/** Maximum number of memories to consider. */
 	limit?: number;

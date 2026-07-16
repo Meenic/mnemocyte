@@ -1,4 +1,5 @@
 import { MnemocyteError } from "../errors.js";
+import { DEFAULT_RETRIEVAL_WEIGHTS } from "../retrieval/scorer.js";
 import type {
 	BuildContextInput,
 	ConsolidateInput,
@@ -8,6 +9,8 @@ import type {
 	PruneInput,
 	RecallInput,
 	RememberInput,
+	RetrievalConfig,
+	RetrievalScoreWeights,
 } from "../types.js";
 import { validateJsonObject } from "./json.js";
 
@@ -48,6 +51,85 @@ export function assertEmbedder(embedder: Embedder): void {
 		throw new MnemocyteError(
 			"embedder.dimensions must be a positive integer.",
 			"CONFIG",
+		);
+	}
+}
+
+const RETRIEVAL_WEIGHT_KEYS = [
+	"vector",
+	"lexical",
+	"recency",
+	"confidence",
+	"access",
+	"importance",
+] as const satisfies readonly (keyof RetrievalScoreWeights)[];
+
+function assertPositiveFiniteConfigValue(value: number, field: string): void {
+	if (!Number.isFinite(value) || value <= 0) {
+		throw new MnemocyteError(
+			`${field} must be a positive finite number.`,
+			"CONFIG",
+		);
+	}
+}
+
+export function validateRetrievalConfig(
+	config: RetrievalConfig | undefined,
+): void {
+	if (config === undefined) {
+		return;
+	}
+
+	let weightTotal = 0;
+	for (const key of RETRIEVAL_WEIGHT_KEYS) {
+		const weight = config.weights?.[key] ?? DEFAULT_RETRIEVAL_WEIGHTS[key];
+		if (!Number.isFinite(weight) || weight < 0) {
+			throw new MnemocyteError(
+				`retrieval.weights.${key} must be a non-negative finite number.`,
+				"CONFIG",
+			);
+		}
+		weightTotal += weight;
+	}
+	if (weightTotal === 0) {
+		throw new MnemocyteError(
+			"retrieval.weights must have an effective total greater than zero.",
+			"CONFIG",
+		);
+	}
+
+	if (config.recencyHalfLifeDays !== undefined) {
+		assertPositiveFiniteConfigValue(
+			config.recencyHalfLifeDays,
+			"retrieval.recencyHalfLifeDays",
+		);
+	}
+	if (config.accessSaturation !== undefined) {
+		assertPositiveFiniteConfigValue(
+			config.accessSaturation,
+			"retrieval.accessSaturation",
+		);
+	}
+	if (
+		config.candidateMultiplier !== undefined &&
+		(!Number.isInteger(config.candidateMultiplier) ||
+			config.candidateMultiplier < 1)
+	) {
+		throw new MnemocyteError(
+			"retrieval.candidateMultiplier must be an integer greater than or equal to 1.",
+			"CONFIG",
+		);
+	}
+}
+
+export function validateBuildContextInput(input: BuildContextInput): void {
+	if (
+		input.maxTokens !== undefined &&
+		(!Number.isInteger(input.maxTokens) || input.maxTokens < 1)
+	) {
+		throw new MnemocyteError(
+			"maxTokens must be a positive integer when supplied.",
+			"VALIDATION",
 		);
 	}
 }

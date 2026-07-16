@@ -16,6 +16,12 @@ behavioural changes documented in their entries.
   `Record<string, unknown>`. Unsupported or cyclic values fail with
   `"VALIDATION"`, and metadata is deep-cloned at write and read boundaries in
   both backends.
+- **BUG-02 — Retrieval tuning rejects invalid values.** Client construction
+  now throws `"CONFIG"` for non-finite or negative weights, a zero effective
+  weight total, non-positive or non-finite recency/access settings, and a
+  `candidateMultiplier` that is not an integer of at least 1. Supplying a
+  `maxTokens` value that is not a positive integer now throws `"VALIDATION"`;
+  omission keeps the existing default path.
 
 ### Changed
 

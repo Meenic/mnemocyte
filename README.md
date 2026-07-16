@@ -276,6 +276,24 @@ const context = await client.buildContext({
 When supplied, `maxTokens` must be a positive integer or `buildContext` rejects
 with `"VALIDATION"`. Omitting it keeps the default token-budget path.
 
+### `forget` and `forgetAll`
+
+```ts
+await client.forget({
+  entityId: "user_123",
+  memoryId: "mem_old",
+});
+
+await client.forgetAll({ entityId: "user_123" });
+```
+
+A memory cannot be deleted while another memory's `supersededBy` still points
+to it as a consolidation survivor. `forget` and `forgetAll` reject with
+`"CONFLICT"` before deleting anything in that case. This also applies when
+`forgetAll` selects both the survivor and its superseded dependent. Delete the
+superseded memories first; deleting a loser, or any memory with no dependents,
+continues to work normally.
+
 ### `prune`
 
 ```ts
@@ -297,6 +315,11 @@ contain valid values, and boolean fields must be actual booleans. `false`
 selector flags and empty selector arrays do not count toward the required
 selector; malformed or selector-free input rejects with `"VALIDATION"` without
 deleting anything. Tag selectors are trimmed and deduplicated.
+
+A dry run may preview a survivor among its matches. A non-dry-run prune rejects
+with `"CONFLICT"` if any matching memory still has consolidation dependents,
+and the entire prune batch remains unchanged; unrelated matching rows are not
+partially deleted.
 
 ### `findDuplicates`
 
@@ -337,6 +360,11 @@ await client.experimental.consolidate({
   supersededIds: ["mem_duplicate"],
 });
 ```
+
+Consolidation records each loser's `supersededBy` reference to the survivor.
+The survivor cannot later be deleted while any such reference remains:
+`forget`, `forgetAll`, and matching non-dry-run `prune` calls reject with
+`"CONFLICT"`. Deleting a superseded loser remains allowed.
 
 The `experimental` namespace may change before v1.0.
 
@@ -387,6 +415,7 @@ VALIDATION
 CONFIG
 DB
 NOT_FOUND
+CONFLICT
 MIGRATION
 ```
 

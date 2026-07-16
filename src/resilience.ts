@@ -34,13 +34,14 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
  * Conservative by design: only retries on common transient failure
  * indicators (network errors, 5xx-ish messages, `ECONN*` etc.). Never
  * retries on validation, configuration, or {@link MnemocyteError} of
- * code `"VALIDATION"` / `"CONFIG"` / `"ABORTED"`.
+ * code `"VALIDATION"` / `"CONFIG"` / `"CONFLICT"` / `"ABORTED"`.
  */
 export function defaultShouldRetry(error: unknown): boolean {
 	if (error instanceof MnemocyteError) {
 		if (
 			error.code === "VALIDATION" ||
 			error.code === "CONFIG" ||
+			error.code === "CONFLICT" ||
 			error.code === "ABORTED"
 		) {
 			return false;
@@ -240,7 +241,7 @@ export interface ResilienceCallOptions {
  * underlying provider honours signals.
  *
  * Errors from {@link MnemocyteError} with code `"VALIDATION"` /
- * `"CONFIG"` / `"ABORTED"` are never retried.
+ * `"CONFIG"` / `"CONFLICT"` / `"ABORTED"` are never retried.
  */
 export async function withResilience<T>(
 	action: (signal: AbortSignal | undefined) => Promise<T>,

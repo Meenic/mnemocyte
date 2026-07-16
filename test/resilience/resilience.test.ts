@@ -1,8 +1,15 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMnemocyte, MnemocyteError } from "mnemocyte";
 import { describe, expect, test } from "vitest";
+import { defaultShouldRetry } from "../../src/resilience.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 describe("resilience", () => {
+	test("does not retry typed relationship conflicts", () => {
+		expect(
+			defaultShouldRetry(new MnemocyteError("has dependents", "CONFLICT")),
+		).toBe(false);
+	});
+
 	test("handles retries, timeouts, aborts, and retry filters", async () => {
 		function createCountingEmbedder({ failures = 0, delayMs = 0 } = {}) {
 			let calls = 0;

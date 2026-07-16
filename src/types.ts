@@ -826,9 +826,17 @@ export interface MnemocyteClient {
 	 *
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if the memory does not exist
 	 * or does not belong to `entityId`.
+	 * @throws {MnemocyteError} `"CONFLICT"` if another memory still
+	 * references this memory as its consolidation survivor.
 	 */
 	forget(input: { entityId: string; memoryId: string }): Promise<void>;
-	/** Delete every memory belonging to `entityId`. */
+	/**
+	 * Delete every memory belonging to `entityId`.
+	 *
+	 * @throws {MnemocyteError} `"CONFLICT"` if any selected memory is still
+	 * referenced as a consolidation survivor, including by another selected
+	 * memory.
+	 */
 	forgetAll(input: { entityId: string }): Promise<void>;
 	/**
 	 * Bulk-delete memories matching the filters on {@link PruneInput}.
@@ -836,6 +844,10 @@ export interface MnemocyteClient {
 	 * At least one filter must be specified; an empty input throws a
 	 * `"VALIDATION"` {@link MnemocyteError} to avoid accidental full
 	 * deletion. Pass `dryRun: true` to count without deleting.
+	 *
+	 * @throws {MnemocyteError} `"CONFLICT"` when a non-dry-run prune selects
+	 * a memory that still has consolidation dependents. The prune deletes
+	 * nothing in that case.
 	 *
 	 * @example Evict expired or stale memories for an entity
 	 * ```ts
@@ -930,6 +942,8 @@ export interface ExperimentalMnemocyteClient {
 	 *
 	 * Emits one `"memory.superseded"` audit event per newly superseded
 	 * memory when {@link MnemocyteConfig.audit}.`enabled` is `true`.
+	 * A survivor cannot later be deleted while any superseded memory still
+	 * references it; deletion attempts fail with `"CONFLICT"`.
 	 *
 	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
 	 *

@@ -66,6 +66,11 @@
   arrays, booleans, or signals fail with `"VALIDATION"`; false flags and empty
   arrays do not count as selectors. Both adapters reject an empty internal
   filter before scanning or issuing SQL.
+- Consolidation survivors cannot be deleted while another memory's
+  `supersededBy` points to them. `forget`, `forgetAll`, and non-dry-run `prune`
+  reject atomically with `"CONFLICT"` in both adapters; deleting losers and
+  memories with no dependents remains valid. Postgres retains the
+  `ON DELETE NO ACTION` foreign key as a race-condition backstop.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

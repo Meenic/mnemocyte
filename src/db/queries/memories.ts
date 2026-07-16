@@ -8,6 +8,7 @@ import {
 	isNull,
 	lt,
 	or,
+	type SQL,
 	sql,
 } from "drizzle-orm";
 import type { ImportanceLevel, MemoryType } from "../../types.js";
@@ -42,6 +43,12 @@ export interface MemoryStatsCounts {
 	activeMemoryCount: number;
 	expiredMemoryCount: number;
 	supersededMemoryCount: number;
+}
+
+export interface GuardedDeleteResult {
+	matchedCount: number;
+	deletedCount: number;
+	hasDependents: boolean;
 }
 
 export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
@@ -204,25 +211,21 @@ export async function deleteMemory(
 	db: MnemocyteDatabase,
 	entityId: string,
 	memoryId: string,
-): Promise<boolean> {
-	const result = await db
-		.delete(memoriesTable)
-		.where(
-			and(eq(memoriesTable.entityId, entityId), eq(memoriesTable.id, memoryId)),
-		)
-		.returning({ id: memoriesTable.id });
-	return result.length > 0;
+): Promise<GuardedDeleteResult> {
+	return deleteMemoriesWithDependentGuard(
+		db,
+		and(eq(memoriesTable.entityId, entityId), eq(memoriesTable.id, memoryId)),
+	);
 }
 
 export async function deleteMemoriesForEntity(
 	db: MnemocyteDatabase,
 	entityId: string,
-): Promise<number> {
-	const result = await db
-		.delete(memoriesTable)
-		.where(eq(memoriesTable.entityId, entityId))
-		.returning({ id: memoriesTable.id });
-	return result.length;
+): Promise<GuardedDeleteResult> {
+	return deleteMemoriesWithDependentGuard(
+		db,
+		eq(memoriesTable.entityId, entityId),
+	);
 }
 
 export interface PruneFilter {
@@ -289,18 +292,56 @@ export async function pruneMemories(
 	db: MnemocyteDatabase,
 	filter: PruneFilter,
 	signal?: AbortSignal,
-): Promise<number> {
+): Promise<GuardedDeleteResult> {
 	const conditions = pruneConditions(filter);
-	const result = await executeCancelableSql<Array<{ id: string }>>(
+	return deleteMemoriesWithDependentGuard(db, conditions, signal);
+}
+
+async function deleteMemoriesWithDependentGuard(
+	db: MnemocyteDatabase,
+	conditions: SQL | undefined,
+	signal?: AbortSignal,
+): Promise<GuardedDeleteResult> {
+	const rows = await executeCancelableSql<
+		Array<{
+			matchedCount: number | string;
+			deletedCount: number | string;
+			hasDependents: boolean;
+		}>
+	>(
 		db,
 		sql`
-			DELETE FROM ${memoriesTable}
-			${conditions ? sql`WHERE ${conditions}` : sql``}
-			RETURNING id
+			WITH candidates AS MATERIALIZED (
+				SELECT id
+				FROM ${memoriesTable}
+				${conditions ? sql`WHERE ${conditions}` : sql``}
+			),
+			dependents AS MATERIALIZED (
+				SELECT 1
+				FROM ${memoriesTable} AS dependent
+				INNER JOIN candidates AS target
+					ON dependent.superseded_by = target.id
+				LIMIT 1
+			),
+			deleted AS (
+				DELETE FROM ${memoriesTable}
+				WHERE ${memoriesTable.id} IN (SELECT id FROM candidates)
+					AND NOT EXISTS (SELECT 1 FROM dependents)
+				RETURNING id
+			)
+			SELECT
+				(SELECT count(*)::int FROM candidates) AS "matchedCount",
+				(SELECT count(*)::int FROM deleted) AS "deletedCount",
+				EXISTS (SELECT 1 FROM dependents) AS "hasDependents"
 		`,
 		signal,
 	);
-	return result.length;
+	const row = rows[0];
+	return {
+		matchedCount: Number(row?.matchedCount ?? 0),
+		deletedCount: Number(row?.deletedCount ?? 0),
+		hasDependents: row?.hasDependents === true,
+	};
 }
 
 export interface DuplicateSearchInput {

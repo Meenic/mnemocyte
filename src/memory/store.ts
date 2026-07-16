@@ -124,7 +124,9 @@ export interface MemoryStore {
 	): Promise<Map<string, number[]>>;
 	markMemoriesAccessed(memoryIds: readonly string[]): Promise<void>;
 
+	/** Throws `"CONFLICT"` when the selected memory has dependents. */
 	deleteMemory(entityId: string, memoryId: string): Promise<boolean>;
+	/** Throws `"CONFLICT"` before deleting when any selected memory has dependents. */
 	deleteMemoriesForEntity(entityId: string): Promise<number>;
 	prune(
 		input: ValidatedPruneFilter,

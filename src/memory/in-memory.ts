@@ -18,6 +18,7 @@ import {
 	DEFAULT_DUPLICATE_LIMIT,
 	DEFAULT_DUPLICATE_THRESHOLD,
 } from "./defaults.js";
+import { memoryHasDependentsError } from "./deletion.js";
 import {
 	isExpired,
 	matchesDuplicateFilter,
@@ -53,6 +54,17 @@ function cloneAuditEvent(event: AuditEvent): AuditEvent {
 		metadata: cloneJsonObject(event.metadata),
 		timestamp: new Date(event.timestamp),
 	};
+}
+
+function assertNoDependentMemories(
+	memories: ReadonlyMap<string, StoredMemory>,
+	targetIds: ReadonlySet<string>,
+): void {
+	for (const memory of memories.values()) {
+		if (memory.supersededBy !== null && targetIds.has(memory.supersededBy)) {
+			throw memoryHasDependentsError();
+		}
+	}
 }
 
 export function createInMemoryStore(): MemoryStore {
@@ -126,17 +138,20 @@ export function createInMemoryStore(): MemoryStore {
 			if (!memory || memory.entityId !== entityId) {
 				return false;
 			}
+			assertNoDependentMemories(memories, new Set([memoryId]));
 			return memories.delete(memoryId);
 		},
 		async deleteMemoriesForEntity(entityId) {
-			let deleted = 0;
-			for (const [id, memory] of memories) {
-				if (memory.entityId === entityId) {
-					memories.delete(id);
-					deleted += 1;
-				}
+			const targetIds = new Set(
+				Array.from(memories.values())
+					.filter((memory) => memory.entityId === entityId)
+					.map((memory) => memory.id),
+			);
+			assertNoDependentMemories(memories, targetIds);
+			for (const id of targetIds) {
+				memories.delete(id);
 			}
-			return deleted;
+			return targetIds.size;
 		},
 		async prune(input, options) {
 			throwIfAborted(options?.signal);
@@ -152,6 +167,7 @@ export function createInMemoryStore(): MemoryStore {
 			const dryRun = input.dryRun === true;
 			if (!dryRun) {
 				throwIfAborted(options?.signal);
+				assertNoDependentMemories(memories, new Set(matched));
 				for (const id of matched) {
 					memories.delete(id);
 				}

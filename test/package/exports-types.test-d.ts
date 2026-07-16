@@ -14,6 +14,7 @@ import type {
 	ListAuditLogInput,
 	MnemocyteClient,
 	MnemocyteConfig,
+	MnemocyteErrorCode,
 	RecallInput,
 	RememberInput,
 	RememberManyInput,
@@ -44,6 +45,8 @@ const embedder: Embedder = {
 };
 const config: MnemocyteConfig = { embedder, retrieval };
 const client: MnemocyteClient = createMnemocyte(config);
+const conflictCode: MnemocyteErrorCode = "CONFLICT";
+const conflictError = new MnemocyteError("conflict", conflictCode);
 const jsonValue: JsonValue = ["value", 1, true, null, { nested: "value" }];
 const jsonObject: JsonObject = { value: jsonValue };
 const remember: RememberInput = {
@@ -169,6 +172,8 @@ const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
+void conflictCode;
+void conflictError;
 void jsonValue;
 void jsonObject;
 void remember;

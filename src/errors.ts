@@ -6,6 +6,7 @@
  * - `"DB"` — Postgres or driver-level failure.
  * - `"EMBEDDING"` — embedder threw or returned an invalid vector.
  * - `"NOT_FOUND"` — referenced memory or entity does not exist.
+ * - `"CONFLICT"` — the requested mutation conflicts with stored relationships.
  * - `"MIGRATION"` — schema/migration check failed against the target database.
  * - `"TIMEOUT"` — a provider call exceeded its configured timeout.
  * - `"ABORTED"` — the operation was cancelled via an `AbortSignal`.
@@ -16,6 +17,7 @@ export type MnemocyteErrorCode =
 	| "DB"
 	| "EMBEDDING"
 	| "NOT_FOUND"
+	| "CONFLICT"
 	| "MIGRATION"
 	| "TIMEOUT"
 	| "ABORTED";

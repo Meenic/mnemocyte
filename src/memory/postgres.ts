@@ -43,6 +43,7 @@ import {
 	DEFAULT_DUPLICATE_THRESHOLD,
 	IMPORTANCE_RANK,
 } from "./defaults.js";
+import { memoryHasDependentsError } from "./deletion.js";
 import { cloneJsonObject } from "./json.js";
 import { rowToMemory } from "./postgres-records.js";
 import { createEventId, type StoredMemory } from "./records.js";
@@ -67,6 +68,8 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 ];
 
 const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
+const CONSOLIDATION_SURVIVOR_FOREIGN_KEY =
+	"mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk";
 
 function rowToAuditEvent(row: EventRow): AuditEvent {
 	return {
@@ -92,6 +95,15 @@ function hasPostgresErrorCode(error: unknown, code: string): boolean {
 		error !== null &&
 		"code" in error &&
 		error.code === code
+	);
+}
+
+function hasPostgresConstraintName(error: unknown, name: string): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"constraint_name" in error &&
+		error.constraint_name === name
 	);
 }
 
@@ -125,6 +137,25 @@ async function runPostgresOperation<T>(
 	try {
 		return await operation();
 	} catch (error) {
+		throw normalizePostgresError(error);
+	}
+}
+
+async function runPostgresDeleteOperation<T>(
+	operation: () => Promise<T>,
+): Promise<T> {
+	try {
+		return await operation();
+	} catch (error) {
+		if (error instanceof MnemocyteError) {
+			throw error;
+		}
+		if (
+			hasPostgresErrorCode(error, "23503") &&
+			hasPostgresConstraintName(error, CONSOLIDATION_SURVIVOR_FOREIGN_KEY)
+		) {
+			throw memoryHasDependentsError(error);
+		}
 		throw normalizePostgresError(error);
 	}
 }
@@ -307,17 +338,25 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 			);
 		},
 		async deleteMemory(entityId, memoryId) {
-			return runPostgresOperation(() =>
-				deleteMemoryQuery(handle.db, entityId, memoryId),
-			);
+			return runPostgresDeleteOperation(async () => {
+				const result = await deleteMemoryQuery(handle.db, entityId, memoryId);
+				if (result.hasDependents) {
+					throw memoryHasDependentsError();
+				}
+				return result.deletedCount > 0;
+			});
 		},
 		async deleteMemoriesForEntity(entityId) {
-			return runPostgresOperation(() =>
-				deleteMemoriesForEntityQuery(handle.db, entityId),
-			);
+			return runPostgresDeleteOperation(async () => {
+				const result = await deleteMemoriesForEntityQuery(handle.db, entityId);
+				if (result.hasDependents) {
+					throw memoryHasDependentsError();
+				}
+				return result.deletedCount;
+			});
 		},
 		async prune(input, options) {
-			return runPostgresOperation(async () => {
+			return runPostgresDeleteOperation(async () => {
 				throwIfAborted(options?.signal);
 				assertPruneFilterHasSelector(input);
 				const filter = toPruneFilter(input);
@@ -333,14 +372,13 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						dryRun: true,
 					};
 				}
-				const deletedCount = await pruneMemories(
-					handle.db,
-					filter,
-					options?.signal,
-				);
+				const result = await pruneMemories(handle.db, filter, options?.signal);
+				if (result.hasDependents) {
+					throw memoryHasDependentsError();
+				}
 				return {
-					matchedCount: deletedCount,
-					deletedCount,
+					matchedCount: result.matchedCount,
+					deletedCount: result.deletedCount,
 					dryRun: false,
 				};
 			});

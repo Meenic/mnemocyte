@@ -10,6 +10,12 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **CONSOLIDATION-DELETE-01 — Referenced consolidation survivors cannot be
+  deleted.** `forget`, `forgetAll`, and non-dry-run `prune` now reject with
+  `"CONFLICT"` when a selected memory still has `supersededBy` dependents.
+  Rejection happens before any row is deleted, including multi-row prune and
+  `forgetAll` batches. Deleting superseded losers and memories with no
+  dependents continues to work.
 - **EMBED-02 — Postgres enforces one embedding model per installation.**
   `mnemocyte_meta` now records `embedding_model` alongside dimensions.
   Writes, recall, and duplicate scans reject a different configured model with

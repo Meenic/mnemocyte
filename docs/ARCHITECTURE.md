@@ -249,7 +249,7 @@ files such as `dist/embedders/index.d.mts` and
 
 **Errors**
 
-- `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
+- `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"CONFLICT"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
 
 **Client (stable)**
 
@@ -257,8 +257,10 @@ files such as `dist/embedders/index.d.mts` and
   form remains a deprecated pre-v1 compatibility overload.
 - `recall(input)` — hybrid vector + lexical, with `RetrievalExplanation` when `explain: true`.
 - `buildContext(input)` — markdown / plain / xml with token-budget trimming.
-- `forget({ entityId, memoryId })`, `forgetAll({ entityId })`
-- `prune(input: PruneInput)` — bulk-delete by `entityId` / `expired` / `superseded` / `createdBefore` / `notAccessedSince` / `types` / `tags` / `maxImportance` with `dryRun`.
+- `forget({ entityId, memoryId })`, `forgetAll({ entityId })` — reject with
+  `"CONFLICT"` before deleting when the selected set contains a referenced
+  consolidation survivor.
+- `prune(input: PruneInput)` — bulk-delete by `entityId` / `expired` / `superseded` / `createdBefore` / `notAccessedSince` / `types` / `tags` / `maxImportance` with `dryRun`; a non-dry-run batch rejects atomically with `"CONFLICT"` if any match is a referenced survivor.
 - `findDuplicates(input)` — read-only pairwise scan returning `DuplicatePair[]`.
 - `listAuditLog(input)` — newest-first, entity-scoped, with `before` / `after` / `limit`.
 - `stats(input?)` — `EntityStats` or `GlobalStats`.
@@ -266,7 +268,7 @@ files such as `dist/embedders/index.d.mts` and
 
 **Client (experimental, gated under `client.experimental.*`)**
 
-- `experimental.consolidate(input)` — mark one or more memories as superseded by a survivor, with optional tag merge, idempotent for already-superseded losers, audited as `"memory.superseded"`.
+- `experimental.consolidate(input)` — mark one or more memories as superseded by a survivor, with optional tag merge, idempotent for already-superseded losers, audited as `"memory.superseded"`; the survivor remains protected from deletion until its dependents are removed.
 
 **Config**
 
@@ -308,6 +310,7 @@ export class MnemocyteError extends Error {
       | "DB"
       | "EMBEDDING"
       | "NOT_FOUND"
+      | "CONFLICT"
       | "MIGRATION"
       | "TIMEOUT"
       | "ABORTED",
@@ -326,12 +329,33 @@ mixed historical embedding models after `0002_add_embedding_model.sql`.
 `"VALIDATION"` covers per-call argument errors (including invalid `maxTokens`,
 JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
 and `consolidate({ supersededIds: [] })`) plus an explicitly empty
-`databaseUrl`.
+`databaseUrl`. `"CONFLICT"` covers mutations rejected because stored
+relationships must remain valid, currently deletion of a referenced
+consolidation survivor.
 
 Prune validation produces a normalized internal filter before the
 `MemoryStore` boundary. Both adapters accept that internal filter rather than
 the public `PruneInput`, and independently reject an empty filter so a
 validation regression cannot reach an unbounded delete.
+
+### Consolidation Survivor Deletion Policy
+
+`supersededBy` is a live referential relationship, not historical metadata that
+may dangle. A delete candidate set is rejected with `"CONFLICT"` if any stored
+memory references a candidate as its consolidation survivor:
+
+- `forget` rejects before deleting the referenced survivor.
+- `forgetAll` rejects even when both the survivor and dependent are selected.
+- A non-dry-run `prune` rejects the entire batch, so unrelated matching rows
+  are not partially deleted. A dry run may still report those matches.
+- Deleting a superseded loser or any memory with no dependents remains valid.
+
+The in-memory adapter checks the complete candidate set before mutation.
+Postgres uses one guarded candidate/dependent/delete statement for atomic batch
+behavior, while the existing `ON DELETE NO ACTION` self-reference remains a
+race-condition backstop. Violations of that specific foreign key are normalized
+to the same `"CONFLICT"` code rather than a generic `"DB"` error. Consolidation
+itself is unchanged: callers remove dependents before deleting their survivor.
 
 Maintenance-operation signals are checked before store access. In-memory
 pruning, duplicate scans, audit-log scans, and consolidation preparation check
@@ -646,6 +670,10 @@ Status: released as `v0.2.0`.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
+- **Consolidation survivor deletion is rejected, not cascaded or detached.**
+  `forget`, `forgetAll`, and non-dry-run `prune` throw `"CONFLICT"` without
+  deleting anything when a selected memory still has `supersededBy`
+  dependents.
 - **`experimental.consolidate` is gated under `client.experimental.*`.** Members of that namespace may change between minor releases.
 
 ## Issue Checklist

@@ -254,7 +254,9 @@ files were retained.
 - how-verified: Add parity tests that consolidate a chain and then exercise
   `forget`, `forgetAll`, and `prune` against the survivor. Verify no dangling
   references remain and Postgres constraints implement the approved policy.
-- approval:
+- approval: yes (option 1 — reject delete while dependents exist)
+- status: resolved in
+  [`a95d641`](https://github.com/Meenic/mnemocyte/commit/a95d64187e120eacec857f1bed9fcdfd5e525a43)
 
 ## Medium risk
 

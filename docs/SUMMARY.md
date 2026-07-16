@@ -5,10 +5,44 @@ deferred after documenting their reproductions and required policy choices.
 The follow-up behavior run approved option 1 for each deferred item and has now
 resolved all three. Each behavior fix was validated and committed separately.
 
+The later consolidation-deletion policy run resolved only
+`CONSOLIDATION-DELETE-01`, using the separately approved option 1 rejection
+policy.
+
 The subsequent vector-correctness run resolved four additional approved
 high-risk proposals. Each issue was independently reproduced, implemented,
 fully validated against real Postgres + pgvector, and committed before the next
 fix began.
+
+## Consolidation survivor deletion policy
+
+**CONSOLIDATION-DELETE-01** landed in
+[`a95d641`](https://github.com/Meenic/mnemocyte/commit/a95d64187e120eacec857f1bed9fcdfd5e525a43).
+Both storage adapters now reject deletion of a memory while another memory's
+`supersededBy` points to it, using the public `"CONFLICT"` error code.
+
+The in-memory adapter checks the complete candidate set before mutation.
+Postgres uses one guarded candidate/dependent/delete statement so `forgetAll`
+and multi-row prune operations cannot partially delete, while its existing
+`ON DELETE NO ACTION` self-reference remains a race-condition backstop.
+Deleting an ordinary memory or a superseded loser remains valid, and deleting
+the survivor succeeds after its dependents are removed.
+
+One shared behavioral fixture runs against both adapters. It covers
+`forget(survivor)`, `forgetAll` selecting both sides, an expired-memory prune
+that also selects an unrelated row, dry-run preview, loser deletion, and
+ordinary deletion. The rejection cases verify that every row remains and the
+loser's `supersededBy` pointer is unchanged.
+
+The final implementation state passed `pnpm checktypes`, `pnpm lint`,
+`pnpm test` (23 unit/package files, 94 tests), `pnpm build`,
+`pnpm run pack:check`, and `pnpm run test:integration` (five files, seven
+tests) using the configured real Postgres + pgvector database.
+
+Implementation, tests, public types, README, architecture, changelog,
+maintainer memory, the `CONSOLIDATION-DELETE-01` status, and this summary were
+the only changes. No other `PROPOSALS.md` entry was modified or implemented,
+and consolidation itself was not changed.
 
 ## Approved vector correctness and compatibility fixes
 

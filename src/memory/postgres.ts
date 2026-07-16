@@ -19,7 +19,11 @@ import {
 	setMemoryTags,
 	vectorSearch as vectorSearchQuery,
 } from "../db/queries/memories.js";
-import { getInstallationMeta } from "../db/queries/meta.js";
+import {
+	getInstallationMeta,
+	getStoredEmbeddingModels,
+	recordInstallationEmbeddingModel,
+} from "../db/queries/meta.js";
 import type { EventRow, NewMemoryRow } from "../db/schema.js";
 import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
@@ -191,9 +195,12 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		try {
 			meta = await getInstallationMeta(handle.db);
 		} catch (error) {
-			if (hasPostgresErrorCode(error, "42P01")) {
+			if (
+				hasPostgresErrorCode(error, "42P01") ||
+				hasPostgresErrorCode(error, "42703")
+			) {
 				throw new MnemocyteError(
-					"mnemocyte_meta is missing. Apply the v0.2.0 migration or render a dimension-specific initial migration before using the Postgres backend.",
+					"Postgres embedding metadata is missing or outdated. Apply the bundled migrations through 0002_add_embedding_model.sql, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.",
 					"MIGRATION",
 					error,
 				);
@@ -202,13 +209,50 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		}
 		if (!meta) {
 			throw new MnemocyteError(
-				'mnemocyte_meta is missing the "installation" row. Apply the v0.2.0 migration or render a dimension-specific initial migration before using the Postgres backend.',
+				'mnemocyte_meta is missing the "installation" row. Apply the bundled migrations, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.',
 				"MIGRATION",
 			);
 		}
 		if (meta.embeddingDimensions !== embedder.dimensions) {
 			throw new MnemocyteError(
 				`embedder.dimensions (${embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
+				"CONFIG",
+			);
+		}
+		let installationModel = meta.embeddingModel;
+		if (installationModel === null) {
+			try {
+				const storedModels = await getStoredEmbeddingModels(handle.db);
+				if (storedModels.length > 1) {
+					throw new MnemocyteError(
+						"mnemocyte_meta.embedding_model is unset, but stored memories contain multiple embedding_model values. Re-embed or remove the mixed historical rows, then explicitly record the installation model before using embedding-dependent operations.",
+						"MIGRATION",
+					);
+				}
+				const inferredModel = storedModels[0] ?? embedder.model;
+				const recorded = await recordInstallationEmbeddingModel(
+					handle.db,
+					inferredModel,
+				);
+				if (recorded) {
+					installationModel = recorded.embeddingModel;
+				} else {
+					const concurrentlyRecorded = await getInstallationMeta(handle.db);
+					installationModel = concurrentlyRecorded?.embeddingModel ?? null;
+				}
+			} catch (error) {
+				throw normalizePostgresError(error);
+			}
+			if (installationModel === null) {
+				throw new MnemocyteError(
+					"mnemocyte_meta.embedding_model could not be recorded. Verify the installation metadata row and retry.",
+					"MIGRATION",
+				);
+			}
+		}
+		if (installationModel !== embedder.model) {
+			throw new MnemocyteError(
+				`embedder.model ("${embedder.model}") must match mnemocyte_meta.embedding_model ("${installationModel}"). Configure the recorded model, or explicitly re-embed existing memories and update the installation metadata.`,
 				"CONFIG",
 			);
 		}

@@ -45,6 +45,10 @@ async function main(databaseUrl: string) {
 		resolve("migrations", "0001_add_mnemocyte_meta.sql"),
 		"utf8",
 	);
+	const modelMigration = await readFile(
+		resolve("migrations", "0002_add_embedding_model.sql"),
+		"utf8",
+	);
 
 	try {
 		await sql.unsafe(migration);
@@ -80,6 +84,20 @@ async function main(databaseUrl: string) {
 			SET embedding_dimensions = EXCLUDED.embedding_dimensions
 		`;
 	}
+	try {
+		await sql.unsafe(modelMigration);
+	} catch (error) {
+		if (
+			!(
+				error &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "42701"
+			)
+		) {
+			throw error;
+		}
+	}
 
 	try {
 		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
@@ -89,7 +107,7 @@ async function main(databaseUrl: string) {
 		const client = createMnemocyte({
 			databaseUrl,
 			embedder: {
-				model: "integration-test",
+				model: "mnemocyte-integration-test",
 				dimensions: 1536,
 				async embed(texts) {
 					return texts.map(createEmbedding);
@@ -128,7 +146,7 @@ async function main(databaseUrl: string) {
 			});
 
 			expect(memory.entityId).toBe(entityId);
-			expect(memory.embeddingModel).toBe("integration-test");
+			expect(memory.embeddingModel).toBe("mnemocyte-integration-test");
 			expect(memory.embeddingDimensions).toBe(1536);
 			expect(memory.supersededAt).toBe(null);
 			metadata.profile.tier = "changed after write";

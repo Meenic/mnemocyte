@@ -8,6 +8,16 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **EMBED-02 — Postgres enforces one embedding model per installation.**
+  `mnemocyte_meta` now records `embedding_model` alongside dimensions.
+  Writes, recall, and duplicate scans reject a different configured model with
+  `"CONFIG"` before provider usage or vector comparison. Migration `0002`
+  infers a single historical model; mixed historical models leave the metadata
+  unset and fail embedding-dependent operations with `"MIGRATION"` until an
+  operator explicitly repairs or re-embeds the data.
+
 ### Changed
 
 - **LIFECYCLE-01 — `close()` coordinates with in-flight operations.** Closing a

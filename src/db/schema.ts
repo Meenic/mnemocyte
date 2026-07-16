@@ -91,6 +91,7 @@ export const eventsTable = pgTable(
 export const metaTable = pgTable("mnemocyte_meta", {
 	key: text("key").primaryKey(),
 	embeddingDimensions: integer("embedding_dimensions").notNull(),
+	embeddingModel: text("embedding_model"),
 });
 
 export type MemoryRow = typeof memoriesTable.$inferSelect;

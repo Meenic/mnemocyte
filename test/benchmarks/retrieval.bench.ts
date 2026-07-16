@@ -110,7 +110,7 @@ async function applyMigration(
 				error &&
 				typeof error === "object" &&
 				"code" in error &&
-				error.code === "42P07"
+				(error.code === "42P07" || error.code === "42701")
 			)
 		) {
 			throw error;
@@ -121,6 +121,7 @@ async function applyMigration(
 async function ensureMigrations(sql: ReturnType<typeof postgres>) {
 	await applyMigration(sql, "0000_initial.sql");
 	await applyMigration(sql, "0001_add_mnemocyte_meta.sql");
+	await applyMigration(sql, "0002_add_embedding_model.sql");
 	await sql`
 		INSERT INTO mnemocyte_meta (key, embedding_dimensions)
 		VALUES ('installation', 1536)

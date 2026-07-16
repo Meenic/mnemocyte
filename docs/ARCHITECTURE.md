@@ -22,10 +22,11 @@ shared client orchestration described below, and the documented pre-v1
 breaking changes for JSON metadata types, retrieval-tuning rejection, and the
 canonical `rememberMany({ inputs, signal })` batch API.
 
-Postgres installations use `mnemocyte_meta.embedding_dimensions` as
-installation metadata. The default 1536-dimensional install is represented by
-`0000_initial.sql` plus `0001_add_mnemocyte_meta.sql`, and custom fresh installs
-are rendered from `0000_initial.sql.template`.
+Postgres installations use `mnemocyte_meta.embedding_dimensions` and
+`mnemocyte_meta.embedding_model` as installation metadata. The default
+1536-dimensional install is represented by `0000_initial.sql`,
+`0001_add_mnemocyte_meta.sql`, and `0002_add_embedding_model.sql`; custom fresh
+installs are rendered from `0000_initial.sql.template`.
 
 ## Goals
 
@@ -64,8 +65,11 @@ package ships:
 - `migrations/0001_add_mnemocyte_meta.sql` - the metadata migration that records
   the default embedding dimensions for existing 0.1.x installs and default
   fresh installs.
+- `migrations/0002_add_embedding_model.sql` - adds installation-level embedding
+  model identity and records a single historical row model when unambiguous.
 - `migrations/0000_initial.sql.template` and `migrations/render-initial.mjs` -
-  the explicit custom-dimension fresh-install path.
+  the explicit custom-dimension fresh-install path, including the installation
+  model metadata column.
 
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
@@ -266,7 +270,10 @@ files such as `dist/embedders/index.d.mts` and
 
 **Config**
 
-- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required, must match `mnemocyte_meta.embedding_dimensions` for Postgres), `defaults?`, `retrieval?`, `observability?`, `provider?` (resilience), `audit?` (`{ enabled }`).
+- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required; its model and
+  dimensions must match `mnemocyte_meta` for Postgres), `defaults?`,
+  `retrieval?`, `observability?`, `provider?` (resilience), `audit?`
+  (`{ enabled }`).
 
 **Types**
 
@@ -314,10 +321,12 @@ export class MnemocyteError extends Error {
 
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
 covers invalid embedder/database URL configuration, invalid retrieval tuning,
-and the Postgres-backend dimensionality check; `"VALIDATION"` covers per-call
-argument errors (including invalid `maxTokens`, JSON-incompatible or cyclic
-metadata, malformed or selector-free prune input, and
-`consolidate({ supersededIds: [] })`) plus an explicitly empty `databaseUrl`.
+and Postgres model/dimension mismatches. `"MIGRATION"` also covers unresolved
+mixed historical embedding models after `0002_add_embedding_model.sql`.
+`"VALIDATION"` covers per-call argument errors (including invalid `maxTokens`,
+JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
+and `consolidate({ supersededIds: [] })`) plus an explicitly empty
+`databaseUrl`.
 
 Prune validation produces a normalized internal filter before the
 `MemoryStore` boundary. Both adapters accept that internal filter rather than
@@ -422,22 +431,22 @@ a matching expression index before relying on large lexical scans. Tag filters
 currently use the `text[]` column without a bundled GIN index; add a tag index
 only after measuring tag-heavy queries in the target workload.
 
-### Embedding Dimension Policy
+### Embedding Vector Space Policy
 
-The current package supports one embedding dimension per installation.
-`mnemocyte_meta` is the installation-level source of truth for the configured
-dimension, and the Postgres client validates it against `embedder.dimensions`
-before embedding-dependent operations call the embedder or compare stored
-vectors. Store `embedding_model` and
-`embedding_dimensions` on every memory so mismatches are detectable and future
-migrations are possible. Supporting multiple embedding dimensions in one
-database remains a later production feature, likely through separate columns,
-tables, or partitions.
+The current package supports one embedding model and dimension per
+installation. `mnemocyte_meta` is the installation-level source of truth, and
+the Postgres client validates both values before embedding-dependent operations
+call the embedder or compare stored vectors. Empty installations atomically
+claim the configured model. If the metadata model is unset after an upgrade, a
+single historical row model is inferred and recorded; multiple historical
+models fail with `"MIGRATION"` until an operator repairs the data. Continue
+storing `embedding_model` and `embedding_dimensions` on every memory for
+diagnosis and future re-embedding workflows.
 
-Embedding-dimension validation runs only before operations that call the
-embedder or compare stored embeddings. Non-embedding recovery operations such
-as cleanup, audit reads, or diagnostics remain available when the configured
-embedder dimension does not match the installation.
+Compatibility validation runs only before writes, recall, and duplicate scans.
+Non-embedding recovery operations such as cleanup, audit reads, or diagnostics
+remain available when the configured embedder is incompatible with the
+installation.
 
 ## Write Path
 
@@ -611,7 +620,12 @@ Status: released as `v0.2.0`.
 
 ## Known limitations
 
-- **Postgres supports one embedding dimension per installation.** The default migration creates `embedding vector(1536)`, and custom dimensions must be rendered explicitly from the migration template. `createMnemocyte` stays synchronous; the Postgres client validates `embedder.dimensions` against `mnemocyte_meta` before the first embedding-dependent operation.
+- **Postgres supports one embedding vector space per installation.** The
+  default migration creates `embedding vector(1536)`, and custom dimensions
+  must be rendered explicitly from the migration template. `createMnemocyte`
+  stays synchronous; before writes, recall, or duplicate scans, the Postgres
+  client validates the configured model and dimensions against
+  `mnemocyte_meta`.
 - **`MemoryStore` is internal.** The in-memory and Postgres backends now use a
   shared internal adapter boundary, but it is not a public adapter API yet.
 - **Provider timeout cancellation depends on signal support.** The resilience

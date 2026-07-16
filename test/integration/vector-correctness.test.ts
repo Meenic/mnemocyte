@@ -23,6 +23,10 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 		resolve("migrations", "0001_add_mnemocyte_meta.sql"),
 		"utf8",
 	);
+	const modelMigration = await readFile(
+		resolve("migrations", "0002_add_embedding_model.sql"),
+		"utf8",
+	);
 
 	try {
 		await sql.unsafe(migration);
@@ -58,6 +62,20 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 			SET embedding_dimensions = EXCLUDED.embedding_dimensions
 		`;
 	}
+	try {
+		await sql.unsafe(modelMigration);
+	} catch (error) {
+		if (
+			!(
+				error &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "42701"
+			)
+		) {
+			throw error;
+		}
+	}
 }
 
 function firstVectorComponent(value: unknown): number {
@@ -86,7 +104,7 @@ describe("Postgres vector correctness", () => {
 			const client = createMnemocyte({
 				databaseUrl: databaseUrl ?? "",
 				embedder: {
-					model: "serialization-integration-test",
+					model: "mnemocyte-integration-test",
 					dimensions: 1536,
 					async embed(texts) {
 						return texts.map((text) => {
@@ -153,7 +171,7 @@ describe("Postgres vector correctness", () => {
 			const client = createMnemocyte({
 				databaseUrl: databaseUrl ?? "",
 				embedder: {
-					model: "zero-norm-integration-test",
+					model: "mnemocyte-integration-test",
 					dimensions: 1536,
 					async embed(texts) {
 						return texts.map((text) => {
@@ -277,7 +295,7 @@ describe("Postgres vector correctness", () => {
 			const client = createMnemocyte({
 				databaseUrl: databaseUrl ?? "",
 				embedder: {
-					model: "signed-vector-integration-test",
+					model: "mnemocyte-integration-test",
 					dimensions: 1536,
 					async embed(texts) {
 						return texts.map((text) => {

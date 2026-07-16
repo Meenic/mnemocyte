@@ -122,6 +122,7 @@ The package includes:
 ```txt
 migrations/0000_initial.sql
 migrations/0001_add_mnemocyte_meta.sql
+migrations/0002_add_embedding_model.sql
 migrations/0000_initial.sql.template
 migrations/render-initial.mjs
 ```
@@ -132,16 +133,19 @@ order:
 ```txt
 migrations/0000_initial.sql
 migrations/0001_add_mnemocyte_meta.sql
+migrations/0002_add_embedding_model.sql
 ```
 
 For an existing 0.1.x Postgres install, apply
-`migrations/0001_add_mnemocyte_meta.sql` to record the current 1536-dimensional
-installation metadata.
+`migrations/0001_add_mnemocyte_meta.sql` and then
+`migrations/0002_add_embedding_model.sql`. Existing 0.2.x or 0.3.x installs
+only need `0002_add_embedding_model.sql`.
 
 For a different embedding dimension on a fresh installation, render an explicit
 initial migration from the template and apply that rendered file instead of the
 default `0000_initial.sql`. The rendered initial migration includes the
-matching `mnemocyte_meta` row.
+matching `mnemocyte_meta` dimensions and the installation-model column, so it
+does not also need `0001` or `0002`.
 
 ```bash
 node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
@@ -153,14 +157,41 @@ Inside this repository, the equivalent development shortcut is:
 pnpm migration:render -- --dimensions 768 --out migrations/0000_initial.768.sql
 ```
 
-The Postgres backend supports one embedding dimension per installation. Before
-the first embedding-dependent Postgres operation, Mnemocyte reads
-`mnemocyte_meta` and validates it against `embedder.dimensions` before calling
-the embedder. A mismatch throws a `MnemocyteError` with code `"CONFIG"`; missing
-v0.2.0 metadata throws code `"MIGRATION"`.
+The Postgres backend supports one embedding model and dimension per
+installation. Before writes, recall, or duplicate scans, Mnemocyte reads
+`mnemocyte_meta` and validates both values before calling the embedder or
+comparing vectors. An empty installation atomically records the configured
+model on its first embedding-dependent operation. Migration `0002` records the
+single model already present in historical rows when that value is
+unambiguous.
 
-Use the embedding dimension documented for your chosen model, render or apply a
-matching schema, and keep one dimension per Mnemocyte installation.
+A configured model or dimension mismatch throws `MnemocyteError` code
+`"CONFIG"`. If historical rows contain multiple model values, the installation
+model remains unset and embedding-dependent operations throw `"MIGRATION"`
+until an operator re-embeds or removes the mixed rows and explicitly records
+the intended installation model. Non-embedding recovery operations such as
+`stats`, `forget`, and pruning remain available.
+
+Inspect mixed history before repairing it:
+
+```sql
+SELECT embedding_model, count(*)
+FROM mnemocyte_memories
+GROUP BY embedding_model;
+```
+
+Only after every retained row belongs to the intended vector space, record that
+model explicitly:
+
+```sql
+UPDATE mnemocyte_meta
+SET embedding_model = 'your-model-id'
+WHERE key = 'installation';
+```
+
+Use the model identifier and embedding dimension documented for your embedder,
+render or apply a matching schema, and keep one vector space per Mnemocyte
+installation.
 
 The migration creates the bundled HNSW pgvector index
 `mnemocyte_memories_embedding_hnsw_idx` for cosine search. HNSW is approximate:
@@ -417,8 +448,8 @@ Known limitations before v1:
 - Configured provider timeouts abort the per-attempt `AbortSignal`; the
   underlying provider request only stops promptly when the embedder honors that
   signal.
-- Postgres dimension metadata is installation-wide. Mixed embedding dimensions
-  in one database are intentionally out of scope for now.
+- Postgres model and dimension metadata are installation-wide. Mixed embedding
+  vector spaces in one database are intentionally unsupported.
 
 Planned v1 direction:
 

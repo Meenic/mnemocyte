@@ -38,8 +38,9 @@ Remaining critical before v1:
   failures through `MnemocyteError`.
 - Decide when the internal `MemoryStore` type is stable enough to become a
   public adapter contract.
-- Keep migration guidance explicit for default fresh installs, existing 0.1.x
-  installs, and custom-dimension fresh installs.
+- Keep migration guidance explicit for default fresh installs, existing
+  installs that need dimension/model metadata, and custom-dimension fresh
+  installs.
 
 Important but not blocking:
 

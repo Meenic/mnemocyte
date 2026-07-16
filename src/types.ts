@@ -174,7 +174,8 @@ export interface MnemocyteConfig {
 	/**
 	 * Postgres connection string. When set, the client uses the Postgres
 	 * backend (requires the `pgvector` extension and a rendered migration
-	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder).
+	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder and
+	 * `embedding_model` metadata available).
 	 * When omitted, an in-memory backend is used.
 	 */
 	databaseUrl?: string;
@@ -229,8 +230,9 @@ export interface AuditConfig {
  * (e.g. OpenAI, Cohere, a local model) in a small interface.
  *
  * Mnemocyte records {@link Embedder.model} and {@link Embedder.dimensions}
- * on every stored memory and uses them to detect incompatible vectors
- * (e.g. when the model is swapped).
+ * on every stored memory. The Postgres backend also records both values as
+ * installation metadata and rejects embedding-dependent operations when the
+ * configured embedder is incompatible.
  */
 export interface Embedder {
 	/** Stable identifier for the underlying model (e.g. `"text-embedding-3-small"`). */

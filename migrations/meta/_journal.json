@@ -15,6 +15,13 @@
 			"when": 1779455085280,
 			"tag": "0001_add_mnemocyte_meta",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1784201870906,
+			"tag": "0002_add_embedding_model",
+			"breakpoints": true
 		}
 	]
 }

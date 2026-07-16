@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
 
@@ -13,6 +14,7 @@ describe("initial migration renderer", () => {
 		]);
 
 		expect(stdout).toContain('"embedding" vector(768)');
+		expect(stdout).toContain('"embedding_model" text');
 		expect(stdout).toContain(
 			`INSERT INTO "mnemocyte_meta" ("key", "embedding_dimensions") VALUES ('installation', 768);`,
 		);
@@ -26,5 +28,17 @@ describe("initial migration renderer", () => {
 				"0",
 			]),
 		).rejects.toThrow();
+	});
+
+	test("bundles the installation-model repair migration", async () => {
+		const migration = await readFile(
+			"migrations/0002_add_embedding_model.sql",
+			"utf8",
+		);
+
+		expect(migration).toContain(
+			'ALTER TABLE "mnemocyte_meta" ADD COLUMN "embedding_model" text;',
+		);
+		expect(migration).toContain('count(DISTINCT "embedding_model") = 1');
 	});
 });

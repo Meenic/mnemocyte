@@ -25,10 +25,12 @@
 - `mnemocyte/embedders` is the editor-discoverable barrel export for embedder
   helpers. Provider-specific subpaths such as `mnemocyte/embedders/openai`
   remain supported through wildcard package exports.
-- For write, recall, and duplicate-scan paths, Postgres embedding-dimension
-  validation must happen before provider usage or vector comparison.
-  Non-embedding operations should remain usable when only the configured
-  embedder dimension is mismatched.
+- For write, recall, and duplicate-scan paths, Postgres embedding model and
+  dimension validation must happen before provider usage or vector comparison.
+  Empty installations atomically record the first configured model; a single
+  historical model is inferred and recorded, while mixed historical models
+  fail with `"MIGRATION"` until explicitly repaired. Non-embedding operations
+  remain usable when metadata is incompatible.
 - Single and batched embedder output must contain only finite vector values and
   at least one nonzero component. Invalid or exact zero-norm vectors fail with
   `"EMBEDDING"` before storage or comparison; tiny nonzero vectors remain

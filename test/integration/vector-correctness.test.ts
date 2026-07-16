@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
+import { expectMnemocyteError } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -133,6 +134,91 @@ describe("Postgres vector correctness", () => {
 					}
 				}
 				expect(storedById.get(memories[0]?.id ?? "")).not.toBe(0);
+			} finally {
+				await client.close();
+				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
+				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
+				await sql.end();
+			}
+		},
+		60_000,
+	);
+
+	test.skipIf(!databaseUrl)(
+		"rejects zero vectors before storage or comparison while retaining tiny vectors",
+		async () => {
+			const sql = postgres(databaseUrl ?? "", { max: 1 });
+			const entityId = `zero_norm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			await applyMigrations(sql);
+			const client = createMnemocyte({
+				databaseUrl: databaseUrl ?? "",
+				embedder: {
+					model: "zero-norm-integration-test",
+					dimensions: 1536,
+					async embed(texts) {
+						return texts.map((text) => {
+							const embedding = Array.from({ length: 1536 }, () => 0);
+							if (!text.includes("zero")) {
+								embedding[0] = 1e-20;
+							}
+							return embedding;
+						});
+					},
+				},
+			});
+
+			try {
+				await expectMnemocyteError(
+					client.remember({ entityId, content: "zero stored" }),
+					"EMBEDDING",
+				);
+				const zeroRows = await sql<Array<{ count: number }>>`
+					SELECT count(*)::int AS count
+					FROM mnemocyte_memories
+					WHERE entity_id = ${entityId}
+				`;
+				expect(zeroRows[0]?.count).toBe(0);
+
+				await client.rememberMany({
+					inputs: [
+						{ entityId, content: "alpha" },
+						{ entityId, content: "beta" },
+					],
+				});
+				const pairs = await client.findDuplicates({
+					entityId,
+					threshold: 0.99,
+				});
+				expect(pairs).toHaveLength(1);
+				expect(pairs[0]?.similarity).toBeGreaterThanOrEqual(0.99);
+
+				const recalled = await client.recall({
+					entityId,
+					query: "gamma",
+					limit: 2,
+				});
+				expect(recalled).toHaveLength(2);
+				expect(recalled.every((memory) => memory.scores.vector >= 0.99)).toBe(
+					true,
+				);
+				const beforeZeroQuery = await sql<Array<{ accessCount: number }>>`
+					SELECT access_count AS "accessCount"
+					FROM mnemocyte_memories
+					WHERE entity_id = ${entityId}
+					ORDER BY id
+				`;
+
+				await expectMnemocyteError(
+					client.recall({ entityId, query: "zero query" }),
+					"EMBEDDING",
+				);
+				const afterZeroQuery = await sql<Array<{ accessCount: number }>>`
+					SELECT access_count AS "accessCount"
+					FROM mnemocyte_memories
+					WHERE entity_id = ${entityId}
+					ORDER BY id
+				`;
+				expect(afterZeroQuery).toEqual(beforeZeroQuery);
 			} finally {
 				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;

@@ -33,6 +33,10 @@ behavioural changes documented in their entries.
   Vector inserts and raw query literals now use a shortest round-trip-safe
   number representation, so finite values such as `1e-20` are no longer
   rounded to zero before pgvector applies its native float4 conversion.
+- **EMBED-01 — Zero-norm embeddings are rejected.** Shared embedding
+  validation now rejects exact all-zero vectors with `"EMBEDDING"` before
+  storage, recall comparison, or duplicate-search participation in either
+  backend. Tiny nonzero vectors remain valid.
 
 ## [0.3.0] - 2026-07-16
 

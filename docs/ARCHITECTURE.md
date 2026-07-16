@@ -446,7 +446,7 @@ Current write flow:
 1. Validate and deep-clone JSON metadata at call ingress.
 2. Validate the remaining input.
 3. Check Postgres embedding compatibility and embed content.
-4. Verify embedding count, dimensions, and finite components.
+4. Verify embedding count, dimensions, finite components, and nonzero norm.
 5. Insert the complete memory row through the selected adapter.
 6. Return a public record with independently cloned metadata.
 

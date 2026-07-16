@@ -29,8 +29,10 @@
   validation must happen before provider usage or vector comparison.
   Non-embedding operations should remain usable when only the configured
   embedder dimension is mismatched.
-- Single and batched embedder output must contain only finite vector values;
-  invalid components fail with `"EMBEDDING"` before storage.
+- Single and batched embedder output must contain only finite vector values and
+  at least one nonzero component. Invalid or exact zero-norm vectors fail with
+  `"EMBEDDING"` before storage or comparison; tiny nonzero vectors remain
+  valid.
 - Postgres vector inserts and raw query literals share a shortest
   round-trip-safe finite-number formatter. Do not use fixed decimal precision:
   it can collapse valid small components to zero before pgvector's float4

@@ -68,7 +68,11 @@ function createConfig(
 			dimensions,
 			async embed(texts) {
 				embedCalls.push(...texts);
-				return texts.map(() => Array.from({ length: dimensions }, () => 0));
+				return texts.map(() =>
+					Array.from({ length: dimensions }, (_value, index) =>
+						index === 0 ? 1 : 0,
+					),
+				);
 			},
 		},
 	};

@@ -18,6 +18,12 @@ function validateEmbedding(
 			"EMBEDDING",
 		);
 	}
+	if (embedding.every((component) => component === 0)) {
+		throw new MnemocyteError(
+			"Embedder returned an embedding with zero norm.",
+			"EMBEDDING",
+		);
+	}
 }
 
 export async function embedOne(

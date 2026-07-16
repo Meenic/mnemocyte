@@ -81,7 +81,9 @@ files were retained.
   never reach duplicate or recall SQL, plus an in-memory parity test. Retain
   near-zero but nonzero coverage so the check does not become an arbitrary
   magnitude threshold.
-- approval:
+- approval: yes
+- status: resolved in
+  [`1e8a512`](https://github.com/Meenic/mnemocyte/commit/1e8a51233081bf9607431c85fab8aeb68c454cb7)
 
 ### EMBED-02 — Enforce embedding-model compatibility, not dimensions alone
 
@@ -110,7 +112,9 @@ files were retained.
   matching-model success, empty installations, mixed historical rows, and
   non-embedding recovery operations. Verify migration rendering and package
   contents include the new metadata change.
-- approval:
+- approval: yes
+- status: resolved in
+  [`e0b80a5`](https://github.com/Meenic/mnemocyte/commit/e0b80a5ec0bca2cb77f0a5d778f9d1e5c6530f93)
 
 ### RETRIEVAL-01 — Align negative cosine candidate handling across backends
 
@@ -135,7 +139,9 @@ files were retained.
   assert identical IDs, vector components, and final scores. Include cosine
   values at `-1`, just below `0`, `0`, and `1`, with and without a positive
   final `minScore`.
-- approval:
+- approval: yes
+- status: resolved in
+  [`542cf4c`](https://github.com/Meenic/mnemocyte/commit/542cf4c8c40fa1e9c8a816378ab39caad2d74a28)
 
 ### SERIALIZATION-01 — Preserve small finite vector components in Postgres
 
@@ -162,7 +168,9 @@ files were retained.
   and compares them with pgvector's expected float4 rounding rather than exact
   JavaScript double equality. Confirm recall parity for a vector whose ranking
   depends on a small component.
-- approval:
+- approval: yes
+- status: resolved in
+  [`5d779c0`](https://github.com/Meenic/mnemocyte/commit/5d779c0b372185f56b15142d21e0a017c3390742)
 
 ### CANCELLATION-01 — Make every advertised operation signal observable
 

@@ -5,6 +5,71 @@ deferred after documenting their reproductions and required policy choices.
 The follow-up behavior run approved option 1 for each deferred item and has now
 resolved all three. Each behavior fix was validated and committed separately.
 
+The subsequent vector-correctness run resolved four additional approved
+high-risk proposals. Each issue was independently reproduced, implemented,
+fully validated against real Postgres + pgvector, and committed before the next
+fix began.
+
+## Approved vector correctness and compatibility fixes
+
+The verified implementation order matched the requested order:
+
+1. **SERIALIZATION-01** landed in
+   [`5d779c0`](https://github.com/Meenic/mnemocyte/commit/5d779c0b372185f56b15142d21e0a017c3390742).
+   Postgres inserts and raw query-vector literals now share a shortest
+   round-trip-safe finite-number formatter, preserving tiny nonzero components
+   through pgvector's float4 conversion.
+2. **EMBED-01** landed in
+   [`1e8a512`](https://github.com/Meenic/mnemocyte/commit/1e8a51233081bf9607431c85fab8aeb68c454cb7).
+   Shared embedding validation rejects exact zero-norm vectors with
+   `"EMBEDDING"` before storage, recall, or duplicate comparison while
+   retaining valid tiny nonzero vectors.
+3. **RETRIEVAL-01** landed in
+   [`542cf4c`](https://github.com/Meenic/mnemocyte/commit/542cf4c8c40fa1e9c8a816378ab39caad2d74a28).
+   Both `MemoryStore` adapters now expose a finite vector component clamped to
+   `[0, 1]`; Postgres applies candidate cutoffs to that component, while public
+   `minScore` remains a shared final fused-score filter.
+4. **EMBED-02** landed in
+   [`e0b80a5`](https://github.com/Meenic/mnemocyte/commit/e0b80a5ec0bca2cb77f0a5d778f9d1e5c6530f93).
+   Postgres now records installation-level embedding-model identity alongside
+   dimensions. Writes, recall, and duplicate scans validate both before
+   provider use or vector comparison. Migration `0002_add_embedding_model.sql`
+   records one unambiguous historical model; mixed history remains unset and
+   fails with `"MIGRATION"` until explicit operator repair.
+
+The dependency order was checked against the actual code before work began and
+again between fixes. Serialization had to precede zero-norm rejection because
+the old formatter could manufacture false zero vectors from legitimate tiny
+components. RETRIEVAL-01 shared the scorer and Postgres query layer but was
+otherwise independent, so it followed the settled embedding-validation rule.
+EMBED-02 remained last because it introduced the schema migration and depended
+on the vector serialization path already being stable.
+
+The failing behavior was reproduced separately before each implementation:
+
+- SERIALIZATION-01 formatted `1e-20` as fixed-decimal zero and stored a public
+  Postgres embedding with that component as zero.
+- EMBED-01 accepted exact zero vectors; pgvector produced `NaN` cosine behavior,
+  and duplicate search could return a reported similarity below its requested
+  threshold.
+- RETRIEVAL-01 returned a negative-cosine candidate from the in-memory backend
+  with vector score `0` and a positive fused score, while Postgres removed the
+  same candidate before fusion.
+- EMBED-02 let a same-dimension model-B client recall model-A data and compare
+  model-A/model-B rows as duplicates.
+
+Each fix passed `pnpm checktypes`, `pnpm lint`, `pnpm test`, `pnpm build`,
+`pnpm run pack:check`, and `pnpm run test:integration` with a real Postgres 17
+database running pgvector before its commit. The final implementation state
+contains 22 passing unit/package files with 92 tests and four passing
+integration files with six real Postgres tests. A separate pre-`0002`
+migration check confirmed that one historical model is recorded and mixed
+historical models remain unset.
+
+Implementation and documentation changes were limited to SERIALIZATION-01,
+EMBED-01, RETRIEVAL-01, and EMBED-02. No other proposal was implemented or
+modified; specifically, `CONSOLIDATION-DELETE-01` was not touched or resolved.
+
 ## Approved proposal execution
 
 The three newly approved high-risk proposals were implemented in verified

@@ -187,6 +187,11 @@ now run through `memory/client-core.ts`, while `memory/in-memory.ts` and
 `memory/` own defaults, embedding calls, filters, record mapping, and validation
 without importing the client orchestrator or backend adapters.
 
+`createMnemocyte()` synchronously validates embedder identity/dimensions,
+retrieval tuning, provider timeout/retry/delay values, and the configured
+database URL before backend work. Provider delays remain compatible with the
+existing policy that normalizes `maxDelayMs` up to `baseDelayMs` when needed.
+
 Remaining unclear boundaries:
 
 - Postgres query modules own both SQL shape and some public result-shaping

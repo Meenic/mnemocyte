@@ -57,6 +57,11 @@
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied `buildContext.maxTokens` that is not a positive
   integer fails per call with `"VALIDATION"`; omission keeps the default path.
+- Provider resilience numbers are also validated synchronously at construction:
+  timeouts and delays must be finite and non-negative, retries must be a
+  non-negative integer, and `shouldRetry` must be callable. Invalid values fail
+  with `"CONFIG"` before provider work; `maxDelayMs` below `baseDelayMs`
+  remains accepted and is normalized to the base delay.
 - `rememberMany({ inputs, signal })` is the canonical batch API, with one
   cancellation signal for the entire operation. The positional form remains a
   deprecated pre-v1 overload and maps its first item signal to the batch.

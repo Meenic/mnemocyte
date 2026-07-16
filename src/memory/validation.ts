@@ -8,6 +8,7 @@ import type {
 	ImportanceLevel,
 	ListAuditLogInput,
 	MemoryType,
+	ProviderResilienceConfig,
 	PruneInput,
 	RecallInput,
 	RememberInput,
@@ -200,6 +201,48 @@ export function validateRetrievalConfig(
 	) {
 		throw new MnemocyteError(
 			"retrieval.candidateMultiplier must be an integer greater than or equal to 1.",
+			"CONFIG",
+		);
+	}
+}
+
+export function validateProviderResilienceConfig(
+	config: ProviderResilienceConfig | undefined,
+): void {
+	if (config === undefined) {
+		return;
+	}
+	if (typeof config !== "object" || config === null || Array.isArray(config)) {
+		throw new MnemocyteError("provider must be an object.", "CONFIG");
+	}
+
+	for (const [field, value] of [
+		["provider.timeoutMs", config.timeoutMs],
+		["provider.baseDelayMs", config.baseDelayMs],
+		["provider.maxDelayMs", config.maxDelayMs],
+	] as const) {
+		if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+			throw new MnemocyteError(
+				`${field} must be a non-negative finite number.`,
+				"CONFIG",
+			);
+		}
+	}
+	if (
+		config.retries !== undefined &&
+		(!Number.isInteger(config.retries) || config.retries < 0)
+	) {
+		throw new MnemocyteError(
+			"provider.retries must be a non-negative integer.",
+			"CONFIG",
+		);
+	}
+	if (
+		config.shouldRetry !== undefined &&
+		typeof config.shouldRetry !== "function"
+	) {
+		throw new MnemocyteError(
+			"provider.shouldRetry must be a function.",
 			"CONFIG",
 		);
 	}

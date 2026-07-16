@@ -1,4 +1,9 @@
-import { createMnemocyte, MnemocyteError } from "mnemocyte";
+import {
+	createMnemocyte,
+	isMnemocyteError,
+	MnemocyteError,
+	type ProviderResilienceConfig,
+} from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import { defaultShouldRetry } from "../../src/resilience.js";
 import { expectMnemocyteError } from "../helpers.js";
@@ -8,6 +13,119 @@ describe("resilience", () => {
 		expect(
 			defaultShouldRetry(new MnemocyteError("has dependents", "CONFLICT")),
 		).toBe(false);
+	});
+
+	test("validates provider resilience configuration at construction", async () => {
+		const invalidConfigs: readonly [
+			label: string,
+			config: ProviderResilienceConfig,
+		][] = [
+			["NaN retries", { retries: Number.NaN }],
+			["infinite retries", { retries: Number.POSITIVE_INFINITY }],
+			["negative retries", { retries: -1 }],
+			["fractional retries", { retries: 1.5 }],
+			["NaN timeout", { timeoutMs: Number.NaN }],
+			["infinite timeout", { timeoutMs: Number.POSITIVE_INFINITY }],
+			["negative timeout", { timeoutMs: -1 }],
+			["NaN base delay", { baseDelayMs: Number.NaN }],
+			["infinite base delay", { baseDelayMs: Number.POSITIVE_INFINITY }],
+			["negative base delay", { baseDelayMs: -1 }],
+			["NaN max delay", { maxDelayMs: Number.NaN }],
+			["infinite max delay", { maxDelayMs: Number.POSITIVE_INFINITY }],
+			["negative max delay", { maxDelayMs: -1 }],
+			[
+				"non-function retry predicate",
+				{
+					shouldRetry: true as unknown as NonNullable<
+						ProviderResilienceConfig["shouldRetry"]
+					>,
+				},
+			],
+		];
+
+		for (const [label, provider] of invalidConfigs) {
+			let embedCalls = 0;
+			try {
+				createMnemocyte({
+					embedder: {
+						model: "invalid-provider-config",
+						dimensions: 1,
+						async embed(texts) {
+							embedCalls += 1;
+							return texts.map(() => [1]);
+						},
+					},
+					provider,
+				});
+			} catch (error) {
+				expect(isMnemocyteError(error), label).toBe(true);
+				if (!isMnemocyteError(error)) {
+					throw error;
+				}
+				expect(error.code, label).toBe("CONFIG");
+				expect(embedCalls, label).toBe(0);
+				continue;
+			}
+			throw new Error(`Expected CONFIG for ${label}.`);
+		}
+
+		let zeroCalls = 0;
+		const zeroClient = createMnemocyte({
+			embedder: {
+				model: "zero-provider-config",
+				dimensions: 1,
+				async embed(texts) {
+					zeroCalls += 1;
+					return texts.map(() => [1]);
+				},
+			},
+			provider: {
+				timeoutMs: 0,
+				retries: 0,
+				baseDelayMs: 0,
+				maxDelayMs: 0,
+				shouldRetry: () => false,
+			},
+		});
+		try {
+			await zeroClient.remember({
+				entityId: "zero_provider_config",
+				content: "valid zero boundaries",
+			});
+			expect(zeroCalls).toBe(1);
+		} finally {
+			await zeroClient.close();
+		}
+
+		let normalizedDelayCalls = 0;
+		const normalizedDelayClient = createMnemocyte({
+			embedder: {
+				model: "normalized-delay-config",
+				dimensions: 1,
+				async embed(texts) {
+					normalizedDelayCalls += 1;
+					if (normalizedDelayCalls === 1) {
+						throw new Error("503 transient");
+					}
+					return texts.map(() => [1]);
+				},
+			},
+			provider: {
+				timeoutMs: 1_000,
+				retries: 1,
+				baseDelayMs: 2,
+				maxDelayMs: 1,
+			},
+		});
+		try {
+			await normalizedDelayClient.remember({
+				entityId: "normalized_delay_config",
+				content: "max delay below base remains supported",
+			});
+			expect(normalizedDelayCalls).toBe(2);
+		} finally {
+			await normalizedDelayClient.close();
+		}
 	});
 
 	test("handles retries, timeouts, aborts, and retry filters", async () => {

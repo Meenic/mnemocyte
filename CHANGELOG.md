@@ -10,6 +10,13 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **CONFIG-01 — Invalid provider resilience numbers reject at construction.**
+  `timeoutMs`, `baseDelayMs`, and `maxDelayMs` must be finite and
+  non-negative; `retries` must also be an integer; and `shouldRetry` must be
+  callable. Invalid values now throw `"CONFIG"` synchronously instead of
+  failing later during provider work. `maxDelayMs` below `baseDelayMs` remains
+  supported and is normalized up to the base delay.
+
 - **INPUT-02 — Malformed remember domains now reject at runtime.** Unknown
   memory types or importance levels, non-array/non-string tags, non-string
   sources, and invalid expiration dates now fail with `"VALIDATION"` before

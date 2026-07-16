@@ -144,17 +144,25 @@ export interface ProviderResilienceConfig {
 	/**
 	 * Maximum time, in milliseconds, that a single provider attempt may
 	 * run before a {@link MnemocyteError} with code `"TIMEOUT"` is thrown.
-	 * Defaults to `0` which disables the timeout.
+	 * Must be a non-negative finite number. Defaults to `0` which disables the
+	 * timeout.
 	 */
 	timeoutMs?: number;
 	/**
-	 * Maximum number of retry attempts after the initial call. `0`
-	 * disables retries (default).
+	 * Maximum number of retry attempts after the initial call. Must be a
+	 * non-negative integer. `0` disables retries (default).
 	 */
 	retries?: number;
-	/** Base backoff delay (ms) used before the first retry. Defaults to `100`. */
+	/**
+	 * Base backoff delay (ms) used before the first retry. Must be a
+	 * non-negative finite number. Defaults to `100`.
+	 */
 	baseDelayMs?: number;
-	/** Maximum backoff delay (ms) used between retries. Defaults to `2000`. */
+	/**
+	 * Maximum backoff delay (ms) used between retries. Must be a non-negative
+	 * finite number. Values below `baseDelayMs` are normalized up to the base
+	 * delay. Defaults to `2000`.
+	 */
 	maxDelayMs?: number;
 	/**
 	 * Optional predicate deciding whether `error` should trigger a retry.

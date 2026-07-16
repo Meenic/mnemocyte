@@ -390,6 +390,12 @@ const client = createMnemocyte({
 });
 ```
 
+Provider resilience values are validated synchronously when the client is
+created. Timeouts and delays must be finite non-negative numbers, retries must
+be a non-negative integer, and `shouldRetry` must be a function when supplied;
+invalid values throw `"CONFIG"`. A `maxDelayMs` below `baseDelayMs` remains
+valid and is normalized up to the base delay.
+
 Pass `signal` to cancel an operation:
 
 ```ts

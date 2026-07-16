@@ -8,6 +8,16 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **AUDIT-02 — Experimental composite audit cursors.** Added the exported
+  `AuditLogCursor` type plus `beforeCursor` / `afterCursor` inputs. Audit logs
+  now order by `(timestamp, event ID)` in descending order and use matching
+  tuple comparisons, so equal-timestamp events can be paged without omissions
+  or duplicates. Migration note: existing `before` / `after` timestamps remain
+  strict filters, not complete pagination cursors; callers that page with
+  timestamps alone should switch to the composite fields for tie-safe paging.
+
 ### Breaking Changes
 
 - **CONFIG-01 — Invalid provider resilience numbers reject at construction.**

@@ -1,6 +1,7 @@
 import type {
 	AuditConfig,
 	AuditEvent,
+	AuditLogCursor,
 	BuildContextInput,
 	ConsolidateInput,
 	ConsolidateResult,
@@ -141,7 +142,15 @@ const duplicatePair: DuplicatePair = {
 };
 
 const auditConfig: AuditConfig = { enabled: true };
-const listAudit: ListAuditLogInput = { entityId: "entity", limit: 50 };
+const auditCursor: AuditLogCursor = {
+	timestamp: new Date(),
+	id: "evt_cursor",
+};
+const listAudit: ListAuditLogInput = {
+	entityId: "entity",
+	limit: 50,
+	beforeCursor: auditCursor,
+};
 const auditEvent: AuditEvent = {
 	id: "evt_x",
 	entityId: "entity",

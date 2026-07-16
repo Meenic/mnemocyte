@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { MnemocyteError } from "../../errors.js";
+import type { AuditLogCursor } from "../../types.js";
 import { executeCancelableSql } from "../cancellation.js";
 import type { MnemocyteDatabase } from "../index.js";
 import { type EventRow, eventsTable, type NewEventRow } from "../schema.js";
@@ -9,6 +10,12 @@ export interface EventFilter {
 	limit?: number;
 	before?: Date;
 	after?: Date;
+	beforeCursor?: AuditLogCursor;
+	afterCursor?: AuditLogCursor;
+}
+
+function timestampParam(value: Date) {
+	return sql`${value.toISOString()}::timestamptz`;
 }
 
 export async function insertEvent(
@@ -39,9 +46,19 @@ export async function listEvents(
 				timestamp
 			FROM mnemocyte_events
 			WHERE entity_id = ${filter.entityId}
-				${filter.before ? sql`AND timestamp < ${filter.before}` : sql``}
-				${filter.after ? sql`AND timestamp > ${filter.after}` : sql``}
-			ORDER BY timestamp DESC
+				${filter.before ? sql`AND timestamp < ${timestampParam(filter.before)}` : sql``}
+				${filter.after ? sql`AND timestamp > ${timestampParam(filter.after)}` : sql``}
+				${
+					filter.beforeCursor
+						? sql`AND (timestamp, id) < (${timestampParam(filter.beforeCursor.timestamp)}, ${filter.beforeCursor.id})`
+						: sql``
+				}
+				${
+					filter.afterCursor
+						? sql`AND (timestamp, id) > (${timestampParam(filter.afterCursor.timestamp)}, ${filter.afterCursor.id})`
+						: sql``
+				}
+			ORDER BY timestamp DESC, id DESC
 			LIMIT ${filter.limit ?? 50}
 		`,
 		signal,

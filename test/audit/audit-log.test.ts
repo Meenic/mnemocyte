@@ -56,6 +56,7 @@ describe("audit log", () => {
 					type: "preference",
 					importance: "high",
 				});
+				await new Promise((resolve) => setTimeout(resolve, 5));
 				await client.forget({ entityId: "alice", memoryId: mem.id });
 				const log = await client.listAuditLog({ entityId: "alice" });
 				expect(log.length).toBe(2);
@@ -86,6 +87,7 @@ describe("audit log", () => {
 				await client.remember({ entityId: "alice", content: "two" });
 				const beforeClear = await client.listAuditLog({ entityId: "alice" });
 				expect(beforeClear.length).toBe(2);
+				await new Promise((resolve) => setTimeout(resolve, 5));
 				await client.forgetAll({ entityId: "alice" });
 				const afterClear = await client.listAuditLog({ entityId: "alice" });
 				expect(afterClear.length).toBe(3);

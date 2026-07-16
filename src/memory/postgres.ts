@@ -447,6 +447,12 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
 						...(input.before === undefined ? {} : { before: input.before }),
 						...(input.after === undefined ? {} : { after: input.after }),
+						...(input.beforeCursor === undefined
+							? {}
+							: { beforeCursor: input.beforeCursor }),
+						...(input.afterCursor === undefined
+							? {}
+							: { afterCursor: input.afterCursor }),
 					},
 					options?.signal,
 				);

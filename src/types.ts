@@ -683,6 +683,18 @@ export interface AuditEvent {
 }
 
 /**
+ * Stable composite position for deterministic audit-log pagination.
+ *
+ * @experimental Part of Phase 6 (consolidation tooling). Shape may change.
+ */
+export interface AuditLogCursor {
+	/** Event timestamp at the page boundary. */
+	timestamp: Date;
+	/** Event ID used to break timestamp ties. */
+	id: string;
+}
+
+/**
  * Input for {@link MnemocyteClient.listAuditLog}.
  *
  * @experimental Part of Phase 6 (consolidation tooling).
@@ -695,10 +707,28 @@ export interface ListAuditLogInput {
 	 * @defaultValue `50`
 	 */
 	limit?: number;
-	/** Only return entries strictly before this timestamp. */
+	/**
+	 * Only return entries strictly before this timestamp. This is a filter, not
+	 * a complete pagination cursor: events sharing the timestamp are excluded.
+	 */
 	before?: Date;
-	/** Only return entries strictly after this timestamp. */
+	/**
+	 * Only return entries strictly after this timestamp. This is a filter, not
+	 * a complete pagination cursor: events sharing the timestamp are excluded.
+	 */
 	after?: Date;
+	/**
+	 * Return entries strictly older than this stable `(timestamp, id)` position.
+	 *
+	 * @experimental Prefer this over `before` for complete pagination.
+	 */
+	beforeCursor?: AuditLogCursor;
+	/**
+	 * Return entries strictly newer than this stable `(timestamp, id)` position.
+	 *
+	 * @experimental Prefer this over `after` for complete pagination.
+	 */
+	afterCursor?: AuditLogCursor;
 	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
 	 * Postgres requests cancellation of the active audit-log query.

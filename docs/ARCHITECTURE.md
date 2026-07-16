@@ -268,7 +268,10 @@ files such as `dist/embedders/index.d.mts` and
   consolidation survivor.
 - `prune(input: PruneInput)` — bulk-delete by `entityId` / `expired` / `superseded` / `createdBefore` / `notAccessedSince` / `types` / `tags` / `maxImportance` with `dryRun`; a non-dry-run batch rejects atomically with `"CONFLICT"` if any match is a referenced survivor. Store results include internal per-entity deletion counts so shared orchestration can emit one best-effort `"memory.pruned"` audit event per affected entity, including global prunes.
 - `findDuplicates(input)` — read-only pairwise scan returning `DuplicatePair[]`.
-- `listAuditLog(input)` — newest-first, entity-scoped, with `before` / `after` / `limit`.
+- `listAuditLog(input)` — entity-scoped and ordered newest-first by
+  `(timestamp, event ID)`. Experimental `beforeCursor` / `afterCursor`
+  composite positions provide stable tie-safe pagination; `before` / `after`
+  remain strict timestamp filters.
 - `stats(input?)` — `EntityStats` or `GlobalStats`.
 - `close()` — idempotent; further calls throw `"DB"`.
 
@@ -294,7 +297,7 @@ files such as `dist/embedders/index.d.mts` and
 - Result types: `PruneResult`, `ConsolidateResult`.
 - Observability: `MnemocyteObservation`, `MnemocyteOperation`, `MnemocyteObservationPhase`, `MnemocyteBackend`, `ObservabilityConfig`.
 - Resilience: `ProviderResilienceConfig`.
-- Audit: `AuditConfig`, `AuditEvent`.
+- Audit: `AuditConfig`, `AuditEvent`, experimental `AuditLogCursor`.
 
 **Escape hatches**
 

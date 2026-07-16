@@ -120,6 +120,10 @@
   redundant by the remember/audit metadata traversal audit.
 - Ordinary audit writes are best-effort; Postgres consolidation audit events
   remain transaction-coupled to the consolidation mutation.
+- Audit-log ordering uses `(timestamp, event ID)` descending in both adapters.
+  Experimental `beforeCursor` / `afterCursor` inputs use the same tuple for
+  stable pagination across equal timestamps. Timestamp-only `before` / `after`
+  remain strict filters and are not complete tie-safe cursors.
 - Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported
   runtime; CI also covers Node 24.
 

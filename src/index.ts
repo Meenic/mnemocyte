@@ -41,6 +41,7 @@ export { isMnemocyteError, MnemocyteError } from "./errors.js";
 export type {
 	AuditConfig,
 	AuditEvent,
+	AuditLogCursor,
 	BuildContextInput,
 	ConsolidateInput,
 	ConsolidateResult,

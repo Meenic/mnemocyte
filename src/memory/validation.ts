@@ -1,6 +1,7 @@
 import { MnemocyteError } from "../errors.js";
 import { DEFAULT_RETRIEVAL_WEIGHTS } from "../retrieval/scorer.js";
 import type {
+	AuditLogCursor,
 	BuildContextInput,
 	ConsolidateInput,
 	Embedder,
@@ -485,4 +486,28 @@ export function validateListAuditLogInput(input: ListAuditLogInput): void {
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
 	}
+	for (const [field, cursor] of [
+		["beforeCursor", input.beforeCursor],
+		["afterCursor", input.afterCursor],
+	] as const) {
+		if (cursor === undefined) {
+			continue;
+		}
+		assertAuditLogCursor(cursor, field);
+	}
+}
+
+function assertAuditLogCursor(
+	value: unknown,
+	field: string,
+): asserts value is AuditLogCursor {
+	if (typeof value !== "object" || value === null) {
+		throw new MnemocyteError(
+			`${field} must be an audit-log cursor.`,
+			"VALIDATION",
+		);
+	}
+	const cursor = value as { id?: unknown; timestamp?: unknown };
+	assertValidDate(cursor.timestamp, `${field}.timestamp`);
+	assertNonEmptyString(cursor.id, `${field}.id`);
 }

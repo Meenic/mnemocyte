@@ -51,6 +51,20 @@ function cloneAuditEvent(event: AuditEvent): AuditEvent {
 	};
 }
 
+function compareAuditPositions(
+	a: { id: string; timestamp: Date },
+	b: { id: string; timestamp: Date },
+): number {
+	const timestampDifference = a.timestamp.getTime() - b.timestamp.getTime();
+	if (timestampDifference !== 0) {
+		return timestampDifference;
+	}
+	if (a.id === b.id) {
+		return 0;
+	}
+	return a.id < b.id ? -1 : 1;
+}
+
 function assertNoDependentMemories(
 	memories: ReadonlyMap<string, StoredMemory>,
 	targetIds: ReadonlySet<string>,
@@ -238,9 +252,8 @@ export function createInMemoryStore(): MemoryStore {
 		async listAuditLog(input, options) {
 			throwIfAborted(options?.signal);
 			const limit = input.limit ?? DEFAULT_AUDIT_LOG_LIMIT;
-			const indexed = auditLog.map((event, idx) => ({ event, idx }));
-			return indexed
-				.filter(({ event }) => {
+			return auditLog
+				.filter((event) => {
 					throwIfAborted(options?.signal);
 					if (event.entityId !== input.entityId) {
 						return false;
@@ -257,14 +270,25 @@ export function createInMemoryStore(): MemoryStore {
 					) {
 						return false;
 					}
+					if (
+						input.beforeCursor !== undefined &&
+						compareAuditPositions(event, input.beforeCursor) >= 0
+					) {
+						return false;
+					}
+					if (
+						input.afterCursor !== undefined &&
+						compareAuditPositions(event, input.afterCursor) <= 0
+					) {
+						return false;
+					}
 					return true;
 				})
 				.sort((a, b) => {
-					const dt = b.event.timestamp.getTime() - a.event.timestamp.getTime();
-					return dt === 0 ? b.idx - a.idx : dt;
+					return compareAuditPositions(b, a);
 				})
 				.slice(0, limit)
-				.map(({ event }) => cloneAuditEvent(event));
+				.map(cloneAuditEvent);
 		},
 		async getMemory(entityId, memoryId, options) {
 			throwIfAborted(options?.signal);

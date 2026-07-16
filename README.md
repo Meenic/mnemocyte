@@ -366,7 +366,23 @@ const events = await client.listAuditLog({
   entityId: "user_123",
   limit: 100,
 });
+
+const last = events.at(-1);
+const nextPage = last
+  ? await client.listAuditLog({
+      entityId: "user_123",
+      limit: 100,
+      beforeCursor: { timestamp: last.timestamp, id: last.id },
+    })
+  : [];
 ```
+
+Audit entries are ordered newest first by timestamp and event ID. The
+experimental composite `beforeCursor` / `afterCursor` fields provide stable
+pagination when multiple events share a timestamp. The existing `before` and
+`after` fields remain strict timestamp filters; they exclude all events at the
+boundary timestamp and should not be used as the sole cursor when complete
+tie-safe pagination is required.
 
 Ordinary audit writes are best-effort: an audit storage failure does not fail
 the primary client operation, so `listAuditLog` returns only events that were

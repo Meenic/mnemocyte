@@ -36,6 +36,67 @@ const IMPORTANCE_LEVELS = [
 	"critical",
 ] as const satisfies readonly ImportanceLevel[];
 
+function isMemoryType(value: unknown): value is MemoryType {
+	return (
+		typeof value === "string" &&
+		(MEMORY_TYPES as readonly string[]).includes(value)
+	);
+}
+
+function isImportanceLevel(value: unknown): value is ImportanceLevel {
+	return (
+		typeof value === "string" &&
+		(IMPORTANCE_LEVELS as readonly string[]).includes(value)
+	);
+}
+
+function assertMemoryType(
+	value: unknown,
+	field: string,
+): asserts value is MemoryType {
+	if (!isMemoryType(value)) {
+		throw new MnemocyteError(
+			`${field} must be a known memory type.`,
+			"VALIDATION",
+		);
+	}
+}
+
+function assertImportanceLevel(
+	value: unknown,
+	field: string,
+): asserts value is ImportanceLevel {
+	if (!isImportanceLevel(value)) {
+		throw new MnemocyteError(
+			`${field} must be a known importance level.`,
+			"VALIDATION",
+		);
+	}
+}
+
+function assertMemoryTypeArray(
+	value: unknown,
+	field: string,
+): asserts value is readonly MemoryType[] {
+	if (!Array.isArray(value)) {
+		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
+	}
+	for (const item of value) {
+		if (!isMemoryType(item)) {
+			throw new MnemocyteError(
+				`${field} must contain only known memory types.`,
+				"VALIDATION",
+			);
+		}
+	}
+}
+
+function assertValidDate(value: unknown, field: string): asserts value is Date {
+	if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+		throw new MnemocyteError(`${field} must be a valid Date.`, "VALIDATION");
+	}
+}
+
 export function assertNonEmptyString(
 	value: unknown,
 	field: string,
@@ -159,6 +220,28 @@ export function validateBuildContextInput(input: BuildContextInput): void {
 export function validateRememberInput(input: RememberInput): void {
 	assertNonEmptyString(input.entityId, "entityId");
 	assertNonEmptyString(input.content, "content");
+	if (input.type !== undefined) {
+		assertMemoryType(input.type, "type");
+	}
+	if (input.importance !== undefined) {
+		assertImportanceLevel(input.importance, "importance");
+	}
+	if (input.tags !== undefined) {
+		if (!Array.isArray(input.tags)) {
+			throw new MnemocyteError("tags must be an array.", "VALIDATION");
+		}
+		for (const tag of input.tags as readonly unknown[]) {
+			if (typeof tag !== "string") {
+				throw new MnemocyteError(
+					"tags must contain only strings.",
+					"VALIDATION",
+				);
+			}
+		}
+	}
+	if (input.source !== undefined && typeof input.source !== "string") {
+		throw new MnemocyteError("source must be a string.", "VALIDATION");
+	}
 	if (input.metadata !== undefined) {
 		validateJsonObject(input.metadata);
 	}
@@ -173,6 +256,9 @@ export function validateRememberInput(input: RememberInput): void {
 			"VALIDATION",
 		);
 	}
+	if (input.expiresAt !== undefined) {
+		assertValidDate(input.expiresAt, "expiresAt");
+	}
 }
 
 export function validateRecallInput(input: RecallInput): void {
@@ -183,6 +269,9 @@ export function validateRecallInput(input: RecallInput): void {
 	}
 	if (input.minScore !== undefined) {
 		assertMinScore(input.minScore);
+	}
+	if (input.types !== undefined) {
+		assertMemoryTypeArray(input.types, "types");
 	}
 }
 
@@ -227,31 +316,14 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 		["createdBefore", input.createdBefore],
 		["notAccessedSince", input.notAccessedSince],
 	] as const) {
-		if (
-			value !== undefined &&
-			(!(value instanceof Date) || !Number.isFinite(value.getTime()))
-		) {
-			throw new MnemocyteError(`${field} must be a valid Date.`, "VALIDATION");
+		if (value !== undefined) {
+			assertValidDate(value, field);
 		}
 	}
 	let types: readonly MemoryType[] | undefined;
 	if (input.types !== undefined) {
-		if (!Array.isArray(input.types)) {
-			throw new MnemocyteError("types must be an array.", "VALIDATION");
-		}
-		const normalized = new Set<MemoryType>();
-		for (const value of input.types as readonly unknown[]) {
-			if (
-				typeof value !== "string" ||
-				!(MEMORY_TYPES as readonly string[]).includes(value)
-			) {
-				throw new MnemocyteError(
-					"types must contain only known memory types.",
-					"VALIDATION",
-				);
-			}
-			normalized.add(value as MemoryType);
-		}
+		assertMemoryTypeArray(input.types, "types");
+		const normalized = new Set<MemoryType>(input.types);
 		if (normalized.size > 0) {
 			types = [...normalized];
 		}
@@ -275,14 +347,8 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 			tags = [...normalized];
 		}
 	}
-	if (
-		input.maxImportance !== undefined &&
-		!(IMPORTANCE_LEVELS as readonly string[]).includes(input.maxImportance)
-	) {
-		throw new MnemocyteError(
-			"maxImportance must be a known importance level.",
-			"VALIDATION",
-		);
+	if (input.maxImportance !== undefined) {
+		assertImportanceLevel(input.maxImportance, "maxImportance");
 	}
 	if (
 		input.signal !== undefined &&
@@ -335,6 +401,9 @@ export function validateFindDuplicatesInput(input: FindDuplicatesInput): void {
 	}
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
+	}
+	if (input.types !== undefined) {
+		assertMemoryTypeArray(input.types, "types");
 	}
 }
 

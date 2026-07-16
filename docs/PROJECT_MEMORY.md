@@ -47,6 +47,12 @@
   `JsonValue` types. Unsupported or cyclic runtime values fail with
   `"VALIDATION"`, and both storage adapters deep-clone metadata at ingress and
   egress.
+- `remember` and `rememberMany` snapshot mutable tags, metadata, and expiration
+  dates before awaiting. Their shared runtime boundary rejects unknown memory
+  types or importance levels, malformed tags/source values, and invalid
+  expiration dates with `"VALIDATION"` before provider or store work. Recall,
+  duplicate-search, and prune type filters share the same memory-type domain
+  validator.
 - Retrieval tuning is validated synchronously at client construction and fails
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied `buildContext.maxTokens` that is not a positive
@@ -133,8 +139,9 @@ Known code follow-ups before v1:
 - Continue tightening edge-case database and migration failure wrapping.
 - Preserve the deprecated positional `rememberMany(inputs)` overload through
   pre-v1; new code uses `rememberMany({ inputs, signal })`.
-- Add runtime validation for JavaScript consumers where public inputs need
-  stronger guards than TypeScript declarations.
+- Continue adding runtime validation for JavaScript consumers where public
+  inputs beyond the remember and memory-type-filter boundaries need stronger
+  guards than TypeScript declarations.
 - Resolve or explicitly defer the unapproved findings tracked in
   `../PROPOSALS.md`; do not infer approval from their presence.
 

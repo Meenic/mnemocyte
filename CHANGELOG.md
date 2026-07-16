@@ -10,6 +10,12 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **INPUT-02 — Malformed remember domains now reject at runtime.** Unknown
+  memory types or importance levels, non-array/non-string tags, non-string
+  sources, and invalid expiration dates now fail with `"VALIDATION"` before
+  provider or storage work. Type filters on recall, duplicate search, and
+  prune use the same runtime memory-type domain validation.
+
 - **CONSOLIDATION-DELETE-01 — Referenced consolidation survivors cannot be
   deleted.** `forget`, `forgetAll`, and non-dry-run `prune` now reject with
   `"CONFLICT"` when a selected memory still has `supersededBy` dependents.

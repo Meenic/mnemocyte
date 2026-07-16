@@ -8,6 +8,10 @@ import {
 	createGatedEmbedder,
 	verifyRememberInputSnapshots,
 } from "../fixtures/remember-input-snapshot.js";
+import {
+	createCountingEmbedder,
+	verifyRememberInputValidation,
+} from "../fixtures/remember-input-validation.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -57,6 +61,33 @@ describe("Postgres remember input snapshots", () => {
 			try {
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await verifyRememberInputSnapshots(client, gate.nextCall, entityId);
+			} finally {
+				await client.close();
+				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
+				await sql.end();
+			}
+		},
+		60_000,
+	);
+
+	test.skipIf(!databaseUrl)(
+		"rejects malformed runtime values before embedding or storage",
+		async () => {
+			const sql = postgres(databaseUrl ?? "", { max: 1 });
+			const entityId = `validation_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			await applyMigrations(sql);
+			const counter = createCountingEmbedder(
+				"mnemocyte-integration-test",
+				1536,
+			);
+			const client = createMnemocyte({
+				databaseUrl: databaseUrl ?? "",
+				embedder: counter.embedder,
+			});
+
+			try {
+				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
+				await verifyRememberInputValidation(client, counter.getCalls, entityId);
 			} finally {
 				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;

@@ -478,8 +478,8 @@ installation.
 
 Current write flow:
 
-1. Validate and deep-clone JSON metadata at call ingress.
-2. Validate the remaining input.
+1. Snapshot caller-owned tags, metadata, and expiration dates at call ingress.
+2. Validate strings, JSON metadata, enum domains, tags, confidence, and dates.
 3. Check Postgres embedding compatibility and embed content.
 4. Verify embedding count, dimensions, finite components, and nonzero norm.
 5. Insert the complete memory row through the selected adapter.
@@ -588,8 +588,8 @@ Before v1, finish or explicitly defer:
 - a public `MemoryStore` adapter contract once the internal boundary is stable
 - continued tightening of expected database, migration, and provider failure
   wrapping
-- remaining runtime input validation for JavaScript consumers where TypeScript
-  cannot help
+- remaining runtime input validation outside the remember and memory-type
+  filter boundaries where JavaScript consumers cannot rely on TypeScript
 - representative benchmark or `EXPLAIN` evidence before adding more default
   full-text, tag, or filtered-vector indexes
 - provenance verification on the next manual publish or a trusted-publishing

@@ -232,6 +232,14 @@ bigints, non-finite numbers, class instances, or cyclic objects are rejected
 with `MnemocyteError` code `"VALIDATION"`. Mnemocyte deep-clones metadata when
 writing and reading, so later mutations do not change stored state.
 
+JavaScript callers receive the same runtime domain checks as TypeScript
+callers: `type` and `importance` must be known values, tags must be an array of
+strings, `source` must be a string when supplied, and `expiresAt` must be a
+valid `Date`. Invalid values reject with `"VALIDATION"` before embedding or
+storage. Mutable tags, metadata, and expiration dates are snapshotted when
+`remember` or `rememberMany` is invoked, so later caller mutations cannot
+change the pending write.
+
 For batches, cancellation belongs to the whole operation:
 
 ```ts

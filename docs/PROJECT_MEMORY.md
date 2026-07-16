@@ -63,6 +63,11 @@
   every prepared input ID. Shared orchestration rejects missing, duplicate, or
   unknown IDs with `"DB"` and restores prepared-input order before returning
   single or batched remember results.
+- Recall scoring uses pre-access counts, then
+  `MemoryStore.markMemoriesAccessed()` returns the exact post-update count and
+  timestamps for every selected ID. Shared orchestration validates the ID set
+  and patches `accessCount`, `lastAccessedAt`, and `updatedAt` before returning
+  without rescoring the result.
 - Retrieval tuning is validated synchronously at client construction and fails
   with `"CONFIG"` for invalid weights, decay/access settings, or candidate
   multipliers. A supplied `buildContext.maxTokens` that is not a positive

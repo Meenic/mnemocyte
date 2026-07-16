@@ -563,19 +563,32 @@ export async function setMemoryTags(
 export async function markMemoriesAccessed(
 	db: MnemocyteDatabase,
 	memoryIds: readonly string[],
-): Promise<void> {
+): Promise<
+	Array<{
+		id: string;
+		lastAccessedAt: Date | null;
+		accessCount: number;
+		updatedAt: Date;
+	}>
+> {
 	const now = new Date();
 	if (memoryIds.length === 0) {
-		return;
+		return [];
 	}
-	await db
+	return db
 		.update(memoriesTable)
 		.set({
 			lastAccessedAt: now,
 			accessCount: sql`${memoriesTable.accessCount} + 1`,
 			updatedAt: now,
 		})
-		.where(inArray(memoriesTable.id, [...memoryIds]));
+		.where(inArray(memoriesTable.id, [...memoryIds]))
+		.returning({
+			id: memoriesTable.id,
+			lastAccessedAt: memoriesTable.lastAccessedAt,
+			accessCount: memoriesTable.accessCount,
+			updatedAt: memoriesTable.updatedAt,
+		});
 }
 
 export async function getMemoryEmbeddings(

@@ -275,6 +275,11 @@ const memories = await client.recall({
 });
 ```
 
+Successful recall results include the access metadata written by that call:
+`accessCount`, `lastAccessedAt`, and `updatedAt` match stored state when the
+promise resolves. Ranking and score explanations use the count from before the
+current recall so the access update cannot change its own ordering.
+
 ### `buildContext`
 
 ```ts

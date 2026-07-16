@@ -39,6 +39,11 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **RETRIEVAL-02 — Recall returns post-update access metadata.** Successful
+  recall results now expose the `accessCount`, `lastAccessedAt`, and
+  `updatedAt` written by that recall instead of values from the preceding
+  access. Ranking and score explanations still use the pre-access count, so a
+  recall does not reorder or rescore itself.
 - **STORE-01 — Batch inserts validate the store return contract.** Shared
   orchestration now requires exactly one returned memory for every prepared
   input ID, rejects missing, duplicate, or unknown IDs with `"DB"`, and

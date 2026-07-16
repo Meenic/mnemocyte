@@ -42,6 +42,13 @@ export interface StoreDuplicatePair {
 	similarity: number;
 }
 
+export interface StoreAccessUpdate {
+	id: string;
+	lastAccessedAt: Date;
+	accessCount: number;
+	updatedAt: Date;
+}
+
 export interface StoreConsolidationTarget {
 	id: string;
 	tags: readonly string[];
@@ -129,7 +136,13 @@ export interface MemoryStore {
 	getMemoryEmbeddings(
 		memoryIds: readonly string[],
 	): Promise<Map<string, number[]>>;
-	markMemoriesAccessed(memoryIds: readonly string[]): Promise<void>;
+	/**
+	 * Returns exactly one post-update access record for every input ID. Return
+	 * order is not trusted and is normalized by shared orchestration.
+	 */
+	markMemoriesAccessed(
+		memoryIds: readonly string[],
+	): Promise<StoreAccessUpdate[]>;
 
 	/** Throws `"CONFLICT"` when the selected memory has dependents. */
 	deleteMemory(entityId: string, memoryId: string): Promise<boolean>;

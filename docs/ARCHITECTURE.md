@@ -571,6 +571,12 @@ LIMIT $3;
 
 Fusion combines vector, lexical, recency, importance, confidence, and access-count signals. Weights are configurable through `MnemocyteConfig.retrieval`, and detailed explanations are only returned when requested.
 
+Recall ranks candidates using their pre-access counts. After selection, the
+store access-update operation returns one post-update count and timestamp set
+per selected ID; shared orchestration validates that returned ID set and patches
+the public results. A recall therefore exposes the access state it committed
+without allowing that same update to change its ranking or explanation.
+
 ## Context Builder
 
 The context builder assembles model-ready memory context. It must treat memory content as untrusted input.

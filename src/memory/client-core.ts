@@ -149,32 +149,33 @@ function auditEvent(
 	};
 }
 
-function normalizeInsertedMemories(
+function normalizeStoreRows<T extends { id: string }>(
 	expected: readonly { id: string }[],
-	inserted: readonly Memory[],
-): Memory[] {
+	returned: readonly T[],
+	operation: string,
+): T[] {
 	const expectedIds = new Set(expected.map((memory) => memory.id));
-	const insertedById = new Map<string, Memory>();
+	const returnedById = new Map<string, T>();
 
-	for (const memory of inserted) {
-		if (!expectedIds.has(memory.id)) {
-			throw new MnemocyteError("Memory insert returned an unknown ID.", "DB");
+	for (const row of returned) {
+		if (!expectedIds.has(row.id)) {
+			throw new MnemocyteError(`${operation} returned an unknown ID.`, "DB");
 		}
-		if (insertedById.has(memory.id)) {
-			throw new MnemocyteError("Memory insert returned a duplicate ID.", "DB");
+		if (returnedById.has(row.id)) {
+			throw new MnemocyteError(`${operation} returned a duplicate ID.`, "DB");
 		}
-		insertedById.set(memory.id, memory);
+		returnedById.set(row.id, row);
 	}
 
-	return expected.map((memory) => {
-		const insertedMemory = insertedById.get(memory.id);
-		if (!insertedMemory) {
+	return expected.map((row) => {
+		const returnedRow = returnedById.get(row.id);
+		if (!returnedRow) {
 			throw new MnemocyteError(
-				"Memory insert did not return every inserted ID.",
+				`${operation} did not return every requested ID.`,
 				"DB",
 			);
 		}
-		return insertedMemory;
+		return returnedRow;
 	});
 }
 
@@ -316,9 +317,10 @@ export function createMemoryClient(
 					const stored = [
 						createStoredMemory(config, preparedInput, embedding, new Date()),
 					];
-					const [memory] = normalizeInsertedMemories(
+					const [memory] = normalizeStoreRows(
 						stored,
 						await store.insertMemories(stored),
+						"Memory insert",
 					);
 					if (!memory) {
 						throw new MnemocyteError(
@@ -378,9 +380,10 @@ export function createMemoryClient(
 					const stored = preparedInputs.map((item, idx) =>
 						createStoredMemory(config, item, embeddings[idx] as number[], now),
 					);
-					const memories = normalizeInsertedMemories(
+					const memories = normalizeStoreRows(
 						stored,
 						await store.insertMemories(stored),
+						"Memory insert",
 					);
 					await recordAudit(
 						memories.map((memory) =>
@@ -475,8 +478,26 @@ export function createMemoryClient(
 					.filter((memory) => memory.score >= minScore)
 					.sort((a, b) => b.score - a.score)
 					.slice(0, limit);
-				await store.markMemoriesAccessed(scored.map((memory) => memory.id));
-				return scored;
+				const accessUpdates = normalizeStoreRows(
+					scored,
+					await store.markMemoriesAccessed(scored.map((memory) => memory.id)),
+					"Memory access update",
+				);
+				return scored.map((memory, index) => {
+					const update = accessUpdates[index];
+					if (!update) {
+						throw new MnemocyteError(
+							"Memory access update did not return every requested ID.",
+							"DB",
+						);
+					}
+					return {
+						...memory,
+						lastAccessedAt: new Date(update.lastAccessedAt),
+						accessCount: update.accessCount,
+						updatedAt: new Date(update.updatedAt),
+					};
+				});
 			},
 			(result) => ({ count: result.length }),
 		);

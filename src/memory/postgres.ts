@@ -332,9 +332,21 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 			);
 		},
 		async markMemoriesAccessed(memoryIds) {
-			return runPostgresOperation(() =>
-				markMemoriesAccessed(handle.db, memoryIds),
-			);
+			return runPostgresOperation(async () => {
+				const rows = await markMemoriesAccessed(handle.db, memoryIds);
+				return rows.map((row) => {
+					if (row.lastAccessedAt === null) {
+						throw new MnemocyteError(
+							"Postgres access update returned no timestamp.",
+							"DB",
+						);
+					}
+					return {
+						...row,
+						lastAccessedAt: row.lastAccessedAt,
+					};
+				});
+			});
 		},
 		async deleteMemory(entityId, memoryId) {
 			return runPostgresDeleteOperation(async () => {

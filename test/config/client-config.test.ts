@@ -3,7 +3,26 @@ import {
 	isMnemocyteError,
 	type MnemocyteErrorCode,
 } from "mnemocyte";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
+const { closeDatabaseMock, postgresMock } = vi.hoisted(() => {
+	const closeDatabaseMock = vi.fn(async () => {});
+	const postgresClient = Object.assign(vi.fn(), {
+		options: {
+			parsers: {},
+			serializers: {},
+		},
+		end: closeDatabaseMock,
+	});
+	return {
+		closeDatabaseMock,
+		postgresMock: vi.fn(() => postgresClient),
+	};
+});
+
+vi.mock("postgres", () => ({
+	default: postgresMock,
+}));
 
 const validEmbedder = {
 	model: "config-test",
@@ -38,6 +57,11 @@ function expectConfigError(action: () => unknown, code: MnemocyteErrorCode) {
 }
 
 describe("client configuration", () => {
+	beforeEach(() => {
+		closeDatabaseMock.mockClear();
+		postgresMock.mockClear();
+	});
+
 	test("rejects an explicitly empty databaseUrl", () => {
 		expectConfigError(
 			() => createMnemocyte({ databaseUrl: "", embedder: validEmbedder }),
@@ -54,6 +78,32 @@ describe("client configuration", () => {
 				}),
 			"CONFIG",
 		);
+	});
+
+	test.each([
+		"postgres://user:password@localhost:5432/mnemocyte",
+		"postgresql://user:password@localhost:5432/mnemocyte",
+	])("accepts the Postgres database URL protocol in %s", async (databaseUrl) => {
+		const client = createMnemocyte({ databaseUrl, embedder: validEmbedder });
+
+		expect(postgresMock).toHaveBeenCalledOnce();
+		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
+		await client.close();
+		expect(closeDatabaseMock).toHaveBeenCalledOnce();
+	});
+
+	test.each([
+		"https://example.com/db",
+		"http://example.com/db",
+		"file:///tmp/mnemocyte.db",
+		"relative/path",
+		"example.com/db",
+	])("rejects non-Postgres database URL %s before creating a handle", (databaseUrl) => {
+		expectConfigError(
+			() => createMnemocyte({ databaseUrl, embedder: validEmbedder }),
+			"CONFIG",
+		);
+		expect(postgresMock).not.toHaveBeenCalled();
 	});
 
 	test("classifies an empty embedder model as CONFIG", () => {

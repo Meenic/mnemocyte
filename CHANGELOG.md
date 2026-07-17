@@ -26,6 +26,11 @@ behavioural changes documented in their entries.
   that fits, or an empty string when even one character exceeds the budget, so
   callers that relied on the complete fallback marker must handle shorter
   results.
+- **CONFIG-02 — Database URLs require a Postgres protocol.** Client
+  construction now rejects URLs whose protocol is not `postgres:` or
+  `postgresql:` synchronously with `"CONFIG"`, before creating a connection
+  handle. Detailed host, database, and credential validation remains with
+  postgres.js.
 - **CONTEXT-01 — Plain-text memory delimiters are now collision-free.** Plain
   context no longer uses the fixed `--- MEMORY N START/END ---` lines. It
   chooses a deterministic `=` fence longer than every run in the query,

@@ -183,7 +183,8 @@ export interface MnemocyteConfig {
 	 * Postgres connection string. When set, the client uses the Postgres
 	 * backend (requires the `pgvector` extension and a rendered migration
 	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder and
-	 * `embedding_model` metadata available).
+	 * `embedding_model` metadata available). Must use the `postgres:` or
+	 * `postgresql:` protocol.
 	 * When omitted, an in-memory backend is used.
 	 */
 	databaseUrl?: string;

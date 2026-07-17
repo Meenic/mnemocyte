@@ -49,6 +49,12 @@ export function createDatabase(databaseUrl: string): DatabaseHandle {
 			error,
 		);
 	}
+	if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+		throw new MnemocyteError(
+			"databaseUrl must use the postgres: or postgresql: protocol.",
+			"CONFIG",
+		);
+	}
 	const ssl = parseSslFromUrl(url);
 
 	const isPooler =

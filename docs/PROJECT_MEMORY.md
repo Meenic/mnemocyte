@@ -109,8 +109,9 @@
   for valid budgets. When no formatted context or full truncation marker fits,
   the builder returns the longest fitting marker fragment or an empty string.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
-  with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
-  remains synchronous.
+  with `"VALIDATION"`; malformed or non-`postgres:` / `postgresql:` URLs fail
+  synchronously with `"CONFIG"` before a connection handle is created. Finer
+  host and credential validation remains with postgres.js.
 - `pnpm lint` is a read-only Biome check that fails on warnings;
   `pnpm lint:fix` applies safe formatting, lint, and import fixes.
 - Memory defaults, embedding calls, filters, record mapping, and validation

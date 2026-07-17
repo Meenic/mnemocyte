@@ -189,8 +189,10 @@ without importing the client orchestrator or backend adapters.
 
 `createMnemocyte()` synchronously validates embedder identity/dimensions,
 retrieval tuning, provider timeout/retry/delay values, and the configured
-database URL before backend work. Provider delays remain compatible with the
-existing policy that normalizes `maxDelayMs` up to `baseDelayMs` when needed.
+database URL before backend work. Database URLs must use the `postgres:` or
+`postgresql:` protocol; finer host and credential validation belongs to
+postgres.js. Provider delays remain compatible with the existing policy that
+normalizes `maxDelayMs` up to `baseDelayMs` when needed.
 
 Remaining unclear boundaries:
 
@@ -332,9 +334,10 @@ export class MnemocyteError extends Error {
 ```
 
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
-covers invalid embedder/database URL configuration, invalid retrieval tuning,
-and Postgres model/dimension mismatches. `"MIGRATION"` also covers unresolved
-mixed historical embedding models after `0002_add_embedding_model.sql`.
+covers invalid embedder/database URL configuration, including non-Postgres URL
+protocols, invalid retrieval tuning, and Postgres model/dimension mismatches.
+`"MIGRATION"` also covers unresolved mixed historical embedding models after
+`0002_add_embedding_model.sql`.
 `"VALIDATION"` covers per-call argument errors (including invalid `maxTokens`,
 JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
 and `consolidate({ supersededIds: [] })`) plus an explicitly empty
@@ -607,7 +610,11 @@ export interface TokenCounter {
 
 ## Connection Lifecycle
 
-The client owns the postgres.js connection when it creates it from `databaseUrl`, so it must expose `close()`. The current `createDatabase()` path uses postgres.js over TCP, parses common `sslmode` values, and disables prepared statements for pooler-style URLs (`:6543` or `pgbouncer=true`).
+The client owns the postgres.js connection when it creates it from
+`databaseUrl`, so it must expose `close()`. The current `createDatabase()` path
+accepts only the `postgres:` and `postgresql:` protocols, uses postgres.js over
+TCP, parses common `sslmode` values, and disables prepared statements for
+pooler-style URLs (`:6543` or `pgbouncer=true`).
 
 The planned public `MemoryStore` contract and `drizzleStore(db)` milestone move
 caller-managed database clients into the public architecture for apps that

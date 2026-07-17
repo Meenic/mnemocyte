@@ -24,8 +24,8 @@ import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
  * @param config - Client configuration. {@link MnemocyteConfig.embedder} is required.
  * @returns A {@link MnemocyteClient} instance.
  * @throws {MnemocyteError} With code `"CONFIG"` if `embedder`, retrieval
- * tuning, provider resilience, or the database URL is malformed, or
- * `"VALIDATION"` if
+ * tuning, provider resilience, or the database URL is malformed or does not
+ * use the `postgres:` / `postgresql:` protocol, or `"VALIDATION"` if
  * `databaseUrl` is explicitly empty.
  *
  * @example Postgres-backed client

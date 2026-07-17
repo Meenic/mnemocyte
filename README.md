@@ -117,6 +117,10 @@ const client = createMnemocyte({
 });
 ```
 
+`databaseUrl` must use the `postgres:` or `postgresql:` protocol. Other URL
+protocols reject synchronously with `MnemocyteError` code `"CONFIG"`; detailed
+host, database, and credential validation remains the driver's responsibility.
+
 The package includes:
 
 ```txt

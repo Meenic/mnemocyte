@@ -3,10 +3,10 @@
 ## Current State
 
 - Package `v0.3.0` has been published, tagged, and is the npm `latest` release.
-- Repository source is ahead of `v0.3.0`. Current changes belong under
-  `../CHANGELOG.md` `[Unreleased]`; they include migration `0002`, approved
-  behavior fixes, and documentation decisions that are not yet a newer
-  published package.
+- Repository source is ahead of `v0.3.0`. The current changes are finalized
+  under `../CHANGELOG.md` `0.4.0`; they include migration `0002`, approved
+  behavior fixes, and documentation decisions. The package version bump, tag,
+  and publish are still pending, and the new `[Unreleased]` section is empty.
 - The `0.3.0` release includes internal `MemoryStore` adapters, shared client
   orchestration, active provider timeout aborts, narrower Postgres dimension
   checks, JSON metadata value semantics, runtime tuning validation, batch-level
@@ -18,8 +18,8 @@
 - `../CHANGELOG.md` has a `0.3.0` section dated `2026-07-16` for the internal
   store refactor, approved pre-v1 behavior changes, and hardening fixes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.3.0` as published and public `MemoryStore`
-  stabilization as the next architectural decision.
+- The current roadmap treats `0.4.0` as the prepared hardening release and
+  public `MemoryStore` stabilization as the next architectural decision.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -145,8 +145,8 @@
 - Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported
   runtime; CI also covers Node 24.
 - The adapter milestone sequence is confirmed: stabilize the public
-  `MemoryStore` contract, ship `drizzleStore(db)` at `0.4.0`, then ship
-  `@mnemocyte/mcp` at `0.5.0`. Do not reorder these as an implementation
+  `MemoryStore` contract, ship `drizzleStore(db)` at `0.5.0`, then ship
+  `@mnemocyte/mcp` at `0.6.0`. Do not reorder these as an implementation
   shortcut.
 
 ## Important Commands
@@ -209,9 +209,10 @@ Documentation follow-ups:
 
 ## Release Status
 
-`v0.3.0` is published. Track changes after `v0.3.0` under the
-`../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md` release
-guidance when cutting the next version.
+`v0.3.0` is published. The `v0.4.0` changelog is finalized, but the package
+version bump, tag, and publish are still pending. Track any later changes under
+the new `../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md`
+release guidance for the remaining release steps.
 
 ## Suggested Next Steps
 

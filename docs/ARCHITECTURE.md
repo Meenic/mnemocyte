@@ -22,8 +22,8 @@ shared client orchestration described below, and the documented pre-v1
 breaking changes for JSON metadata types, retrieval-tuning rejection, and the
 canonical `rememberMany({ inputs, signal })` batch API.
 
-The repository is ahead of that published tag. Its `[Unreleased]` source adds
-the approved fixes listed in `CHANGELOG.md`, including
+The repository is ahead of that published tag. The changes prepared for
+`0.4.0` in `CHANGELOG.md` include
 `mnemocyte_meta.embedding_model` and `0002_add_embedding_model.sql`. In current
 source, Postgres installations use both `embedding_dimensions` and
 `embedding_model` as installation metadata. The default 1536-dimensional
@@ -78,8 +78,8 @@ The full, canonical `package.json` lives at the repository root. See it for the 
 
 Future adapter packages should depend on the core rather than widening the core
 surface. The internal `MemoryStore` boundary is now present; the confirmed
-sequence is a public `MemoryStore` contract, `drizzleStore(db)` at `0.4.0`, and
-then `@mnemocyte/mcp` at `0.5.0`.
+sequence is a public `MemoryStore` contract, `drizzleStore(db)` at `0.5.0`, and
+then `@mnemocyte/mcp` at `0.6.0`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -699,14 +699,20 @@ Status: released as `v0.2.0`.
   positional compatibility overload.
 - Defer any third backend until the public adapter contract exists.
 
-### `0.4.0` - `drizzleStore(db)`
+### `0.4.0` - Hardening and Behavior Corrections
+
+- Status: changelog finalized; version bump, tag, and publish pending.
+- Release details live in `CHANGELOG.md`; this release does not include the
+  planned public Drizzle adapter.
+
+### `0.5.0` - `drizzleStore(db)`
 
 - Let applications pass a caller-owned Drizzle database instance.
 - Keep connection lifecycle ownership with the application.
 - Verify and document supported Drizzle driver/runtime combinations before
   advertising them.
 
-### `0.5.0` - `@mnemocyte/mcp`
+### `0.6.0` - `@mnemocyte/mcp`
 
 - Ship MCP as a separate adapter package built on the same core primitives.
 - Configure database and embedder explicitly.

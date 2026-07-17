@@ -114,7 +114,9 @@ pass. Maintainer direction later resolved them in
   package-boundary review.
 - **DEF-04 (`DOC-10`):** The confirmed sequence is public `MemoryStore`
   stabilization, `drizzleStore(db)` at `0.4.0`, then `@mnemocyte/mcp` at
-  `0.5.0`.
+  `0.5.0`. This records the audit-time targets; later `0.4.0` release
+  preparation advanced the adapter targets to `0.5.0` and `0.6.0` without
+  changing their order.
 
 ## 2026-07-17 Full Staleness Sweep
 
@@ -187,8 +189,10 @@ configuration.
   and that all 22 existing proposal entries are resolved.
 - [x] **SWEEP-12 — `docs/ROADMAP.md`:** Verified shipped capabilities against
   source and kept them out of forward-looking milestone detail. Confirmed the
-  settled provider-subpath policy and public `MemoryStore` →
-  `drizzleStore(db)` `0.4.0` → `@mnemocyte/mcp` `0.5.0` sequence.
+  settled provider-subpath policy and the then-current public `MemoryStore` →
+  `drizzleStore(db)` `0.4.0` → `@mnemocyte/mcp` `0.5.0` sequence. Later
+  `0.4.0` release preparation advanced the adapter targets to `0.5.0` and
+  `0.6.0` without changing their order.
 - [x] **SWEEP-13 — `docs/SUMMARY.md`:** Verified commit links and historical
   run boundaries, added the required account of this run, and corrected older
   paragraphs that could still read as if `CONSOLIDATION-01` were currently

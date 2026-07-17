@@ -164,11 +164,12 @@ for reconsidering separate packages, not a commitment to split automatically.
 
 ## DOCS-DEF-04: Confirm adapter milestone sequencing
 
-**Status:** Resolved with option 1 by maintainer direction on 2026-07-17.
+**Status:** Resolved with option 1 by maintainer direction on 2026-07-17;
+version targets superseded by the later `0.4.0` release allocation.
 
 **Decision resolved:** Preserve the existing sequence: stabilize the public
-`MemoryStore` contract, then ship `drizzleStore(db)` at `0.4.0`, then ship
-`@mnemocyte/mcp` at `0.5.0`.
+`MemoryStore` contract, then ship `drizzleStore(db)`, then ship
+`@mnemocyte/mcp`.
 
 Options:
 
@@ -179,5 +180,7 @@ Options:
 **Recommendation:** Keep the existing order so both later adapters build on one
 reviewed public storage contract rather than creating parallel abstractions.
 
-**Resolution:** `ROADMAP.md` and `PROJECT_MEMORY.md` now mark the sequence as a
-confirmed decision rather than an open question. No milestone was reordered.
+**Resolution:** `ROADMAP.md` and `PROJECT_MEMORY.md` mark the sequence as a
+confirmed decision rather than an open question. Preparing the existing
+hardening changes as `0.4.0` advanced the still-unshipped Drizzle and MCP
+targets to `0.5.0` and `0.6.0`; their order was not changed.

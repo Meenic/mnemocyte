@@ -4,6 +4,11 @@ This roadmap tracks the planned direction for Mnemocyte before v1.0. It is a
 forward-looking planning document, not a release history. Shipped work belongs
 in [CHANGELOG.md](../CHANGELOG.md).
 
+The `0.4.0` release contents were finalized in the changelog on 2026-07-17;
+the package version bump, tag, and publish remain separate release steps.
+Because `0.4.0` is now assigned to that hardening release, the still-unshipped
+adapter targets advance by one minor version without changing their order.
+
 Mnemocyte's direction is infrastructure-native and deliberately composable:
 bring your own database, bring your own embedder, and keep the core package
 small enough to fit into existing TypeScript stacks. The long-term shape is a
@@ -85,10 +90,10 @@ an adapter contract:
 This is the architectural hinge for the rest of the roadmap. It makes future
 database and runtime adapters possible without copying the client.
 The milestone sequence is confirmed: stabilize this public contract first,
-ship `drizzleStore(db)` at `0.4.0`, and then ship `@mnemocyte/mcp` at `0.5.0`.
+ship `drizzleStore(db)` at `0.5.0`, and then ship `@mnemocyte/mcp` at `0.6.0`.
 These targets are ordered decisions, not open alternatives.
 
-## `0.4.0` - `drizzleStore(db)`
+## `0.5.0` - `drizzleStore(db)`
 
 Let applications bring their own Drizzle database instance.
 
@@ -106,7 +111,7 @@ The goal is to fit into apps that already use Drizzle, already own connection
 pools, or run in environments where `databaseUrl` plus postgres.js is too
 prescriptive.
 
-## `0.5.0` - `@mnemocyte/mcp`
+## `0.6.0` - `@mnemocyte/mcp`
 
 Ship an official MCP adapter after the storage and embedder contracts are ready.
 
@@ -125,7 +130,7 @@ Ship an official MCP adapter after the storage and embedder contracts are ready.
 MCP is a distribution layer, not the foundation. It should sit on top of the
 same composable primitives application developers use directly.
 
-## Adapter Architecture After `0.5.0`
+## Adapter Architecture After `0.6.0`
 
 Once `MemoryStore` and the Drizzle store are stable, additional adapters can be
 considered independently:

@@ -38,8 +38,9 @@ noticeably beyond roughly a few thousand memories per entity; performance work
 is ordered by correctness/data integrity, hot-path latency, write throughput,
 then tooling/benchmarks; provider helpers stay on package subpaths until a
 second provider or heavy/conflicting SDK triggers review; and the confirmed
-adapter sequence is public `MemoryStore` stabilization, `drizzleStore(db)` at
-`0.4.0`, then `@mnemocyte/mcp` at `0.5.0`.
+adapter order is public `MemoryStore` stabilization, `drizzleStore(db)`, then
+`@mnemocyte/mcp`. Subsequent `0.4.0` release preparation advanced the two
+still-unshipped adapter targets to `0.5.0` and `0.6.0` without reordering them.
 
 The final documentation sweep checked all 14 Markdown files against source,
 tests, migrations, package metadata, CI, Git history, and the npm release
@@ -436,7 +437,9 @@ file:
   names, migration direction, and links were verified without factual edits;
   future version sequencing remained planning intent at that checkpoint. The
   `0.4.0` / `0.5.0` sequence was confirmed by maintainer direction on
-  2026-07-17.
+  2026-07-17, then superseded later that day when `0.4.0` was allocated to the
+  prepared hardening release and the adapter targets advanced to `0.5.0` /
+  `0.6.0`.
 - **`docs/SUMMARY.md`:** Moved from root and updated with this grouped account;
   its earlier cleanup, fix sequencing, commits, and behavior scope were checked
   against Git history and the current branch.

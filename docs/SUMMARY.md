@@ -461,3 +461,39 @@ The host runtime used for that audit was Node 22.17, below the declared
 `>=22.18` engine, so nested pnpm invocations emitted an engine warning even
 though all commands exited successfully. CI continues to cover Node 22.18 and
 Node 24.
+
+## Approved low-risk fixes
+
+The three approved low-risk proposals were implemented one at a time in the
+requested order:
+
+1. **CONTEXT-02 — hard context token budgets** was reproduced with
+   `maxTokens: 1` returning an eight-token marker, then fixed and committed in
+   [`47931e2`](https://github.com/Meenic/mnemocyte/commit/47931e216640be2025bb2576f655b18afe481b94).
+   Focused coverage now checks tiny budgets across Markdown, plain text, and
+   XML with the default heuristic, character counting, and a counter where
+   even one character exceeds the budget.
+2. **CONFIG-02 — Postgres URL protocols** was reproduced with HTTP(S) and file
+   URLs creating a database handle, then fixed and committed in
+   [`da1bea9`](https://github.com/Meenic/mnemocyte/commit/da1bea9d44aa4fe30a68b33bc9dabfa0472faf40).
+   Construction now accepts `postgres:` and `postgresql:` while rejecting
+   other protocols with `"CONFIG"` before postgres.js is called.
+3. **OPENAI-01 — embedding response indices** was reproduced with the
+   documented duplicate-index payload silently overwriting a result, then
+   fixed and committed in
+   [`021c1e4`](https://github.com/Meenic/mnemocyte/commit/021c1e4aee63de415b85cefa238fb6bf44cf1ee0).
+   Response validation now rejects count mismatches, duplicate or invalid
+   indices, non-array data, malformed items, and non-array embeddings before
+   restoring valid out-of-order results.
+
+Each fix passed `pnpm checktypes`, `pnpm lint`, `pnpm test`, `pnpm build`,
+`pnpm run pack:check`, and `pnpm run test:integration` before its separate
+commit. The same complete gate passed again on the final combined state,
+including 30 unit/package test files with 129 tests and 10 live Postgres
+integration files with 14 tests.
+
+Changes in this run were limited to `CONTEXT-02`, `CONFIG-02`, `OPENAI-01`,
+their focused tests and current-behavior documentation, the three matching
+proposal approval/resolution records, and this summary update. No other
+`PROPOSALS.md` entry was implemented or changed. In particular,
+`CONSOLIDATION-01` was not touched.

@@ -580,7 +580,9 @@ files were retained.
 - how-verified: Parameterize tests over tiny budgets and custom counters,
   including counters where even one character costs more than the budget.
   Assert the postcondition for markdown, plain, and XML outputs.
-- approval:
+- approval: yes
+- status: resolved in
+  [`47931e2`](https://github.com/Meenic/mnemocyte/commit/47931e216640be2025bb2576f655b18afe481b94)
 
 ### CONFIG-02 — Reject non-Postgres database URL protocols
 
@@ -601,7 +603,9 @@ files were retained.
 - how-verified: Add accepted tests for both Postgres protocol spellings and
   rejected tests for HTTP(S), file, relative, and protocol-less values. Assert
   no connection handle is created for rejected inputs.
-- approval:
+- approval: yes
+- status: resolved in
+  [`da1bea9`](https://github.com/Meenic/mnemocyte/commit/da1bea9d44aa4fe30a68b33bc9dabfa0472faf40)
 
 ### OPENAI-01 — Reject duplicate and malformed response indices
 
@@ -622,4 +626,6 @@ files were retained.
 - how-verified: Add mocked duplicate-index, extra-item, missing-item,
   non-array-data, malformed-item, and valid-out-of-order cases. Assert malformed
   responses fail with `"EMBEDDING"` and valid responses retain index order.
-- approval:
+- approval: yes
+- status: resolved in
+  [`021c1e4`](https://github.com/Meenic/mnemocyte/commit/021c1e4aee63de415b85cefa238fb6bf44cf1ee0)

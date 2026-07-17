@@ -184,6 +184,10 @@ export interface MemoryStore {
 		ids: readonly string[],
 		options?: StoreOperationOptions,
 	): Promise<StoreConsolidationTarget[]>;
+	/**
+	 * Applies one atomic consolidation. Throws `"CONFLICT"` before mutation
+	 * when any requested loser already points to a different survivor.
+	 */
 	consolidate(
 		input: StoreConsolidateInput,
 		options?: StoreOperationOptions,

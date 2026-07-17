@@ -282,7 +282,12 @@ files such as `dist/embedders/index.d.mts` and
 
 **Client (experimental, gated under `client.experimental.*`)**
 
-- `experimental.consolidate(input)` — mark one or more memories as superseded by a survivor, with optional tag merge, idempotent for already-superseded losers, audited as `"memory.superseded"`; the survivor remains protected from deletion until its dependents are removed.
+- `experimental.consolidate(input)` — mark one or more memories as superseded
+  by a survivor, with optional tag merge. Same-survivor retries are idempotent;
+  a loser already assigned to a different survivor rejects the entire call
+  with `"CONFLICT"`. Successful mutations are audited as
+  `"memory.superseded"`, and the survivor remains protected from deletion
+  until its dependents are removed.
 
 **Config**
 
@@ -345,8 +350,8 @@ protocols, invalid retrieval tuning, and Postgres model/dimension mismatches.
 JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
 and `consolidate({ supersededIds: [] })`) plus an explicitly empty
 `databaseUrl`. `"CONFLICT"` covers mutations rejected because stored
-relationships must remain valid, currently deletion of a referenced
-consolidation survivor.
+relationships must remain valid: deleting a referenced consolidation survivor
+or attempting to reassign a loser to a different survivor.
 
 Prune validation produces a normalized internal filter before the
 `MemoryStore` boundary. Both adapters accept that internal filter rather than
@@ -369,8 +374,22 @@ The in-memory adapter checks the complete candidate set before mutation.
 Postgres uses one guarded candidate/dependent/delete statement for atomic batch
 behavior, while the existing `ON DELETE NO ACTION` self-reference remains a
 race-condition backstop. Violations of that specific foreign key are normalized
-to the same `"CONFLICT"` code rather than a generic `"DB"` error. Consolidation
-itself is unchanged: callers remove dependents before deleting their survivor.
+to the same `"CONFLICT"` code rather than a generic `"DB"` error. Callers remove
+dependents before deleting their survivor.
+
+### Consolidation Target Policy
+
+Consolidation idempotency is survivor-specific. A loser that already points to
+the requested survivor is an idempotent no-op. A loser that points to any other
+survivor rejects with `"CONFLICT"`, because returning a zero-count success
+would not satisfy the requested postcondition.
+
+The rule is atomic across a complete call. Both adapters check every requested
+loser for a different-survivor conflict before changing any active loser,
+merging survivor tags, or writing `"memory.superseded"` audit events. The
+Postgres adapter reloads and locks the requested loser rows inside the existing
+consolidation transaction, so concurrent calls cannot both claim the same
+loser; one target wins and a different target observes `"CONFLICT"`.
 
 Maintenance-operation signals are checked before store access. In-memory
 pruning, duplicate scans, audit-log scans, and consolidation preparation check

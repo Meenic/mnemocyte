@@ -104,6 +104,12 @@
   reject atomically with `"CONFLICT"` in both adapters; deleting losers and
   memories with no dependents remains valid. Postgres retains the
   `ON DELETE NO ACTION` foreign key as a race-condition backstop.
+- Consolidation idempotency is survivor-specific. Retrying a loser against its
+  existing survivor returns a zero-count no-op; requesting a different
+  survivor rejects the entire call with `"CONFLICT"` before loser state,
+  survivor tags, or audit events change. Postgres locks requested loser rows
+  inside the consolidation transaction so concurrent calls preserve this
+  rule.
 - Markdown context chooses a content-safe backtick fence, plain context chooses
   a deterministic `=` fence longer than every run in the query, rendered
   metadata, and included content, and XML escapes content. Untrusted plain text

@@ -752,9 +752,10 @@ export interface ConsolidateInput {
 	/** Memory that should win the merge. Must not itself be superseded. */
 	survivorId: string;
 	/**
-	 * Memories to mark as superseded by the survivor. Already-superseded
-	 * entries in this list are skipped silently for idempotency. Must
-	 * not contain {@link ConsolidateInput.survivorId}.
+	 * Memories to mark as superseded by the survivor. Entries already
+	 * superseded by this same survivor are skipped for idempotency. If any
+	 * entry points to a different survivor, the entire call rejects with
+	 * `"CONFLICT"`. Must not contain {@link ConsolidateInput.survivorId}.
 	 */
 	supersededIds: readonly string[];
 	/**
@@ -783,7 +784,7 @@ export interface ConsolidateResult {
 	survivorId: string;
 	/**
 	 * Number of memories actually marked as superseded. Excludes entries
-	 * that were already superseded (idempotent skip).
+	 * that already pointed to this survivor (idempotent skip).
 	 */
 	supersededCount: number;
 	/** The IDs that were newly superseded during this call. */
@@ -976,8 +977,8 @@ export interface ExperimentalMnemocyteClient {
 	/**
 	 * Consolidate likely-duplicate memories into a single survivor by
 	 * marking the others as superseded. Optionally unions their tags
-	 * onto the survivor. Idempotent for memories that are already
-	 * superseded.
+	 * onto the survivor. Idempotent when every already-superseded loser
+	 * points to the requested survivor.
 	 *
 	 * Emits one `"memory.superseded"` audit event per newly superseded
 	 * memory when {@link MnemocyteConfig.audit}.`enabled` is `true`.
@@ -990,8 +991,11 @@ export interface ExperimentalMnemocyteClient {
 	 * a `survivorId` that also appears in `supersededIds`, or a survivor
 	 * that is itself already superseded.
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if the survivor or any
-	 * non-already-superseded memory in `supersededIds` does not belong
-	 * to `entityId`.
+	 * memory in `supersededIds` does not belong to `entityId`.
+	 * @throws {MnemocyteError} `"CONFLICT"` if any memory in
+	 * `supersededIds` already points to a different survivor. The whole
+	 * call is rejected before any loser, survivor tags, or audit events
+	 * are changed.
 	 *
 	 * @example
 	 * ```ts

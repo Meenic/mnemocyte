@@ -124,7 +124,7 @@ function holdMemoryLock(sql: ReturnType<typeof postgres>, memoryId: string) {
 
 async function waitForBlockedQuery(
 	sql: ReturnType<typeof postgres>,
-	operation: "delete" | "update",
+	operation: "delete" | "select",
 ) {
 	const deadline = Date.now() + 5_000;
 	while (Date.now() < deadline) {
@@ -267,7 +267,7 @@ async function runCancellationScenario(databaseUrl: string) {
 			},
 		);
 		try {
-			await waitForBlockedQuery(observer, "update");
+			await waitForBlockedQuery(observer, "select");
 			controller.abort("cancel blocked consolidation");
 			await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
 			expect(settled).toBe(false);

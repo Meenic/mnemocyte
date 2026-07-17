@@ -1,3 +1,4 @@
+import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import {
 	cosineSimilarity,
@@ -320,16 +321,31 @@ export function createInMemoryStore(): MemoryStore {
 			throwIfAborted(options?.signal);
 			const survivor = memories.get(input.survivorId);
 			const newlySuperseded: StoredMemory[] = [];
+			const targets: StoredMemory[] = [];
 			for (const id of input.supersededIds) {
 				throwIfAborted(options?.signal);
 				const memory = memories.get(id);
 				if (!memory || memory.entityId !== input.entityId) {
 					continue;
 				}
-				if (memory.supersededBy !== null) {
-					continue;
+				targets.push(memory);
+			}
+			if (
+				targets.some(
+					(memory) =>
+						memory.supersededBy !== null &&
+						memory.supersededBy !== input.survivorId,
+				)
+			) {
+				throw new MnemocyteError(
+					"Superseded memory already belongs to a different survivor.",
+					"CONFLICT",
+				);
+			}
+			for (const memory of targets) {
+				if (memory.supersededBy === null) {
+					newlySuperseded.push(memory);
 				}
-				newlySuperseded.push(memory);
 			}
 			let mergedSurvivorTags: string[] | undefined;
 			if (survivor && input.mergeTags && newlySuperseded.length > 0) {

@@ -418,6 +418,13 @@ await client.experimental.consolidate({
 ```
 
 Consolidation records each loser's `supersededBy` reference to the survivor.
+Retrying the same loser with that same survivor is an idempotent no-op. If any
+requested loser already points to a different survivor, the call rejects with
+`"CONFLICT"`. Mixed batches are atomic: no newly eligible loser is changed, no
+tags are merged, and no consolidation audit event is written when any item
+conflicts. Concurrent calls follow the same target-specific rule in both
+backends.
+
 The survivor cannot later be deleted while any such reference remains:
 `forget`, `forgetAll`, and matching non-dry-run `prune` calls reject with
 `"CONFLICT"`. Deleting a superseded loser remains allowed.

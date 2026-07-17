@@ -20,6 +20,12 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **CONSOLIDATION-01 — Consolidation idempotency is survivor-specific.**
+  Retrying a loser against the survivor it already references remains a
+  successful zero-count no-op. Requesting a different survivor now rejects
+  the entire consolidation with `"CONFLICT"` before any loser, survivor tags,
+  or audit events change. Postgres locks requested loser rows inside the
+  consolidation transaction so concurrent calls follow the same rule.
 - **CONTEXT-02 — Context token budgets are now a hard postcondition.**
   `buildContext()` no longer returns an over-budget truncation marker for
   extremely small `maxTokens` values. It returns the longest marker fragment

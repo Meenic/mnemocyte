@@ -788,6 +788,18 @@ export function createMemoryClient(
 										);
 									}
 								}
+								if (
+									targets.some(
+										(target) =>
+											target.supersededBy !== null &&
+											target.supersededBy !== survivor.id,
+									)
+								) {
+									throw new MnemocyteError(
+										"Superseded memory already belongs to a different survivor.",
+										"CONFLICT",
+									);
+								}
 								const losers = targets.filter(
 									(target) => target.supersededBy === null,
 								);
@@ -803,7 +815,7 @@ export function createMemoryClient(
 										entityId: input.entityId,
 										survivorId: survivor.id,
 										survivorTags: survivor.tags,
-										supersededIds: losers.map((loser) => loser.id),
+										supersededIds: input.supersededIds,
 										mergeTags: input.mergeTags !== false,
 										now: new Date(),
 										auditEnabled: config.audit?.enabled === true,

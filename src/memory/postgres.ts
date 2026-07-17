@@ -12,6 +12,7 @@ import {
 	insertMemories as insertMemoryRows,
 	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
+	lockConsolidationTargets,
 	markMemoriesAccessed,
 	markMemoriesSuperseded,
 	type PruneFilter,
@@ -487,10 +488,31 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				throwIfAborted(options?.signal);
 				const newSupersededIds = await handle.db.transaction(async (tx) => {
 					throwIfAborted(options?.signal);
+					const targets = await lockConsolidationTargets(
+						tx,
+						input.entityId,
+						input.supersededIds,
+					);
+					throwIfAborted(options?.signal);
+					if (
+						targets.some(
+							(target) =>
+								target.supersededBy !== null &&
+								target.supersededBy !== input.survivorId,
+						)
+					) {
+						throw new MnemocyteError(
+							"Superseded memory already belongs to a different survivor.",
+							"CONFLICT",
+						);
+					}
+					const activeIds = targets
+						.filter((target) => target.supersededBy === null)
+						.map((target) => target.id);
 					const updated = await markMemoriesSuperseded(tx, {
 						survivorId: input.survivorId,
 						entityId: input.entityId,
-						ids: input.supersededIds,
+						ids: activeIds,
 						now: input.now,
 					});
 					throwIfAborted(options?.signal);

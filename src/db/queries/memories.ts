@@ -539,6 +539,31 @@ export async function loadConsolidationTargets(
 	return rows;
 }
 
+export async function lockConsolidationTargets(
+	db: MnemocyteDatabase,
+	entityId: string,
+	ids: readonly string[],
+): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
+	if (ids.length === 0) {
+		return [];
+	}
+	return db
+		.select({
+			id: memoriesTable.id,
+			tags: memoriesTable.tags,
+			supersededBy: memoriesTable.supersededBy,
+		})
+		.from(memoriesTable)
+		.where(
+			and(
+				eq(memoriesTable.entityId, entityId),
+				inArray(memoriesTable.id, [...ids]),
+			),
+		)
+		.orderBy(memoriesTable.id)
+		.for("update");
+}
+
 export async function markMemoriesSuperseded(
 	db: MnemocyteDatabase,
 	params: {

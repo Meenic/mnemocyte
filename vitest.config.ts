@@ -68,7 +68,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "package",
-					include: ["test/package/exports.test.ts"],
+					include: ["test/package/*.test.ts"],
 					typecheck: {
 						tsconfig: "test/package/tsconfig.json",
 						include: ["test/package/exports-types.test-d.ts"],

@@ -16,8 +16,49 @@ fix began.
 
 Counts, environment details, and scope statements in the older sections below
 are snapshots of their named runs. The new section immediately below records
-the 2026-07-17 consolidation and documentation run; later sections retain their
-historical scope.
+the 2026-07-17 root-entry lazy Postgres loading run; later sections retain
+their historical scope.
+
+## Lazy Postgres root-entry loading
+
+The package root no longer loads `drizzle-orm`, `postgres`, or implementation
+modules from `src/db/` when callers omit `databaseUrl`. `createMnemocyte`
+retains its synchronous factory and performs the same embedder, retrieval,
+provider, non-empty URL, URL parsing, and Postgres-protocol validation before
+returning. A Postgres-configured client now wraps an internal lazy
+`MemoryStore`; its first asynchronous store operation, including `close()`,
+dynamically imports the Postgres runtime and constructs one shared database
+handle.
+
+The rebuilt `dist/index.mjs` imports only local driver-free chunks at module
+scope and contains one dynamic import of the emitted `postgres-runtime` chunk.
+All emitted `drizzle-orm` and `postgres` imports are confined to that chunk.
+`src/memory/postgres-records.ts` already imported `MemoryRow` with
+`import type`, so no source change was required there, and the built
+declarations contain no runtime database-module reference.
+
+Package coverage now creates a real `pnpm pack` tarball, extracts only
+`mnemocyte` into an isolated consumer tree, verifies that `drizzle-orm` and
+`postgres` are absent, and exercises in-memory `remember` and `recall` through
+the packed root entry. The same driver-free consumer also verifies that an
+invalid non-Postgres URL still throws `"CONFIG"` synchronously. The existing
+configuration test confirms that a valid Postgres URL does not construct the
+driver until an asynchronous store operation.
+
+The final state passed `pnpm checktypes`, `pnpm lint`, `pnpm test` (32
+unit/package files, 132 tests), direct emitted-module and declaration
+inspection, `pnpm run pack:check`, and `pnpm run test:integration` against the
+configured real Postgres + pgvector database (10 files, 14 tests).
+
+Changes in this run are limited to `src/client.ts`, the shared
+`src/database-url.ts` validator, the `src/db/index.ts` validator reuse,
+`src/memory/lazy-postgres.ts`, `src/memory/postgres-runtime.ts`, focused config
+and packed-package tests, the package-test include pattern in
+`vitest.config.ts`, and this summary. Dependencies, migrations, public exports,
+public types, API signatures, and documented public behavior are unchanged.
+Synchronous configuration-validation timing is also unchanged, so
+`CHANGELOG.md` was intentionally not edited. The recommended commit message is
+`fix: lazily load Postgres without changing sync validation`.
 
 ## Consolidation target policy and documentation decisions
 

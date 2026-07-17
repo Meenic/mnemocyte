@@ -86,9 +86,10 @@ describe("client configuration", () => {
 	])("accepts the Postgres database URL protocol in %s", async (databaseUrl) => {
 		const client = createMnemocyte({ databaseUrl, embedder: validEmbedder });
 
+		expect(postgresMock).not.toHaveBeenCalled();
+		await client.close();
 		expect(postgresMock).toHaveBeenCalledOnce();
 		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
-		await client.close();
 		expect(closeDatabaseMock).toHaveBeenCalledOnce();
 	});
 

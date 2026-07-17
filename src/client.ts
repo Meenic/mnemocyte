@@ -1,6 +1,7 @@
-﻿import { createDatabase } from "./db/index.js";
+import { parsePostgresDatabaseUrl } from "./database-url.js";
+import { createMemoryClient } from "./memory/client-core.js";
 import { createInMemoryClient } from "./memory/in-memory.js";
-import { createPostgresClient } from "./memory/postgres.js";
+import { createLazyPostgresStore } from "./memory/lazy-postgres.js";
 import {
 	assertEmbedder,
 	assertNonEmptyString,
@@ -42,7 +43,11 @@ export function createMnemocyte(config: MnemocyteConfig): MnemocyteClient {
 	validateProviderResilienceConfig(config.provider);
 	if (config.databaseUrl !== undefined) {
 		assertNonEmptyString(config.databaseUrl, "databaseUrl");
-		return createPostgresClient(config, createDatabase(config.databaseUrl));
+		parsePostgresDatabaseUrl(config.databaseUrl);
+		return createMemoryClient(
+			config,
+			createLazyPostgresStore(config.databaseUrl),
+		);
 	}
 	return createInMemoryClient(config);
 }

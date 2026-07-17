@@ -594,9 +594,10 @@ Requirements:
 - Allow callers to provide a model-specific token counter.
 - Reject a supplied `maxTokens` unless it is a positive integer; omission keeps
   the default budget path.
-- Trim deterministically by priority and token budget. The current fallback
-  truncation marker can exceed extremely small budgets, so a hard
-  `count(result) <= maxTokens` postcondition remains pre-v1 work.
+- Trim deterministically by priority and token budget, with
+  `count(result) <= maxTokens` as a hard postcondition. If the complete
+  truncation marker does not fit, return its longest fitting fragment or an
+  empty string.
 
 ```ts
 export interface TokenCounter {
@@ -704,9 +705,6 @@ Status: released as `v0.2.0`.
 - **`rememberMany({ inputs, signal })` owns cancellation at the batch level.**
   The former positional form remains a deprecated pre-v1 compatibility
   overload; its first item signal is treated as the batch signal.
-- **Tiny context budgets are not a hard postcondition yet.** If no formatted
-  content fits, the fallback truncation marker can itself exceed an extremely
-  small `maxTokens` budget.
 - **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.

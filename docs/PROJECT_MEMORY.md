@@ -105,9 +105,9 @@
   a deterministic `=` fence longer than every run in the query, rendered
   metadata, and included content, and XML escapes content. Untrusted plain text
   cannot reproduce its active frame delimiter.
-- `buildContext.maxTokens` rejects invalid values, but the fallback truncation
-  marker can exceed an extremely small valid budget. `CONTEXT-02` tracks the
-  missing hard postcondition.
+- `buildContext.maxTokens` rejects invalid values and is a hard postcondition
+  for valid budgets. When no formatted context or full truncation marker fits,
+  the builder returns the longest fitting marker fragment or an empty string.
 - Explicitly supplied database URLs select the Postgres path: empty values fail
   with `"VALIDATION"`, malformed URLs fail with `"CONFIG"`, and construction
   remains synchronous.

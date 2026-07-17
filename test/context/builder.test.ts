@@ -130,6 +130,82 @@ describe("context builder", () => {
 		}
 	});
 
+	test.each([
+		"markdown",
+		"plain",
+		"xml",
+	] as const)("keeps tiny %s context budgets as a hard postcondition", async (format) => {
+		const client = createMnemocyte({
+			embedder: {
+				model: "tiny-context-budget-test",
+				dimensions: 1,
+				async embed(texts) {
+					return texts.map(() => [1]);
+				},
+			},
+		});
+		const entityId = `tiny_context_${format}`;
+		const truncationMarker = "[truncated to fit token budget]";
+		const heuristicCounter = {
+			count(text: string) {
+				return Math.ceil(text.length / 4);
+			},
+		};
+		const characterCounter = {
+			count(text: string) {
+				return text.length;
+			},
+		};
+		const nonemptyTextCostsTwoTokens = {
+			count(text: string) {
+				return text.length === 0 ? 0 : 2;
+			},
+		};
+
+		try {
+			await client.remember({
+				entityId,
+				content: "A memory that cannot fit inside a tiny token budget.",
+			});
+
+			for (const maxTokens of [1, 2, 3]) {
+				const context = await client.buildContext({
+					entityId,
+					query: "tiny budget",
+					format,
+					maxTokens,
+				});
+				expect(heuristicCounter.count(context)).toBeLessThanOrEqual(maxTokens);
+			}
+
+			for (const maxTokens of [1, 2, 3]) {
+				const context = await client.buildContext({
+					entityId,
+					query: "tiny budget",
+					format,
+					maxTokens,
+					tokenCounter: characterCounter,
+				});
+				expect(context).toBe(truncationMarker.slice(0, maxTokens));
+				expect(characterCounter.count(context)).toBeLessThanOrEqual(maxTokens);
+			}
+
+			const emptyContext = await client.buildContext({
+				entityId,
+				query: "tiny budget",
+				format,
+				maxTokens: 1,
+				tokenCounter: nonemptyTextCostsTwoTokens,
+			});
+			expect(emptyContext).toBe("");
+			expect(
+				nonemptyTextCostsTwoTokens.count(emptyContext),
+			).toBeLessThanOrEqual(1);
+		} finally {
+			await client.close();
+		}
+	});
+
 	test("keeps adversarial plain-text content inside its memory frame", async () => {
 		const contents = [
 			[

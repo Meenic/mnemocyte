@@ -47,7 +47,6 @@ Important but not blocking:
 - Add runtime validation around public inputs for JavaScript consumers.
 - Add retrieval evaluation fixtures that compare recall quality across vector,
   lexical, and fused ranking changes.
-- Make `maxTokens` a hard postcondition even for tiny budgets.
 - Tighten package/release documentation around supported Node versions and npm
   provenance or trusted publishing.
 

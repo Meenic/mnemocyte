@@ -298,7 +298,10 @@ Markdown continues to choose a content-safe backtick fence, and XML continues
 to escape content.
 
 When supplied, `maxTokens` must be a positive integer or `buildContext` rejects
-with `"VALIDATION"`. Omitting it keeps the default token-budget path.
+with `"VALIDATION"`. Omitting it keeps the default token-budget path. Returned
+context always fits the supplied counter and budget; when an extremely small
+budget cannot fit the full truncation marker, the result is the longest marker
+fragment that fits or an empty string.
 
 ### `forget` and `forgetAll`
 
@@ -525,9 +528,6 @@ Known limitations before v1:
 
 - The internal `MemoryStore` boundary is not a public adapter API yet.
   `drizzleStore(db)` is the planned first public store adapter.
-- For extremely small `maxTokens` values, the current truncation marker may
-  exceed the requested budget. Do not treat `buildContext` as a hard token
-  postcondition for tiny budgets until this pre-v1 edge case is resolved.
 - Configured provider timeouts abort the per-attempt `AbortSignal`; the
   underlying provider request only stops promptly when the embedder honors that
   signal.

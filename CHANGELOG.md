@@ -20,6 +20,12 @@ behavioural changes documented in their entries.
 
 ### Breaking Changes
 
+- **CONTEXT-02 — Context token budgets are now a hard postcondition.**
+  `buildContext()` no longer returns an over-budget truncation marker for
+  extremely small `maxTokens` values. It returns the longest marker fragment
+  that fits, or an empty string when even one character exceeds the budget, so
+  callers that relied on the complete fallback marker must handle shorter
+  results.
 - **CONTEXT-01 — Plain-text memory delimiters are now collision-free.** Plain
   context no longer uses the fixed `--- MEMORY N START/END ---` lines. It
   chooses a deterministic `=` fence longer than every run in the query,

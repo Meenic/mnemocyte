@@ -370,7 +370,9 @@ files were retained.
 - how-verified: Test same-survivor retry, different-survivor retry, mixed
   batches, and concurrent consolidation in both backends. Assert the result
   truthfully represents the approved postcondition.
-- approval:
+- approval: yes (target-specific — reject with CONFLICT when the loser already points to a different survivor; same-survivor retries stay idempotent)
+- status: resolved in
+  [`c44c01d`](https://github.com/Meenic/mnemocyte/commit/c44c01dc27f4ee4759d526ef31954b9fcf3afc77)
 
 ### INPUT-01 — Snapshot all mutable remember inputs before awaiting
 

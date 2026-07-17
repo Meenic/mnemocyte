@@ -1,6 +1,6 @@
 {
 	"name": "mnemocyte",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Persistent memory for TypeScript AI apps.",
 	"type": "module",
 	"packageManager": "pnpm@11.1.1",

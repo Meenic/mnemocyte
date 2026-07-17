@@ -108,6 +108,80 @@ describe("openaiEmbedder", () => {
 		]);
 	});
 
+	test("rejects the documented duplicate-index overwrite response", async () => {
+		mockEmbeddingResponse([
+			{ index: 0, embedding: [1, 0] },
+			{ index: 0, embedding: [0, 1] },
+			{ index: 1, embedding: [1, 1] },
+		]);
+		const embedder = openaiEmbedder({
+			apiKey: "test-key",
+			model: "text-embedding-3-small",
+		});
+
+		await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
+			code: "EMBEDDING",
+		});
+	});
+
+	test.each([
+		[
+			"duplicate indices",
+			[
+				{ index: 0, embedding: [1, 0] },
+				{ index: 0, embedding: [0, 1] },
+			],
+		],
+		[
+			"an extra item",
+			[
+				{ index: 0, embedding: [1, 0] },
+				{ index: 1, embedding: [0, 1] },
+				{ index: 0, embedding: [1, 1] },
+			],
+		],
+		["a missing item", [{ index: 0, embedding: [1, 0] }]],
+		[
+			"non-array data",
+			{
+				first: { index: 0, embedding: [1, 0] },
+				second: { index: 1, embedding: [0, 1] },
+			},
+		],
+		["a null item", [null, { index: 1, embedding: [0, 1] }]],
+		[
+			"a non-array embedding",
+			[
+				{ index: 0, embedding: "not-an-array" },
+				{ index: 1, embedding: [0, 1] },
+			],
+		],
+		[
+			"a non-integer index",
+			[
+				{ index: 0.5, embedding: [1, 0] },
+				{ index: 1, embedding: [0, 1] },
+			],
+		],
+		[
+			"an out-of-range index",
+			[
+				{ index: 0, embedding: [1, 0] },
+				{ index: 2, embedding: [0, 1] },
+			],
+		],
+	] as const)("rejects OpenAI embedding responses with %s", async (_label, data) => {
+		mockEmbeddingResponse(data);
+		const embedder = openaiEmbedder({
+			apiKey: "test-key",
+			model: "text-embedding-3-small",
+		});
+
+		await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
+			code: "EMBEDDING",
+		});
+	});
+
 	test("uses known model dimensions and sends supported dimension overrides", async () => {
 		vi.stubEnv("OPENAI_API_KEY", "env-key");
 		mockEmbeddingResponse([{ index: 0, embedding: [1, 2, 3] }]);

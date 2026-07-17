@@ -253,7 +253,10 @@ files such as `dist/embedders/index.d.mts` and
 - `mnemocyte/embedders`: `openaiEmbedder(options)` and
   `OpenAIEmbedderOptions` for editor-discoverable provider helpers.
 - `mnemocyte/embedders/openai`: the stable direct OpenAI helper subpath. This
-  helper uses direct `fetch` calls and does not add an OpenAI SDK dependency.
+  helper uses direct `fetch` calls, does not add an OpenAI SDK dependency, and
+  rejects response data unless it contains exactly one uniquely indexed array
+  embedding per input. Shared embedding validation still owns dimensions and
+  finite numeric components.
 
 **Errors**
 

@@ -38,8 +38,64 @@ interface OpenAIEmbeddingItem {
 	readonly index: number;
 }
 
-interface OpenAIEmbeddingResponse {
-	readonly data: OpenAIEmbeddingItem[];
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateEmbeddingResponse(
+	body: unknown,
+	expectedCount: number,
+): OpenAIEmbeddingItem[] {
+	if (!isRecord(body) || !Array.isArray(body.data)) {
+		throw new MnemocyteError(
+			"OpenAI returned malformed embedding response data.",
+			"EMBEDDING",
+		);
+	}
+	if (body.data.length !== expectedCount) {
+		throw new MnemocyteError(
+			"OpenAI returned an unexpected number of embeddings.",
+			"EMBEDDING",
+		);
+	}
+
+	const indices = new Set<number>();
+	const items: OpenAIEmbeddingItem[] = [];
+	for (const item of body.data) {
+		if (!isRecord(item)) {
+			throw new MnemocyteError(
+				"OpenAI returned a malformed embedding item.",
+				"EMBEDDING",
+			);
+		}
+		const { embedding, index } = item;
+		if (
+			typeof index !== "number" ||
+			!Number.isInteger(index) ||
+			index < 0 ||
+			index >= expectedCount
+		) {
+			throw new MnemocyteError(
+				"OpenAI returned an embedding with an invalid index.",
+				"EMBEDDING",
+			);
+		}
+		if (indices.has(index)) {
+			throw new MnemocyteError(
+				"OpenAI returned a duplicate embedding index.",
+				"EMBEDDING",
+			);
+		}
+		if (!Array.isArray(embedding)) {
+			throw new MnemocyteError(
+				"OpenAI returned an embedding that is not an array.",
+				"EMBEDDING",
+			);
+		}
+		indices.add(index);
+		items.push({ embedding: embedding as number[], index });
+	}
+	return items;
 }
 
 function assertDimensions(dimensions: number): void {
@@ -143,31 +199,13 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 				);
 			}
 
-			const body = (await response.json()) as OpenAIEmbeddingResponse;
-
-			const embeddings: Array<number[] | undefined> = Array.from({
-				length: texts.length,
-			});
-			for (const item of body.data) {
-				if (
-					!Number.isInteger(item.index) ||
-					item.index < 0 ||
-					item.index >= texts.length
-				) {
-					throw new MnemocyteError(
-						"OpenAI returned an embedding with an invalid index.",
-						"EMBEDDING",
-					);
-				}
-				embeddings[item.index] = item.embedding;
-			}
-			if (embeddings.some((embedding) => embedding === undefined)) {
-				throw new MnemocyteError(
-					"OpenAI returned fewer embeddings than requested.",
-					"EMBEDDING",
-				);
-			}
-			return embeddings as number[][];
+			const items = validateEmbeddingResponse(
+				await response.json(),
+				texts.length,
+			);
+			return items
+				.sort((left, right) => left.index - right.index)
+				.map((item) => item.embedding);
 		},
 	};
 }

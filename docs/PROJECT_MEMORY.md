@@ -21,7 +21,10 @@
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
   `migrations/0000_initial.sql.template` with `pnpm migration:render`.
 - The OpenAI helper intentionally does not depend on the OpenAI SDK. It uses
-  direct `fetch` calls and keeps the root `mnemocyte` import provider-free.
+  direct `fetch` calls, keeps the root `mnemocyte` import provider-free, and
+  rejects response data that is not exactly one uniquely indexed array
+  embedding per input. Shared embedding validation retains dimension and
+  finite-component checks.
 - `mnemocyte/embedders` is the editor-discoverable barrel export for embedder
   helpers. Provider-specific subpaths such as `mnemocyte/embedders/openai`
   remain supported through wildcard package exports.

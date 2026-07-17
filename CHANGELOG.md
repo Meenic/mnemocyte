@@ -31,6 +31,13 @@ behavioural changes documented in their entries.
   `postgresql:` synchronously with `"CONFIG"`, before creating a connection
   handle. Detailed host, database, and credential validation remains with
   postgres.js.
+- **OPENAI-01 — Malformed OpenAI response indices now reject.** The OpenAI
+  helper now requires `data` to contain exactly one uniquely indexed array
+  embedding per requested input. Duplicate indices, count mismatches,
+  non-array data, malformed items, and non-array embeddings fail with
+  `"EMBEDDING"` instead of overwriting or returning malformed results.
+  Dimension and finite-component checks remain at the shared embedding
+  boundary.
 - **CONTEXT-01 — Plain-text memory delimiters are now collision-free.** Plain
   context no longer uses the fixed `--- MEMORY N START/END ---` lines. It
   chooses a deterministic `=` fence longer than every run in the query,

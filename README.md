@@ -103,7 +103,11 @@ const embedder = openaiEmbedder({
 explicitly when you use a different key source. The helper uses `fetch`
 directly and does not depend on the OpenAI SDK; plain `import "mnemocyte"` also
 stays provider-free. The direct subpath `mnemocyte/embedders/openai` is also
-supported for consumers that prefer provider-specific imports.
+supported for consumers that prefer provider-specific imports. Provider
+responses must contain exactly one uniquely indexed array embedding per input;
+malformed response shapes fail with `MnemocyteError` code `"EMBEDDING"`.
+Dimension and numeric-component validation remains at the shared embedder
+boundary.
 
 ## Postgres
 

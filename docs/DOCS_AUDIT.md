@@ -97,20 +97,21 @@ Markdown count. `PROPOSALS.md` was also added later; the current repository has
   unverified judgment or planning claims are recorded under Deferred with a
   reason.
 
-## Deferred
+## Historical Deferred Register — Resolved 2026-07-17
 
-- **DEF-01 (`DOC-03`):** The statement that quadratic in-memory duplicate
-  detection is acceptable for typical per-entity sizes is qualitative and has
-  no workload threshold or benchmark in the repository. It remains unchanged
-  as an explicitly unverified operational judgment.
-- **DEF-02 (`DOC-08`):** Performance priority order, risk labels, and “worth
-  doing” thresholds are maintainer judgments without representative production
-  workload data in the repository. They remain unchanged rather than being
-  guessed from synthetic benchmarks.
-- **DEF-03 (`DOC-09`):** Moving provider adapters from subpaths into future
-  monorepo packages is a maintainer direction with no implementation or dated
-  commitment in the repository. It remains unchanged as forward-looking intent.
-- **DEF-04 (`DOC-10`):** The `0.3.0` through `0.5.0` adapter milestones and
-  their ordering are maintainer planning targets, not facts that current source
-  or tests can prove. They remain unchanged as explicitly forward-looking
-  roadmap intent.
+These judgments were correctly deferred during the original source-verification
+pass. Maintainer direction later resolved them in
+[`NEEDS_HUMAN_INPUT.md`](./NEEDS_HUMAN_INPUT.md):
+
+- **DEF-01 (`DOC-03`):** The in-memory backend is for development and
+  prototyping. Its quadratic duplicate scan degrades noticeably past roughly a
+  few thousand memories per entity; Postgres is recommended beyond that scale.
+- **DEF-02 (`DOC-08`):** Performance priority is qualitative: correctness and
+  data integrity, hot-path `recall` / `buildContext` latency, write throughput,
+  then tooling and benchmarks. No global numeric thresholds were invented.
+- **DEF-03 (`DOC-09`):** Provider helpers remain on package subpaths until a
+  second provider or a heavy/conflicting SDK dependency triggers a fresh
+  package-boundary review.
+- **DEF-04 (`DOC-10`):** The confirmed sequence is public `MemoryStore`
+  stabilization, `drizzleStore(db)` at `0.4.0`, then `@mnemocyte/mcp` at
+  `0.5.0`.

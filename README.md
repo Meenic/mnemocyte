@@ -66,6 +66,8 @@ await client.close();
 ```
 
 When `databaseUrl` is omitted, Mnemocyte uses the in-memory backend.
+That backend is intended for development, tests, and prototyping. For
+persistent or larger workloads, use Postgres.
 
 ## Embedder
 
@@ -370,6 +372,10 @@ const pairs = await client.findDuplicates({
   limit: 50,
 });
 ```
+
+The in-memory implementation compares memory pairs quadratically. It degrades
+noticeably once an entity grows beyond roughly a few thousand memories, so use
+the Postgres backend for duplicate detection beyond that scale.
 
 ### `listAuditLog`
 

@@ -55,7 +55,18 @@ Future considerations:
 - Multi-dimension storage in one database, likely through separate columns,
   tables, or partitions.
 - OpenTelemetry adapters built on the current observability hook.
-- Additional provider packages if core subpaths become too crowded.
+
+## Provider Packaging Direction (Confirmed)
+
+Provider helpers remain package subpaths such as
+`mnemocyte/embedders/openai` for the near term. The current helper is
+lightweight and `fetch`-based, so a separate package would add structure
+without resolving a present dependency problem.
+
+Reconsider separate provider packages only after a second provider exists or a
+provider requires a heavy or conflicting SDK dependency. Either condition
+triggers a fresh package-boundary review; it does not predetermine a monorepo
+split. Root `mnemocyte` imports remain provider-free in every case.
 
 ## Next - Public `MemoryStore` Stabilization
 
@@ -73,6 +84,9 @@ an adapter contract:
 
 This is the architectural hinge for the rest of the roadmap. It makes future
 database and runtime adapters possible without copying the client.
+The milestone sequence is confirmed: stabilize this public contract first,
+ship `drizzleStore(db)` at `0.4.0`, and then ship `@mnemocyte/mcp` at `0.5.0`.
+These targets are ordered decisions, not open alternatives.
 
 ## `0.4.0` - `drizzleStore(db)`
 
@@ -124,9 +138,9 @@ considered independently:
 - deterministic snapshot/fixture export for tests
 
 Adapters should stay small, optional, and replaceable. The core should remain a
-memory library, not an agent framework. If the repository moves to a monorepo,
-provider helpers can move from core subpaths into focused packages such as
-`@mnemocyte/openai`.
+memory library, not an agent framework. Provider packaging follows the
+confirmed subpath policy above until one of its explicit review triggers is
+met.
 
 ## Non-Goals
 

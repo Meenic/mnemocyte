@@ -1,7 +1,9 @@
 # Needs Human Input
 
 Decisions that exceeded the behavior-preserving cleanup pass. Option 1 was
-approved and implemented for all three entries.
+approved and implemented for the first three behavior entries. The four
+round-two documentation judgments were resolved by maintainer direction on
+2026-07-17.
 
 This file records the original cleanup decisions and the round-two
 documentation judgments. Current unapproved implementation proposals are
@@ -85,20 +87,97 @@ still manageable.
 **Resolution:** Added recursive `JsonObject` / `JsonValue` types, shared runtime
 validation, typed rejection, and deep cloning at both storage boundaries.
 
-## Round 2: Deferred documentation judgments
+## DOCS-DEF-01: Define in-memory duplicate-detection scale
 
-Re-verified on 2026-07-16. These items remain deferred because current source,
-tests, and synthetic benchmarks cannot settle them without maintainer judgment
-or representative production workload evidence.
+**Status:** Resolved with option 1 by maintainer direction on 2026-07-17.
 
-- **DOCS-DEF-01 — In-memory duplicate scale:** Define the per-entity size at
-  which quadratic in-memory duplicate detection is no longer acceptable.
-- **DOCS-DEF-02 — Performance priorities:** Choose production-relevant priority,
-  risk, and “worth doing” thresholds for the performance backlog.
-- **DOCS-DEF-03 — Provider package direction:** Decide whether provider adapters
-  should eventually move from package subpaths into separate monorepo packages.
-- **DOCS-DEF-04 — Adapter milestone sequencing:** Confirm or revise the planned
-  ordering and version targets for public `MemoryStore`, `drizzleStore(db)`, and
-  MCP adapter work.
+**Decision resolved:** The in-memory backend is for development and
+prototyping. Its quadratic `findDuplicates` scan degrades noticeably beyond
+roughly a few thousand memories per entity; Postgres is recommended beyond
+that scale.
 
-No option was selected or changed during round-two verification.
+Options:
+
+1. Document the intended development/prototyping scope, the rough
+   few-thousand-per-entity degradation point, and the Postgres recommendation.
+2. Continue describing quadratic work as acceptable for “typical” sizes
+   without actionable scale guidance.
+3. Publish a hard numeric support ceiling without representative workload
+   evidence.
+
+**Recommendation:** Use qualitative operational guidance with only the rough
+scale supplied by the maintainer. It gives users a backend-selection signal
+without presenting a benchmark-specific cutoff as a universal limit.
+
+**Resolution:** README and architecture guidance now identify the in-memory
+backend as a development/prototyping path, warn that duplicate detection
+degrades noticeably past roughly a few thousand memories per entity, and
+recommend Postgres beyond that scale.
+
+## DOCS-DEF-02: Set performance backlog priorities
+
+**Status:** Resolved with option 1 by maintainer direction on 2026-07-17.
+
+**Decision resolved:** Performance work follows a qualitative priority order:
+correctness and data integrity first; then hot-path latency for `recall` and
+`buildContext`; then write-path throughput; and tooling or benchmarks last.
+
+Options:
+
+1. Adopt the qualitative priority order without inventing numeric acceptance
+   thresholds.
+2. Keep the backlog ordered by the existing P1/P2 labels even when that mixes
+   hot paths, write throughput, and benchmarking work.
+3. Define latency or throughput thresholds without representative production
+   evidence.
+
+**Recommendation:** Use the qualitative order as the decision rule and require
+measurements only when evaluating a concrete optimization. Numeric global
+thresholds would imply precision the repository cannot support.
+
+**Resolution:** `PERFORMANCE_REVIEW.md` now states the priority rule and orders
+its active backlog accordingly. Correctness or data-integrity regressions
+preempt all optimization work even when they are tracked outside the
+performance document.
+
+## DOCS-DEF-03: Keep provider helpers on package subpaths
+
+**Status:** Resolved with option 1 by maintainer direction on 2026-07-17.
+
+**Decision resolved:** Provider helpers stay on package subpaths such as
+`mnemocyte/embedders/openai` for the near term.
+
+Options:
+
+1. Keep package subpaths until a second provider exists or one provider needs
+   a heavy or conflicting SDK dependency, then reevaluate package boundaries.
+2. Split the current OpenAI helper into a separate monorepo package now.
+3. Move provider behavior into the root package entrypoint.
+
+**Recommendation:** Keep the current subpath design. One lightweight,
+`fetch`-based helper does not justify monorepo/package overhead, and the root
+entrypoint must remain provider-free.
+
+**Resolution:** The roadmap treats subpaths as the settled near-term direction.
+A second provider or a heavy/conflicting SDK dependency is the explicit trigger
+for reconsidering separate packages, not a commitment to split automatically.
+
+## DOCS-DEF-04: Confirm adapter milestone sequencing
+
+**Status:** Resolved with option 1 by maintainer direction on 2026-07-17.
+
+**Decision resolved:** Preserve the existing sequence: stabilize the public
+`MemoryStore` contract, then ship `drizzleStore(db)` at `0.4.0`, then ship
+`@mnemocyte/mcp` at `0.5.0`.
+
+Options:
+
+1. Confirm the existing architecture-first sequence and version targets.
+2. Move MCP ahead of the public store and Drizzle adapter.
+3. Ship the Drizzle adapter before defining the public `MemoryStore` contract.
+
+**Recommendation:** Keep the existing order so both later adapters build on one
+reviewed public storage contract rather than creating parallel abstractions.
+
+**Resolution:** `ROADMAP.md` and `PROJECT_MEMORY.md` now mark the sequence as a
+confirmed decision rather than an open question. No milestone was reordered.

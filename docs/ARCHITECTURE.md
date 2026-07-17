@@ -74,9 +74,9 @@ package ships:
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
-surface. The internal `MemoryStore` boundary is now present; the remaining
-planned order is a public `MemoryStore` contract, `drizzleStore(db)`, and then
-`@mnemocyte/mcp`.
+surface. The internal `MemoryStore` boundary is now present; the confirmed
+sequence is a public `MemoryStore` contract, `drizzleStore(db)` at `0.4.0`, and
+then `@mnemocyte/mcp` at `0.5.0`.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -734,7 +734,11 @@ Status: released as `v0.2.0`.
 - **`rememberMany({ inputs, signal })` owns cancellation at the batch level.**
   The former positional form remains a deprecated pre-v1 compatibility
   overload; its first item signal is treated as the batch signal.
-- **`findDuplicates` on the in-memory backend is O(n²).** Acceptable for typical per-entity sizes; the Postgres backend uses a single pgvector self-join that scales better.
+- **`findDuplicates` on the in-memory backend is O(n²).** The in-memory
+  backend is intended for development and prototyping, and duplicate detection
+  degrades noticeably beyond roughly a few thousand memories per entity. Use
+  the Postgres backend beyond that scale; it performs the comparison in one
+  pgvector self-join.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
 - **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
 - **Consolidation survivor deletion is rejected, not cascaded or detached.**

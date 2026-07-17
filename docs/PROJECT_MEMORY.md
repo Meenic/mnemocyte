@@ -28,6 +28,9 @@
 - `mnemocyte/embedders` is the editor-discoverable barrel export for embedder
   helpers. Provider-specific subpaths such as `mnemocyte/embedders/openai`
   remain supported through wildcard package exports.
+- Provider helpers stay on package subpaths for the near term. Reconsider
+  separate packages only after a second provider exists or one requires a
+  heavy or conflicting SDK dependency; root imports remain provider-free.
 - For write, recall, and duplicate-scan paths, Postgres embedding model and
   dimension validation must happen before provider usage or vector comparison.
   Empty installations atomically record the first configured model; a single
@@ -137,6 +140,10 @@
   remain strict filters and are not complete tie-safe cursors.
 - Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported
   runtime; CI also covers Node 24.
+- The adapter milestone sequence is confirmed: stabilize the public
+  `MemoryStore` contract, ship `drizzleStore(db)` at `0.4.0`, then ship
+  `@mnemocyte/mcp` at `0.5.0`. Do not reorder these as an implementation
+  shortcut.
 
 ## Important Commands
 
@@ -205,5 +212,6 @@ guidance when cutting the next version.
 
 - Decide when the internal `MemoryStore` contract is stable enough to become a
   public adapter surface.
-- Keep the future monorepo direction in mind: provider adapters can later move
-  from subpaths to packages such as `@mnemocyte/openai`.
+- Keep provider helpers on subpaths until a second provider or a
+  heavy/conflicting provider SDK creates a concrete reason to review separate
+  packages.

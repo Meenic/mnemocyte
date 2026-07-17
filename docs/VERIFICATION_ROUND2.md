@@ -228,20 +228,22 @@ Corrections made:
 
 No code, public API, migration, dependency, or package-export change was made.
 
-## Deferred items
+## Deferred items at verification time
 
 `CODEBASE_AUDIT.md` has no unresolved small cleanup item; its three behavior
 deferrals are BUG-01 through BUG-03 and remain resolved.
 
-The four entries under `DOCS_AUDIT.md` Deferred remain genuine judgment calls:
+At this verification checkpoint, the four entries under `DOCS_AUDIT.md`
+remained genuine judgment calls:
 
 - acceptable per-entity scale for quadratic in-memory duplicate detection;
 - performance priority/risk/threshold choices without production workload data;
 - possible future provider-package/monorepo direction;
 - future adapter milestone numbering and ordering.
 
-They were not decided during this verification pass. They are logged fresh
-under the round-two section of `NEEDS_HUMAN_INPUT.md`.
+They were not decided during this verification pass. Maintainer direction on
+2026-07-17 subsequently resolved all four; the decisions and current
+documentation locations are recorded in `NEEDS_HUMAN_INPUT.md`.
 
 ## Published-package/documentation assessment
 

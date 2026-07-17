@@ -23,9 +23,24 @@ remaining runtime input validation, and database/migration error normalization.
 Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
 `PROJECT_MEMORY.md`, not as performance backlog items.
 
+## Priority Policy
+
+Use this qualitative order for backlog decisions:
+
+1. Correctness and data integrity.
+2. Hot-path latency for `recall` and `buildContext`.
+3. Write-path throughput.
+4. Tooling and benchmarks.
+
+Correctness or data-integrity work preempts every optimization below even when
+the issue is tracked in `ARCHITECTURE.md`, `PROPOSALS.md`, or another
+correctness-focused document. This policy deliberately does not invent global
+latency, throughput, or “worth doing” thresholds; evaluate concrete changes
+with representative measurements.
+
 ## Active Priority List
 
-### P1 - Database Hot Paths
+### P1 - Hot-Path Latency
 
 1. **De-duplicate Postgres vector distance expressions**
    - **Area:** Database compute.
@@ -40,8 +55,72 @@ Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
      retrieval quality tests passing.
    - **Risk:** Medium. The SQL shape changes on the core recall path.
 
-2. **Add supporting indexes only after `EXPLAIN`**
+2. **Use top-k selection for in-memory recall**
+   - **Area:** Compute and allocation.
+   - **Current state:** In-memory recall scans all memories, scores all matching
+     candidates, filters by score, sorts the whole result set, then slices to
+     `limit`.
+   - **Work:** Keep a bounded top-k set after `minScore`, then sort only that
+     final set.
+   - **Verification:** Existing retrieval tests pass and a benchmark confirms
+     top-k equivalence for larger in-memory datasets.
+   - **Risk:** Low to medium. Tie ordering must remain deterministic enough for
+     tests and callers.
+
+3. **Index in-memory memories by `entityId`**
+   - **Area:** Compute.
+   - **Current state:** Many in-memory operations scan the whole `Map`, even
+     though most APIs are entity-scoped.
+   - **Work:** Maintain `Map<string, Set<string>>` from entity ID to memory IDs
+     and use it for recall, `forgetAll`, stats, prune with `entityId`, and
+     duplicate detection.
+   - **Verification:** Lifecycle tests cover remember, rememberMany, forget,
+     forgetAll, prune, consolidate, stats, and close so stale IDs cannot remain.
+   - **Risk:** Medium. Every mutation path must update the secondary index.
+
+4. **Reduce repeated context formatting/token counting**
+   - **Area:** Compute and allocation.
+   - **Current state:** `buildContext()` uses binary search over memory count,
+     but each probe slices arrays, formats the candidate context, and calls the
+     token counter.
+   - **Work:** Avoid repeated slices where easy, and consider prefix formatting
+     for markdown/plain outputs if measurements show real tokenizer cost.
+   - **Verification:** Context output snapshots remain identical for markdown,
+     plain, and XML.
+   - **Risk:** Low to medium. Formatting output must remain stable.
+
+### P2 - Write-Path Throughput
+
+5. **Batch audit inserts for batched operations**
    - **Area:** Database I/O.
+   - **Current state:** Postgres `rememberMany()` fires one best-effort audit
+     insert per created memory. Consolidation inserts one audit event per
+     superseded memory inside the transaction when audit is enabled.
+   - **Work:** Add an internal bulk event insert helper and use it where audit
+     events are already naturally batched.
+   - **Verification:** Audit tests confirm all expected events are written and
+     primary operations still succeed if best-effort audit insertion fails.
+   - **Risk:** Low to medium. Preserve current best-effort behavior for
+     non-transactional audit writes.
+
+### P3 - Tooling, Maintenance Paths, and Benchmarks
+
+6. **Bound duplicate-search work**
+   - **Area:** Database compute and in-memory compute.
+   - **Current state:** Duplicate detection is pairwise: Postgres uses a
+     self-join and in-memory uses nested loops, both effectively `O(n^2)` per
+     entity candidate set.
+   - **Work:** For in-memory, keep only the best `limit` pairs instead of
+     sorting every matching pair. For Postgres, consider bounded preselection
+     only if benchmarks show the self-join dominates real workloads.
+   - **Verification:** Duplicate tests preserve threshold, ordering, filters,
+     and no-duplicate behavior. Extend duplicate benchmarks across
+     representative entity sizes without turning one fixture into a universal
+     support threshold.
+   - **Risk:** Medium if Postgres candidate bounding can hide valid pairs.
+
+7. **Add supporting indexes only after `EXPLAIN`**
+   - **Area:** Database I/O and benchmark evidence.
    - **Current state:** The bundled migration has entity, entity/type, event
      timestamp, and HNSW indexes. It does not include a full-text GIN expression
      index, a tag GIN index, or date/access partial indexes.
@@ -54,66 +133,6 @@ Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
    - **Verification:** Migration tests pass; query plans improve on target
      workloads; write overhead is documented.
    - **Risk:** Medium. Indexes are persistent schema surface.
-
-3. **Bound duplicate-search work**
-   - **Area:** Database compute and in-memory compute.
-   - **Current state:** Duplicate detection is pairwise: Postgres uses a
-     self-join and in-memory uses nested loops, both effectively `O(n^2)` per
-     entity candidate set.
-   - **Work:** For in-memory, keep only the best `limit` pairs instead of
-     sorting every matching pair. For Postgres, consider bounded preselection
-     only if benchmarks show the self-join dominates real workloads.
-   - **Verification:** Duplicate tests preserve threshold, ordering, filters,
-     and no-duplicate behavior. Add 200/1k/5k duplicate benchmarks.
-   - **Risk:** Medium if Postgres candidate bounding can hide valid pairs.
-
-### P2 - In-Memory and Constant-Factor Cleanup
-
-4. **Use top-k selection for in-memory recall**
-   - **Area:** Compute and allocation.
-   - **Current state:** In-memory recall scans all memories, scores all matching
-     candidates, filters by score, sorts the whole result set, then slices to
-     `limit`.
-   - **Work:** Keep a bounded top-k set after `minScore`, then sort only that
-     final set.
-   - **Verification:** Existing retrieval tests pass and a benchmark confirms
-     top-k equivalence for larger in-memory datasets.
-   - **Risk:** Low to medium. Tie ordering must remain deterministic enough for
-     tests and callers.
-
-5. **Index in-memory memories by `entityId`**
-   - **Area:** Compute.
-   - **Current state:** Many in-memory operations scan the whole `Map`, even
-     though most APIs are entity-scoped.
-   - **Work:** Maintain `Map<string, Set<string>>` from entity ID to memory IDs
-     and use it for recall, `forgetAll`, stats, prune with `entityId`, and
-     duplicate detection.
-   - **Verification:** Lifecycle tests cover remember, rememberMany, forget,
-     forgetAll, prune, consolidate, stats, and close so stale IDs cannot remain.
-   - **Risk:** Medium. Every mutation path must update the secondary index.
-
-6. **Batch audit inserts for batched operations**
-   - **Area:** Database I/O.
-   - **Current state:** Postgres `rememberMany()` fires one best-effort audit
-     insert per created memory. Consolidation inserts one audit event per
-     superseded memory inside the transaction when audit is enabled.
-   - **Work:** Add an internal bulk event insert helper and use it where audit
-     events are already naturally batched.
-   - **Verification:** Audit tests confirm all expected events are written and
-     primary operations still succeed if best-effort audit insertion fails.
-   - **Risk:** Low to medium. Preserve current best-effort behavior for
-     non-transactional audit writes.
-
-7. **Reduce repeated context formatting/token counting**
-   - **Area:** Compute and allocation.
-   - **Current state:** `buildContext()` uses binary search over memory count,
-     but each probe slices arrays, formats the candidate context, and calls the
-     token counter.
-   - **Work:** Avoid repeated slices where easy, and consider prefix formatting
-     for markdown/plain outputs if benchmarks show real tokenizer cost.
-   - **Verification:** Context output snapshots remain identical for markdown,
-     plain, and XML.
-   - **Risk:** Low to medium. Formatting output must remain stable.
 
 ## Completed or Downgraded Items
 
@@ -134,15 +153,17 @@ Track those in `ARCHITECTURE.md`, `ROADMAP.md`, and
 
 ## Recommended Implementation Order
 
-1. Review benchmark output to decide whether in-memory top-k or Postgres SQL
-   work is actually worth doing next.
-2. Optimize in-memory recall top-k if benchmarks show it matters.
-3. Decide on in-memory entity indexing based on expected backend scale.
-4. Investigate Postgres vector-distance CTE/subquery with benchmark proof.
-5. Add database indexes only after `EXPLAIN` confirms the workload benefit.
-6. Bound duplicate search before promoting duplicate detection beyond
-   experimental usage.
-7. Batch audit writes if audit-enabled batch workloads become common.
+1. Resolve any correctness or data-integrity issue before optimization work.
+2. Investigate the Postgres vector-distance CTE/subquery and in-memory recall
+   top-k work with representative measurements.
+3. Decide on in-memory entity indexing based on expected development and
+   prototyping workloads.
+4. Reduce `buildContext` formatting/token-counting work if profiling shows it
+   is material.
+5. Batch audit writes if audit-enabled write workloads make them material.
+6. Bound experimental duplicate-search work only with semantics-preserving
+   evidence.
+7. Capture `EXPLAIN` and benchmark evidence before adding persistent indexes.
 
 ## Validation Checklist
 

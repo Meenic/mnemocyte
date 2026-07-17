@@ -115,3 +115,92 @@ pass. Maintainer direction later resolved them in
 - **DEF-04 (`DOC-10`):** The confirmed sequence is public `MemoryStore`
   stabilization, `drizzleStore(db)` at `0.4.0`, then `@mnemocyte/mcp` at
   `0.5.0`.
+
+## 2026-07-17 Full Staleness Sweep
+
+Scope: all 14 Markdown files in the repository after `CONSOLIDATION-01` and the
+four `DOCS-DEF` decisions landed. Current claims were checked against source,
+public types, migrations, package metadata and exports, CI configuration,
+tests, Git history/tags, the packed artifact, and the npm registry. Historical
+counts and environment observations were retained only where their files
+clearly label them as dated snapshots.
+
+Repository-wide checks found 14 Markdown files, no broken relative Markdown
+links, no missing local commits among the linked Mnemocyte commit URLs, and no
+obsolete moved-document path in live source, test, package, migration, or CI
+configuration.
+
+### Current File Checklist
+
+- [x] **SWEEP-01 — `AGENTS.md`:** Verified repository boundaries, required
+  reading paths, ESM/provider/storage rules, validation commands, test
+  restrictions, and manual-release policy against the tree, package scripts,
+  source imports, CI, and release workflow constraints. No correction was
+  needed.
+- [x] **SWEEP-02 — `CHANGELOG.md`:** Compared `[Unreleased]` with
+  `v0.3.0..HEAD`, current behavior, migrations, and focused tests. Confirmed
+  `CONSOLIDATION-01` documents survivor-specific idempotency, atomic mixed
+  rejection, and concurrent Postgres locking; published sections remain
+  historical release records. No additional sweep correction was needed.
+- [x] **SWEEP-03 — `PROPOSALS.md`:** Verified all 22 proposal headings have
+  approvals, resolution statuses, and valid local commit targets. Updated the
+  current preface to say the register is closed, noted the later resolution of
+  the four documentation judgments, and added the concrete
+  `CONSOLIDATION-01` resolution.
+- [x] **SWEEP-04 — `README.md`:** Verified install/migration paths, root and
+  embedder exports, public method examples, validation/error behavior,
+  consolidation conflict semantics, cancellation boundaries, backend
+  limitations, development commands, and source-placement guidance. The Phase
+  1 and Phase 2 edits already supplied the needed consolidation and in-memory
+  scale corrections.
+- [x] **SWEEP-05 — `docs/ARCHITECTURE.md`:** Verified module and public-surface
+  maps, error model, schema/index baseline, current query/storage behavior,
+  lifecycle, limitations, and future adapter boundaries. Distinguished the
+  published `v0.3.0` tag from newer `[Unreleased]` source/migration `0002`,
+  clarified idempotent close versus post-close operation rejection, and
+  replaced a nonexistent event-pruning API implication with explicit database
+  maintenance guidance.
+- [x] **SWEEP-06 — `docs/BUGS_FOUND.md`:** Rechecked the three historical
+  reproductions, current approved behavior, error codes, compatibility
+  overload, JSON semantics, and linked commits. The file is explicitly
+  historical and required no correction.
+- [x] **SWEEP-07 — `docs/CODEBASE_AUDIT.md`:** Verified current command/path
+  statements and all resolved item outcomes against source and Git history.
+  Dated baseline counts, runtime versions, and dependency observations remain
+  clearly scoped to their 2026-07-15/16 checkpoint, so no rewrite was needed.
+- [x] **SWEEP-08 — `docs/DOCS_AUDIT.md`:** Preserved the original move-audit
+  checklist as history, marked its four deferred judgments resolved, and added
+  this complete current 14-file checklist and evidence record.
+- [x] **SWEEP-09 — `docs/NEEDS_HUMAN_INPUT.md`:** Verified the three behavior
+  decisions against public types/tests and the four documentation decisions
+  against their affected current docs. Corrected the preface to state that no
+  entry remains open.
+- [x] **SWEEP-10 — `docs/PERFORMANCE_REVIEW.md`:** Checked every active item
+  against current query and adapter mechanics. Confirmed the backlog follows
+  the decided qualitative order—correctness/data integrity, hot-path latency,
+  write throughput, then tooling/benchmarks—and does not present synthetic
+  fixture sizes as universal thresholds.
+- [x] **SWEEP-11 — `docs/PROJECT_MEMORY.md`:** Verified release status with the
+  local tag and npm registry, current implementation facts against source/tests,
+  CI/runtime statements against workflow/package configuration, and roadmap
+  direction. Clarified that repository source is ahead of published `v0.3.0`
+  and that all 22 existing proposal entries are resolved.
+- [x] **SWEEP-12 — `docs/ROADMAP.md`:** Verified shipped capabilities against
+  source and kept them out of forward-looking milestone detail. Confirmed the
+  settled provider-subpath policy and public `MemoryStore` →
+  `drizzleStore(db)` `0.4.0` → `@mnemocyte/mcp` `0.5.0` sequence.
+- [x] **SWEEP-13 — `docs/SUMMARY.md`:** Verified commit links and historical
+  run boundaries, added the required account of this run, and corrected older
+  paragraphs that could still read as if `CONSOLIDATION-01` were currently
+  open or untouched.
+- [x] **SWEEP-14 — `docs/VERIFICATION_ROUND2.md`:** Verified its tag/hash,
+  move, release, and resolved-bug claims against Git and current source. Kept
+  its environment/count results as an explicitly labeled 2026-07-16 snapshot
+  and retained the Phase 2 note that all four then-deferred documentation
+  judgments were resolved later.
+
+### Deferred
+
+None. Workload-specific optimization evidence is still required before
+implementing performance or index changes, but that is an intentional backlog
+condition rather than an unresolved documentation fact.

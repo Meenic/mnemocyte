@@ -4,16 +4,17 @@ Fresh audit date: 2026-07-16
 Audited revision: `16c2d13`
 
 The findings and baseline counts below are the dated audit snapshot from that
-revision. Approval and status fields are maintained afterward: blank approval
-fields remain pending, while resolved entries link their implementation
-commits.
+revision. Approval and status fields were maintained afterward. All 22 current
+entries are approved and resolved; future additions should leave approval
+blank until the maintainer decides them.
 
 This pass inspected the current source, tests, migrations, package boundary,
 CI, prior audit records, and the `0.3.0` release changes. Resolved items from
 `docs/CODEBASE_AUDIT.md`, `docs/BUGS_FOUND.md`, and `CHANGELOG.md` are not
 re-proposed. Existing workload-dependent performance questions in
 `docs/PERFORMANCE_REVIEW.md` and `docs/NEEDS_HUMAN_INPUT.md` are also not
-duplicated.
+duplicated. The four documentation judgments deferred at this audit checkpoint
+were resolved by maintainer direction on 2026-07-17.
 
 Baseline checks passed before this document was written:
 
@@ -373,6 +374,10 @@ files were retained.
 - approval: yes (target-specific — reject with CONFLICT when the loser already points to a different survivor; same-survivor retries stay idempotent)
 - status: resolved in
   [`c44c01d`](https://github.com/Meenic/mnemocyte/commit/c44c01dc27f4ee4759d526ef31954b9fcf3afc77)
+- resolution: Same-survivor retries remain zero-count no-ops. A loser already
+  assigned to a different survivor rejects the entire call with `"CONFLICT"`;
+  both adapters check before mutation, and Postgres locks requested losers
+  inside the consolidation transaction for concurrent parity.
 
 ### INPUT-01 — Snapshot all mutable remember inputs before awaiting
 

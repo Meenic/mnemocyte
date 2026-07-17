@@ -3,6 +3,10 @@
 ## Current State
 
 - Package `v0.3.0` has been published, tagged, and is the npm `latest` release.
+- Repository source is ahead of `v0.3.0`. Current changes belong under
+  `../CHANGELOG.md` `[Unreleased]`; they include migration `0002`, approved
+  behavior fixes, and documentation decisions that are not yet a newer
+  published package.
 - The `0.3.0` release includes internal `MemoryStore` adapters, shared client
   orchestration, active provider timeout aborts, narrower Postgres dimension
   checks, JSON metadata value semantics, runtime tuning validation, batch-level
@@ -191,8 +195,9 @@ Known code follow-ups before v1:
 - Continue adding runtime validation for JavaScript consumers where public
   inputs beyond the remember and memory-type-filter boundaries need stronger
   guards than TypeScript declarations.
-- Resolve or explicitly defer the unapproved findings tracked in
-  `../PROPOSALS.md`; do not infer approval from their presence.
+- Treat `../PROPOSALS.md` as the closed audit/resolution register for its 22
+  current entries. Record any new unapproved finding explicitly rather than
+  inferring approval from its presence.
 
 Documentation follow-ups:
 

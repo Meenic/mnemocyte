@@ -22,11 +22,14 @@ shared client orchestration described below, and the documented pre-v1
 breaking changes for JSON metadata types, retrieval-tuning rejection, and the
 canonical `rememberMany({ inputs, signal })` batch API.
 
-Postgres installations use `mnemocyte_meta.embedding_dimensions` and
-`mnemocyte_meta.embedding_model` as installation metadata. The default
-1536-dimensional install is represented by `0000_initial.sql`,
-`0001_add_mnemocyte_meta.sql`, and `0002_add_embedding_model.sql`; custom fresh
-installs are rendered from `0000_initial.sql.template`.
+The repository is ahead of that published tag. Its `[Unreleased]` source adds
+the approved fixes listed in `CHANGELOG.md`, including
+`mnemocyte_meta.embedding_model` and `0002_add_embedding_model.sql`. In current
+source, Postgres installations use both `embedding_dimensions` and
+`embedding_model` as installation metadata. The default 1536-dimensional
+install is represented by `0000_initial.sql`, `0001_add_mnemocyte_meta.sql`,
+and `0002_add_embedding_model.sql`; custom fresh installs are rendered from
+`0000_initial.sql.template`.
 
 ## Goals
 
@@ -278,7 +281,8 @@ files such as `dist/embedders/index.d.mts` and
   composite positions provide stable tie-safe pagination; `before` / `after`
   remain strict timestamp filters.
 - `stats(input?)` — `EntityStats` or `GlobalStats`.
-- `close()` — idempotent; further calls throw `"DB"`.
+- `close()` — idempotent; repeated close calls share the result, while client
+  operations admitted after closing starts throw `"DB"`.
 
 **Client (experimental, gated under `client.experimental.*`)**
 
@@ -740,7 +744,9 @@ Status: released as `v0.2.0`.
   the Postgres backend beyond that scale; it performs the comparison in one
   pgvector self-join.
 - **Hybrid recall on Postgres computes approximate lexical scores for vector-only candidates.** When a row appears only in the vector top-K, a JS-side substring-match lexical score is used instead of PostgreSQL's `ts_rank`. Similarly, lexical-only candidates get a JS-side cosine similarity from the stored embedding, fetched through a narrow follow-up lookup. These approximations are close but not identical to database-side scores. `candidateMultiplier` widens the candidate set to further reduce edge cases.
-- **`forgetAll` does not cascade-delete the audit log** (intentional — the audit trail is sticky). Use `prune` against the `mnemocyte_events` table directly if you need to compact it.
+- **`forgetAll` does not cascade-delete the audit log** (intentional — the
+  audit trail is sticky). Mnemocyte has no event-pruning API; use explicit
+  database maintenance against `mnemocyte_events` if you need to compact it.
 - **Consolidation survivor deletion is rejected, not cascaded or detached.**
   `forget`, `forgetAll`, and non-dry-run `prune` throw `"CONFLICT"` without
   deleting anything when a selected memory still has `supersededBy`

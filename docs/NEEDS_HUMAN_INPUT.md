@@ -6,9 +6,9 @@ round-two documentation judgments were resolved by maintainer direction on
 2026-07-17.
 
 This file records the original cleanup decisions and the round-two
-documentation judgments. Current unapproved implementation proposals are
-tracked in [`PROPOSALS.md`](../PROPOSALS.md) so their approval fields and
-resolution commits remain in one place.
+documentation judgments. No entry currently requires human input.
+[`PROPOSALS.md`](../PROPOSALS.md) retains the implementation-proposal approval
+and resolution history in one place.
 
 ## BUG-01: Choose batch cancellation semantics
 

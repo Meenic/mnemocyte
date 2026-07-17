@@ -15,9 +15,43 @@ fully validated against real Postgres + pgvector, and committed before the next
 fix began.
 
 Counts, environment details, and scope statements in the older sections below
-are snapshots of their named runs. The remember-input, provider-config,
-observability, and metadata-ownership section remains its own historical
-snapshot; the section below is the latest completed implementation run.
+are snapshots of their named runs. The new section immediately below records
+the 2026-07-17 consolidation and documentation run; later sections retain their
+historical scope.
+
+## Consolidation target policy and documentation decisions
+
+**CONSOLIDATION-01** was implemented in
+[`c44c01d`](https://github.com/Meenic/mnemocyte/commit/c44c01dc27f4ee4759d526ef31954b9fcf3afc77).
+Same-survivor retries remain zero-count no-ops, while a loser already assigned
+to a different survivor rejects the whole call with `"CONFLICT"`. Both
+adapters preflight mixed batches before changing loser state, survivor tags, or
+audit events. Postgres locks requested loser rows inside its existing
+transaction, so concurrent same-target calls yield one mutation and one no-op,
+while concurrent different-target calls yield one mutation and one conflict.
+The shared fixture enforces these rules in memory and against real Postgres +
+pgvector.
+
+The four former `DOCS-DEF` judgments are now resolved: the in-memory backend is
+documented as a development/prototyping path whose duplicate scan degrades
+noticeably beyond roughly a few thousand memories per entity; performance work
+is ordered by correctness/data integrity, hot-path latency, write throughput,
+then tooling/benchmarks; provider helpers stay on package subpaths until a
+second provider or heavy/conflicting SDK triggers review; and the confirmed
+adapter sequence is public `MemoryStore` stabilization, `drizzleStore(db)` at
+`0.4.0`, then `@mnemocyte/mcp` at `0.5.0`.
+
+The final documentation sweep checked all 14 Markdown files against source,
+tests, migrations, package metadata, CI, Git history, and the npm release
+state. It corrected remaining historical-summary wording that still presented
+`CONSOLIDATION-01` as open, distinguished published `v0.3.0` from the newer
+`[Unreleased]` repository state, and verified every relative Markdown link and
+referenced local commit.
+
+The final combined state passed `pnpm checktypes`, `pnpm lint`, `pnpm test`
+(31 unit/package files, 130 tests), `pnpm build`, `pnpm run pack:check`, and
+`pnpm run test:integration` against the configured real Postgres + pgvector
+database (10 files, 14 tests).
 
 ## Approved store, retrieval, audit, and context fixes
 
@@ -72,12 +106,11 @@ database. At the final implementation commit, the unit/package suite contained
 30 passing files with 110 tests, and the integration suite contained 10
 passing files with 14 tests.
 
-Changes in this run were limited to STORE-01, RETRIEVAL-02, AUDIT-01,
+Changes in that run were limited to STORE-01, RETRIEVAL-02, AUDIT-01,
 AUDIT-02, CONTEXT-01, their focused tests, and current-behavior documentation.
-No migration or default index was added. No other proposal was implemented or
-resolved. In particular, `CONSOLIDATION-01` retains its blank approval, has no
-resolution status, and its open survivor-specific idempotency question was not
-changed.
+No migration or default index was added. At that run's endpoint,
+`CONSOLIDATION-01` still had blank approval and no resolution status; it was
+subsequently approved and resolved in `c44c01d` as described above.
 
 ## Approved remember input, config, observability, and metadata fixes
 
@@ -137,11 +170,11 @@ contract and instrumentation. Recall scoring and duplicate-pair mapping retain
 their separate clones because their multi-candidate ownership paths were not
 proven redundant.
 
-Changes in this run were limited to INPUT-01, INPUT-02, CONFIG-01,
+Changes in that run were limited to INPUT-01, INPUT-02, CONFIG-01,
 OBSERVABILITY-01, REFACTOR-01, their tests and current-behavior documentation,
 the five matching proposal approvals/statuses, and this summary.
-`CONSOLIDATION-01` was not modified or implemented, and no other unapproved
-`PROPOSALS.md` entry was touched.
+`CONSOLIDATION-01` was not modified during that run; it was implemented later
+in `c44c01d`.
 
 ## Consolidation survivor deletion policy
 
@@ -171,7 +204,8 @@ tests) using the configured real Postgres + pgvector database.
 Implementation, tests, public types, README, architecture, changelog,
 maintainer memory, the `CONSOLIDATION-DELETE-01` status, and this summary were
 the only changes. No other `PROPOSALS.md` entry was modified or implemented,
-and consolidation itself was not changed.
+and consolidation itself was not changed during that deletion-policy run.
+Survivor-specific consolidation behavior changed later in `c44c01d`.
 
 ## Approved vector correctness and compatibility fixes
 
@@ -400,7 +434,9 @@ file:
   status, release-prep status, and root README/AGENTS paths.
 - **`docs/ROADMAP.md`:** Moved from root; current and planned feature status,
   names, migration direction, and links were verified without factual edits;
-  future version sequencing remains explicitly planning intent.
+  future version sequencing remained planning intent at that checkpoint. The
+  `0.4.0` / `0.5.0` sequence was confirmed by maintainer direction on
+  2026-07-17.
 - **`docs/SUMMARY.md`:** Moved from root and updated with this grouped account;
   its earlier cleanup, fix sequencing, commits, and behavior scope were checked
   against Git history and the current branch.
@@ -430,13 +466,17 @@ resolved with a link to its behavior commit.
 
 ## Needs human input
 
-[NEEDS_HUMAN_INPUT.md](./NEEDS_HUMAN_INPUT.md) records the approved option 1
-decision and resolution commit for each item:
+[NEEDS_HUMAN_INPUT.md](./NEEDS_HUMAN_INPUT.md) records seven resolved
+decisions. The original three behavior entries are:
 
 - Use one explicit batch-level cancellation signal.
 - Reject invalid tuning with typed configuration/validation errors.
 - Define metadata as JSON-compatible persisted value data, validate it, and
   deep-clone it at ingress and egress.
+
+The four later documentation entries settle in-memory duplicate scale,
+performance priority, provider packaging, and adapter milestone sequencing.
+No entry currently remains open.
 
 ## Validation
 
@@ -492,8 +532,8 @@ commit. The same complete gate passed again on the final combined state,
 including 30 unit/package test files with 129 tests and 10 live Postgres
 integration files with 14 tests.
 
-Changes in this run were limited to `CONTEXT-02`, `CONFIG-02`, `OPENAI-01`,
+Changes in that run were limited to `CONTEXT-02`, `CONFIG-02`, `OPENAI-01`,
 their focused tests and current-behavior documentation, the three matching
 proposal approval/resolution records, and this summary update. No other
-`PROPOSALS.md` entry was implemented or changed. In particular,
-`CONSOLIDATION-01` was not touched.
+`PROPOSALS.md` entry was implemented or changed during that run.
+`CONSOLIDATION-01` was implemented later in `c44c01d`.

@@ -5,7 +5,7 @@ root-document move. Each entry records the claims that were checked against
 source, tests, configuration, Git history, or repository layout before the
 audit was closed.
 
-Round-two verification later added `VERIFICATION_ROUND2.md`. The 12-file count
+Round-two verification later added `CODEBASE_VERIFICATION_ROUND2.md`. The 12-file count
 below is therefore the completed move-audit snapshot, not the current repository
 Markdown count. `PROPOSALS.md` was also added later; the current repository has
 14 Markdown files, with `AGENTS.md`, `CHANGELOG.md`, `PROPOSALS.md`, and
@@ -197,7 +197,7 @@ configuration.
   run boundaries, added the required account of this run, and corrected older
   paragraphs that could still read as if `CONSOLIDATION-01` were currently
   open or untouched.
-- [x] **SWEEP-14 — `docs/VERIFICATION_ROUND2.md`:** Verified its tag/hash,
+- [x] **SWEEP-14 — `docs/CODEBASE_VERIFICATION_ROUND2.md`:** Verified its tag/hash,
   move, release, and resolved-bug claims against Git and current source. Kept
   its environment/count results as an explicitly labeled 2026-07-16 snapshot
   and retained the Phase 2 note that all four then-deferred documentation

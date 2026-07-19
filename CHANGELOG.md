@@ -8,6 +8,15 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Documentation
+
+- Reverified the `docs/design/` investigation sequence against the current
+  source, tests, package boundary, migrations, and Git state. Canonical
+  architecture and maintainer docs now record the tagged `0.4.0` baseline,
+  lazy Postgres runtime loading, the complete 18-method `MemoryStore`
+  disposition, design-record authority, and two pending consolidation
+  contract decisions.
+
 ## [0.4.0] - 2026-07-17
 
 ### Added

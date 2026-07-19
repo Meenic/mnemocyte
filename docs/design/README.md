@@ -1,41 +1,55 @@
 # MemoryStore Contract Design Investigation
 
-**No file in this folder should be treated as a finalized,
-implementation-ready contract yet.** The next step is a v3 revision that
-resolves round 2's remaining open items: the survivor race-time error code,
-the survivor tag-merge source, the audit-event field specification, and whether
-the surviving capability flag needs a defined public surface at all. Do not
-implement against v2 as-is.
+No file in this folder is a finalized implementation contract. Drafts preserve
+the proposal at that point in the investigation; verification reports preserve
+evidence at their recorded commit and do not make the draft they review
+authoritative. Superseded wording remains here for traceability.
 
-The files are ordered below by their role in the investigation:
+For current behavior, use source, tests, migrations, package configuration,
+the root [`README.md`](../../README.md), [`CHANGELOG.md`](../../CHANGELOG.md),
+and [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md). Future direction is governed
+by [`docs/ROADMAP.md`](../ROADMAP.md), maintainer context by
+[`docs/PROJECT_MEMORY.md`](../PROJECT_MEMORY.md), and approval-sensitive
+changes by root [`PROPOSALS.md`](../../PROPOSALS.md).
 
-- [`MONOREPO_READINESS_REPORT.md`](./MONOREPO_READINESS_REPORT.md) is the
-  evidence-gathering pass that started this investigation. It remains accurate
-  as of its stated date and is the foundational reference for the documents
-  that followed.
-- [`memorystore-capability-contract.md`](./memorystore-capability-contract.md)
-  is the first capability-contract draft. It is **superseded** and contains
-  confirmed factual errors documented by round 1. It is retained for history,
-  not as an implementation reference.
-- [`CONTRACT_DESIGN_VERIFICATION.md`](./CONTRACT_DESIGN_VERIFICATION.md) is the
-  round 1 verification. It found that the first draft invented and omitted
-  real `MemoryStore` methods, misapplied several proposed capability flags, and
-  left a survivor-race gap in the SQLite `consolidate` design. The v2 draft was
-  written to address those findings.
-- [`sqlite-adapter-design-notes.md`](./sqlite-adapter-design-notes.md) covers
-  the four hardest proposed SQLite methods. Its `consolidate` section is
-  **superseded** by v2's corrected sequence. The other three sections
-  (`vectorSearch`, `findDuplicatePairs`, and `prune`) were not revised in v2
-  and should be read alongside section 3 of the round 1 verification rather
-  than treated as fully verified.
-- [`memorystore-capability-contract-v2.md`](./memorystore-capability-contract-v2.md)
-  is the current draft. It fixes most round 1 findings, and round 2 confirms
-  the interface work and most decisions about dropped or retained flags.
-  Round 2 also finds that v2 overgeneralizes the in-memory
-  referential-integrity mechanism and how strongly the surviving flag is
-  justified, while leaving several `consolidate` race-time details
-  underspecified. It is the most current draft, but it is **not yet
-  implementation-ready**.
-- [`CONTRACT_DESIGN_VERIFICATION_V2.md`](./CONTRACT_DESIGN_VERIFICATION_V2.md)
-  is the round 2 verification. Its open items are the remaining work that must
-  be resolved before the contract can be treated as a finalized specification.
+## Chronology and authority
+
+1. [`MONOREPO_READINESS_REPORT.md`](./MONOREPO_READINESS_REPORT.md) is the
+   initial evidence snapshot at its stated revision. It is historical evidence,
+   not a current repository-state promise.
+2. [`memorystore-capability-contract.md`](./memorystore-capability-contract.md)
+   is the superseded capability-contract draft.
+3. [`CONTRACT_DESIGN_VERIFICATION.md`](./CONTRACT_DESIGN_VERIFICATION.md)
+   verifies that first draft and the exploratory
+   [`sqlite-adapter-design-notes.md`](./sqlite-adapter-design-notes.md). It
+   records interface omissions, unsupported flags, and SQLite contract gaps.
+4. [`memorystore-capability-contract-v2.md`](./memorystore-capability-contract-v2.md)
+   is the corrected capability draft.
+5. [`CONTRACT_DESIGN_VERIFICATION_V2.md`](./CONTRACT_DESIGN_VERIFICATION_V2.md)
+   confirms most corrections but rejects v2 as implementation-ready. In
+   particular, indexed vector search is a real backend distinction, not proof
+   that a public capability surface is needed.
+6. [`public-memorystore-stabilization.md`](./public-memorystore-stabilization.md)
+   begins the narrower public-contract stabilization investigation.
+7. [`STABILIZATION_PROPOSAL_VERIFICATION.md`](./STABILIZATION_PROPOSAL_VERIFICATION.md)
+   finds backend edge differences, incorrect combined cancellation wording,
+   and an overbroad indexed-search framing.
+8. [`public-memorystore-stabilization-v2.md`](./public-memorystore-stabilization-v2.md)
+   is the first stabilization correction.
+9. [`STABILIZATION_PROPOSAL_VERIFICATION_V2.md`](./STABILIZATION_PROPOSAL_VERIFICATION_V2.md)
+   confirms the overall direction while identifying remaining ownership,
+   counting, path, and wording errors.
+10. [`public-memorystore-stabilization-v3.md`](./public-memorystore-stabilization-v3.md)
+    is the latest proposal draft.
+11. [`STABILIZATION_PROPOSAL_VERIFICATION_V3.md`](./STABILIZATION_PROPOSAL_VERIFICATION_V3.md)
+    is the latest verification. It rejects v3 as a final implementation basis:
+    store return order is still assigned to the wrong layer,
+    `findDuplicatePairs` overstates the absence of every index, Postgres-only
+    cancellation behavior is presented without its backend qualifier, and the
+    description of the changed documentation track is internally inconsistent.
+
+The capability investigation and stabilization investigation intentionally end
+at different recommendations. The former identifies indexed vector search as a
+candidate distinction; the latter recommends no public capability flag without
+a concrete consumer. The canonical current decision is to defer a capability
+surface. No design in this folder is currently implementation-ready.

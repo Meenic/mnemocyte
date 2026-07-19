@@ -2,23 +2,23 @@
 
 ## Current State
 
-- Package `v0.3.0` has been published, tagged, and is the npm `latest` release.
-- Repository source is ahead of `v0.3.0`. The current changes are finalized
-  under `../CHANGELOG.md` `0.4.0`; they include migration `0002`, approved
-  behavior fixes, and documentation decisions. The package version bump, tag,
-  and publish are still pending, and the new `[Unreleased]` section is empty.
-- The `0.3.0` release includes internal `MemoryStore` adapters, shared client
-  orchestration, active provider timeout aborts, narrower Postgres dimension
-  checks, JSON metadata value semantics, runtime tuning validation, batch-level
-  `rememberMany` cancellation, and in-memory public-result vector leak fixes.
-- Package `v0.2.0` is the previous minor baseline for configurable Postgres
-  embedding dimensions.
+- The package version is `0.4.0`, and repository tag `v0.4.0` points to
+  `a11ecf1`. The re-verification snapshot at `54864ba` is three commits ahead
+  of that tag. Local Git and package metadata do not prove npm or GitHub-release
+  publication status.
+- The `0.4.0` changelog includes migration `0002`, the approved behavior
+  corrections, and the internal `MemoryStore` hardening work. Post-tag changes
+  belong under the new `../CHANGELOG.md` `[Unreleased]` section.
+- The root package now validates the database URL synchronously but loads the
+  Postgres/Drizzle runtime through `memory/lazy-postgres.ts` only when a
+  Postgres store is first used. A packed in-memory consumer is tested with
+  `drizzle-orm` and `postgres` absent.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
 - `../CHANGELOG.md` has a `0.3.0` section dated `2026-07-16` for the internal
   store refactor, approved pre-v1 behavior changes, and hardening fixes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.4.0` as the prepared hardening release and
+- The current roadmap treats `0.4.0` as the tagged hardening baseline and
   public `MemoryStore` stabilization as the next architectural decision.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
@@ -148,6 +148,25 @@
   `MemoryStore` contract, ship `drizzleStore(db)` at `0.5.0`, then ship
   `@mnemocyte/mcp` at `0.6.0`. Do not reorder these as an implementation
   shortcut.
+- Files under `design/` are dated investigation records, not implementation
+  contracts. Drafts preserve the proposal at that point in the chronology;
+  verification reports preserve evidence at their recorded revision and do
+  not make the subject draft authoritative. Current behavior is governed by
+  source, tests, migrations, package configuration, `../README.md`,
+  `../CHANGELOG.md`, and `ARCHITECTURE.md`; future direction is governed by
+  `ROADMAP.md`, while approval-sensitive changes are governed by root
+  `../PROPOSALS.md`.
+- The latest design sequence ends with
+  `design/public-memorystore-stabilization-v3.md` and
+  `design/STABILIZATION_PROPOSAL_VERIFICATION_V3.md`. The verification rejects
+  v3 as a final implementation basis. No `docs/design/` proposal is currently
+  implementation-ready.
+- No public capability surface is approved or implemented. The earlier
+  capability investigation identified indexed vector search as a real backend
+  distinction; the later stabilization investigation recommends deferring a
+  public flag because no current caller or roadmap item consumes it.
+- Two current consolidation decisions are pending in root `../PROPOSALS.md`:
+  duplicate loser IDs and atomic survivor revalidation/current-tag ownership.
 
 ## Important Commands
 
@@ -195,9 +214,9 @@ Known code follow-ups before v1:
 - Continue adding runtime validation for JavaScript consumers where public
   inputs beyond the remember and memory-type-filter boundaries need stronger
   guards than TypeScript declarations.
-- Treat `../PROPOSALS.md` as the closed audit/resolution register for its 22
-  current entries. Record any new unapproved finding explicitly rather than
-  inferring approval from its presence.
+- Treat the original 22-entry `../PROPOSALS.md` audit cohort as closed. New
+  post-audit findings remain in the same register with blank approval until the
+  maintainer decides them; never infer approval from presence.
 
 Documentation follow-ups:
 
@@ -209,10 +228,10 @@ Documentation follow-ups:
 
 ## Release Status
 
-`v0.3.0` is published. The `v0.4.0` changelog is finalized, but the package
-version bump, tag, and publish are still pending. Track any later changes under
-the new `../CHANGELOG.md` `[Unreleased]` section and follow `../AGENTS.md`
-release guidance for the remaining release steps.
+The repository package version and latest tag are `0.4.0`; current `HEAD` is
+ahead of that tag. Track post-tag changes under `../CHANGELOG.md`
+`[Unreleased]`. Confirm registry/GitHub publication separately before making a
+publication claim, and follow `../AGENTS.md` for manual release steps.
 
 ## Suggested Next Steps
 

@@ -4,10 +4,11 @@ This roadmap tracks the planned direction for Mnemocyte before v1.0. It is a
 forward-looking planning document, not a release history. Shipped work belongs
 in [CHANGELOG.md](../CHANGELOG.md).
 
-The `0.4.0` release contents were finalized in the changelog on 2026-07-17;
-the package version bump, tag, and publish remain separate release steps.
-Because `0.4.0` is now assigned to that hardening release, the still-unshipped
-adapter targets advance by one minor version without changing their order.
+The `0.4.0` hardening release is recorded in the changelog and tagged in this
+repository. Current `HEAD` contains post-tag work while the package version
+remains `0.4.0`; local Git state alone does not establish npm or GitHub-release
+publication status. The still-unshipped adapter targets remain ordered at
+`0.5.0` and `0.6.0`.
 
 Mnemocyte's direction is infrastructure-native and deliberately composable:
 bring your own database, bring your own embedder, and keep the core package
@@ -86,6 +87,12 @@ an adapter contract:
   responsibilities belong to callers versus Mnemocyte.
 - Keep the type private and avoid a third backend until those decisions are
   validated.
+- Resolve the pending consolidation contract entries in
+  [PROPOSALS.md](../PROPOSALS.md), including duplicate loser IDs and atomic
+  survivor revalidation.
+- Do not add a public capability-flag surface without a concrete consumer.
+  Current adapters call every method unconditionally; indexed vector search is
+  a real implementation distinction, but no caller currently branches on it.
 
 This is the architectural hinge for the rest of the roadmap. It makes future
 database and runtime adapters possible without copying the client.

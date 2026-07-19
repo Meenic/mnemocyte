@@ -16,20 +16,16 @@ The current package is intentionally explicit: callers supply the embedder, the
 Postgres schema is applied through migrations, and the client does not hide
 infrastructure setup behind constructor side effects.
 
-The current published package is `0.3.0`. It includes the configurable
-Postgres-dimension work from `0.2.0`, the internal `MemoryStore` boundary and
-shared client orchestration described below, and the documented pre-v1
-breaking changes for JSON metadata types, retrieval-tuning rejection, and the
-canonical `rememberMany({ inputs, signal })` batch API.
+The package version and latest repository tag are `0.4.0`; tag `v0.4.0`
+points to `a11ecf1`. The verification snapshot at `54864ba` is three commits
+ahead of that tag while retaining package version `0.4.0`. Local Git state does
+not establish npm or GitHub-release publication status.
 
-The repository is ahead of that published tag. The changes prepared for
-`0.4.0` in `CHANGELOG.md` include
-`mnemocyte_meta.embedding_model` and `0002_add_embedding_model.sql`. In current
-source, Postgres installations use both `embedding_dimensions` and
-`embedding_model` as installation metadata. The default 1536-dimensional
-install is represented by `0000_initial.sql`, `0001_add_mnemocyte_meta.sql`,
-and `0002_add_embedding_model.sql`; custom fresh installs are rendered from
-`0000_initial.sql.template`.
+Current source includes the `0.4.0` hardening work, installation-level
+`embedding_model` metadata, and post-tag lazy Postgres loading. The default
+1536-dimensional install is represented by `0000_initial.sql`,
+`0001_add_mnemocyte_meta.sql`, and `0002_add_embedding_model.sql`; custom fresh
+installs are rendered from `0000_initial.sql.template`.
 
 ## Goals
 
@@ -81,6 +77,12 @@ surface. The internal `MemoryStore` boundary is now present; the confirmed
 sequence is a public `MemoryStore` contract, `drizzleStore(db)` at `0.5.0`, and
 then `@mnemocyte/mcp` at `0.6.0`.
 
+The root artifact validates a supplied database URL synchronously, then creates
+a lazy Postgres store. Drizzle, postgres.js, schema, query, and Postgres adapter
+modules are dynamically imported only when that store is first used. The
+database packages remain runtime dependencies for the Postgres path, but a
+packed in-memory consumer is tested with both packages absent.
+
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
 ## Runtime Dependencies
@@ -127,6 +129,7 @@ Node 24 in CI.
 src/
 +-- index.ts                  # public API re-exports only
 +-- client.ts                 # createMnemocyte() factory + backend selection
++-- database-url.ts           # synchronous Postgres URL validation
 +-- types.ts                  # public types
 +-- errors.ts                 # MnemocyteError + isMnemocyteError
 +-- observability.ts          # observe() helper for start/success/error events
@@ -157,6 +160,8 @@ src/
 |   +-- postgres-records.ts   # Postgres row-to-public-memory mapping
 |   +-- validation.ts         # client configuration and operation validation
 |   +-- in-memory.ts          # in-memory MemoryStore adapter
+|   +-- lazy-postgres.ts      # MemoryStore proxy + dynamic Postgres import
+|   +-- postgres-runtime.ts   # URL-to-Postgres-store runtime assembly
 |   +-- postgres.ts           # Postgres MemoryStore adapter
 +-- context/
     +-- builder.ts            # buildContext()
@@ -182,7 +187,7 @@ provider-free, schema setup is explicit, the public API is compact, typed errors
 exist, package exports are tested, and Postgres/pgvector is treated as
 infrastructure rather than hidden magic.
 
-The `0.3.0` release moves backend behavior behind an internal
+The `0.3.0` release moved backend behavior behind an internal
 `MemoryStore` boundary. Validation, embedding, resilience wrapping, recall
 scoring, audit behavior, result mapping, context building, and lifecycle checks
 now run through `memory/client-core.ts`, while `memory/in-memory.ts` and
@@ -204,6 +209,41 @@ Remaining unclear boundaries:
 - The internal `MemoryStore` interface is not exported yet; before a public
   adapter API, it needs more review around transaction hooks, caller-owned
   connections, and runtime-specific Drizzle drivers.
+
+### Internal `MemoryStore` stabilization status
+
+`src/memory/store.ts` currently has one required `backend` property and exactly
+18 methods. All methods are mandatory; no capability object or degraded method
+path exists. This table accounts for each method exactly once and records the
+current ownership that a future public contract must preserve or resolve.
+
+| Method | Current guarantee and stabilization disposition |
+| --- | --- |
+| `ensureSchema` | Mandatory readiness hook; both built-ins are currently no-ops. It does not authorize hidden schema creation. |
+| `ensureEmbeddingCompatibility` | Mandatory backend-relevant compatibility hook. In-memory resolves; Postgres enforces persistent installation model and dimensions. Document the intentional difference without a capability flag. |
+| `insertMemories` | The store returns exactly one detached public memory per prepared ID and takes ownership of prepared rows. Shared orchestration—not the store—validates missing, duplicate, or unknown returned IDs and restores input order. |
+| `vectorSearch` | Mandatory correctness contract with finite `[0, 1]` components and shared filter semantics. Postgres has an HNSW-capable pgvector path; in-memory scans. Index use is planner-dependent and approximate, and no public capability flag is currently justified. |
+| `lexicalSearch` | Mandatory candidate/scoring contract. Postgres uses English full-text parsing/ranking and has no bundled full-text expression index; in-memory uses JavaScript scoring. Candidate/rank differences must be documented. |
+| `getMemoryEmbeddings` | Mandatory ID-keyed embedding lookup used to rescore lexical-only recall candidates. Shared orchestration consumes by ID, not return order. |
+| `markMemoriesAccessed` | Mandatory post-update records normalized by ID in shared orchestration. Shared recall supplies distinct IDs; that precondition must be explicit before public export because direct duplicate-ID behavior differs by adapter. |
+| `deleteMemory` | Mandatory entity-scoped delete with atomic `"CONFLICT"` rejection when the target has dependents. |
+| `deleteMemoriesForEntity` | Mandatory whole-entity delete with atomic all-or-nothing dependent protection. |
+| `prune` | Mandatory normalized-selector, dry-run, count, per-entity-detail, and atomic dependent-protection contract. In-memory checks cancellation cooperatively; Postgres actively cancels the count/delete statement. |
+| `findDuplicatePairs` | Mandatory correctness-only pairwise search. Neither adapter uses HNSW nearest-neighbor pair generation; ordinary relational indexes may still assist the Postgres self-join. No capability flag is planned. |
+| `addAuditEvents` | Mandatory detached-value persistence called through best-effort shared audit orchestration. Successful writes match; Postgres may persist a prefix if a later event fails, unlike the in-memory batch. |
+| `listAuditLog` | Mandatory strict `(timestamp, event ID)` cursor/filter/order contract. In-memory cancellation is cooperative; Postgres uses active statement cancellation. No transaction is required for tuple positioning. |
+| `getMemory` | Mandatory detached entity-and-ID lookup. In-memory checks before its synchronous lookup; Postgres checks before and after its statement. |
+| `loadConsolidationTargets` | Mandatory consolidation preflight lookup, but duplicate input IDs currently create a public backend divergence. `CONSOLIDATION-02` in root `PROPOSALS.md` must be decided before stabilization. |
+| `consolidate` | Mandatory atomic loser update, enabled audit write, and tag merge with different-survivor `"CONFLICT"` rejection. Atomic survivor existence/state and current-tag ownership remain unresolved under `CONSOLIDATION-03`. |
+| `stats` | Mandatory entity/global counts using a shared `now`; active excludes expired and superseded, while the expired and superseded counts may overlap. |
+| `close` | Mandatory store-lifecycle hook. Current in-memory close clears ephemeral state and Postgres closes its owned handle. A future caller-supplied Drizzle handle remains caller-owned; the public contract must limit `close()` to resources owned by that store construction path. |
+
+Design files under `docs/design/` are historical investigation records, not
+implementation contracts. Current behavior is governed by source, tests,
+migrations, package configuration, README, changelog, and this document;
+future direction by `ROADMAP.md`; and approval-sensitive decisions by root
+`PROPOSALS.md`. The latest stabilization v3 verification rejects its subject as
+a final implementation basis. No public capability surface is approved.
 
 ## Public API Direction
 
@@ -701,7 +741,9 @@ Status: released as `v0.2.0`.
 
 ### `0.4.0` - Hardening and Behavior Corrections
 
-- Status: changelog finalized; version bump, tag, and publish pending.
+- Status: package version and repository tag are `0.4.0`; current `HEAD`
+  contains post-tag work. Registry/GitHub publication must be confirmed
+  separately.
 - Release details live in `CHANGELOG.md`; this release does not include the
   planned public Drizzle adapter.
 

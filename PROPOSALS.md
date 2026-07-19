@@ -4,9 +4,9 @@ Fresh audit date: 2026-07-16
 Audited revision: `16c2d13`
 
 The findings and baseline counts below are the dated audit snapshot from that
-revision. Approval and status fields were maintained afterward. All 22 current
-entries are approved and resolved; future additions should leave approval
-blank until the maintainer decides them.
+revision. Approval and status fields were maintained afterward. The original
+22-entry audit cohort is approved and resolved. Post-audit findings appear in a
+separate section with approval left blank until the maintainer decides them.
 
 This pass inspected the current source, tests, migrations, package boundary,
 CI, prior audit records, and the `0.3.0` release changes. Resolved items from
@@ -636,3 +636,68 @@ files were retained.
 - approval: yes
 - status: resolved in
   [`021c1e4`](https://github.com/Meenic/mnemocyte/commit/021c1e4aee63de415b85cefa238fb6bf44cf1ee0)
+
+## Post-audit unresolved findings
+
+Fresh verification date: 2026-07-19
+Verified revision: `54864ba`
+
+### CONSOLIDATION-02 â€” Define duplicate loser-ID handling
+
+- id: `CONSOLIDATION-02`
+- category: `behavior-change`
+- risk-tier: `medium`
+- where: `src/memory/validation.ts`, `src/memory/client-core.ts`,
+  `src/memory/in-memory.ts`, `src/memory/postgres.ts`,
+  `src/db/queries/memories.ts`
+- what-was-found: `validateConsolidateInput()` does not reject repeated
+  `supersededIds`. The in-memory target loader preserves duplicate input IDs,
+  so consolidation can return the same loser twice and emit two audit events.
+  Postgres uses `WHERE id IN (...)`, so it loads, updates, returns, and audits
+  that stored memory once. Shared orchestration derives the public
+  `supersededCount` from the store result length, making this a current
+  caller-visible backend divergence rather than only an internal ordering
+  difference.
+- proposed: Decide whether duplicate loser IDs reject with `"VALIDATION"` or
+  are normalized to one occurrence before store access. Rejecting duplicates
+  at shared validation is recommended because one stored memory cannot be
+  newly superseded or audited twice by one call, and no documented behavior
+  requires repeated loser IDs.
+- how-verified: Add failing-first shared validation and cross-backend tests for
+  a repeated loser ID. Assert the approved error or normalization policy,
+  exactly one state transition and audit event when applicable, and matching
+  `supersededCount` / `supersededIds` in both adapters.
+- approval:
+- status: awaiting maintainer decision
+
+### CONSOLIDATION-03 â€” Revalidate and lock the survivor at mutation time
+
+- id: `CONSOLIDATION-03`
+- category: `behavior-change`
+- risk-tier: `high`
+- where: `src/memory/client-core.ts`, `src/memory/in-memory.ts`,
+  `src/memory/postgres.ts`, `src/db/queries/memories.ts`,
+  `migrations/0000_initial.sql`
+- what-was-found: Shared orchestration checks that the survivor exists and is
+  not superseded before loading losers, but the store mutation occurs after
+  awaited boundaries. The in-memory store does not reject when the survivor
+  has disappeared or become superseded before `consolidate()` mutates losers;
+  disappearance can therefore create a dangling `supersededBy`. Postgres has
+  an `ON DELETE NO ACTION` foreign-key backstop for disappearance, but maps
+  that consolidation race through the generic database wrapper, and neither
+  adapter atomically revalidates the survivor's `supersededBy` state. Both
+  stores also base tag merging on the earlier `input.survivorTags` snapshot,
+  so concurrent merges can overwrite tags added after preflight.
+- proposed: Make `MemoryStore.consolidate()` atomically re-read and protect the
+  survivor together with the loser checks and mutation. Define typed race-time
+  errors for a missing or newly superseded survivor, and merge from the
+  mutation-time survivor tags rather than the stale shared snapshot. Preserve
+  the current rule that loser updates, tag merge, and enabled audit events
+  commit or roll back together.
+- how-verified: Add deterministic cross-backend races that pause after shared
+  preflight, then delete or supersede the survivor, plus concurrent
+  same-survivor tag merges. Assert no dangling reference, no loser/audit/tag
+  partial mutation on rejection, the approved typed errors, and preservation
+  of every committed tag.
+- approval:
+- status: awaiting maintainer decision

@@ -2,9 +2,11 @@
 
 Status: draft, patch of v2 addressing
 `STABILIZATION_PROPOSAL_VERIFICATION_V2.md`'s six findings. Not a
-rewrite — v2's scope, method bucketing, and both next-step tracks are
-confirmed correct and unchanged. This patches six specific overclaims and
-one path error round 2 found in v2's wording.
+rewrite — v2's scope, method bucketing, and both next-step tracks'
+*structure and direction* are confirmed correct and unchanged. Their
+*wording* is not entirely unchanged: correction 6 below fixes the
+documentation track's stated method count. This patches six specific
+overclaims and one path error round 2 found in v2's wording.
 
 ## What changed from v2 (six corrections, nothing structural)
 
@@ -15,12 +17,15 @@ one path error round 2 found in v2's wording.
    `getMemory` differ in cancellation mechanism and timing; that's fine and
    doesn't need a capability flag, but it means "identical" was the wrong
    word.
-2. `insertMemories`'s obligation is now scoped precisely: its **only
-   ordering obligation** is exact-ID-count-and-restored-order. Its full
-   contract, unchanged from today, also requires detached public records,
-   ownership transfer of freshly prepared rows, and rejection of unknown
-   returned IDs (not just missing/duplicate ones) — restored from round 1,
-   dropped by an overly narrow v2 sentence.
+2. `insertMemories`'s ordering is now attributed to the right layer: the
+   **store has no return-order obligation at all** — store order is
+   explicitly untrusted, and it's shared orchestration that validates the
+   complete returned ID set and restores prepared-input order. The store's
+   only obligation is exact one-result-per-prepared-ID cardinality. Its
+   full contract, unchanged from today, also requires detached public
+   records, ownership transfer of freshly prepared rows, and rejection of
+   unknown returned IDs (not just missing/duplicate ones) — restored from
+   round 1, dropped by an overly narrow v2 sentence.
 3. Non-dry `prune` is restored to the atomic-survivor-protection list. It
    shares the same non-interleavable check-and-mutate requirement as
    `deleteMemory` and `deleteMemoriesForEntity` — v2 only listed two of the
@@ -48,8 +53,10 @@ one path error round 2 found in v2's wording.
 
 Everything else — the 8-method "genuinely ship as-is" bucket's membership,
 the three search methods' corrected framing, the `prune`/`consolidate`
-cancellation split, and both next-step tracks — carries forward from v2
-unchanged, since round 2 confirmed all of it as accurate.
+cancellation split, and both next-step tracks' structure and direction —
+carries forward from v2 unchanged, since round 2 confirmed all of it as
+accurate. (The documentation track's stated method count is corrected by
+item 6 above, not carried forward unchanged.)
 
 ## Corrected summary (for quick reference; full detail lives in v2)
 
@@ -68,25 +75,37 @@ not "identical"):** `ensureSchema`, `insertMemories`, `getMemoryEmbeddings`,
   shared validation doesn't reject duplicates today. Likely fix: reject
   duplicate `supersededIds` in shared validation — but that's a decision to
   approve, not something to implement inside a documentation pass.
-- `close` — blocked on the roadmap's still-open caller-owned-connection
-  question for `drizzleStore(db)`. Document current behavior as evidence,
-  not as the final contract.
+- `close` — current behavior (destroys all in-memory state; closes the pool
+  it created for a `databaseUrl`-configured Postgres client) is final and
+  documentable as-is for both existing adapters, since `mnemocyte` owns
+  every connection it currently creates. The only forward-looking
+  constraint — not an open question — is `ROADMAP.md`'s already-stated
+  principle for `drizzleStore(db)`: connection lifecycle ownership stays
+  with the caller when a database instance is supplied, so a future
+  caller-owned-connection adapter's `close()` must not close resources it
+  doesn't own. Document current behavior now, and carry that constraint
+  forward as a stated requirement on the next adapter's design, not as a
+  gap in this one.
 
 **Needs explicit, per-method scope framing (3 methods, three different
 situations, not one pattern):** `vectorSearch` (the only one with a bundled
 index — HNSW, planner-dependent, approximate), `lexicalSearch` (no bundled
 index in either backend; differs in candidates/ranking, not just latency),
-`findDuplicatePairs` (pairwise scan in both backends, no index anywhere).
+`findDuplicatePairs` (pairwise scan in both backends — no indexed
+nearest-neighbor pair generation anywhere, though the planner may still use
+ordinary entity/primary-key indexes while executing the self-join).
 
 **Atomic survivor protection** (`"CONFLICT"` on referenced-survivor
 deletion) applies to `deleteMemory`, `deleteMemoriesForEntity`, and non-dry
 `prune` — all three, requiring a non-interleavable check-and-mutate
 mechanism, not "read before write" in general.
 
-**Cancellation boundaries differ per method** — `prune` has genuine
-in-flight statement cancellation; `consolidate` checks only between steps,
-with a final-check-before-commit caveat. Document separately, don't
-generalize one to the other.
+**Cancellation boundaries differ per method, specifically in the Postgres
+adapter** — Postgres `prune` has genuine in-flight statement cancellation;
+Postgres `consolidate` checks only between steps, with a final-check-
+before-commit caveat. (In-memory uses cooperative `throwIfAborted` checks
+during synchronous work for both.) Document separately per backend, don't
+generalize one adapter's mechanism into a method-wide contract claim.
 
 **Capability-flag surface: still recommended to defer**, confirmed twice
 now with zero counter-evidence found anywhere in source, tests, or docs.

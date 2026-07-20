@@ -642,7 +642,7 @@ files were retained.
 Fresh verification date: 2026-07-19
 Verified revision: `54864ba`
 
-### CONSOLIDATION-02 â€” Define duplicate loser-ID handling
+### CONSOLIDATION-02 — Define duplicate loser-ID handling
 
 - id: `CONSOLIDATION-02`
 - category: `behavior-change`
@@ -667,10 +667,11 @@ Verified revision: `54864ba`
   a repeated loser ID. Assert the approved error or normalization policy,
   exactly one state transition and audit event when applicable, and matching
   `supersededCount` / `supersededIds` in both adapters.
-- approval:
-- status: awaiting maintainer decision
+- approval: yes (reject duplicate supersededIds with "VALIDATION" at shared validation, before store access)
+- status: resolved in
+  [`e67b812`](https://github.com/Meenic/mnemocyte/commit/e67b8129ecc178b06cbcff1f4c7ed5f67f08ce2d)
 
-### CONSOLIDATION-03 â€” Revalidate and lock the survivor at mutation time
+### CONSOLIDATION-03 — Revalidate and lock the survivor at mutation time
 
 - id: `CONSOLIDATION-03`
 - category: `behavior-change`
@@ -699,5 +700,6 @@ Verified revision: `54864ba`
   same-survivor tag merges. Assert no dangling reference, no loser/audit/tag
   partial mutation on rejection, the approved typed errors, and preservation
   of every committed tag.
-- approval:
-- status: awaiting maintainer decision
+- approval: yes (atomic survivor re-read/protect + typed "CONFLICT" for missing/newly-superseded survivor at mutation time + mutation-time tag merge)
+- status: resolved in
+  [`14748e5`](https://github.com/Meenic/mnemocyte/commit/14748e5429f87bd0ddf248be158f439231a2ed59)

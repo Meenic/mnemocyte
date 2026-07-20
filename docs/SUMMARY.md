@@ -14,10 +14,76 @@ high-risk proposals. Each issue was independently reproduced, implemented,
 fully validated against real Postgres + pgvector, and committed before the next
 fix began.
 
+The 2026-07-20 consolidation-integrity run resolved only `CONSOLIDATION-03`
+and `CONSOLIDATION-02`, in that order. Each fix was reproduced, implemented,
+validated against both adapters including real Postgres + pgvector, and
+committed before the next implementation began.
+
 Counts, environment details, and scope statements in the older sections below
-are snapshots of their named runs. The new section immediately below records
-the 2026-07-17 root-entry lazy Postgres loading run; later sections retain
-their historical scope.
+are snapshots of their named runs. The consolidation section immediately below
+records the current run; the following section records the 2026-07-17
+root-entry lazy Postgres loading run, and later sections retain their historical
+scope.
+
+## Consolidation mutation integrity and duplicate-ID policy
+
+The requested order was verified against the actual diff overlap and retained.
+`CONSOLIDATION-03` changed the `MemoryStore.consolidate()` mutation contract,
+shared orchestration's stale tag snapshot, both adapters, and the Postgres lock
+query. `CONSOLIDATION-02` then added a distinct-ID precondition at shared
+validation plus its contract and cross-backend coverage; it did not depend on
+or restructure the corrected mutation sequence.
+
+**CONSOLIDATION-03** landed first in
+[`14748e5`](https://github.com/Meenic/mnemocyte/commit/14748e5429f87bd0ddf248be158f439231a2ed59).
+A deterministic gate pauses each test call after shared survivor/loser
+preflight and before `MemoryStore.consolidate()`. The failing-first run showed
+in-memory consolidation succeeding after survivor deletion and Postgres
+mapping the same race to generic `"DB"`. The shared fixture also exercises a
+survivor superseded in that window and two concurrent same-survivor tag merges
+in both adapters.
+
+Both stores now re-read and protect the survivor together with requested-loser
+checks and mutation. A missing or newly superseded survivor rejects with
+`"CONFLICT"` before loser, survivor-tag, or audit changes. In-memory performs
+the check and mutation in one non-interleaved synchronous block. Postgres locks
+the survivor and requested losers in deterministic ID order inside the
+transaction, and its tag union starts from the locked survivor row. Concurrent
+successful tag merges therefore preserve every committed tag while loser
+updates, tag changes, and enabled audit events continue to commit or roll back
+together.
+
+The proposal's file inventory included `migrations/0000_initial.sql`, but the
+verified implementation required no schema rewrite: the existing explicit
+`ON DELETE NO ACTION` self-reference remains the referential backstop, while
+mutation-time row locking and state validation close the race. Real integration
+tests applied the bundled migrations and exercised the transactional behavior.
+
+**CONSOLIDATION-02** landed second in
+[`e67b812`](https://github.com/Meenic/mnemocyte/commit/e67b8129ecc178b06cbcff1f4c7ed5f67f08ce2d).
+Its failing-first shared fixture confirmed that both adapters accepted a
+repeated loser ID: in-memory preserved the duplicate through target loading,
+while Postgres deduplicated it through `WHERE id IN (...)`. Shared validation
+now rejects duplicates with `"VALIDATION"` before either target loading or
+mutation. The cross-backend fixture verifies the rejection leaves loser state,
+survivor tags, and audit events unchanged, then confirms one valid transition
+returns count one and one ID, writes one audit event, and remains an idempotent
+zero-count retry.
+
+Each implementation commit independently passed `pnpm checktypes`, `pnpm
+lint`, `pnpm test`, `pnpm build`, `pnpm run pack:check`, and `pnpm run
+test:integration` with the configured real Postgres + pgvector database. The
+first commit passed 33 unit/package files with 133 tests and 11 integration
+files with 15 tests. The second passed 34 unit/package files with 134 tests and
+11 integration files with 15 tests; one unrelated integration test timed out
+once, then passed in isolation and in the clean full-suite rerun.
+
+Changes in this run are limited to `CONSOLIDATION-03`, `CONSOLIDATION-02`,
+their focused tests and current-behavior documentation, the two matching
+proposal approval/resolution records, and this summary. No other proposal was
+implemented or changed. The unrelated pre-existing edit to
+`docs/design/public-memorystore-stabilization-v3.md` was left untouched and
+uncommitted.
 
 ## Lazy Postgres root-entry loading
 

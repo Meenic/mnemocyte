@@ -25,6 +25,28 @@ records the current run; the following section records the 2026-07-17
 root-entry lazy Postgres loading run, and later sections retain their historical
 scope.
 
+## `MemoryStore` storage adapter contract documentation
+
+The documentation track from the corrected stabilization proposal is complete
+in
+[`dafed57`](https://github.com/Meenic/mnemocyte/commit/dafed57fd706f14a7e502ede94486853bb331ffd).
+`src/memory/store.ts` now states the verified postconditions for the 12
+ship-ready methods, gives `vectorSearch`, `lexicalSearch`, and
+`findDuplicatePairs` their distinct search framing, and records the
+cross-cutting survivor-deletion, cancellation, and no-capability-flag rules.
+The comments preserve the distinct-ID precondition for access updates,
+best-effort and potentially partial audit batches, composite audit cursors,
+untrusted insert return order, and caller-owned connection lifecycle.
+
+`README.md` now has a scoped **Storage Adapter Contract** section for future
+adapter authors and links to the source comments for full per-method detail.
+The v3 design record has a short status note linking the implementation commit.
+This pass changed documentation only: no runtime behavior, method signature,
+return type, error code, public export, or capability surface changed.
+
+The final state passed `pnpm checktypes`, `pnpm lint`, and `pnpm test` (34 test
+files, 134 tests).
+
 ## Consolidation mutation integrity and duplicate-ID policy
 
 The requested order was verified against the actual diff overlap and retained.

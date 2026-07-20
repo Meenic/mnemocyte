@@ -1,5 +1,10 @@
 # Public `MemoryStore` Stabilization — Draft Proposal v3
 
+> **Status (2026-07-20): documentation track complete.** The 12 ship-ready
+> method contracts, three search-method scope notes, and cross-cutting adapter
+> guidance landed in
+> [`dafed57`](https://github.com/Meenic/mnemocyte/commit/dafed57fd706f14a7e502ede94486853bb331ffd).
+
 Status: draft, patch of v2 addressing
 `STABILIZATION_PROPOSAL_VERIFICATION_V2.md`'s six findings. Not a
 rewrite — v2's scope, method bucketing, and both next-step tracks'

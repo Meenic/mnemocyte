@@ -529,6 +529,46 @@ must be positive finite numbers, and `candidateMultiplier` must be an integer
 of at least 1. Invalid tuning is rejected at client construction with
 `MnemocyteError` code `"CONFIG"`.
 
+## Storage Adapter Contract
+
+`MemoryStore` is still an internal boundary rather than a public package
+export, but its future-adapter contract is now documented directly in
+[`src/memory/store.ts`](./src/memory/store.ts). The contract is based on
+postconditions, not identical implementation mechanics: every method is
+mandatory, and no capability-flag surface exists or is currently planned.
+
+For adapter implementers, the main rules are:
+
+- `ensureSchema` is a readiness hook, not permission for hidden schema
+  creation. `ensureEmbeddingCompatibility` unconditionally enforces whatever
+  compatibility is meaningful to the persistence model; a store without
+  persistent installation state may no-op.
+- `insertMemories` takes ownership of prepared rows and returns exactly one
+  detached record per prepared ID. Store return order is untrusted; shared
+  orchestration rejects missing, duplicate, or unknown IDs and restores input
+  order. `getMemoryEmbeddings`, `getMemory`, and `stats` use the exact keyed,
+  detached, and count postconditions described in the source comments.
+- `markMemoriesAccessed` requires distinct IDs and returns the committed
+  post-update access fields. Duplicate-ID behavior is intentionally not a
+  portable contract. Ordinary `addAuditEvents` calls are best-effort, and a
+  rejected batch may have partially persisted on some backends.
+- `listAuditLog` uses stable event IDs, comparable timestamps, strict tuple
+  filters, and matching newest-first `(timestamp, id)` order. Tuple pagination
+  needs no transaction. Cancellation may be cooperative or active depending on
+  the implementation.
+- `vectorSearch` may scan or use an approximate, planner-dependent index.
+  `lexicalSearch` may legitimately return different candidates and rankings
+  across implementations. `findDuplicatePairs` compares qualifying memories
+  pairwise and does not imply indexed nearest-neighbor pair generation.
+- `deleteMemory`, `deleteMemoriesForEntity`, and non-dry-run `prune` must
+  protect referenced consolidation survivors with one atomic,
+  non-interleavable check-and-mutate operation and reject with `"CONFLICT"`
+  before any deletion. Other cancellation boundaries remain method- and
+  implementation-specific as documented by the public operations.
+- `close` releases or destroys only implementation-owned state and resources.
+  A future adapter around a caller-supplied connection must not close that
+  connection.
+
 ## Roadmap
 
 Planned larger milestones:

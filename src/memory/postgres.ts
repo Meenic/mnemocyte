@@ -12,7 +12,7 @@ import {
 	insertMemories as insertMemoryRows,
 	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
-	lockConsolidationTargets,
+	lockConsolidationMemories,
 	markMemoriesAccessed,
 	markMemoriesSuperseded,
 	type PruneFilter,
@@ -488,12 +488,25 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				throwIfAborted(options?.signal);
 				const newSupersededIds = await handle.db.transaction(async (tx) => {
 					throwIfAborted(options?.signal);
-					const targets = await lockConsolidationTargets(
+					const lockedMemories = await lockConsolidationMemories(
 						tx,
 						input.entityId,
+						input.survivorId,
 						input.supersededIds,
 					);
 					throwIfAborted(options?.signal);
+					const survivor = lockedMemories.find(
+						(memory) => memory.id === input.survivorId,
+					);
+					if (!survivor || survivor.supersededBy !== null) {
+						throw new MnemocyteError(
+							"Consolidation survivor changed before mutation.",
+							"CONFLICT",
+						);
+					}
+					const targets = lockedMemories.filter(
+						(memory) => memory.id !== input.survivorId,
+					);
 					if (
 						targets.some(
 							(target) =>
@@ -531,14 +544,14 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						}
 					}
 					if (input.mergeTags && updated.length > 0) {
-						const mergedTags = new Set(input.survivorTags);
+						const mergedTags = new Set(survivor.tags);
 						for (const row of updated) {
 							throwIfAborted(options?.signal);
 							for (const tag of row.tags) {
 								mergedTags.add(tag);
 							}
 						}
-						if (mergedTags.size !== input.survivorTags.length) {
+						if (mergedTags.size !== survivor.tags.length) {
 							throwIfAborted(options?.signal);
 							await setMemoryTags(tx, {
 								entityId: input.entityId,

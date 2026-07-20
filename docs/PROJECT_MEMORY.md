@@ -117,6 +117,12 @@
   survivor tags, or audit events change. Postgres locks requested loser rows
   inside the consolidation transaction so concurrent calls preserve this
   rule.
+- Consolidation also re-reads and protects the survivor inside the same atomic
+  boundary as loser checks, loser updates, enabled audit writes, and tag
+  merging. A survivor deleted or superseded after shared preflight rejects
+  with `"CONFLICT"` and no partial mutation. Tag unions start from the
+  mutation-time survivor state, preserving tags across concurrent successful
+  same-survivor consolidations.
 - Markdown context chooses a content-safe backtick fence, plain context chooses
   a deterministic `=` fence longer than every run in the query, rendered
   metadata, and included content, and XML escapes content. Untrusted plain text
@@ -165,8 +171,8 @@
   capability investigation identified indexed vector search as a real backend
   distinction; the later stabilization investigation recommends deferring a
   public flag because no current caller or roadmap item consumes it.
-- Two current consolidation decisions are pending in root `../PROPOSALS.md`:
-  duplicate loser IDs and atomic survivor revalidation/current-tag ownership.
+- One current consolidation decision remains pending in root
+  `../PROPOSALS.md`: duplicate loser IDs.
 
 ## Important Commands
 

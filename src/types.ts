@@ -760,7 +760,8 @@ export interface ConsolidateInput {
 	supersededIds: readonly string[];
 	/**
 	 * When `true`, the survivor's `tags` becomes the union of its own
-	 * tags and the tags of every memory that was actually superseded.
+	 * mutation-time tags and the tags of every memory that was actually
+	 * superseded.
 	 * @defaultValue `true`
 	 */
 	mergeTags?: boolean;
@@ -993,9 +994,10 @@ export interface ExperimentalMnemocyteClient {
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if the survivor or any
 	 * memory in `supersededIds` does not belong to `entityId`.
 	 * @throws {MnemocyteError} `"CONFLICT"` if any memory in
-	 * `supersededIds` already points to a different survivor. The whole
-	 * call is rejected before any loser, survivor tags, or audit events
-	 * are changed.
+	 * `supersededIds` already points to a different survivor, or if the
+	 * survivor is deleted or becomes superseded between shared preflight and
+	 * the atomic store mutation. The whole call is rejected before any loser,
+	 * survivor tags, or audit events are changed.
 	 *
 	 * @example
 	 * ```ts

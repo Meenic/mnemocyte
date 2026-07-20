@@ -67,7 +67,6 @@ export interface StoreConsolidationTarget {
 export interface StoreConsolidateInput {
 	entityId: string;
 	survivorId: string;
-	survivorTags: readonly string[];
 	supersededIds: readonly string[];
 	mergeTags: boolean;
 	now: Date;
@@ -185,8 +184,11 @@ export interface MemoryStore {
 		options?: StoreOperationOptions,
 	): Promise<StoreConsolidationTarget[]>;
 	/**
-	 * Applies one atomic consolidation. Throws `"CONFLICT"` before mutation
-	 * when any requested loser already points to a different survivor.
+	 * Applies one atomic consolidation after re-reading and protecting the
+	 * survivor and requested losers. Throws `"CONFLICT"` before mutation when
+	 * the survivor is missing or superseded, or when any requested loser points
+	 * to a different survivor. Tag merging starts from the protected survivor's
+	 * mutation-time tags.
 	 */
 	consolidate(
 		input: StoreConsolidateInput,

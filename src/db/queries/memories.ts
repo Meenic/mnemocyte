@@ -539,14 +539,13 @@ export async function loadConsolidationTargets(
 	return rows;
 }
 
-export async function lockConsolidationTargets(
+export async function lockConsolidationMemories(
 	db: MnemocyteDatabase,
 	entityId: string,
-	ids: readonly string[],
+	survivorId: string,
+	supersededIds: readonly string[],
 ): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
-	if (ids.length === 0) {
-		return [];
-	}
+	const ids = [...new Set([survivorId, ...supersededIds])].sort();
 	return db
 		.select({
 			id: memoriesTable.id,
@@ -555,10 +554,7 @@ export async function lockConsolidationTargets(
 		})
 		.from(memoriesTable)
 		.where(
-			and(
-				eq(memoriesTable.entityId, entityId),
-				inArray(memoriesTable.id, [...ids]),
-			),
+			and(eq(memoriesTable.entityId, entityId), inArray(memoriesTable.id, ids)),
 		)
 		.orderBy(memoriesTable.id)
 		.for("update");

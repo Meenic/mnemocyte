@@ -234,7 +234,7 @@ current ownership that a future public contract must preserve or resolve.
 | `listAuditLog` | Mandatory strict `(timestamp, event ID)` cursor/filter/order contract. In-memory cancellation is cooperative; Postgres uses active statement cancellation. No transaction is required for tuple positioning. |
 | `getMemory` | Mandatory detached entity-and-ID lookup. In-memory checks before its synchronous lookup; Postgres checks before and after its statement. |
 | `loadConsolidationTargets` | Mandatory consolidation preflight lookup, but duplicate input IDs currently create a public backend divergence. `CONSOLIDATION-02` in root `PROPOSALS.md` must be decided before stabilization. |
-| `consolidate` | Mandatory atomic loser update, enabled audit write, and tag merge with different-survivor `"CONFLICT"` rejection. Atomic survivor existence/state and current-tag ownership remain unresolved under `CONSOLIDATION-03`. |
+| `consolidate` | Mandatory atomic survivor re-read/protection, loser update, enabled audit write, and mutation-time tag merge. A missing or superseded survivor and a loser assigned to a different survivor reject with `"CONFLICT"` before mutation. |
 | `stats` | Mandatory entity/global counts using a shared `now`; active excludes expired and superseded, while the expired and superseded counts may overlap. |
 | `close` | Mandatory store-lifecycle hook. Current in-memory close clears ephemeral state and Postgres closes its owned handle. A future caller-supplied Drizzle handle remains caller-owned; the public contract must limit `close()` to resources owned by that store construction path. |
 
@@ -395,7 +395,8 @@ JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
 and `consolidate({ supersededIds: [] })`) plus an explicitly empty
 `databaseUrl`. `"CONFLICT"` covers mutations rejected because stored
 relationships must remain valid: deleting a referenced consolidation survivor
-or attempting to reassign a loser to a different survivor.
+or attempting to reassign a loser to a different survivor, and a consolidation
+whose survivor disappeared or became superseded after shared preflight.
 
 Prune validation produces a normalized internal filter before the
 `MemoryStore` boundary. Both adapters accept that internal filter rather than
@@ -428,12 +429,15 @@ the requested survivor is an idempotent no-op. A loser that points to any other
 survivor rejects with `"CONFLICT"`, because returning a zero-count success
 would not satisfy the requested postcondition.
 
-The rule is atomic across a complete call. Both adapters check every requested
-loser for a different-survivor conflict before changing any active loser,
-merging survivor tags, or writing `"memory.superseded"` audit events. The
-Postgres adapter reloads and locks the requested loser rows inside the existing
-consolidation transaction, so concurrent calls cannot both claim the same
-loser; one target wins and a different target observes `"CONFLICT"`.
+The rule is atomic across a complete call. Both adapters re-read the survivor
+and every requested loser inside the mutation boundary before changing any
+active loser, merging survivor tags, or writing `"memory.superseded"` audit
+events. A survivor missing or superseded at that point rejects with
+`"CONFLICT"`. Postgres locks the survivor and requested losers in deterministic
+ID order inside the consolidation transaction; in-memory performs the checks
+and mutation in one non-interleaved synchronous block. Tag merging starts from
+the protected survivor's mutation-time tags, so concurrent successful merges
+cannot overwrite tags committed by an earlier consolidation.
 
 Maintenance-operation signals are checked before store access. In-memory
 pruning, duplicate scans, audit-log scans, and consolidation preparation check

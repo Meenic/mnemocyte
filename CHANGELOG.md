@@ -8,14 +8,23 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **CONSOLIDATION-03 — Consolidation revalidates the survivor atomically.**
+  `experimental.consolidate()` now rejects with `"CONFLICT"` if its survivor
+  is deleted or becomes superseded after shared preflight but before the
+  store mutation. Both adapters protect the survivor together with loser,
+  audit, and tag changes, and tag unions now start from the survivor's
+  mutation-time tags so concurrent committed merges do not lose tags.
+
 ### Documentation
 
 - Reverified the `docs/design/` investigation sequence against the current
   source, tests, package boundary, migrations, and Git state. Canonical
   architecture and maintainer docs now record the tagged `0.4.0` baseline,
   lazy Postgres runtime loading, the complete 18-method `MemoryStore`
-  disposition, design-record authority, and two pending consolidation
-  contract decisions.
+  disposition, design-record authority, and the consolidation contract
+  decisions that were pending at that audit.
 
 ## [0.4.0] - 2026-07-17
 

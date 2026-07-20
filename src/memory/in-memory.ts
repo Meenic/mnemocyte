@@ -320,6 +320,16 @@ export function createInMemoryStore(): MemoryStore {
 		): Promise<StoreConsolidateResult> {
 			throwIfAborted(options?.signal);
 			const survivor = memories.get(input.survivorId);
+			if (
+				!survivor ||
+				survivor.entityId !== input.entityId ||
+				survivor.supersededBy !== null
+			) {
+				throw new MnemocyteError(
+					"Consolidation survivor changed before mutation.",
+					"CONFLICT",
+				);
+			}
 			const newlySuperseded: StoredMemory[] = [];
 			const targets: StoredMemory[] = [];
 			for (const id of input.supersededIds) {
@@ -348,8 +358,8 @@ export function createInMemoryStore(): MemoryStore {
 				}
 			}
 			let mergedSurvivorTags: string[] | undefined;
-			if (survivor && input.mergeTags && newlySuperseded.length > 0) {
-				const mergedTags = new Set(input.survivorTags);
+			if (input.mergeTags && newlySuperseded.length > 0) {
+				const mergedTags = new Set(survivor.tags);
 				for (const memory of newlySuperseded) {
 					throwIfAborted(options?.signal);
 					for (const tag of memory.tags) {
@@ -378,7 +388,7 @@ export function createInMemoryStore(): MemoryStore {
 				memory.supersededAt = input.now;
 				memory.updatedAt = input.now;
 			}
-			if (survivor && mergedSurvivorTags) {
+			if (mergedSurvivorTags) {
 				survivor.tags = mergedSurvivorTags;
 				survivor.updatedAt = input.now;
 			}

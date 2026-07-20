@@ -431,6 +431,13 @@ tags are merged, and no consolidation audit event is written when any item
 conflicts. Concurrent calls follow the same target-specific rule in both
 backends.
 
+The store re-reads and protects the survivor in the same atomic boundary as
+the loser updates, tag merge, and enabled audit events. If the survivor is
+deleted or becomes superseded after initial validation but before that
+boundary, the call rejects with `"CONFLICT"` without a partial mutation. Tag
+merges start from the survivor's state inside that boundary, so concurrent
+successful consolidations preserve every committed tag.
+
 The survivor cannot later be deleted while any such reference remains:
 `forget`, `forgetAll`, and matching non-dry-run `prune` calls reject with
 `"CONFLICT"`. Deleting a superseded loser remains allowed.

@@ -87,9 +87,8 @@ an adapter contract:
   responsibilities belong to callers versus Mnemocyte.
 - Keep the type private and avoid a third backend until those decisions are
   validated.
-- Resolve the pending consolidation contract entries in
-  [PROPOSALS.md](../PROPOSALS.md), including duplicate loser IDs and atomic
-  survivor revalidation.
+- Resolve the remaining duplicate-loser-ID consolidation contract entry in
+  [PROPOSALS.md](../PROPOSALS.md).
 - Do not add a public capability-flag surface without a concrete consumer.
   Current adapters call every method unconditionally; indexed vector search is
   a real implementation distinction, but no caller currently branches on it.

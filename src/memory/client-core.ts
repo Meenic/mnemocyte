@@ -814,7 +814,6 @@ export function createMemoryClient(
 									{
 										entityId: input.entityId,
 										survivorId: survivor.id,
-										survivorTags: survivor.tags,
 										supersededIds: input.supersededIds,
 										mergeTags: input.mergeTags !== false,
 										now: new Date(),

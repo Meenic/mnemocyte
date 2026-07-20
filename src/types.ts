@@ -755,7 +755,8 @@ export interface ConsolidateInput {
 	 * Memories to mark as superseded by the survivor. Entries already
 	 * superseded by this same survivor are skipped for idempotency. If any
 	 * entry points to a different survivor, the entire call rejects with
-	 * `"CONFLICT"`. Must not contain {@link ConsolidateInput.survivorId}.
+	 * `"CONFLICT"`. Must not contain duplicates or
+	 * {@link ConsolidateInput.survivorId}.
 	 */
 	supersededIds: readonly string[];
 	/**
@@ -988,9 +989,9 @@ export interface ExperimentalMnemocyteClient {
 	 *
 	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
 	 *
-	 * @throws {MnemocyteError} `"VALIDATION"` for empty `supersededIds`,
-	 * a `survivorId` that also appears in `supersededIds`, or a survivor
-	 * that is itself already superseded.
+	 * @throws {MnemocyteError} `"VALIDATION"` for empty or duplicate
+	 * `supersededIds`, a `survivorId` that also appears in `supersededIds`, or
+	 * a survivor that is itself already superseded.
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if the survivor or any
 	 * memory in `supersededIds` does not belong to `entityId`.
 	 * @throws {MnemocyteError} `"CONFLICT"` if any memory in

@@ -429,7 +429,8 @@ requested loser already points to a different survivor, the call rejects with
 `"CONFLICT"`. Mixed batches are atomic: no newly eligible loser is changed, no
 tags are merged, and no consolidation audit event is written when any item
 conflicts. Concurrent calls follow the same target-specific rule in both
-backends.
+backends. `supersededIds` must contain distinct IDs; duplicates reject with
+`"VALIDATION"` before either store is accessed.
 
 The store re-reads and protects the survivor in the same atomic boundary as
 the loser updates, tag merge, and enabled audit events. If the survivor is

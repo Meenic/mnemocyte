@@ -178,6 +178,7 @@ export interface MemoryStore {
 		memoryId: string,
 		options?: StoreOperationOptions,
 	): Promise<Memory | null>;
+	/** Shared validation supplies distinct IDs before this preflight lookup. */
 	loadConsolidationTargets(
 		entityId: string,
 		ids: readonly string[],

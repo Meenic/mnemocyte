@@ -5,6 +5,7 @@ import { createMnemocyte } from "mnemocyte";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { exerciseConsolidationDeletePolicy } from "../fixtures/consolidation-delete-policy.js";
+import { exerciseConsolidationDuplicateIdPolicy } from "../fixtures/consolidation-duplicate-ids.js";
 import { exerciseConsolidationTargetPolicy } from "../fixtures/consolidation-target-policy.js";
 
 const envPath = resolve(".env");
@@ -68,6 +69,7 @@ async function runPostgresPolicyScenario(url: string) {
 	try {
 		await exerciseConsolidationDeletePolicy(client, entityPrefix);
 		await exerciseConsolidationTargetPolicy(client, entityPrefix);
+		await exerciseConsolidationDuplicateIdPolicy({ client, entityPrefix });
 	} finally {
 		await client.close();
 		await admin`
@@ -84,7 +86,7 @@ async function runPostgresPolicyScenario(url: string) {
 
 describe("Postgres consolidation policies", () => {
 	test.skipIf(!databaseUrl)(
-		"matches the in-memory deletion, target, atomicity, and concurrency rules",
+		"matches the in-memory deletion, target, duplicate-ID, atomicity, and concurrency rules",
 		async () => {
 			await runPostgresPolicyScenario(databaseUrl ?? "");
 		},

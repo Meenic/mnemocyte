@@ -16,6 +16,11 @@ behavioural changes documented in their entries.
   store mutation. Both adapters protect the survivor together with loser,
   audit, and tag changes, and tag unions now start from the survivor's
   mutation-time tags so concurrent committed merges do not lose tags.
+- **CONSOLIDATION-02 — Duplicate loser IDs now reject.**
+  `experimental.consolidate()` rejects repeated entries in `supersededIds`
+  with `"VALIDATION"` before store access. Calls that previously processed one
+  in-memory loser and audit event multiple times, or silently deduplicated the
+  same input in Postgres, must now supply each loser exactly once.
 
 ### Documentation
 

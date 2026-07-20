@@ -455,7 +455,7 @@ export function validateFindDuplicatesInput(input: FindDuplicatesInput): void {
 /**
  * Validate a {@link ConsolidateInput} and throw a `"VALIDATION"`
  * {@link MnemocyteError} for malformed inputs (empty `supersededIds`
- * or a `survivorId` appearing in `supersededIds`).
+ * a `survivorId` appearing in `supersededIds`, or duplicate loser IDs).
  */
 export function validateConsolidateInput(input: ConsolidateInput): void {
 	assertNonEmptyString(input.entityId, "entityId");
@@ -472,8 +472,16 @@ export function validateConsolidateInput(input: ConsolidateInput): void {
 			"VALIDATION",
 		);
 	}
+	const seenIds = new Set<string>();
 	for (const id of input.supersededIds) {
 		assertNonEmptyString(id, "supersededIds[*]");
+		if (seenIds.has(id)) {
+			throw new MnemocyteError(
+				"supersededIds must not contain duplicate memory ids.",
+				"VALIDATION",
+			);
+		}
+		seenIds.add(id);
 	}
 }
 

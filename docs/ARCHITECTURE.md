@@ -233,7 +233,7 @@ current ownership that a future public contract must preserve or resolve.
 | `addAuditEvents` | Mandatory detached-value persistence called through best-effort shared audit orchestration. Successful writes match; Postgres may persist a prefix if a later event fails, unlike the in-memory batch. |
 | `listAuditLog` | Mandatory strict `(timestamp, event ID)` cursor/filter/order contract. In-memory cancellation is cooperative; Postgres uses active statement cancellation. No transaction is required for tuple positioning. |
 | `getMemory` | Mandatory detached entity-and-ID lookup. In-memory checks before its synchronous lookup; Postgres checks before and after its statement. |
-| `loadConsolidationTargets` | Mandatory consolidation preflight lookup, but duplicate input IDs currently create a public backend divergence. `CONSOLIDATION-02` in root `PROPOSALS.md` must be decided before stabilization. |
+| `loadConsolidationTargets` | Mandatory consolidation preflight lookup. Shared validation guarantees distinct requested loser IDs before either adapter is called. |
 | `consolidate` | Mandatory atomic survivor re-read/protection, loser update, enabled audit write, and mutation-time tag merge. A missing or superseded survivor and a loser assigned to a different survivor reject with `"CONFLICT"` before mutation. |
 | `stats` | Mandatory entity/global counts using a shared `now`; active excludes expired and superseded, while the expired and superseded counts may overlap. |
 | `close` | Mandatory store-lifecycle hook. Current in-memory close clears ephemeral state and Postgres closes its owned handle. A future caller-supplied Drizzle handle remains caller-owned; the public contract must limit `close()` to resources owned by that store construction path. |
@@ -392,7 +392,7 @@ protocols, invalid retrieval tuning, and Postgres model/dimension mismatches.
 `0002_add_embedding_model.sql`.
 `"VALIDATION"` covers per-call argument errors (including invalid `maxTokens`,
 JSON-incompatible or cyclic metadata, malformed or selector-free prune input,
-and `consolidate({ supersededIds: [] })`) plus an explicitly empty
+and empty or duplicate consolidation loser IDs) plus an explicitly empty
 `databaseUrl`. `"CONFLICT"` covers mutations rejected because stored
 relationships must remain valid: deleting a referenced consolidation survivor
 or attempting to reassign a loser to a different survivor, and a consolidation
@@ -427,7 +427,9 @@ dependents before deleting their survivor.
 Consolidation idempotency is survivor-specific. A loser that already points to
 the requested survivor is an idempotent no-op. A loser that points to any other
 survivor rejects with `"CONFLICT"`, because returning a zero-count success
-would not satisfy the requested postcondition.
+would not satisfy the requested postcondition. Repeated IDs in
+`supersededIds` reject with `"VALIDATION"` during shared validation, before
+either adapter performs its preflight lookup.
 
 The rule is atomic across a complete call. Both adapters re-read the survivor
 and every requested loser inside the mutation boundary before changing any

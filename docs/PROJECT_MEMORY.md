@@ -123,6 +123,10 @@
   with `"CONFLICT"` and no partial mutation. Tag unions start from the
   mutation-time survivor state, preserving tags across concurrent successful
   same-survivor consolidations.
+- Consolidation loser IDs must be distinct. Shared validation rejects repeated
+  `supersededIds` with `"VALIDATION"` before store access, so one public call
+  cannot process or audit the same state transition more than once and both
+  adapters expose the same result semantics.
 - Markdown context chooses a content-safe backtick fence, plain context chooses
   a deterministic `=` fence longer than every run in the query, rendered
   metadata, and included content, and XML escapes content. Untrusted plain text
@@ -171,8 +175,9 @@
   capability investigation identified indexed vector search as a real backend
   distinction; the later stabilization investigation recommends deferring a
   public flag because no current caller or roadmap item consumes it.
-- One current consolidation decision remains pending in root
-  `../PROPOSALS.md`: duplicate loser IDs.
+- The two post-audit consolidation decisions in root `../PROPOSALS.md` are
+  resolved: duplicate loser IDs reject during shared validation, and survivor
+  state/tag ownership is enforced inside the atomic mutation boundary.
 
 ## Important Commands
 

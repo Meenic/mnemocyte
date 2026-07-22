@@ -8,6 +8,23 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Consolidated default Postgres fresh install.** Added the generated
+  `migrations/fresh-install.sql` for one-command setup of a brand-new
+  1536-dimensional database. Unit coverage prevents byte drift from the shared
+  initial-migration template, package coverage checks the file in the tarball,
+  and Postgres integration coverage compares its tables, columns, constraints,
+  indexes, and installation metadata with the existing `0000` → `0001` →
+  `0002` sequence on clean schema states. The numbered migrations and Drizzle
+  journal remain unchanged for existing-installation upgrades.
+
+### Documentation
+
+- **Runnable Postgres setup commands.** The README now gives concrete `psql`
+  commands for pgvector enablement, default and custom-dimension fresh
+  installs, and the unchanged 0.1.x and 0.2.x–0.3.x upgrade paths.
+
 ## [0.5.0] - 2026-07-22
 
 ### Added

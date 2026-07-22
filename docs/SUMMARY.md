@@ -20,10 +20,34 @@ validated against both adapters including real Postgres + pgvector, and
 committed before the next implementation began.
 
 Counts, environment details, and scope statements in the older sections below
-are snapshots of their named runs. The consolidation section immediately below
-records the current run; the following section records the 2026-07-17
-root-entry lazy Postgres loading run, and later sections retain their historical
-scope.
+are snapshots of their named runs. The fresh-install section immediately below
+records the current run; later sections retain the historical scope and
+chronology stated within them.
+
+## Consolidated default fresh-install migration
+
+The default 1536-dimensional fresh-install path now has a checked-in
+`migrations/fresh-install.sql`, produced by the existing
+`migrations/render-initial.mjs` renderer from
+`migrations/0000_initial.sql.template`. It is a standalone file for direct
+application to a brand-new database and is deliberately absent from the
+Drizzle journal. The package's existing broad `migrations` files entry includes
+it automatically.
+
+The renderer test regenerates the 1536-dimensional output and compares it with
+the checked-in file byte-for-byte. Packed-package coverage checks that the same
+file is present in the tarball. A rollback-isolated Postgres integration test
+applies the consolidated file and the numbered sequence to equally clean
+schema states, then compares tables, columns, constraints, indexes, and the
+installation metadata row.
+
+README setup guidance now provides concrete `psql` commands for enabling
+pgvector, applying the default consolidated file, rendering and applying a
+custom-dimension file, and upgrading existing installations. The existing
+upgrade lists and ordering are unchanged: 0.1.x still applies `0001` then
+`0002`, while 0.2.x and 0.3.x still apply only `0002`. The original `0000`,
+`0001`, `0002`, and `migrations/meta/_journal.json` remain untouched and are
+not replaced by the fresh-install-only file.
 
 ## Caller-owned postgres.js Drizzle adapter
 

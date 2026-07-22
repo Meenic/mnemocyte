@@ -23,10 +23,12 @@ ahead of that tag while retaining package version `0.4.0`. Local Git state does
 not establish npm or GitHub-release publication status.
 
 Current source includes the `0.4.0` hardening work, installation-level
-`embedding_model` metadata, and post-tag lazy Postgres loading. The default
-1536-dimensional install is represented by `0000_initial.sql`,
-`0001_add_mnemocyte_meta.sql`, and `0002_add_embedding_model.sql`; custom fresh
-installs are rendered from `0000_initial.sql.template`.
+`embedding_model` metadata, and post-tag lazy Postgres loading. Brand-new
+default 1536-dimensional installations use `fresh-install.sql`, generated from
+`0000_initial.sql.template`. The numbered `0000`, `0001`, and `0002` series is
+retained unchanged for existing-installation upgrades and Drizzle migration
+history; custom fresh installs use an explicitly dimensioned rendering of the
+same template.
 
 ## Goals
 
@@ -60,16 +62,19 @@ package ships:
 
 - `dist/` - built root and subpath `.mjs` / `.d.mts` files and source maps
   produced by `tsdown`.
-- `migrations/0000_initial.sql` - the default 1536-dimensional Postgres schema
-  baseline for fresh installs.
+- `migrations/fresh-install.sql` - the generated, consolidated default
+  1536-dimensional schema for direct application to brand-new databases.
+- `migrations/0000_initial.sql` - the original default 1536-dimensional
+  Postgres schema baseline retained in the numbered migration series.
 - `migrations/0001_add_mnemocyte_meta.sql` - the metadata migration that records
-  the default embedding dimensions for existing 0.1.x installs and default
-  fresh installs.
+  the default embedding dimensions for existing 0.1.x installs and the
+  numbered migration series.
 - `migrations/0002_add_embedding_model.sql` - adds installation-level embedding
   model identity and records a single historical row model when unambiguous.
 - `migrations/0000_initial.sql.template` and `migrations/render-initial.mjs` -
-  the explicit custom-dimension fresh-install path, including the installation
-  model metadata column.
+  the source and renderer for the checked-in default fresh install and explicit
+  custom-dimension fresh installs, including the installation model metadata
+  column.
 
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
@@ -802,11 +807,11 @@ Status: released as `v0.2.0`.
 ## Known limitations
 
 - **Postgres supports one embedding vector space per installation.** The
-  default migration creates `embedding vector(1536)`, and custom dimensions
-  must be rendered explicitly from the migration template. `createMnemocyte`
-  stays synchronous; before writes, recall, or duplicate scans, the Postgres
-  client validates the configured model and dimensions against
-  `mnemocyte_meta`.
+  consolidated default fresh-install migration creates
+  `embedding vector(1536)`, and custom dimensions must be rendered explicitly
+  from the migration template. `createMnemocyte` stays synchronous; before
+  writes, recall, or duplicate scans, the Postgres client validates the
+  configured model and dimensions against `mnemocyte_meta`.
 - **`MemoryStore` is internal.** The in-memory and Postgres backends now use a
   shared internal adapter boundary, but it is not a public adapter API yet.
   `drizzleStore(db)` exposes only an opaque `MnemocyteStoreConfig` token for the

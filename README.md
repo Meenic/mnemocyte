@@ -116,7 +116,18 @@ boundary.
 ## Postgres
 
 For persistent storage, enable pgvector in your Postgres database, apply the
-bundled migrations, then pass `databaseUrl`.
+appropriate bundled schema file, then pass `databaseUrl`. The commands below
+use `psql` and assume `DATABASE_URL` points at the target database.
+
+Enable pgvector before applying any Mnemocyte schema file:
+
+```bash
+psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+```
+
+The database role running that command must be allowed to install the
+extension. Mnemocyte does not create extensions, tables, or indexes from the
+client constructor.
 
 ```ts
 const client = createMnemocyte({
@@ -168,6 +179,7 @@ host, database, and credential validation remains the driver's responsibility.
 The package includes:
 
 ```txt
+migrations/fresh-install.sql
 migrations/0000_initial.sql
 migrations/0001_add_mnemocyte_meta.sql
 migrations/0002_add_embedding_model.sql
@@ -175,28 +187,44 @@ migrations/0000_initial.sql.template
 migrations/render-initial.mjs
 ```
 
-For the default 1536-dimensional schema on a fresh install, apply these in
-order:
+For a brand-new installation using the default 1536 dimensions, apply the
+consolidated fresh-install file:
 
-```txt
-migrations/0000_initial.sql
-migrations/0001_add_mnemocyte_meta.sql
-migrations/0002_add_embedding_model.sql
+```bash
+psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/fresh-install.sql
 ```
 
-For an existing 0.1.x Postgres install, apply
-`migrations/0001_add_mnemocyte_meta.sql` and then
-`migrations/0002_add_embedding_model.sql`. Existing 0.2.x or 0.3.x installs
-only need `0002_add_embedding_model.sql`.
+`fresh-install.sql` is generated from `0000_initial.sql.template` and combines
+the final empty-database effects of `0000`, `0001`, and `0002`. It is only for
+a brand-new installation and is not part of the Drizzle migration journal.
+
+Existing installations must continue to use the numbered migration series.
+The `0000` / `0001` / `0002` files remain the correct upgrade source; do not
+apply `fresh-install.sql` over an existing Mnemocyte schema.
+
+For an existing 0.1.x Postgres installation, apply `0001` and then `0002` in
+the same order as before:
+
+```bash
+psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0001_add_mnemocyte_meta.sql
+psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
+```
+
+For an existing 0.2.x or 0.3.x installation, apply only `0002`:
+
+```bash
+psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
+```
 
 For a different embedding dimension on a fresh installation, render an explicit
-initial migration from the template and apply that rendered file instead of the
-default `0000_initial.sql`. The rendered initial migration includes the
-matching `mnemocyte_meta` dimensions and the installation-model column, so it
-does not also need `0001` or `0002`.
+initial migration from the template, then apply that rendered file instead of
+`fresh-install.sql` or any numbered migration. The rendered initial migration
+includes the matching `mnemocyte_meta` dimensions and the installation-model
+column, so it does not also need `0000`, `0001`, or `0002`.
 
 ```bash
 node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
+psql "$DATABASE_URL" -f migrations/0000_initial.768.sql
 ```
 
 Inside this repository, the equivalent development shortcut is:

@@ -76,6 +76,13 @@ describe("lazy Postgres package loading", () => {
 				windowsHide: true,
 			});
 			await rename(join(extracted, "package"), join(nodeModules, "mnemocyte"));
+			const [packedFreshInstall, sourceFreshInstall] = await Promise.all([
+				readFile(
+					join(nodeModules, "mnemocyte", "migrations", "fresh-install.sql"),
+				),
+				readFile(resolve("migrations", "fresh-install.sql")),
+			]);
+			expect(packedFreshInstall).toEqual(sourceFreshInstall);
 
 			await Promise.all([
 				expectPathMissing(join(nodeModules, "drizzle-orm")),

@@ -34,10 +34,13 @@
 - The current roadmap treats `0.4.0` as the tagged hardening baseline,
   `drizzleStore(db)` as implemented under `[Unreleased]`, and the full public
   `MemoryStore` contract as a later stabilization decision.
-- Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
-  installation-level dimension source of truth. The default initial migration
-  remains 1536-dimensional, and custom dimensions are rendered explicitly from
-  `migrations/0000_initial.sql.template` with `pnpm migration:render`.
+- Postgres installs use `mnemocyte_meta.embedding_dimensions` as the
+  installation-level dimension source of truth. Brand-new default installs
+  apply the checked-in `migrations/fresh-install.sql`, generated at 1536
+  dimensions from `migrations/0000_initial.sql.template`; custom dimensions
+  are rendered explicitly with `pnpm migration:render`. The numbered `0000`,
+  `0001`, and `0002` migrations and their Drizzle journal remain the unchanged
+  upgrade path for existing installations.
 - The OpenAI helper intentionally does not depend on the OpenAI SDK. It uses
   direct `fetch` calls, keeps the root `mnemocyte` import provider-free, and
   rejects response data that is not exactly one uniquely indexed array

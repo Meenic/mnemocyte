@@ -25,6 +25,48 @@ records the current run; the following section records the 2026-07-17
 root-entry lazy Postgres loading run, and later sections retain their historical
 scope.
 
+## Caller-owned postgres.js Drizzle adapter
+
+The `drizzleStore(db)` v1 design is now implemented for caller-supplied
+postgres.js Drizzle instances. The new wildcard-backed
+`mnemocyte/stores/drizzle` export constructs the existing Postgres
+`MemoryStore` around a caller-owned `DatabaseHandle` whose required `close()`
+callback is a no-op. `client.close()` therefore keeps its normal
+operation-draining semantics without ending the application's postgres.js
+connection.
+
+`MnemocyteConfig.store` accepts a deliberately opaque
+`MnemocyteStoreConfig`. This keeps the complete 18-method `MemoryStore`
+interface internal while giving official adapter factories a narrow public
+value to pass into `createMnemocyte()`. Supplying `store` together with
+`databaseUrl` rejects synchronously with `"CONFIG"`; the existing URL-only and
+no-config in-memory selection paths retain their prior behavior and validation
+order.
+
+The package now builds matching `dist/stores/drizzle.mjs` and
+`dist/stores/drizzle.d.mts` artifacts from the same wildcard source/build/export
+pattern used for embedder helpers. Future store entries require only another
+`src/stores/*.ts` file. The root entry still has no static Drizzle or
+postgres.js imports, and the packed in-memory consumer scenario continues to
+run with both database packages absent. The v1 adapter is explicitly limited
+to postgres.js, fixed Mnemocyte tables in the `public` schema, and databases
+where the bundled migrations were already applied.
+
+Integration coverage constructs a typed Drizzle instance with an unrelated
+application schema, passes it through `drizzleStore(db)`, compares
+`remember`/`recall` behavior with the `databaseUrl` path, closes both clients,
+and executes another query through the original caller-owned instance. This is
+the first real coverage proving that Mnemocyte does not take ownership of a
+supplied connection.
+
+The final wildcard-export state passed `pnpm checktypes`, `pnpm lint`, `pnpm
+test`, `pnpm build`, `pnpm run pack:check`, and `pnpm run test:integration`
+against the configured real Postgres + pgvector database. Unit/package
+validation passed 34 files with 136 tests, and integration validation passed
+12 files with 16 tests. Emitted-artifact inspection also confirmed the
+`dist/stores/drizzle.mjs` / `.d.mts` pair, no obsolete flat Drizzle artifact,
+and no static `drizzle-orm` or `postgres` import in `dist/index.mjs`.
+
 ## `MemoryStore` storage adapter contract documentation
 
 The documentation track from the corrected stabilization proposal is complete

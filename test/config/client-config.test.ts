@@ -1,8 +1,10 @@
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
 	createMnemocyte,
 	isMnemocyteError,
 	type MnemocyteErrorCode,
 } from "mnemocyte";
+import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const { closeDatabaseMock, postgresMock } = vi.hoisted(() => {
@@ -80,6 +82,23 @@ describe("client configuration", () => {
 		);
 	});
 
+	test("rejects databaseUrl and store together synchronously as CONFIG", () => {
+		const store = drizzleStore(
+			{} as PostgresJsDatabase<Record<string, unknown>>,
+		);
+
+		expectConfigError(
+			() =>
+				createMnemocyte({
+					databaseUrl: "postgres://localhost/mnemocyte",
+					store,
+					embedder: validEmbedder,
+				}),
+			"CONFIG",
+		);
+		expect(postgresMock).not.toHaveBeenCalled();
+	});
+
 	test.each([
 		"postgres://user:password@localhost:5432/mnemocyte",
 		"postgresql://user:password@localhost:5432/mnemocyte",
@@ -88,6 +107,28 @@ describe("client configuration", () => {
 
 		expect(postgresMock).not.toHaveBeenCalled();
 		await client.close();
+		expect(postgresMock).toHaveBeenCalledOnce();
+		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
+		expect(closeDatabaseMock).toHaveBeenCalledOnce();
+	});
+
+	test("keeps no-config and databaseUrl-only backend selection intact", async () => {
+		const inMemoryClient = createMnemocyte({ embedder: validEmbedder });
+		const memory = await inMemoryClient.remember({
+			entityId: "config_in_memory",
+			content: "No store configuration still uses in-memory storage.",
+		});
+		expect(memory.entityId).toBe("config_in_memory");
+		await inMemoryClient.close();
+		expect(postgresMock).not.toHaveBeenCalled();
+
+		const databaseUrl = "postgres://localhost/mnemocyte";
+		const postgresClient = createMnemocyte({
+			databaseUrl,
+			embedder: validEmbedder,
+		});
+		expect(postgresMock).not.toHaveBeenCalled();
+		await postgresClient.close();
 		expect(postgresMock).toHaveBeenCalledOnce();
 		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
 		expect(closeDatabaseMock).toHaveBeenCalledOnce();

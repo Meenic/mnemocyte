@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 
 const sourceAlias = [
 	{
+		find: /^mnemocyte\/stores\/(.+)$/,
+		replacement: resolve("src/stores/$1.ts"),
+	},
+	{
 		find: /^mnemocyte\/embedders\/(.+)$/,
 		replacement: resolve("src/embedders/$1.ts"),
 	},
@@ -13,6 +17,10 @@ const sourceAlias = [
 	{ find: "mnemocyte", replacement: resolve("src/index.ts") },
 ];
 const packageAlias = [
+	{
+		find: /^mnemocyte\/stores\/(.+)$/,
+		replacement: resolve("dist/stores/$1.mjs"),
+	},
 	{
 		find: /^mnemocyte\/embedders\/(.+)$/,
 		replacement: resolve("dist/embedders/$1.mjs"),

@@ -6,9 +6,10 @@
 
 ## Current Status
 
-Mnemocyte currently exposes its public API through `createMnemocyte()`. The
-client supports an in-memory backend when `databaseUrl` is omitted and a
-Postgres/pgvector backend when `databaseUrl` is provided.
+Mnemocyte exposes its client API through `createMnemocyte()`. The client uses
+an explicitly supplied `store`, a URL-owned Postgres/pgvector backend when
+`databaseUrl` is provided, or an in-memory backend when neither is supplied.
+Supplying both storage fields rejects synchronously with `"CONFIG"`.
 
 The package is ESM-only for now. CommonJS is intentionally not advertised unless the build later emits and tests a real CJS artifact.
 
@@ -73,15 +74,21 @@ package ships:
 The full, canonical `package.json` lives at the repository root. See it for the current `scripts`, `exports`, `engines.node`, and dependency pins (Drizzle ORM, `postgres`, `@biomejs/biome`, `tsdown`, Vitest, etc.). CI runs `test:ci` to enforce unit behavior, package exports, and exported type reachability from `mnemocyte`.
 
 Future adapter packages should depend on the core rather than widening the core
-surface. The internal `MemoryStore` boundary is now present; the confirmed
-sequence is a public `MemoryStore` contract, `drizzleStore(db)` at `0.5.0`, and
-then `@mnemocyte/mcp` at `0.6.0`.
+surface. The internal `MemoryStore` boundary remains private. The
+`mnemocyte/stores/drizzle` subpath now exposes `drizzleStore(db)` through the
+narrow opaque `MnemocyteStoreConfig` value required by
+`MnemocyteConfig.store`, without publishing the full internal contract.
+`@mnemocyte/mcp` remains the next adapter milestone.
 
 The root artifact validates a supplied database URL synchronously, then creates
 a lazy Postgres store. Drizzle, postgres.js, schema, query, and Postgres adapter
 modules are dynamically imported only when that store is first used. The
 database packages remain runtime dependencies for the Postgres path, but a
-packed in-memory consumer is tested with both packages absent.
+packed in-memory consumer is tested with both packages absent. Importing
+`mnemocyte/stores/drizzle` is the explicit opt-in that loads the postgres.js
+adapter; the `./stores/*` export is kept outside the root entry's static import
+graph and lets future store source entries ship without another export-map or
+build-script edit.
 
 If CommonJS support is added later, the package must emit `dist/index.cjs` and CI must validate both `import("mnemocyte")` and `require("mnemocyte")`.
 
@@ -146,6 +153,8 @@ src/
 +-- embedders/
 |   +-- index.ts              # provider helper exports
 |   +-- openai.ts             # fetch-based OpenAI embeddings helper
++-- stores/
+|   +-- drizzle.ts            # postgres.js Drizzle adapter subpath
 +-- retrieval/
 |   +-- scorer.ts             # cosineSimilarity, lexical score, fused ranker
 +-- memory/
@@ -163,6 +172,7 @@ src/
 |   +-- lazy-postgres.ts      # MemoryStore proxy + dynamic Postgres import
 |   +-- postgres-runtime.ts   # URL-to-Postgres-store runtime assembly
 |   +-- postgres.ts           # Postgres MemoryStore adapter
+|   +-- store-config.ts       # opaque public config token wrapping MemoryStore
 +-- context/
     +-- builder.ts            # buildContext()
     +-- formatter.ts          # markdown/plain/xml context formatting
@@ -202,13 +212,13 @@ database URL before backend work. Database URLs must use the `postgres:` or
 postgres.js. Provider delays remain compatible with the existing policy that
 normalizes `maxDelayMs` up to `baseDelayMs` when needed.
 
-Remaining unclear boundaries:
+Remaining boundaries:
 
 - Postgres query modules own both SQL shape and some public result-shaping
   concerns.
-- The internal `MemoryStore` interface is not exported yet; before a public
-  adapter API, it needs more review around transaction hooks, caller-owned
-  connections, and runtime-specific Drizzle drivers.
+- The full internal `MemoryStore` interface is not exported. The first public
+  adapter deliberately exposes only an opaque config value while transaction
+  hooks and non-postgres.js Drizzle drivers remain under review.
 
 ### Internal `MemoryStore` stabilization status
 
@@ -301,6 +311,14 @@ files such as `dist/embedders/index.d.mts` and
   embedding per input. Shared embedding validation still owns dimensions and
   finite numeric components.
 
+**Storage adapters**
+
+- `mnemocyte/stores/drizzle`: `drizzleStore(db)` accepts a caller-owned
+  postgres.js Drizzle instance and returns `MnemocyteStoreConfig`. Its v1 scope
+  is the `public` schema with pre-applied Mnemocyte migrations; it does not
+  close the caller's connection. The wildcard `mnemocyte/stores/*` package
+  boundary mirrors provider helper subpaths and scales to later store entries.
+
 **Errors**
 
 - `MnemocyteError`, `isMnemocyteError`, `MnemocyteErrorCode` (`"CONFIG"`, `"VALIDATION"`, `"DB"`, `"EMBEDDING"`, `"NOT_FOUND"`, `"CONFLICT"`, `"MIGRATION"`, `"TIMEOUT"`, `"ABORTED"`).
@@ -335,10 +353,11 @@ files such as `dist/embedders/index.d.mts` and
 
 **Config**
 
-- `MnemocyteConfig`: `databaseUrl?`, `embedder` (required; its model and
-  dimensions must match `mnemocyte_meta` for Postgres), `defaults?`,
-  `retrieval?`, `observability?`, `provider?` (resilience), `audit?`
-  (`{ enabled }`).
+- `MnemocyteConfig`: mutually exclusive `databaseUrl?` and `store?`,
+  `embedder` (required; its model and dimensions must match `mnemocyte_meta`
+  for Postgres), `defaults?`, `retrieval?`, `observability?`, `provider?`
+  (resilience), `audit?` (`{ enabled }`). When neither storage field is
+  supplied, the in-memory backend is selected.
 
 **Types**
 
@@ -352,6 +371,8 @@ files such as `dist/embedders/index.d.mts` and
 - Observability: `MnemocyteObservation`, `MnemocyteOperation`, `MnemocyteObservationPhase`, `MnemocyteBackend`, `ObservabilityConfig`.
 - Resilience: `ProviderResilienceConfig`.
 - Audit: `AuditConfig`, `AuditEvent`, experimental `AuditLogCursor`.
+- Storage configuration: opaque `MnemocyteStoreConfig`; the internal
+  `MemoryStore` method contract remains unexported.
 
 **Escape hatches**
 
@@ -387,7 +408,8 @@ export class MnemocyteError extends Error {
 
 `"TIMEOUT"` and `"ABORTED"` are emitted by the resilience layer; `"CONFIG"`
 covers invalid embedder/database URL configuration, including non-Postgres URL
-protocols, invalid retrieval tuning, and Postgres model/dimension mismatches.
+protocols, simultaneous `databaseUrl` and `store` values, invalid retrieval
+tuning, and Postgres model/dimension mismatches.
 `"MIGRATION"` also covers unresolved mixed historical embedding models after
 `0002_add_embedding_model.sql`.
 `"VALIDATION"` covers per-call argument errors (including invalid `maxTokens`,
@@ -688,9 +710,17 @@ accepts only the `postgres:` and `postgresql:` protocols, uses postgres.js over
 TCP, parses common `sslmode` values, and disables prepared statements for
 pooler-style URLs (`:6543` or `pgbouncer=true`).
 
-The planned public `MemoryStore` contract and `drizzleStore(db)` milestone move
-caller-managed database clients into the public architecture for apps that
-already own pools or need runtime-specific Drizzle drivers.
+`drizzleStore(db)` instead installs a required no-op `DatabaseHandle.close()`
+callback. Closing the Mnemocyte client still drains its operations and closes
+the logical store, but it does not call `client.end()` or otherwise tear down
+the supplied Drizzle/postgres.js connection. The application remains
+responsible for that connection's lifecycle.
+
+The v1 caller-owned path accepts only `drizzle-orm/postgres-js` instances. It
+queries the fixed Mnemocyte tables in the `public` schema directly, so the
+caller's Drizzle schema map need not merge those tables, but the bundled
+migrations must already have been applied. Other drivers and schemas require
+separate verification and are not silently accepted.
 
 ## Production Concerns
 
@@ -755,10 +785,12 @@ Status: released as `v0.2.0`.
 
 ### `0.5.0` - `drizzleStore(db)`
 
-- Let applications pass a caller-owned Drizzle database instance.
-- Keep connection lifecycle ownership with the application.
-- Verify and document supported Drizzle driver/runtime combinations before
-  advertising them.
+- Status: implemented under `[Unreleased]` for caller-owned postgres.js
+  Drizzle instances.
+- The adapter keeps connection lifecycle ownership with the application and
+  requires the public-schema migrations to be applied explicitly.
+- Expanding beyond postgres.js remains future work that requires driver/runtime
+  verification.
 
 ### `0.6.0` - `@mnemocyte/mcp`
 
@@ -777,6 +809,8 @@ Status: released as `v0.2.0`.
   `mnemocyte_meta`.
 - **`MemoryStore` is internal.** The in-memory and Postgres backends now use a
   shared internal adapter boundary, but it is not a public adapter API yet.
+  `drizzleStore(db)` exposes only an opaque `MnemocyteStoreConfig` token for the
+  supported postgres.js caller-owned path.
 - **Provider timeout cancellation depends on signal support.** The resilience
   layer aborts the per-attempt signal on `"TIMEOUT"`; embedder implementations
   must honor `AbortSignal` for the underlying request to stop promptly.

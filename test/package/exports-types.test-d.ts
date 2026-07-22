@@ -1,3 +1,4 @@
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type {
 	AuditConfig,
 	AuditEvent,
@@ -16,6 +17,7 @@ import type {
 	MnemocyteClient,
 	MnemocyteConfig,
 	MnemocyteErrorCode,
+	MnemocyteStoreConfig,
 	RecallInput,
 	RememberInput,
 	RememberManyInput,
@@ -34,6 +36,7 @@ import {
 	type OpenAIEmbedderOptions as DirectOpenAIEmbedderOptions,
 	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
+import { drizzleStore } from "mnemocyte/stores/drizzle";
 
 const format: ContextFormat = "markdown";
 const weights: RetrievalScoreWeights = { vector: 1 };
@@ -45,6 +48,14 @@ const embedder: Embedder = {
 	embed: async (texts) => texts.map(() => [1]),
 };
 const config: MnemocyteConfig = { embedder, retrieval };
+declare const callerDatabase: PostgresJsDatabase<{
+	applicationTable: unknown;
+}>;
+const callerStore: MnemocyteStoreConfig = drizzleStore(callerDatabase);
+const callerStoreConfig: MnemocyteConfig = {
+	embedder,
+	store: callerStore,
+};
 const client: MnemocyteClient = createMnemocyte(config);
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
 const conflictError = new MnemocyteError("conflict", conflictCode);
@@ -181,6 +192,7 @@ const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
+void callerStoreConfig;
 void conflictCode;
 void conflictError;
 void jsonValue;

@@ -5,6 +5,7 @@
 		"noEmit": true,
 		"paths": {
 			"mnemocyte": ["../../dist/index.d.mts"],
+			"mnemocyte/stores/*": ["../../dist/stores/*.d.mts"],
 			"mnemocyte/embedders": ["../../dist/embedders/index.d.mts"],
 			"mnemocyte/embedders/*": ["../../dist/embedders/*.d.mts"]
 		}

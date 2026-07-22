@@ -12,6 +12,8 @@ logs, and duplicate-consolidation tools on top of your existing infrastructure.
 
 - In-memory backend for tests and demos.
 - Postgres + pgvector backend for persistent storage.
+- Caller-owned postgres.js Drizzle instances through
+  `mnemocyte/stores/drizzle`.
 - User-supplied `Embedder` interface.
 - Hybrid recall with vector similarity, lexical matching, recency, confidence,
   access count, and importance.
@@ -65,8 +67,8 @@ const context = await client.buildContext({
 await client.close();
 ```
 
-When `databaseUrl` is omitted, Mnemocyte uses the in-memory backend.
-That backend is intended for development, tests, and prototyping. For
+When both `databaseUrl` and `store` are omitted, Mnemocyte uses the in-memory
+backend. That backend is intended for development, tests, and prototyping. For
 persistent or larger workloads, use Postgres.
 
 ## Embedder
@@ -122,6 +124,42 @@ const client = createMnemocyte({
   embedder,
 });
 ```
+
+Applications that already own a postgres.js Drizzle instance can pass it
+through the `mnemocyte/stores/drizzle` subpath:
+
+```ts
+import { createMnemocyte } from "mnemocyte";
+import { drizzleStore } from "mnemocyte/stores/drizzle";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as applicationSchema from "./db/schema.js";
+
+const sql = postgres(process.env.DATABASE_URL!);
+const db = drizzle(sql, { schema: applicationSchema });
+
+const client = createMnemocyte({
+  store: drizzleStore(db),
+  embedder,
+});
+
+try {
+  await client.remember({
+    entityId: "user_123",
+    content: "Uses the application's existing Drizzle connection.",
+  });
+} finally {
+  await client.close(); // does not close db or sql
+  await sql.end(); // the caller retains connection ownership
+}
+```
+
+`drizzleStore(db)` v1 accepts only Drizzle instances backed by postgres.js. It
+uses Mnemocyte's fixed tables in the `public` schema; the bundled migrations
+must already have been applied, and the adapter does not create or migrate
+tables. The caller's Drizzle schema map does not need to include Mnemocyte's
+tables. Supplying both `databaseUrl` and `store` is ambiguous and throws
+synchronously with `MnemocyteError` code `"CONFIG"`.
 
 `databaseUrl` must use the `postgres:` or `postgresql:` protocol. Other URL
 protocols reject synchronously with `MnemocyteError` code `"CONFIG"`; detailed
@@ -574,7 +612,6 @@ For adapter implementers, the main rules are:
 Planned larger milestones:
 
 - public `MemoryStore` adapter surface
-- `drizzleStore(db)` for caller-owned Drizzle clients
 - `@mnemocyte/mcp`
 
 See [ROADMAP.md](./docs/ROADMAP.md).
@@ -583,11 +620,15 @@ See [ROADMAP.md](./docs/ROADMAP.md).
 
 Current behavior:
 
-- `createMnemocyte()` selects either the in-memory backend or the
-  Postgres/pgvector backend.
+- `createMnemocyte()` selects an explicitly supplied `store`, the URL-owned
+  Postgres/pgvector backend, or the in-memory backend; supplying both `store`
+  and `databaseUrl` rejects instead of selecting a precedence.
 - Both backends run through an internal `MemoryStore` boundary and shared
   client orchestration; `MemoryStore` is not exported as a public adapter API
   yet.
+- `mnemocyte/stores/drizzle` exposes the first supported public adapter factory
+  for a caller-owned postgres.js Drizzle instance without exporting the full
+  `MemoryStore` contract.
 - Postgres schema setup is explicit; the client does not create tables or
   indexes for you.
 - `findDuplicates`, audit-log workflows, and `experimental.consolidate` are
@@ -596,7 +637,8 @@ Current behavior:
 Known limitations before v1:
 
 - The internal `MemoryStore` boundary is not a public adapter API yet.
-  `drizzleStore(db)` is the planned first public store adapter.
+  `drizzleStore(db)` returns an opaque config value and currently supports only
+  postgres.js, the `public` schema, and pre-applied Mnemocyte migrations.
 - Configured provider timeouts abort the per-attempt `AbortSignal`; the
   underlying provider request only stops promptly when the embedder honors that
   signal.

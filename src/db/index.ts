@@ -3,11 +3,20 @@ import postgres from "postgres";
 import { parsePostgresDatabaseUrl } from "../database-url.js";
 import * as schema from "./schema.js";
 
-export type MnemocyteDatabase = PostgresJsDatabase<typeof schema>;
+export type MnemocyteDatabase = PostgresJsDatabase<Record<string, unknown>>;
 
 export interface DatabaseHandle {
 	db: MnemocyteDatabase;
 	close(): Promise<void>;
+}
+
+export function createCallerOwnedDatabaseHandle<
+	TSchema extends Record<string, unknown>,
+>(db: PostgresJsDatabase<TSchema>): DatabaseHandle {
+	return {
+		db,
+		async close() {},
+	};
 }
 
 type PostgresSslMode =

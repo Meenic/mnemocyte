@@ -8,6 +8,17 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Caller-owned postgres.js Drizzle storage.** Added the
+  wildcard-backed `mnemocyte/stores/drizzle` subpath and `drizzleStore(db)` for
+  applications that already own a postgres.js-backed Drizzle instance.
+  `MnemocyteConfig.store` accepts the adapter's opaque `MnemocyteStoreConfig`
+  value, rejects a simultaneous `databaseUrl` with `"CONFIG"`, and leaves the
+  supplied Drizzle connection usable after `client.close()`. The v1 adapter
+  targets the `public` schema and requires the bundled migrations to be applied
+  in advance; other Drizzle drivers remain unsupported.
+
 ### Breaking Changes
 
 - **CONSOLIDATION-03 — Consolidation revalidates the survivor atomically.**

@@ -59,8 +59,9 @@ export interface JsonObject {
 /**
  * Identifies which backend a {@link MnemocyteClient} is using.
  *
- * Selected automatically by {@link createMnemocyte} based on whether
- * {@link MnemocyteConfig.databaseUrl} was provided.
+ * Selected automatically by {@link createMnemocyte} from the configured
+ * {@link MnemocyteConfig.store} or {@link MnemocyteConfig.databaseUrl}, with
+ * in-memory storage used when neither is supplied.
  */
 export type MnemocyteBackend = "in-memory" | "postgres";
 
@@ -175,6 +176,19 @@ export interface ProviderResilienceConfig {
 	shouldRetry?: (error: unknown, attempt: number) => boolean;
 }
 
+declare const mnemocyteStoreConfigBrand: unique symbol;
+
+/**
+ * Opaque storage-adapter value accepted by {@link MnemocyteConfig.store}.
+ *
+ * Obtain this value from a supported adapter factory such as `drizzleStore()`
+ * from `mnemocyte/stores/drizzle`. The underlying `MemoryStore` contract stays
+ * internal; this type intentionally exposes no adapter implementation methods.
+ */
+export interface MnemocyteStoreConfig {
+	readonly [mnemocyteStoreConfigBrand]: true;
+}
+
 /**
  * Configuration passed to {@link createMnemocyte}.
  */
@@ -185,9 +199,16 @@ export interface MnemocyteConfig {
 	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder and
 	 * `embedding_model` metadata available). Must use the `postgres:` or
 	 * `postgresql:` protocol.
-	 * When omitted, an in-memory backend is used.
+	 * Cannot be combined with {@link MnemocyteConfig.store}. When both storage
+	 * fields are omitted, an in-memory backend is used.
 	 */
 	databaseUrl?: string;
+	/**
+	 * Caller-supplied storage adapter. Use `drizzleStore(db)` from
+	 * `mnemocyte/stores/drizzle` for a caller-owned postgres.js Drizzle instance.
+	 * Cannot be combined with {@link MnemocyteConfig.databaseUrl}.
+	 */
+	store?: MnemocyteStoreConfig;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
 	/** Default values applied to {@link RecallInput} when properties are omitted. */

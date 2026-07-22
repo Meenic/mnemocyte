@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import {
 	access,
 	mkdir,
@@ -14,6 +14,7 @@ import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 async function expectPathMissing(path: string): Promise<void> {
 	await expect(access(path)).rejects.toThrow();
@@ -32,11 +33,16 @@ async function packPackage(tarball: string): Promise<void> {
 			"dist",
 			"pnpm.js",
 		);
-		await execFileAsync(
-			process.execPath,
-			[pnpmCli, "pack", "--out", tarball],
-			options,
-		);
+		try {
+			await access(pnpmCli);
+			await execFileAsync(
+				process.execPath,
+				[pnpmCli, "pack", "--out", tarball],
+				options,
+			);
+		} catch {
+			await execAsync(`pnpm pack --out "${tarball}"`, options);
+		}
 		return;
 	}
 	await execFileAsync("pnpm", ["pack", "--out", tarball], options);

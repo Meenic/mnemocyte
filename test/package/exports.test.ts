@@ -1,12 +1,14 @@
 import { createMnemocyte, MnemocyteError } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
+import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
 
 describe("package exports", () => {
 	test("exposes the built package runtime API", async () => {
 		expect(typeof createMnemocyte).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
+		expect(typeof drizzleStore).toBe("function");
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 

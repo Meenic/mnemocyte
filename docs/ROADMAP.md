@@ -5,10 +5,10 @@ forward-looking planning document, not a release history. Shipped work belongs
 in [CHANGELOG.md](../CHANGELOG.md).
 
 The `0.4.0` hardening release is recorded in the changelog and tagged in this
-repository. Current `HEAD` contains post-tag work while the package version
-remains `0.4.0`; local Git state alone does not establish npm or GitHub-release
-publication status. The still-unshipped adapter targets remain ordered at
-`0.5.0` and `0.6.0`.
+repository. Current `[Unreleased]` work implements the postgres.js-only
+`drizzleStore(db)` adapter while the package version remains `0.4.0`; local Git
+state alone does not establish npm or GitHub-release publication status.
+`@mnemocyte/mcp` remains the next adapter target at `0.6.0`.
 
 Mnemocyte's direction is infrastructure-native and deliberately composable:
 bring your own database, bring your own embedder, and keep the core package
@@ -74,10 +74,12 @@ provider requires a heavy or conflicting SDK dependency. Either condition
 triggers a fresh package-boundary review; it does not predetermine a monorepo
 split. Root `mnemocyte` imports remain provider-free in every case.
 
-## Next - Public `MemoryStore` Stabilization
+## Public `MemoryStore` Stabilization
 
-Version `0.3.0` shipped the internal `MemoryStore` boundary. Before exporting
-an adapter contract:
+Version `0.3.0` shipped the internal `MemoryStore` boundary. The first public
+adapter now uses an opaque `MnemocyteStoreConfig` token, allowing
+`drizzleStore(db)` without exporting all 18 internal methods. Before exporting
+the full adapter contract:
 
 - Review transaction hooks, caller-owned connection lifecycle, and
   runtime-specific Drizzle driver requirements.
@@ -91,25 +93,22 @@ an adapter contract:
   Current adapters call every method unconditionally; indexed vector search is
   a real implementation distinction, but no caller currently branches on it.
 
-This is the architectural hinge for the rest of the roadmap. It makes future
-database and runtime adapters possible without copying the client.
-The milestone sequence is confirmed: stabilize this public contract first,
-ship `drizzleStore(db)` at `0.5.0`, and then ship `@mnemocyte/mcp` at `0.6.0`.
-These targets are ordered decisions, not open alternatives.
+The opaque v1 token preserves this architectural hinge: future database and
+runtime adapters can be added without copying the client, while the full
+contract stays private until it is ready. `@mnemocyte/mcp` remains sequenced
+after the Drizzle adapter.
 
 ## `0.5.0` - `drizzleStore(db)`
 
 Let applications bring their own Drizzle database instance.
 
-- Add `drizzleStore(db, options)` for caller-owned Drizzle clients.
-- Support the current Postgres + pgvector schema through the `MemoryStore`
-  adapter.
-- Keep connection lifecycle ownership with the caller when a database instance
-  is supplied.
-- Document tested driver/runtime combinations, starting with postgres.js and
-  expanding only after verification.
-- Prepare for Neon HTTP/serverless, node-postgres, and other Drizzle drivers
-  without hardcoding them into the core client.
+- Status: implemented under `[Unreleased]` as `drizzleStore(db)` for
+  caller-owned postgres.js Drizzle clients.
+- The adapter uses the current public-schema Postgres + pgvector tables and
+  requires migrations to be applied in advance.
+- Connection lifecycle ownership remains with the caller.
+- Neon HTTP/serverless, node-postgres, and other Drizzle drivers remain future
+  verification work rather than implied compatibility.
 
 The goal is to fit into apps that already use Drizzle, already own connection
 pools, or run in environments where `databaseUrl` plus postgres.js is too

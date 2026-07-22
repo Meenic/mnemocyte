@@ -8,6 +8,7 @@
 		"baseUrl": ".",
 		"paths": {
 			"mnemocyte": ["./src/index.ts"],
+			"mnemocyte/stores/*": ["./src/stores/*.ts"],
 			"mnemocyte/embedders": ["./src/embedders/index.ts"],
 			"mnemocyte/embedders/*": ["./src/embedders/*.ts"]
 		}

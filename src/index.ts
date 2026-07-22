@@ -65,6 +65,7 @@ export type {
 	MnemocyteObservation,
 	MnemocyteObservationPhase,
 	MnemocyteOperation,
+	MnemocyteStoreConfig,
 	ObservabilityConfig,
 	ProviderResilienceConfig,
 	PruneInput,

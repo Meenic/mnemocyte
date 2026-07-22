@@ -13,13 +13,27 @@
   Postgres/Drizzle runtime through `memory/lazy-postgres.ts` only when a
   Postgres store is first used. A packed in-memory consumer is tested with
   `drizzle-orm` and `postgres` absent.
+- `mnemocyte/stores/drizzle` now exports `drizzleStore(db)` through the
+  wildcard `mnemocyte/stores/*` package boundary for caller-owned postgres.js
+  Drizzle instances. It returns an opaque
+  `MnemocyteStoreConfig` for `MnemocyteConfig.store`; the complete 18-method
+  `MemoryStore` remains internal and unexported.
+- `databaseUrl` and `store` are mutually exclusive and reject synchronously
+  with `"CONFIG"`. When neither is present the existing in-memory path remains
+  selected; the URL-only path retains its lazy connection construction and
+  Mnemocyte-owned close behavior.
+- Caller-owned Drizzle handles install a required no-op close callback, so
+  `client.close()` drains and closes the Mnemocyte client without ending the
+  supplied postgres.js connection. The v1 adapter supports only postgres.js,
+  fixed Mnemocyte tables in the `public` schema, and pre-applied migrations.
 - The test suite has been migrated fully to Vitest and TypeScript.
 - Test files should not use `node:assert`, `assert.*`, `@ts-ignore`, or `@ts-nocheck`.
 - `../CHANGELOG.md` has a `0.3.0` section dated `2026-07-16` for the internal
   store refactor, approved pre-v1 behavior changes, and hardening fixes.
 - `ARCHITECTURE.md` reflects the pinned Vitest version from `package.json`.
-- The current roadmap treats `0.4.0` as the tagged hardening baseline and
-  public `MemoryStore` stabilization as the next architectural decision.
+- The current roadmap treats `0.4.0` as the tagged hardening baseline,
+  `drizzleStore(db)` as implemented under `[Unreleased]`, and the full public
+  `MemoryStore` contract as a later stabilization decision.
 - Postgres installs now use `mnemocyte_meta.embedding_dimensions` as the
   installation-level dimension source of truth. The default initial migration
   remains 1536-dimensional, and custom dimensions are rendered explicitly from
@@ -154,10 +168,10 @@
   remain strict filters and are not complete tie-safe cursors.
 - Keep `@types/node` on major 22 while Node `>=22.18` is the minimum supported
   runtime; CI also covers Node 24.
-- The adapter milestone sequence is confirmed: stabilize the public
-  `MemoryStore` contract, ship `drizzleStore(db)` at `0.5.0`, then ship
-  `@mnemocyte/mcp` at `0.6.0`. Do not reorder these as an implementation
-  shortcut.
+- The adapter milestone sequence has reached its postgres.js Drizzle step under
+  `[Unreleased]`; `@mnemocyte/mcp` remains the next target at `0.6.0`. The full
+  public `MemoryStore` method contract is still deferred rather than exported
+  as a side effect of the opaque config token.
 - Files under `design/` are dated investigation records, not implementation
   contracts. Drafts preserve the proposal at that point in the chronology;
   verification reports preserve evidence at their recorded revision and do
@@ -166,11 +180,12 @@
   `../CHANGELOG.md`, and `ARCHITECTURE.md`; future direction is governed by
   `ROADMAP.md`, while approval-sensitive changes are governed by root
   `../PROPOSALS.md`.
-- The latest design sequence ends with
+- The earlier public-contract design sequence ends with
   `design/public-memorystore-stabilization-v3.md` and
-  `design/STABILIZATION_PROPOSAL_VERIFICATION_V3.md`. The verification rejects
-  v3 as a final implementation basis. No `docs/design/` proposal is currently
-  implementation-ready.
+  `design/STABILIZATION_PROPOSAL_VERIFICATION_V3.md`; that verification rejects
+  v3 as a final basis. The later postgres.js-only
+  `design/drizzlestore-v1-design-v2.md`, corrected by its verification report,
+  is the implemented adapter specification.
 - No public capability surface is approved or implemented. The earlier
   capability investigation identified indexed vector search as a real backend
   distinction; the later stabilization investigation recommends deferring a
@@ -217,8 +232,8 @@ Current behavior to preserve:
 
 Known code follow-ups before v1:
 
-- Keep the internal `MemoryStore` private until the public adapter contract is
-  stable enough for `drizzleStore(db)`.
+- Keep the full internal `MemoryStore` private until a broader public adapter
+  contract is stable; `drizzleStore(db)` needs only the opaque config type.
 - Continue tightening edge-case database and migration failure wrapping.
 - Preserve the deprecated positional `rememberMany(inputs)` overload through
   pre-v1; new code uses `rememberMany({ inputs, signal })`.

@@ -19,6 +19,12 @@ behavioural changes documented in their entries.
   `0002` sequence on clean schema states. The numbered migrations and Drizzle
   journal remain unchanged for existing-installation upgrades.
 
+### Changed
+
+- **Drizzle ORM 0.45.4.** The `drizzle-orm` dependency range is now
+  `^0.45.4`. Development tooling moved to Biome 2.6, tsdown 0.23 and
+  pnpm 11.28.
+
 ### Documentation
 
 - **Runnable Postgres setup commands.** The README now gives concrete `psql`

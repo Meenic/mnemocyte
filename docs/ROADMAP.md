@@ -14,7 +14,7 @@ it.
 
 - [x] `docs/reset-workflow`: CLAUDE.md, AGENTS.md, DEVELOPMENT.md and feature
   docs, ARCHITECTURE.md, ROADMAP.md; delete old reports.
-- [ ] `chore/deps-patch`: drizzle-orm 0.45.4, drizzle-kit 0.31.11, Biome 2.6
+- [x] `chore/deps-patch`: drizzle-orm 0.45.4, drizzle-kit 0.31.11, Biome 2.6
   (`biome migrate`), tsdown 0.23, `@types/node` 22.x latest, pnpm 11.28.x,
   GitHub Actions to current majors. TypeScript stays on 6.0.x (7.0 has no
   programmatic API yet).
@@ -23,6 +23,9 @@ it.
 - [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test
   that works with any `tar`.
+- [ ] `chore/pnpm-12`: pnpm 12 (the Rust rewrite) in `packageManager` and
+  CI. Diff the packed tarball against pnpm 11's, since 12 still changes what
+  `pnpm pack` includes from release to release.
 - [ ] `chore/release-workflow`: tag-triggered publish from GitHub Actions
   with npm trusted publishing and provenance.
 
@@ -30,31 +33,46 @@ it.
 
 - [ ] `feat/sql-executor`: `SqlExecutor` interface and postgres.js
   adapter; the core has zero runtime dependencies and `postgres` becomes an
-  optional peer.
+  optional peer. The user's client owns TLS and pool settings, which removes
+  today's `sslmode` override (it breaks `prefer`/`allow`) and the fixed
+  `max: 10` pool.
 - [ ] `feat/postgres-schema-v2`: migration 0003 with scope columns,
   `superseded_by` index, generated `tsvector` + GIN, UUID ids, `halfvec`
-  above 2,000 dimensions; Postgres backend rewritten on the executor.
+  above 2,000 dimensions; Postgres backend rewritten on the executor. Every
+  query filters by scope, including id lookups (today
+  `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only). The
+  embedding-compatibility cache is keyed by model and dimensions, not by
+  store instance.
 - [ ] `feat/migrate-runner`: exported `migrate()` with tracking table,
   advisory lock and one transaction per migration; README install steps use
   it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
 - [ ] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
-  boosts; Postgres ranking tests.
+  boosts; Postgres ranking tests (none exist today, which is how the
+  `ts_rank`/substring scale mix went unnoticed).
 - [ ] `fix/access-tracking`: opt-in, after the response, tolerant of deleted
   rows, scoped, no `updatedAt` change.
 - [ ] `fix/filtered-vector-search`: `hnsw.iterative_scan` and `ef_search` per
-  query; `EXPLAIN` tests on the real recall query.
+  query; compute the cosine distance once per row (today it appears in
+  `SELECT`, a no-op `WHERE` clamp and `ORDER BY`); `EXPLAIN` tests on the
+  real recall query.
 - [ ] `feat/scoped-api`: `createMemory` with scopes, `add` (with `key`
   upserts), `search`, `get`, `list` (cursor), `update`, `delete`,
   `deleteScope`, `context`; prune requires a scope; upgrade note.
 - [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction;
-  input size caps.
+  input size caps (`limit`, content, tags, metadata); validate every recall
+  filter (today `tags`, `before` and `after` are not checked) and
+  consolidate's `supersededIds` type.
 - [ ] `feat/postgres-drivers`: Drizzle, PGlite and node-postgres adapters;
-  shared contract suite on PGlite and real Postgres.
+  shared contract suite on PGlite and real Postgres, including cross-scope
+  isolation for search, prune, duplicates and consolidation, which no
+  Postgres test covers today.
 
 ## Phase 2: embedders and AI SDK (0.7)
 
 - [ ] `feat/embedder-purpose`: `purpose` and `maxBatch` on `Embedder`;
-  `openaiCompatible`; retries with jitter and `Retry-After`.
+  `openaiCompatible`; retries with jitter and `Retry-After`; replace the
+  message-substring retry heuristic (it retries any message containing
+  "500"); keep provider error bodies as the error `cause`.
 - [ ] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
 - [ ] `feat/ai-sdk-tools`: server-scoped memory tools.
 - [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook.

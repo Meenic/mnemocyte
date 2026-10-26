@@ -8,6 +8,8 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-26
+
 ### Added
 
 - **Consolidated default Postgres fresh install.** Added the generated
@@ -563,7 +565,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Meenic/mnemocyte/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Meenic/mnemocyte/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Meenic/mnemocyte/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Meenic/mnemocyte/compare/v0.2.0...v0.3.0

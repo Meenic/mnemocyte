@@ -26,7 +26,7 @@ it.
   `tsdown.config.ts`, `"default"` and explicit subpaths in `exports`, no
   declaration maps. `isolatedDeclarations` moved to
   `feat/postgres-schema-v2`.
-- [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
+- [x] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test
   that works with any `tar`.
 - [ ] `chore/pnpm-12`: pnpm 12 (the Rust rewrite) in `packageManager` and

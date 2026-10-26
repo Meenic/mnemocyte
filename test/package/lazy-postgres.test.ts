@@ -9,7 +9,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
 
@@ -72,9 +72,13 @@ describe("lazy Postgres package loading", () => {
 			]);
 
 			await packPackage(tarball);
-			await execFileAsync("tar", ["-xzf", tarball, "-C", extracted], {
-				windowsHide: true,
-			});
+			// Relative paths: GNU tar reads "C:\..." as a remote host, while
+			// bsdtar and Windows' tar.exe reject GNU's --force-local.
+			await execFileAsync(
+				"tar",
+				["-xzf", basename(tarball), "-C", basename(extracted)],
+				{ cwd: temporaryRoot, windowsHide: true },
+			);
 			await rename(join(extracted, "package"), join(nodeModules, "mnemocyte"));
 			const [packedFreshInstall, sourceFreshInstall] = await Promise.all([
 				readFile(

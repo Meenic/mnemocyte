@@ -66,10 +66,19 @@ migrations/             SQL migrations, template, renderer, Drizzle journal
 test/                   unit, package, integration, fixtures, benchmarks
 ```
 
-`dist/` is built by tsdown from `src/index.ts`, `src/embedders/*.ts` and
-`src/stores/*.ts`. The root entry imports nothing from `drizzle-orm` or
-`postgres` statically; the Postgres runtime is loaded through a dynamic
-`import()` the first time a Postgres store is used.
+`dist/` is built by tsdown from the entries in `tsdown.config.ts`:
+`src/index.ts`, `src/embedders/*.ts` and `src/stores/*.ts`. The root entry
+imports nothing from `drizzle-orm` or `postgres` statically; the Postgres
+runtime is loaded through a dynamic `import()` the first time a Postgres
+store is used.
+
+TypeScript compiles against `target` and `lib` `es2024`, the newest edition
+Node 22.18 fully supports. The `.mjs` files ship with source maps that embed
+their sources. The `.d.mts` files ship without maps, because a declaration
+map points at `src/`, which is not published. With `sourcemap` on, rolldown
+writes a `sourceMappingURL` comment into every chunk, `.d.mts` included, and
+rolldown-plugin-dts drops the declaration maps without removing it; a small
+plugin in `tsdown.config.ts` strips that comment.
 
 ## Conventions
 
@@ -101,6 +110,13 @@ Exports:
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/stores/drizzle`: `drizzleStore(db)`.
 
+`package.json` lists each subpath explicitly, with a `types` and a `default`
+condition; there are no wildcard subpaths, so a new entry needs its own
+`exports` line. The `default` condition lets CommonJS load the package:
+since Node 22.12, `require()` loads synchronous ES modules and returns their
+namespace. It throws `ERR_REQUIRE_ASYNC_MODULE` if any module in the graph
+uses top-level `await`, so `dist/` must not.
+
 Client methods: `remember`, `rememberMany`, `recall`, `buildContext`,
 `forget`, `forgetAll`, `prune`, `findDuplicates`, `listAuditLog`, `stats`,
 `experimental.consolidate` and `close`.
@@ -123,8 +139,14 @@ Vitest has three projects (`vitest.config.ts`):
 | Project | Files | Imports | Command |
 |---|---|---|---|
 | `unit` | `test/**/*.test.ts` except integration, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
-| `package` | `test/package/*.test.ts` plus `exports-types.test-d.ts` | built `dist/` | `pnpm test:exports` |
-| `integration` | `test/integration/**/*.test.ts` | `src/` | `pnpm test:integration` |
+| `package` | `test/package/*.test.ts` plus `exports-types.test-d.ts` | built `dist/` through self-reference | `pnpm test:exports` |
+| `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` |
+
+- `unit` and `integration` map `mnemocyte` to `src/` with `resolve.alias`,
+  and `tsconfig.test.json` does the same with `paths`. The `package` project
+  and `test/package/tsconfig.json` have neither: `mnemocyte` resolves to
+  `dist/` through the package's own `exports` (package self-reference), the
+  way a consumer resolves it.
 
 - `pnpm test` builds, then runs `unit` and `package` with type tests. This is
   what CI runs on every push.

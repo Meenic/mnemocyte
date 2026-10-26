@@ -25,6 +25,17 @@ behavioural changes documented in their entries.
   `^0.45.4`. Development tooling moved to Biome 2.6, tsdown 0.23,
   pnpm 11.28 and Vitest 5, with `vite` as a dev dependency. The retrieval
   benchmark now times recall alone against the built package.
+- **CommonJS `require()`.** `exports` uses the `default` condition instead of
+  `import`, so `require("mnemocyte")` and its subpaths work on Node 22.12
+  and newer, which covers the supported 22.18 floor. `require()` returns the
+  module namespace.
+- **Explicit subpaths.** `exports` lists `mnemocyte`, `mnemocyte/embedders`,
+  `mnemocyte/embedders/openai` and `mnemocyte/stores/drizzle` instead of the
+  `./embedders/*` and `./stores/*` wildcards. These were the only paths the
+  wildcards matched, so no import changes.
+- **No declaration maps.** The package no longer ships `.d.mts.map` files.
+  They pointed at `src/`, which is not published. The `.mjs.map` files, which
+  embed their sources, remain.
 
 ### Documentation
 

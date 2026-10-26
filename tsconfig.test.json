@@ -3,9 +3,7 @@
 	"compilerOptions": {
 		"rootDir": ".",
 		"noEmit": true,
-		"types": ["node", "vitest"],
-		"ignoreDeprecations": "6.0",
-		"baseUrl": ".",
+		"types": ["node"],
 		"paths": {
 			"mnemocyte": ["./src/index.ts"],
 			"mnemocyte/stores/*": ["./src/stores/*.ts"],
@@ -13,6 +11,6 @@
 			"mnemocyte/embedders/*": ["./src/embedders/*.ts"]
 		}
 	},
-	"include": ["src", "test/**/*.ts", "vitest.config.ts"],
+	"include": ["src", "test/**/*.ts", "vitest.config.ts", "tsdown.config.ts"],
 	"exclude": ["node_modules", "dist", "test/package/exports-types.test-d.ts"]
 }

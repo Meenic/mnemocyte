@@ -29,13 +29,11 @@ pnpm lint              # read-only Biome check
 pnpm test              # build, then unit and package/exports tests
 pnpm build             # tsdown to dist/
 pnpm run pack:check    # pnpm pack --dry-run
+pnpm lint:package      # build, pack, publint and attw on the tarball
 ```
 
 `pnpm lint:fix` and `pnpm format` write files. `pnpm test:integration` needs
 a Postgres + pgvector `DATABASE_URL` (see the safety rules above).
-
-On Windows, run `pnpm test` from PowerShell: the packed-package test calls
-`tar`, and Git Bash's GNU `tar` misreads `C:\` paths.
 
 ## Documentation
 

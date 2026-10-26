@@ -16,6 +16,7 @@ jobs:
         node-version:
           - 22.18
           - 24
+          - 26
 
     steps:
       - name: Checkout
@@ -42,15 +43,41 @@ jobs:
       - name: Test
         run: pnpm run test:ci
 
-      - name: Pack check
-        run: pnpm run pack:check
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint packed tarball
+        run: pnpm run lint:package
 
   postgres-integration:
-    name: Postgres integration
+    name: Postgres ${{ matrix.postgres }} integration
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres:
+          - 17
+          - 18
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:0.8.7-pg${{ matrix.postgres }}
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres

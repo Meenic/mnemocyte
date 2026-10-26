@@ -17,7 +17,7 @@ Feature areas:
 
 ## Setup
 
-- Node.js 22.18 or newer. CI runs 22.18 and 24.
+- Node.js 22.18 or newer. CI runs 22.18, 24 and 26.
 - pnpm 11.28.8, matching `packageManager` in `package.json`. CI reads the
   version from that field.
 - Postgres with pgvector only for the integration suite.
@@ -152,7 +152,13 @@ Vitest has three projects (`vitest.config.ts`):
   what CI runs on every push.
 - The package tests pack the tarball, install it into a temporary consumer
   with `drizzle-orm` and `postgres` absent, and type-check every export
-  against `dist/*.d.mts`.
+  against `dist/*.d.mts`. They extract with the system `tar` using relative
+  paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
+- `pnpm lint:package` builds, packs once into a temporary folder and runs
+  publint `--strict` and attw on that tarball. attw uses the `node16`
+  profile, which skips node10 resolution (it cannot see subpath `exports`),
+  and ignores `cjs-resolves-to-esm`, because attw does not model `require()`
+  of ES modules (Node 22.12+). CI runs it once, on Node 24.
 - Shared behavior is written once as a fixture in `test/fixtures/` and run
   against the in-memory backend in `unit` and against Postgres in
   `integration`.
@@ -163,8 +169,10 @@ Vitest has three projects (`vitest.config.ts`):
   inside a transaction they roll back. Files run serially with a 60 s
   timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
-- CI runs the integration suite against the `pgvector/pgvector:pg17` service
-  container after `CREATE EXTENSION vector`.
+- CI runs the integration suite on Node 24 against the
+  `pgvector/pgvector:0.8.7-pg17` and `0.8.7-pg18` service containers after
+  `CREATE EXTENSION vector`. The tags are pinned, so pgvector upgrades are
+  deliberate.
 - `pnpm bench:retrieval` builds, then runs `test/benchmarks/retrieval.bench.ts`
   in the `package (bench)` project, against `dist/`. Vitest 5 adds a
   `<name> (bench)` variant of each project for `vitest bench`; it matches
@@ -183,7 +191,7 @@ Vitest has three projects (`vitest.config.ts`):
 Today releases are manual and run by the maintainer:
 
 1. Move `CHANGELOG.md` `[Unreleased]` entries under the new version.
-2. Run `pnpm checktypes`, `pnpm lint`, `pnpm test`, `pnpm run pack:check`.
+2. Run `pnpm checktypes`, `pnpm lint`, `pnpm test`, `pnpm lint:package`.
 3. `pnpm version patch` (or `minor`), which creates the version commit and
    tag. Do not add a separate release commit.
 4. Push the commit and tag, `pnpm publish`, then create the GitHub release.

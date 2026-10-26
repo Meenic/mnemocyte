@@ -32,7 +32,7 @@ it.
 - [x] `chore/pnpm-12`: pnpm 12 (the Rust rewrite) in `packageManager` and
   CI. Diff the packed tarball against pnpm 11's, since 12 still changes what
   `pnpm pack` includes from release to release.
-- [ ] `chore/release-workflow`: tag-triggered publish from GitHub Actions
+- [x] `chore/release-workflow`: tag-triggered publish from GitHub Actions
   with npm trusted publishing and provenance.
 
 ## Phase 1: core foundation (0.6, breaking)

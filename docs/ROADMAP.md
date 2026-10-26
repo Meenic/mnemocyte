@@ -20,6 +20,19 @@ it.
   programmatic API yet).
 - [x] `chore/vitest-5`: Vitest 5 with `vite` as a dev dependency; rewrite the
   retrieval benchmark for the new `bench` API.
+- [ ] `chore/config-cleanup`: align configs with the TypeScript 6, Node
+  packages, tsdown and Vitest 5 docs. Drop `baseUrl` and
+  `ignoreDeprecations` from `tsconfig.test.json` (TypeScript 7 removes
+  `baseUrl`) and `vitest` from its `types`; `target` and `lib` `es2024` to
+  match Node 22.18; resolve `mnemocyte` by package self-reference in the
+  `package` project and `test/package/tsconfig.json` instead of aliases and
+  `paths`; remove no-op Vitest settings (`extends: true`,
+  `environment: "node"`, `typecheck` on `unit` and `integration`); move the
+  build entries to `tsdown.config.ts`. Decide, recommendation first:
+  `"default"` instead of `"import"` in `exports` so `require()` works on
+  Node 22.12+; explicit subpaths instead of `./embedders/*` and
+  `./stores/*`; drop `declarationMap` (the maps point at `src/`, which is
+  not published); `isolatedDeclarations` (three annotations today).
 - [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test
   that works with any `tar`.

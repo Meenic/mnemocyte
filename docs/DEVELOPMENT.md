@@ -18,7 +18,7 @@ Feature areas:
 ## Setup
 
 - Node.js 22.18 or newer. CI runs 22.18, 24 and 26.
-- pnpm 11.28.8, matching `packageManager` in `package.json`. CI reads the
+- pnpm 12.15.0, matching `packageManager` in `package.json`. CI reads the
   version from that field.
 - Postgres with pgvector only for the integration suite.
 

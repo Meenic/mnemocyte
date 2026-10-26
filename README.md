@@ -21,7 +21,9 @@ logs, and duplicate-consolidation tools on top of your existing infrastructure.
 - Provider retries, per-attempt timeouts, and caller `AbortSignal` cancellation.
 - Pruning, duplicate detection, audit logs, and experimental consolidation.
 
-Mnemocyte is ESM-only. Use `import`, not CommonJS `require`.
+Mnemocyte ships as ES modules. CommonJS code can load it with `require()` on
+the supported Node versions (22.18 and newer); `require()` returns the
+module's named exports.
 
 ## Install
 

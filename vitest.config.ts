@@ -16,31 +16,14 @@ const sourceAlias = [
 	},
 	{ find: "mnemocyte", replacement: resolve("src/index.ts") },
 ];
-const packageAlias = [
-	{
-		find: /^mnemocyte\/stores\/(.+)$/,
-		replacement: resolve("dist/stores/$1.mjs"),
-	},
-	{
-		find: /^mnemocyte\/embedders\/(.+)$/,
-		replacement: resolve("dist/embedders/$1.mjs"),
-	},
-	{
-		find: "mnemocyte/embedders",
-		replacement: resolve("dist/embedders/index.mjs"),
-	},
-	{ find: "mnemocyte", replacement: resolve("dist/index.mjs") },
-];
 
 export default defineConfig({
 	test: {
-		environment: "node",
 		benchmark: {
 			include: ["test/benchmarks/**/*.bench.ts"],
 		},
 		projects: [
 			{
-				extends: true,
 				resolve: {
 					alias: sourceAlias,
 				},
@@ -52,13 +35,9 @@ export default defineConfig({
 						"test/package/**",
 						"test/benchmarks/**",
 					],
-					typecheck: {
-						tsconfig: "tsconfig.test.json",
-					},
 				},
 			},
 			{
-				extends: true,
 				resolve: {
 					alias: sourceAlias,
 				},
@@ -67,16 +46,9 @@ export default defineConfig({
 					include: ["test/integration/**/*.test.ts"],
 					fileParallelism: false,
 					testTimeout: 60_000,
-					typecheck: {
-						tsconfig: "tsconfig.test.json",
-					},
 				},
 			},
 			{
-				extends: true,
-				resolve: {
-					alias: packageAlias,
-				},
 				test: {
 					name: "package",
 					include: ["test/package/*.test.ts"],

@@ -20,19 +20,12 @@ it.
   programmatic API yet).
 - [x] `chore/vitest-5`: Vitest 5 with `vite` as a dev dependency; rewrite the
   retrieval benchmark for the new `bench` API.
-- [ ] `chore/config-cleanup`: align configs with the TypeScript 6, Node
-  packages, tsdown and Vitest 5 docs. Drop `baseUrl` and
-  `ignoreDeprecations` from `tsconfig.test.json` (TypeScript 7 removes
-  `baseUrl`) and `vitest` from its `types`; `target` and `lib` `es2024` to
-  match Node 22.18; resolve `mnemocyte` by package self-reference in the
-  `package` project and `test/package/tsconfig.json` instead of aliases and
-  `paths`; remove no-op Vitest settings (`extends: true`,
-  `environment: "node"`, `typecheck` on `unit` and `integration`); move the
-  build entries to `tsdown.config.ts`. Decide, recommendation first:
-  `"default"` instead of `"import"` in `exports` so `require()` works on
-  Node 22.12+; explicit subpaths instead of `./embedders/*` and
-  `./stores/*`; drop `declarationMap` (the maps point at `src/`, which is
-  not published); `isolatedDeclarations` (three annotations today).
+- [x] `chore/config-cleanup`: align configs with the TypeScript 6, Node
+  packages, tsdown and Vitest 5 docs: no `baseUrl`, `es2024`, package
+  self-reference in the `package` project, build entries in
+  `tsdown.config.ts`, `"default"` and explicit subpaths in `exports`, no
+  declaration maps. `isolatedDeclarations` moved to
+  `feat/postgres-schema-v2`.
 - [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test
   that works with any `tar`.
@@ -55,7 +48,9 @@ it.
   query filters by scope, including id lookups (today
   `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only). The
   embedding-compatibility cache is keyed by model and dimensions, not by
-  store instance.
+  store instance. Enable `isolatedDeclarations` once the Drizzle table
+  constants in `src/db/schema.ts` are gone; today they would need about 500
+  lines of explicit `PgTableWithColumns` types.
 - [ ] `feat/migrate-runner`: exported `migrate()` with tracking table,
   advisory lock and one transaction per migration; README install steps use
   it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).

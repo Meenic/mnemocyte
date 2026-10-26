@@ -75,10 +75,12 @@ jobs:
       # pnpm authenticates with trusted publishing (OIDC) and attaches
       # provenance. prepublishOnly builds dist/ first. A tag checkout is a
       # detached HEAD, so pnpm's branch check is replaced by the verify job.
+      # npm scans each upload before it becomes installable; the job waits
+      # up to 10 minutes for the version to appear.
       - name: Publish
         run: |
           dist_tag=latest
           case "$GITHUB_REF_NAME" in
             *-*) dist_tag=next ;;
           esac
-          pnpm publish --no-git-checks --tag "$dist_tag"
+          pnpm publish --no-git-checks --tag "$dist_tag" --publish-wait-timeout 600000

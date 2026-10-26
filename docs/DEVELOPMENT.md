@@ -214,6 +214,11 @@ The release workflow runs three stages:
   with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
   `latest`. `--no-git-checks` is needed because a tag checkout is a detached
   HEAD; `verify` does the branch check instead.
+  `--publish-wait-timeout 600000` keeps the job running until the version
+  is installable: npm scans each upload before it shows up, which took about
+  two minutes for 0.5.1. If it is not available after 10 minutes the job
+  fails with `ERR_PNPM_PUBLISH_AVAILABILITY_TIMEOUT`, but the upload stays
+  accepted and can still appear later, so check npm before retrying.
 
 Publishing uses npm trusted publishing: pnpm exchanges the job's GitHub OIDC
 (OpenID Connect) token for a short-lived npm token, so no npm token is

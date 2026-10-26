@@ -1,13 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { performance } from "node:perf_hooks";
 import {
 	createMnemocyte,
 	type MnemocyteClient,
 	type RememberInput,
 } from "mnemocyte";
 import postgres from "postgres";
-import { bench, describe, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
 	retrievalConfig,
 	testEmbedder,
@@ -16,7 +15,6 @@ import { expectDefined } from "../helpers.js";
 
 const IN_MEMORY_SIZES = [200, 1_000, 5_000];
 const POSTGRES_SIZES = [200, 1_000];
-const QUERY_COUNT = 25;
 const contents = [
 	"Prefers concise TypeScript library answers.",
 	"Postgres and pgvector store memory embeddings.",
@@ -26,8 +24,18 @@ const contents = [
 ];
 const queries = ["typescript concise answers", "postgres pgvector database"];
 
+interface SeededClient {
+	client: MnemocyteClient;
+	entityId: string;
+	memoryCount: number;
+}
+
 function cycle<T>(values: readonly T[], index: number) {
 	return expectDefined(values[index % values.length]);
+}
+
+function createEntityId(backend: string, memoryCount: number) {
+	return `retrieval_bench_${backend}_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 function createInputs(entityId: string, count: number): RememberInput[] {
@@ -40,44 +48,27 @@ function createInputs(entityId: string, count: number): RememberInput[] {
 	}));
 }
 
-async function measureRecall(client: MnemocyteClient, entityId: string) {
-	await client.recall({
+// Seeding happens before any bench is registered, so only recall is timed.
+async function seed({ client, entityId, memoryCount }: SeededClient) {
+	await client.rememberMany(createInputs(entityId, memoryCount));
+	const results = await client.recall({
 		entityId,
 		query: cycle(queries, 0),
 		limit: 5,
 	});
+	expect(results.length).toBeGreaterThan(0);
+}
 
-	const startedAt = performance.now();
-	for (let index = 0; index < QUERY_COUNT; index += 1) {
-		const results = await client.recall({
+function recallTask({ client, entityId }: SeededClient) {
+	let index = 0;
+	return async () => {
+		await client.recall({
 			entityId,
 			query: cycle(queries, index),
 			limit: 5,
 		});
-		expect(results.length).toBeGreaterThan(0);
-	}
-	const durationMs = performance.now() - startedAt;
-	return Number((durationMs / QUERY_COUNT).toFixed(3));
-}
-
-async function runInMemoryBench(memoryCount: number) {
-	const client = createMnemocyte({
-		embedder: testEmbedder,
-		retrieval: retrievalConfig,
-	});
-	const entityId = `retrieval_bench_mem_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-	try {
-		await client.rememberMany(createInputs(entityId, memoryCount));
-		return {
-			backend: "in-memory",
-			memoryCount,
-			queryCount: QUERY_COUNT,
-			averageRecallMs: await measureRecall(client, entityId),
-		};
-	} finally {
-		await client.close();
-	}
+		index += 1;
+	};
 }
 
 function createPostgresEmbedding(seed: string) {
@@ -129,59 +120,87 @@ async function ensureMigrations(sql: ReturnType<typeof postgres>) {
 	`;
 }
 
-async function runPostgresBench(databaseUrl: string, memoryCount: number) {
-	const sql = postgres(databaseUrl, { max: 1 });
-	const entityId = `retrieval_bench_pg_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-	try {
-		await ensureMigrations(sql);
-		await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
-		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
-
-		const client = createMnemocyte({
-			databaseUrl,
-			embedder: postgresEmbedder,
-			retrieval: retrievalConfig,
-		});
-
-		try {
-			await client.rememberMany(createInputs(entityId, memoryCount));
-			return {
-				backend: "postgres",
-				memoryCount,
-				queryCount: QUERY_COUNT,
-				averageRecallMs: await measureRecall(client, entityId),
-			};
-		} finally {
-			await client.close();
-		}
-	} finally {
-		await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
-		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
-		await sql.end();
-	}
+async function deleteEntity(
+	sql: ReturnType<typeof postgres>,
+	entityId: string,
+) {
+	await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
+	await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 }
 
-describe("retrieval benchmarks", () => {
-	for (const size of IN_MEMORY_SIZES) {
-		bench(
-			`in-memory recall over ${size} memories`,
-			async () => {
-				await runInMemoryBench(size);
-			},
-			{ iterations: 1, time: 0 },
-		);
-	}
+const databaseUrl = process.env.DATABASE_URL;
 
-	if (process.env.DATABASE_URL) {
-		for (const size of POSTGRES_SIZES) {
-			bench(
-				`Postgres recall over ${size} memories`,
-				async () => {
-					await runPostgresBench(process.env.DATABASE_URL ?? "", size);
-				},
-				{ iterations: 1, time: 0 },
+describe("retrieval benchmarks", () => {
+	test("in-memory recall by store size", { timeout: 120_000 }, async ({
+		bench,
+	}) => {
+		const seeded: SeededClient[] = [];
+		try {
+			for (const memoryCount of IN_MEMORY_SIZES) {
+				const entry = {
+					client: createMnemocyte({
+						embedder: testEmbedder,
+						retrieval: retrievalConfig,
+					}),
+					entityId: createEntityId("mem", memoryCount),
+					memoryCount,
+				};
+				seeded.push(entry);
+				await seed(entry);
+			}
+
+			await bench.compare(
+				...seeded.map((entry) =>
+					bench(
+						`in-memory recall over ${entry.memoryCount} memories`,
+						recallTask(entry),
+					),
+				),
 			);
+		} finally {
+			await Promise.all(seeded.map(({ client }) => client.close()));
 		}
-	}
+	});
+
+	test.skipIf(!databaseUrl)(
+		"Postgres recall by store size",
+		{ timeout: 300_000 },
+		async ({ bench }) => {
+			const url = expectDefined(databaseUrl);
+			const sql = postgres(url, { max: 1 });
+			const seeded: SeededClient[] = [];
+			try {
+				await ensureMigrations(sql);
+				for (const memoryCount of POSTGRES_SIZES) {
+					const entry = {
+						client: createMnemocyte({
+							databaseUrl: url,
+							embedder: postgresEmbedder,
+							retrieval: retrievalConfig,
+						}),
+						entityId: createEntityId("pg", memoryCount),
+						memoryCount,
+					};
+					seeded.push(entry);
+					await deleteEntity(sql, entry.entityId);
+					await seed(entry);
+				}
+
+				await bench.compare(
+					...seeded.map((entry) =>
+						bench(
+							`Postgres recall over ${entry.memoryCount} memories`,
+							recallTask(entry),
+						),
+					),
+				);
+			} finally {
+				await Promise.all(seeded.map(({ client }) => client.close()));
+				for (const { entityId } of seeded) {
+					await deleteEntity(sql, entityId);
+				}
+				await sql.end();
+			}
+		},
+	);
 });

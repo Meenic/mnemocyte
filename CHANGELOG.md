@@ -22,8 +22,9 @@ behavioural changes documented in their entries.
 ### Changed
 
 - **Drizzle ORM 0.45.4.** The `drizzle-orm` dependency range is now
-  `^0.45.4`. Development tooling moved to Biome 2.6, tsdown 0.23 and
-  pnpm 11.28.
+  `^0.45.4`. Development tooling moved to Biome 2.6, tsdown 0.23,
+  pnpm 11.28 and Vitest 5, with `vite` as a dev dependency. The retrieval
+  benchmark now times recall alone against the built package.
 
 ### Documentation
 

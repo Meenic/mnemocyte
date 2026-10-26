@@ -18,7 +18,7 @@ it.
   (`biome migrate`), tsdown 0.23, `@types/node` 22.x latest, pnpm 11.28.x,
   GitHub Actions to current majors. TypeScript stays on 6.0.x (7.0 has no
   programmatic API yet).
-- [ ] `chore/vitest-5`: Vitest 5 with `vite` as a dev dependency; rewrite the
+- [x] `chore/vitest-5`: Vitest 5 with `vite` as a dev dependency; rewrite the
   retrieval benchmark for the new `bench` API.
 - [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test

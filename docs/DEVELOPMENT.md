@@ -188,18 +188,56 @@ Vitest has three projects (`vitest.config.ts`):
 
 ## Releasing
 
-Today releases are manual and run by the maintainer:
+The maintainer cuts a release; `.github/workflows/release.yml` publishes it
+when a `v*` tag is pushed.
 
-1. Move `CHANGELOG.md` `[Unreleased]` entries under the new version.
-2. Run `pnpm checktypes`, `pnpm lint`, `pnpm test`, `pnpm lint:package`.
-3. `pnpm version patch` (or `minor`), which creates the version commit and
-   tag. Do not add a separate release commit.
-4. Push the commit and tag, `pnpm publish`, then create the GitHub release.
+1. On a `chore/release-vX.Y.Z` branch, move the `CHANGELOG.md`
+   `[Unreleased]` entries under the new version and run
+   `pnpm version patch --no-git-tag-version` (or `minor`), which changes only
+   `package.json`.
+2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI
+   passes. The tag is created after the merge, because a squash merge gives
+   the commit a new SHA.
+3. Pull `main`, then `git tag -a vX.Y.Z -m vX.Y.Z` and
+   `git push origin vX.Y.Z`.
+4. Once npm has the version, create the GitHub release.
 
-`publishConfig.provenance` is set, but npm only generates provenance when
-publishing from GitHub Actions or GitLab CI, so releases published from a
-laptop (including 0.5.0) have none. A tag-triggered publish workflow is on the
-roadmap.
+The release workflow runs three stages:
+
+- `verify` fails unless the tag equals `v` + the `package.json` version and
+  the tagged commit is on `main`.
+- `ci` runs `ci.yml` (through `workflow_call`) on the tagged commit: the Node
+  matrix, the package lint and both Postgres integration jobs.
+- `publish` runs in the `npm` GitHub environment, the only job with
+  `id-token: write`. It installs without a dependency cache and runs
+  `pnpm publish --no-git-checks`; `prepublishOnly` builds `dist/`. A version
+  with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
+  `latest`. `--no-git-checks` is needed because a tag checkout is a detached
+  HEAD; `verify` does the branch check instead.
+
+Publishing uses npm trusted publishing: pnpm exchanges the job's GitHub OIDC
+(OpenID Connect) token for a short-lived npm token, so no npm token is
+stored in the repository. npm then attaches a provenance attestation, a
+signed statement of the repository, commit and workflow that built the
+tarball, because the repository and the package are public. pnpm 11 and
+newer does the exchange itself and does not need the npm CLI. Releases up to
+0.5.0 were published from a laptop and have no provenance.
+
+Repository and registry settings the workflow depends on:
+
+- GitHub environment `npm` with a deployment rule that allows only `v*`
+  tags.
+- npm trusted publisher for `mnemocyte`: GitHub Actions, `Meenic` /
+  `mnemocyte`, workflow `release.yml`, environment `npm`. npm does not check
+  it when saved; a mistake shows up as a failed publish.
+- After the first trusted publish, the package's publishing access is
+  "Require two-factor authentication and disallow tokens". Trusted publishing
+  keeps working under that setting.
+
+A failed publish can be retried by re-running the workflow; the tag stays.
+If the fix needs a new commit, delete the tag, merge the fix and tag again.
+npm never accepts the same version twice, so once a version is published a
+fix needs a new version.
 
 GitHub release title: `mnemocyte vX.Y.Z`. Description:
 

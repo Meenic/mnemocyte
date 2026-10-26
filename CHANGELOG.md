@@ -36,6 +36,10 @@ behavioural changes documented in their entries.
 - **No declaration maps.** The package no longer ships `.d.mts.map` files.
   They pointed at `src/`, which is not published. The `.mjs.map` files, which
   embed their sources, remain.
+- **Provenance.** Releases are published from GitHub Actions with npm
+  trusted publishing and carry a provenance attestation that links the
+  tarball to the commit and workflow that built it. Verify it with
+  `npm audit signatures`. Earlier versions were published without one.
 
 ### Documentation
 

@@ -24,6 +24,13 @@ behavioural changes documented in their entries.
 - **Runnable Postgres setup commands.** The README now gives concrete `psql`
   commands for pgvector enablement, default and custom-dimension fresh
   installs, and the unchanged 0.1.x and 0.2.x–0.3.x upgrade paths.
+- **Safer `psql` commands.** The setup commands now pass
+  `-v ON_ERROR_STOP=1 --single-transaction`, so a failing migration stops and
+  rolls back instead of leaving a partial schema.
+- **README limitations.** The README lists current limitations concretely
+  (2,000-dimension HNSW limit, global `prune` without `entityId`, `forgetAll`
+  after consolidation) and moves contributor material to
+  `docs/DEVELOPMENT.md`.
 
 ## [0.5.0] - 2026-07-22
 

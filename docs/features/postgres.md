@@ -127,4 +127,8 @@ Each one is a roadmap item in Phase 1 unless noted.
   different models sharing one `drizzleStore(db)` value skip the second check.
 - `sslmode=prefer` and `allow` never fall back to plaintext, because the
   object form forces TLS.
-- Lexical search computes `to_tsvector` per row on every query (Phase 3).
+- Lexical search computes `to_tsvector` per row on every query.
+- `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only, not by
+  entity. The ids always come from entity-scoped results, so nothing leaks
+  today.
+- The vector query computes the cosine distance three times per row.

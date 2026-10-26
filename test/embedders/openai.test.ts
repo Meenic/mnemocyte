@@ -170,17 +170,20 @@ describe("openaiEmbedder", () => {
 				{ index: 2, embedding: [0, 1] },
 			],
 		],
-	] as const)("rejects OpenAI embedding responses with %s", async (_label, data) => {
-		mockEmbeddingResponse(data);
-		const embedder = openaiEmbedder({
-			apiKey: "test-key",
-			model: "text-embedding-3-small",
-		});
+	] as const)(
+		"rejects OpenAI embedding responses with %s",
+		async (_label, data) => {
+			mockEmbeddingResponse(data);
+			const embedder = openaiEmbedder({
+				apiKey: "test-key",
+				model: "text-embedding-3-small",
+			});
 
-		await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
-			code: "EMBEDDING",
-		});
-	});
+			await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
+				code: "EMBEDDING",
+			});
+		},
+	);
 
 	test("uses known model dimensions and sends supported dimension overrides", async () => {
 		vi.stubEnv("OPENAI_API_KEY", "env-key");

@@ -102,15 +102,21 @@ describe("client configuration", () => {
 	test.each([
 		"postgres://user:password@localhost:5432/mnemocyte",
 		"postgresql://user:password@localhost:5432/mnemocyte",
-	])("accepts the Postgres database URL protocol in %s", async (databaseUrl) => {
-		const client = createMnemocyte({ databaseUrl, embedder: validEmbedder });
+	])(
+		"accepts the Postgres database URL protocol in %s",
+		async (databaseUrl) => {
+			const client = createMnemocyte({ databaseUrl, embedder: validEmbedder });
 
-		expect(postgresMock).not.toHaveBeenCalled();
-		await client.close();
-		expect(postgresMock).toHaveBeenCalledOnce();
-		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
-		expect(closeDatabaseMock).toHaveBeenCalledOnce();
-	});
+			expect(postgresMock).not.toHaveBeenCalled();
+			await client.close();
+			expect(postgresMock).toHaveBeenCalledOnce();
+			expect(postgresMock).toHaveBeenCalledWith(
+				databaseUrl,
+				expect.any(Object),
+			);
+			expect(closeDatabaseMock).toHaveBeenCalledOnce();
+		},
+	);
 
 	test("keeps no-config and databaseUrl-only backend selection intact", async () => {
 		const inMemoryClient = createMnemocyte({ embedder: validEmbedder });
@@ -140,13 +146,16 @@ describe("client configuration", () => {
 		"file:///tmp/mnemocyte.db",
 		"relative/path",
 		"example.com/db",
-	])("rejects non-Postgres database URL %s before creating a handle", (databaseUrl) => {
-		expectConfigError(
-			() => createMnemocyte({ databaseUrl, embedder: validEmbedder }),
-			"CONFIG",
-		);
-		expect(postgresMock).not.toHaveBeenCalled();
-	});
+	])(
+		"rejects non-Postgres database URL %s before creating a handle",
+		(databaseUrl) => {
+			expectConfigError(
+				() => createMnemocyte({ databaseUrl, embedder: validEmbedder }),
+				"CONFIG",
+			);
+			expect(postgresMock).not.toHaveBeenCalled();
+		},
+	);
 
 	test("classifies an empty embedder model as CONFIG", () => {
 		expectConfigError(
@@ -158,31 +167,33 @@ describe("client configuration", () => {
 		);
 	});
 
-	test.each(
-		retrievalWeightKeys,
-	)("rejects a negative %s retrieval weight as CONFIG", (key) => {
-		expectConfigError(
-			() =>
-				createMnemocyte({
-					embedder: validEmbedder,
-					retrieval: { weights: { [key]: -1 } },
-				}),
-			"CONFIG",
-		);
-	});
+	test.each(retrievalWeightKeys)(
+		"rejects a negative %s retrieval weight as CONFIG",
+		(key) => {
+			expectConfigError(
+				() =>
+					createMnemocyte({
+						embedder: validEmbedder,
+						retrieval: { weights: { [key]: -1 } },
+					}),
+				"CONFIG",
+			);
+		},
+	);
 
-	test.each(
-		retrievalWeightKeys,
-	)("rejects a non-finite %s retrieval weight as CONFIG", (key) => {
-		expectConfigError(
-			() =>
-				createMnemocyte({
-					embedder: validEmbedder,
-					retrieval: { weights: { [key]: Number.NaN } },
-				}),
-			"CONFIG",
-		);
-	});
+	test.each(retrievalWeightKeys)(
+		"rejects a non-finite %s retrieval weight as CONFIG",
+		(key) => {
+			expectConfigError(
+				() =>
+					createMnemocyte({
+						embedder: validEmbedder,
+						retrieval: { weights: { [key]: Number.NaN } },
+					}),
+				"CONFIG",
+			);
+		},
+	);
 
 	test("rejects an effective retrieval weight total of zero as CONFIG", () => {
 		expectConfigError(
@@ -222,20 +233,17 @@ describe("client configuration", () => {
 		);
 	});
 
-	test.each([
-		0,
-		-1,
-		1.5,
-		Number.NaN,
-		Number.POSITIVE_INFINITY,
-	])("rejects candidateMultiplier=%s as CONFIG", (candidateMultiplier) => {
-		expectConfigError(
-			() =>
-				createMnemocyte({
-					embedder: validEmbedder,
-					retrieval: { candidateMultiplier },
-				}),
-			"CONFIG",
-		);
-	});
+	test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		"rejects candidateMultiplier=%s as CONFIG",
+		(candidateMultiplier) => {
+			expectConfigError(
+				() =>
+					createMnemocyte({
+						embedder: validEmbedder,
+						retrieval: { candidateMultiplier },
+					}),
+				"CONFIG",
+			);
+		},
+	);
 });

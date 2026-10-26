@@ -35,6 +35,9 @@ const packageAlias = [
 export default defineConfig({
 	test: {
 		environment: "node",
+		benchmark: {
+			include: ["test/benchmarks/**/*.bench.ts"],
+		},
 		projects: [
 			{
 				extends: true,

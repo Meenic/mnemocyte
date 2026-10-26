@@ -143,8 +143,18 @@ Vitest has three projects (`vitest.config.ts`):
   explicitly.
 - CI runs the integration suite against the `pgvector/pgvector:pg17` service
   container after `CREATE EXTENSION vector`.
-- `pnpm bench:retrieval` runs in-memory sizes, plus Postgres sizes when
+- `pnpm bench:retrieval` builds, then runs `test/benchmarks/retrieval.bench.ts`
+  in the `package (bench)` project, against `dist/`. Vitest 5 adds a
+  `<name> (bench)` variant of each project for `vitest bench`; it matches
+  files by `benchmark.include` (`test/benchmarks/**/*.bench.ts`) instead of
+  the project's `include`. Each size is seeded before timing, then
+  `bench.compare` samples one `recall` per iteration with tinybench and
+  prints mean and percentile latencies per size. Postgres sizes run only when
   `DATABASE_URL` is set. It is not part of CI.
+- Benchmarking `dist/` avoids most of the export getters Vite's module runner
+  adds to `src/` cross-module calls. One call between tsdown's shared chunks
+  still goes through a getter, so Vitest prints a getter warning; the
+  overhead is small next to a recall.
 
 ## Releasing
 

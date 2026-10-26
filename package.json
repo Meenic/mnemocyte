@@ -47,7 +47,7 @@
 		"test:retrieval": "vitest run --project unit test/retrieval/quality.test.ts",
 		"test:context": "vitest run --project unit test/context/builder.test.ts",
 		"test:integration": "vitest run --project integration",
-		"bench:retrieval": "vitest bench --project unit test/benchmarks/retrieval.bench.ts",
+		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write",
@@ -94,6 +94,7 @@
 		"drizzle-kit": "^0.31.11",
 		"tsdown": "0.23.1",
 		"typescript": "^6.0.3",
-		"vitest": "4.1.6"
+		"vite": "^8.3.5",
+		"vitest": "5.0.5"
 	}
 }

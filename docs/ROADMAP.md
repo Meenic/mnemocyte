@@ -1,171 +1,90 @@
-# Mnemocyte Roadmap
+# Roadmap
 
-This roadmap tracks the planned direction for Mnemocyte before v1.0. It is a
-forward-looking planning document, not a release history. Shipped work belongs
-in [CHANGELOG.md](../CHANGELOG.md).
+The work queue to 1.0. Each item is one branch and one PR; a session picks up
+the first unchecked item. The design behind each item is in
+[ARCHITECTURE.md](./ARCHITECTURE.md). Tick an item in the PR that completes
+it.
 
-The `0.4.0` hardening release is recorded in the changelog and tagged in this
-repository. Current `[Unreleased]` work implements the postgres.js-only
-`drizzleStore(db)` adapter while the package version remains `0.4.0`; local Git
-state alone does not establish npm or GitHub-release publication status.
-`@mnemocyte/mcp` remains the next adapter target at `0.6.0`.
+## Open decisions
 
-Mnemocyte's direction is infrastructure-native and deliberately composable:
-bring your own database, bring your own embedder, and keep the core package
-small enough to fit into existing TypeScript stacks. The long-term shape is a
-set of focused adapters around a stable memory core, similar in spirit to the
-way modern TypeScript infrastructure tools let applications own their database,
-auth, model provider, and runtime boundaries.
+- `agentId` next to `entityId` (see ARCHITECTURE "Open: `agentId`"). Needed
+  before the scope migration in Phase 1.
 
-## Product Principles
+## Phase 0: reset (0.5.x)
 
-- **Bring your own database.** Mnemocyte should integrate with storage the app
-  already operates. Postgres + pgvector is the current first-class path, but the
-  API should move toward caller-owned database clients and explicit
-  `MemoryStore` adapters.
-- **Bring your own embedder.** The core accepts an `Embedder` interface. Built-in
-  factories should remove boilerplate without making one provider special.
-- **Adapters over monoliths.** Framework, model-host, and runtime integrations
-  should live in small packages that depend on the core, not inside the core.
-- **Explicit infrastructure.** Migrations, dimensions, indexes, and runtime
-  tradeoffs should be visible. The client should not hide schema creation or
-  production tuning behind side effects.
-- **Stable core before broad distribution.** MCP and framework adapters become
-  more valuable after the storage and embedder contracts are clean.
+- [x] `docs/reset-workflow`: CLAUDE.md, AGENTS.md, DEVELOPMENT.md and feature
+  docs, ARCHITECTURE.md, ROADMAP.md; delete old reports.
+- [ ] `chore/deps-patch`: drizzle-orm 0.45.4, drizzle-kit 0.31.11, Biome 2.6
+  (`biome migrate`), tsdown 0.23, `@types/node` 22.x latest, pnpm 11.28.x,
+  GitHub Actions to current majors. TypeScript stays on 6.0.x (7.0 has no
+  programmatic API yet).
+- [ ] `chore/vitest-5`: Vitest 5 with `vite` as a dev dependency; rewrite the
+  retrieval benchmark for the new `bench` API.
+- [ ] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
+  pgvector, publint and attw on the packed tarball, a packed-package test
+  that works with any `tar`.
+- [ ] `chore/release-workflow`: tag-triggered publish from GitHub Actions
+  with npm trusted publishing and provenance.
 
-## v1 Stabilization Criteria
+## Phase 1: core foundation (0.6, breaking)
 
-These items are the practical v1 gate. They should either be completed before
-v1 or explicitly documented as deferred limitations.
+- [ ] `feat/sql-executor`: `SqlExecutor` interface and postgres.js
+  adapter; the core has zero runtime dependencies and `postgres` becomes an
+  optional peer.
+- [ ] `feat/postgres-schema-v2`: migration 0003 with scope columns,
+  `superseded_by` index, generated `tsvector` + GIN, UUID ids, `halfvec`
+  above 2,000 dimensions; Postgres backend rewritten on the executor.
+- [ ] `feat/migrate-runner`: exported `migrate()` with tracking table,
+  advisory lock and one transaction per migration; README install steps use
+  it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
+- [ ] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
+  boosts; Postgres ranking tests.
+- [ ] `fix/access-tracking`: opt-in, after the response, tolerant of deleted
+  rows, scoped, no `updatedAt` change.
+- [ ] `fix/filtered-vector-search`: `hnsw.iterative_scan` and `ef_search` per
+  query; `EXPLAIN` tests on the real recall query.
+- [ ] `feat/scoped-api`: `createMemory` with scopes, `add` (with `key`
+  upserts), `search`, `get`, `list` (cursor), `update`, `delete`,
+  `deleteScope`, `context`; prune requires a scope; upgrade note.
+- [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction;
+  input size caps.
+- [ ] `feat/postgres-drivers`: Drizzle, PGlite and node-postgres adapters;
+  shared contract suite on PGlite and real Postgres.
 
-Remaining critical before v1:
+## Phase 2: embedders and AI SDK (0.7)
 
-- Keep tightening expected database, migration, timeout, abort, and provider
-  failures through `MnemocyteError`.
-- Decide when the internal `MemoryStore` type is stable enough to become a
-  public adapter contract.
-- Keep migration guidance explicit for default fresh installs, existing
-  installs that need dimension/model metadata, and custom-dimension fresh
-  installs.
+- [ ] `feat/embedder-purpose`: `purpose` and `maxBatch` on `Embedder`;
+  `openaiCompatible`; retries with jitter and `Retry-After`.
+- [ ] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
+- [ ] `feat/ai-sdk-tools`: server-scoped memory tools.
+- [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook.
+- [ ] `feat/embedders-voyage-cohere-google`: fetch-based embedders.
 
-Important but not blocking:
+## Phase 3: operations (0.8)
 
-- Add runtime validation around public inputs for JavaScript consumers.
-- Add retrieval evaluation fixtures that compare recall quality across vector,
-  lexical, and fused ranking changes.
-- Tighten package/release documentation around supported Node versions and npm
-  provenance or trusted publishing.
+- [ ] `feat/consolidate-stable`: graduate `consolidate`; survivor-aware
+  deletes; kNN-based `findDuplicates`.
+- [ ] `fix/observability-non-blocking`: hooks no longer awaited.
+- [ ] `feat/audit-retention`: retention option and pruning guidance.
+- [ ] `chore/benchmarks`: Postgres benchmarks with
+  `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
 
-Future considerations:
+## Phase 4: 1.0
 
-- Multi-dimension storage in one database, likely through separate columns,
-  tables, or partitions.
-- OpenTelemetry adapters built on the current observability hook.
+- [ ] `docs/v1`: API freeze review, README and feature docs pass, upgrade
+  guide from 0.5.
 
-## Provider Packaging Direction (Confirmed)
+## Cut first if time runs short
 
-Provider helpers remain package subpaths such as
-`mnemocyte/embedders/openai` for the near term. The current helper is
-lightweight and `fetch`-based, so a separate package would add structure
-without resolving a present dependency problem.
+Voyage/Cohere/Google embedders, the AI SDK middleware, the node-postgres
+adapter, kNN duplicates, audit retention.
 
-Reconsider separate provider packages only after a second provider exists or a
-provider requires a heavy or conflicting SDK dependency. Either condition
-triggers a fresh package-boundary review; it does not predetermine a monorepo
-split. Root `mnemocyte` imports remain provider-free in every case.
+## After 1.0
 
-## Public `MemoryStore` Stabilization
-
-Version `0.3.0` shipped the internal `MemoryStore` boundary. The first public
-adapter now uses an opaque `MnemocyteStoreConfig` token, allowing
-`drizzleStore(db)` without exporting all 18 internal methods. Before exporting
-the full adapter contract:
-
-- Review transaction hooks, caller-owned connection lifecycle, and
-  runtime-specific Drizzle driver requirements.
-- Decide how applications provide a store while keeping `createMnemocyte()` the
-  simple default entry point.
-- Add public adapter contract tests and document which lifecycle
-  responsibilities belong to callers versus Mnemocyte.
-- Keep the type private and avoid a third backend until those decisions are
-  validated.
-- Do not add a public capability-flag surface without a concrete consumer.
-  Current adapters call every method unconditionally; indexed vector search is
-  a real implementation distinction, but no caller currently branches on it.
-
-The opaque v1 token preserves this architectural hinge: future database and
-runtime adapters can be added without copying the client, while the full
-contract stays private until it is ready. `@mnemocyte/mcp` remains sequenced
-after the Drizzle adapter.
-
-## `0.5.0` - `drizzleStore(db)`
-
-Let applications bring their own Drizzle database instance.
-
-- Status: implemented under `[Unreleased]` as `drizzleStore(db)` for
-  caller-owned postgres.js Drizzle clients.
-- The adapter uses the current public-schema Postgres + pgvector tables and
-  requires migrations to be applied in advance.
-- Connection lifecycle ownership remains with the caller.
-- Neon HTTP/serverless, node-postgres, and other Drizzle drivers remain future
-  verification work rather than implied compatibility.
-
-The goal is to fit into apps that already use Drizzle, already own connection
-pools, or run in environments where `databaseUrl` plus postgres.js is too
-prescriptive.
-
-## `0.6.0` - `@mnemocyte/mcp`
-
-Ship an official MCP adapter after the storage and embedder contracts are ready.
-
-- Add `@mnemocyte/mcp` as a separate package.
-- Build against the official Model Context Protocol SDK and pin the supported
-  spec revision in package docs.
-- Expose practical tools first: `remember`, `recall`, `buildContext`,
-  `findDuplicates`, `consolidate`, `forget`, `prune`, `listAuditLog`, and
-  `stats`.
-- Configure database and embedder through explicit environment/config inputs.
-- Use the core package and official `MemoryStore`/embedder adapters rather than
-  maintaining a parallel memory implementation.
-- Document Claude Desktop, Cursor, and other host setup only after the package
-  can be tested end to end.
-
-MCP is a distribution layer, not the foundation. It should sit on top of the
-same composable primitives application developers use directly.
-
-## Adapter Architecture After `0.6.0`
-
-Once `MemoryStore` and the Drizzle store are stable, additional adapters can be
-considered independently:
-
-- framework/tool adapters such as Vercel AI SDK, LangChain, LlamaIndex, or
-  OpenAI tool-call helpers
-- runtime-specific database adapters where Drizzle support is verified
-- local-first storage experiments such as SQLite + `sqlite-vec`
-- OpenTelemetry integration using existing observability hooks
-- deterministic snapshot/fixture export for tests
-
-Adapters should stay small, optional, and replaceable. The core should remain a
-memory library, not an agent framework. Provider packaging follows the
-confirmed subpath policy above until one of its explicit review triggers is
-met.
-
-## Non-Goals
-
-- No hidden schema creation from the client constructor.
-- No separate vector database requirement in the core package.
-- No built-in chunking policy. Applications know their content boundaries.
-- No built-in summarization pipeline in the core. A future summarizer hook can
-  compose with consolidation, but Mnemocyte should remain embedder-first by
-  default.
-- No multi-provider embedding mixture in one vector column until there is a
-  clear retrieval and migration design.
-- No broad backend expansion before the public `MemoryStore` adapter contract
-  exists.
-
-## Maintenance Rule
-
-When planned work ships, move the release details to
-[CHANGELOG.md](../CHANGELOG.md) and delete or revise the roadmap section. The
-roadmap should stay short, current, and biased toward the next architectural
-decision.
+- Optional memory extraction from conversations with the user's own AI SDK
+  model.
+- libSQL / Turso backend, then SQLite + sqlite-vec once it is stable.
+- Public `MemoryStore` contract and a monorepo split
+  (`@mnemocyte/postgres`, …).
+- `@mnemocyte/mcp`.
+- OpenTelemetry integration on the observability hooks.

@@ -118,6 +118,9 @@ boundary.
 For persistent storage, enable pgvector in your Postgres database, apply the
 appropriate bundled schema file, then pass `databaseUrl`. The commands below
 use `psql` and assume `DATABASE_URL` points at the target database.
+`-v ON_ERROR_STOP=1 --single-transaction` makes `psql` stop at the first error
+and roll the whole file back, so a failed migration never leaves a partial
+schema.
 
 Enable pgvector before applying any Mnemocyte schema file:
 
@@ -191,7 +194,7 @@ For a brand-new installation using the default 1536 dimensions, apply the
 consolidated fresh-install file:
 
 ```bash
-psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/fresh-install.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/fresh-install.sql
 ```
 
 `fresh-install.sql` is generated from `0000_initial.sql.template` and combines
@@ -206,14 +209,14 @@ For an existing 0.1.x Postgres installation, apply `0001` and then `0002` in
 the same order as before:
 
 ```bash
-psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0001_add_mnemocyte_meta.sql
-psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0001_add_mnemocyte_meta.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
 ```
 
 For an existing 0.2.x or 0.3.x installation, apply only `0002`:
 
 ```bash
-psql "$DATABASE_URL" -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
 ```
 
 For a different embedding dimension on a fresh installation, render an explicit
@@ -224,7 +227,7 @@ column, so it does not also need `0000`, `0001`, or `0002`.
 
 ```bash
 node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
-psql "$DATABASE_URL" -f migrations/0000_initial.768.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_initial.768.sql
 ```
 
 Inside this repository, the equivalent development shortcut is:
@@ -595,169 +598,27 @@ must be positive finite numbers, and `candidateMultiplier` must be an integer
 of at least 1. Invalid tuning is rejected at client construction with
 `MnemocyteError` code `"CONFIG"`.
 
-## Storage Adapter Contract
+## Limitations
 
-`MemoryStore` is still an internal boundary rather than a public package
-export, but its future-adapter contract is now documented directly in
-[`src/memory/store.ts`](./src/memory/store.ts). The contract is based on
-postconditions, not identical implementation mechanics: every method is
-mandatory, and no capability-flag surface exists or is currently planned.
+Mnemocyte is pre-1.0. Today:
 
-For adapter implementers, the main rules are:
+- Postgres stores one embedding model and dimension per installation; mixed
+  vector spaces in one database are not supported.
+- The bundled HNSW index supports at most 2,000 dimensions. Rendering a
+  larger dimension produces a migration that fails at `CREATE INDEX`.
+- `drizzleStore(db)` supports only postgres.js-backed Drizzle instances, the
+  `public` schema and pre-applied migrations.
+- Without `entityId`, `prune` applies to every entity in the database.
+- `forgetAll` rejects with `"CONFLICT"` after a consolidation until the
+  superseded memories are pruned first (`prune({ entityId, superseded: true
+  })`).
+- Provider timeouts abort the attempt's `AbortSignal`; the request stops
+  promptly only if the embedder forwards that signal.
 
-- `ensureSchema` is a readiness hook, not permission for hidden schema
-  creation. `ensureEmbeddingCompatibility` unconditionally enforces whatever
-  compatibility is meaningful to the persistence model; a store without
-  persistent installation state may no-op.
-- `insertMemories` takes ownership of prepared rows and returns exactly one
-  detached record per prepared ID. Store return order is untrusted; shared
-  orchestration rejects missing, duplicate, or unknown IDs and restores input
-  order. `getMemoryEmbeddings`, `getMemory`, and `stats` use the exact keyed,
-  detached, and count postconditions described in the source comments.
-- `markMemoriesAccessed` requires distinct IDs and returns the committed
-  post-update access fields. Duplicate-ID behavior is intentionally not a
-  portable contract. Ordinary `addAuditEvents` calls are best-effort, and a
-  rejected batch may have partially persisted on some backends.
-- `listAuditLog` uses stable event IDs, comparable timestamps, strict tuple
-  filters, and matching newest-first `(timestamp, id)` order. Tuple pagination
-  needs no transaction. Cancellation may be cooperative or active depending on
-  the implementation.
-- `vectorSearch` may scan or use an approximate, planner-dependent index.
-  `lexicalSearch` may legitimately return different candidates and rankings
-  across implementations. `findDuplicatePairs` compares qualifying memories
-  pairwise and does not imply indexed nearest-neighbor pair generation.
-- `deleteMemory`, `deleteMemoriesForEntity`, and non-dry-run `prune` must
-  protect referenced consolidation survivors with one atomic,
-  non-interleavable check-and-mutate operation and reject with `"CONFLICT"`
-  before any deletion. Other cancellation boundaries remain method- and
-  implementation-specific as documented by the public operations.
-- `close` releases or destroys only implementation-owned state and resources.
-  A future adapter around a caller-supplied connection must not close that
-  connection.
+The planned 0.6 release changes the API; see the
+[roadmap](./docs/ROADMAP.md).
 
-## Roadmap
+## Contributing
 
-Planned larger milestones:
-
-- public `MemoryStore` adapter surface
-- `@mnemocyte/mcp`
-
-See [ROADMAP.md](./docs/ROADMAP.md).
-
-## Pre-v1 Notes
-
-Current behavior:
-
-- `createMnemocyte()` selects an explicitly supplied `store`, the URL-owned
-  Postgres/pgvector backend, or the in-memory backend; supplying both `store`
-  and `databaseUrl` rejects instead of selecting a precedence.
-- Both backends run through an internal `MemoryStore` boundary and shared
-  client orchestration; `MemoryStore` is not exported as a public adapter API
-  yet.
-- `mnemocyte/stores/drizzle` exposes the first supported public adapter factory
-  for a caller-owned postgres.js Drizzle instance without exporting the full
-  `MemoryStore` contract.
-- Postgres schema setup is explicit; the client does not create tables or
-  indexes for you.
-- `findDuplicates`, audit-log workflows, and `experimental.consolidate` are
-  available before v1 but still subject to API refinement.
-
-Known limitations before v1:
-
-- The internal `MemoryStore` boundary is not a public adapter API yet.
-  `drizzleStore(db)` returns an opaque config value and currently supports only
-  postgres.js, the `public` schema, and pre-applied Mnemocyte migrations.
-- Configured provider timeouts abort the per-attempt `AbortSignal`; the
-  underlying provider request only stops promptly when the embedder honors that
-  signal.
-- Postgres model and dimension metadata are installation-wide. Mixed embedding
-  vector spaces in one database are intentionally unsupported.
-
-Planned v1 direction:
-
-- Keep storage adapters behind `MemoryStore` while shared core code owns
-  validation, embedding, scoring, observability, resilience, and context
-  building.
-- Keep root `mnemocyte` imports provider-SDK-free.
-- Keep migrations, dimensions, and production index choices explicit.
-
-## Development
-
-### Prerequisites
-
-- Node.js 22.18 or newer. CI tests the minimum 22.18 release and Node 24.
-- pnpm 11.1.1, matching the `packageManager` field in `package.json`.
-- Postgres with pgvector only when you want to run the integration suite.
-
-Clone the repository and install its locked dependencies:
-
-```bash
-git clone https://github.com/Meenic/mnemocyte.git
-cd mnemocyte
-pnpm install --frozen-lockfile
-```
-
-Mnemocyte is a library, not a standalone server. Use the quick-start example
-from a consuming TypeScript project, or run the repository build in watch mode
-while developing:
-
-```bash
-pnpm dev
-```
-
-Create the publishable ESM artifacts in `dist/` with:
-
-```bash
-pnpm build
-```
-
-### Validation
-
-Run the same main gates used by CI before committing:
-
-```bash
-pnpm checktypes
-pnpm lint
-pnpm test
-pnpm run pack:check
-```
-
-`pnpm test` builds the package, runs unit behavior, verifies package exports,
-and type-checks the public declarations. `pnpm lint` is a read-only formatting,
-lint, and import-order check; use `pnpm lint:fix` to apply its safe fixes. The
-Postgres suite is separate:
-
-```bash
-DATABASE_URL=postgres://... pnpm run test:integration
-```
-
-On PowerShell, set the environment variable for the current process first:
-
-```powershell
-$env:DATABASE_URL = "postgres://..."
-pnpm run test:integration
-```
-
-`test:integration` skips when `DATABASE_URL` is not set. The database must have
-pgvector available; the test applies the bundled migrations.
-
-### Where changes belong
-
-- Public exports and types: `src/index.ts`, `src/types.ts`, and `src/errors.ts`.
-- Shared client behavior: `src/memory/client-core.ts`; backend mechanics stay
-  in `src/memory/in-memory.ts` or `src/memory/postgres.ts`.
-- Postgres schema and SQL: `src/db/schema.ts` and `src/db/queries/`. Schema
-  changes require an explicit file under `migrations/`.
-- Provider helpers: `src/embedders/`; keep the root package provider-SDK-free.
-- Retrieval and context rendering: `src/retrieval/` and `src/context/`.
-- Tests: mirror the affected responsibility under `test/`; package boundary
-  checks live under `test/package/`, and real Postgres coverage under
-  `test/integration/`.
-
-See [AGENTS.md](./AGENTS.md) for repository rules and the validation/release
-policy. Read [ARCHITECTURE.md](./docs/ARCHITECTURE.md) before changing module
-boundaries or the public surface.
-
-## Architecture
-
-See [ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+See [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) for setup, structure,
+testing and releases, and [AGENTS.md](./AGENTS.md) for repository rules.

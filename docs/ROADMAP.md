@@ -29,7 +29,7 @@ it.
 - [x] `chore/ci-matrix`: Node 22.18 / 24 / 26, Postgres 17 and 18 with
   pgvector, publint and attw on the packed tarball, a packed-package test
   that works with any `tar`.
-- [ ] `chore/pnpm-12`: pnpm 12 (the Rust rewrite) in `packageManager` and
+- [x] `chore/pnpm-12`: pnpm 12 (the Rust rewrite) in `packageManager` and
   CI. Diff the packed tarball against pnpm 11's, since 12 still changes what
   `pnpm pack` includes from release to release.
 - [ ] `chore/release-workflow`: tag-triggered publish from GitHub Actions

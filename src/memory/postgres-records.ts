@@ -1,34 +1,8 @@
-import type { MemoryRow } from "../db/schema.js";
+import type { MemoryRow } from "../db/rows.js";
 import type { ImportanceLevel, Memory, MemoryType } from "../types.js";
 import { cloneJsonObject } from "./json.js";
 
-type MemoryRowTimestamp = Date | string;
-
-type MemoryLikeRow = Omit<
-	MemoryRow,
-	| "embedding"
-	| "supersededAt"
-	| "expiresAt"
-	| "lastAccessedAt"
-	| "createdAt"
-	| "updatedAt"
-> & {
-	supersededAt: MemoryRowTimestamp | null;
-	expiresAt: MemoryRowTimestamp | null;
-	lastAccessedAt: MemoryRowTimestamp | null;
-	createdAt: MemoryRowTimestamp;
-	updatedAt: MemoryRowTimestamp;
-};
-
-function toDate(value: MemoryRowTimestamp): Date {
-	return value instanceof Date ? value : new Date(value);
-}
-
-function toNullableDate(value: MemoryRowTimestamp | null): Date | null {
-	return value === null ? null : toDate(value);
-}
-
-export function rowToMemory(row: MemoryLikeRow): Memory {
+export function rowToMemory(row: MemoryRow): Memory {
 	return {
 		id: row.id,
 		entityId: row.entityId,
@@ -42,11 +16,11 @@ export function rowToMemory(row: MemoryLikeRow): Memory {
 		embeddingModel: row.embeddingModel,
 		embeddingDimensions: row.embeddingDimensions,
 		supersededBy: row.supersededBy,
-		supersededAt: toNullableDate(row.supersededAt),
-		expiresAt: toNullableDate(row.expiresAt),
-		lastAccessedAt: toNullableDate(row.lastAccessedAt),
+		supersededAt: row.supersededAt,
+		expiresAt: row.expiresAt,
+		lastAccessedAt: row.lastAccessedAt,
 		accessCount: row.accessCount,
-		createdAt: toDate(row.createdAt),
-		updatedAt: toDate(row.updatedAt),
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
 	};
 }

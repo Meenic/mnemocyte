@@ -3,28 +3,11 @@ import {
 	createMnemocyte,
 	isMnemocyteError,
 	type MnemocyteErrorCode,
+	type MnemocyteStoreConfig,
 } from "mnemocyte";
+import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
-import { beforeEach, describe, expect, test, vi } from "vitest";
-
-const { closeDatabaseMock, postgresMock } = vi.hoisted(() => {
-	const closeDatabaseMock = vi.fn(async () => {});
-	const postgresClient = Object.assign(vi.fn(), {
-		options: {
-			parsers: {},
-			serializers: {},
-		},
-		end: closeDatabaseMock,
-	});
-	return {
-		closeDatabaseMock,
-		postgresMock: vi.fn(() => postgresClient),
-	};
-});
-
-vi.mock("postgres", () => ({
-	default: postgresMock,
-}));
+import { describe, expect, test } from "vitest";
 
 const validEmbedder = {
 	model: "config-test",
@@ -59,103 +42,51 @@ function expectConfigError(action: () => unknown, code: MnemocyteErrorCode) {
 }
 
 describe("client configuration", () => {
-	beforeEach(() => {
-		closeDatabaseMock.mockClear();
-		postgresMock.mockClear();
-	});
-
-	test("rejects an explicitly empty databaseUrl", () => {
-		expectConfigError(
-			() => createMnemocyte({ databaseUrl: "", embedder: validEmbedder }),
-			"VALIDATION",
-		);
-	});
-
-	test("wraps a malformed databaseUrl as CONFIG", () => {
-		expectConfigError(
-			() =>
-				createMnemocyte({
-					databaseUrl: "not a postgres URL",
-					embedder: validEmbedder,
-				}),
-			"CONFIG",
-		);
-	});
-
-	test("rejects databaseUrl and store together synchronously as CONFIG", () => {
-		const store = drizzleStore(
-			{} as PostgresJsDatabase<Record<string, unknown>>,
-		);
-
-		expectConfigError(
-			() =>
-				createMnemocyte({
-					databaseUrl: "postgres://localhost/mnemocyte",
-					store,
-					embedder: validEmbedder,
-				}),
-			"CONFIG",
-		);
-		expect(postgresMock).not.toHaveBeenCalled();
-	});
-
-	test.each([
-		"postgres://user:password@localhost:5432/mnemocyte",
-		"postgresql://user:password@localhost:5432/mnemocyte",
-	])(
-		"accepts the Postgres database URL protocol in %s",
-		async (databaseUrl) => {
-			const client = createMnemocyte({ databaseUrl, embedder: validEmbedder });
-
-			expect(postgresMock).not.toHaveBeenCalled();
-			await client.close();
-			expect(postgresMock).toHaveBeenCalledOnce();
-			expect(postgresMock).toHaveBeenCalledWith(
-				databaseUrl,
-				expect.any(Object),
-			);
-			expect(closeDatabaseMock).toHaveBeenCalledOnce();
-		},
-	);
-
-	test("keeps no-config and databaseUrl-only backend selection intact", async () => {
-		const inMemoryClient = createMnemocyte({ embedder: validEmbedder });
-		const memory = await inMemoryClient.remember({
+	test("uses in-memory storage when no store is supplied", async () => {
+		const client = createMnemocyte({ embedder: validEmbedder });
+		const memory = await client.remember({
 			entityId: "config_in_memory",
 			content: "No store configuration still uses in-memory storage.",
 		});
 		expect(memory.entityId).toBe("config_in_memory");
-		await inMemoryClient.close();
-		expect(postgresMock).not.toHaveBeenCalled();
-
-		const databaseUrl = "postgres://localhost/mnemocyte";
-		const postgresClient = createMnemocyte({
-			databaseUrl,
-			embedder: validEmbedder,
-		});
-		expect(postgresMock).not.toHaveBeenCalled();
-		await postgresClient.close();
-		expect(postgresMock).toHaveBeenCalledOnce();
-		expect(postgresMock).toHaveBeenCalledWith(databaseUrl, expect.any(Object));
-		expect(closeDatabaseMock).toHaveBeenCalledOnce();
+		await client.close();
 	});
 
-	test.each([
-		"https://example.com/db",
-		"http://example.com/db",
-		"file:///tmp/mnemocyte.db",
-		"relative/path",
-		"example.com/db",
-	])(
-		"rejects non-Postgres database URL %s before creating a handle",
-		(databaseUrl) => {
-			expectConfigError(
-				() => createMnemocyte({ databaseUrl, embedder: validEmbedder }),
-				"CONFIG",
-			);
-			expect(postgresMock).not.toHaveBeenCalled();
-		},
-	);
+	test("uses a Postgres store without touching the caller's client on close", async () => {
+		let queryCount = 0;
+		const executor: SqlExecutor = {
+			async query() {
+				queryCount += 1;
+				return [];
+			},
+			async transaction(fn) {
+				return fn(executor);
+			},
+		};
+		const client = createMnemocyte({
+			store: postgresStore({ client: executor }),
+			embedder: validEmbedder,
+		});
+
+		await client.close();
+		expect(queryCount).toBe(0);
+	});
+
+	test("rejects a store that was not created by an adapter as CONFIG", async () => {
+		const client = () =>
+			createMnemocyte({
+				store: {} as MnemocyteStoreConfig,
+				embedder: validEmbedder,
+			});
+		expectConfigError(client, "CONFIG");
+	});
+
+	test("rejects a Drizzle instance without a postgres.js client as CONFIG", () => {
+		expectConfigError(
+			() => drizzleStore({} as PostgresJsDatabase<Record<string, unknown>>),
+			"CONFIG",
+		);
+	});
 
 	test("classifies an empty embedder model as CONFIG", () => {
 		expectConfigError(

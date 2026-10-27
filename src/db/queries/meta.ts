@@ -1,43 +1,43 @@
-import { and, eq, isNull } from "drizzle-orm";
-import type { MnemocyteDatabase } from "../index.js";
-import { type MetaRow, memoriesTable, metaTable } from "../schema.js";
+import type { SqlExecutor } from "../../sql/executor.js";
+import { META_COLUMNS, type MetaRow } from "../rows.js";
 
 export const INSTALLATION_META_KEY = "installation";
 
 export async function getInstallationMeta(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 ): Promise<MetaRow | null> {
-	const rows = await db
-		.select()
-		.from(metaTable)
-		.where(eq(metaTable.key, INSTALLATION_META_KEY))
-		.limit(1);
+	const rows = await db.query<MetaRow>(
+		`SELECT ${META_COLUMNS}
+		FROM mnemocyte_meta
+		WHERE key = $1
+		LIMIT 1`,
+		[INSTALLATION_META_KEY],
+	);
 	return rows[0] ?? null;
 }
 
 export async function getStoredEmbeddingModels(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 ): Promise<string[]> {
-	const rows = await db
-		.selectDistinct({ embeddingModel: memoriesTable.embeddingModel })
-		.from(memoriesTable)
-		.limit(2);
+	const rows = await db.query<{ embeddingModel: string }>(
+		`SELECT DISTINCT embedding_model AS "embeddingModel"
+		FROM mnemocyte_memories
+		LIMIT 2`,
+		[],
+	);
 	return rows.map((row) => row.embeddingModel);
 }
 
 export async function recordInstallationEmbeddingModel(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	embeddingModel: string,
 ): Promise<MetaRow | null> {
-	const rows = await db
-		.update(metaTable)
-		.set({ embeddingModel })
-		.where(
-			and(
-				eq(metaTable.key, INSTALLATION_META_KEY),
-				isNull(metaTable.embeddingModel),
-			),
-		)
-		.returning();
+	const rows = await db.query<MetaRow>(
+		`UPDATE mnemocyte_meta
+		SET embedding_model = $1
+		WHERE key = $2 AND embedding_model IS NULL
+		RETURNING ${META_COLUMNS}`,
+		[embeddingModel, INSTALLATION_META_KEY],
+	);
 	return rows[0] ?? null;
 }

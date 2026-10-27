@@ -8,6 +8,48 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **`SqlExecutor` and `mnemocyte/postgres`.** The Postgres backend now runs on
+  a two-method `SqlExecutor` (`query` with an optional `AbortSignal`, and
+  `transaction`). `postgresJs(sql)` wraps a postgres.js client and
+  `postgresStore({ client })` passes it to `createMnemocyte({ store })`.
+
+### Changed
+
+- **Breaking: no runtime dependencies.** `drizzle-orm` and `postgres` moved
+  from `dependencies` to optional `peerDependencies`. Mnemocyte now writes its
+  own parameterized SQL instead of using the Drizzle query builder; the schema
+  and migrations are unchanged. `drizzleStore(db)` keeps working and now runs
+  on `db.$client`.
+- **Breaking: your client owns TLS and pooling.** Mnemocyte no longer creates
+  a pool, so the fixed `max: 10` pool and the `sslmode` override are gone.
+  `sslmode=prefer` and `allow` now behave as postgres.js defines them.
+  Statements never use named prepared statements, so transaction-mode poolers
+  work without `prepare: false`.
+
+### Removed
+
+- **Breaking: `databaseUrl`.** Create the client yourself and pass it in.
+
+  Upgrade from 0.5:
+
+  ```ts
+  // before
+  const client = createMnemocyte({ databaseUrl: process.env.DATABASE_URL!, embedder });
+
+  // after (npm install postgres)
+  import postgres from "postgres";
+  import { postgresJs, postgresStore } from "mnemocyte/postgres";
+
+  const sql = postgres(process.env.DATABASE_URL!);
+  const client = createMnemocyte({
+    store: postgresStore({ client: postgresJs(sql) }),
+    embedder,
+  });
+  // client.close() no longer ends the pool: call `await sql.end()` yourself.
+  ```
+
 ## [0.5.1] - 2026-10-26
 
 ### Added

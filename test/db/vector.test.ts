@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { formatVectorComponent } from "../../src/db/vector.js";
+import {
+	formatVector,
+	formatVectorComponent,
+	parseVector,
+} from "../../src/db/vector.js";
 
 describe("pgvector component serialization", () => {
 	test.each([Math.PI, 1e-20, -1e-20, 1e20, Number.MIN_VALUE, Number.MAX_VALUE])(
@@ -22,4 +26,16 @@ describe("pgvector component serialization", () => {
 			);
 		},
 	);
+});
+
+describe("pgvector text form", () => {
+	test("formats and parses a vector round trip", () => {
+		const embedding = [0.1, -2, 1e-20, 0];
+		expect(formatVector(embedding)).toBe("[0.1,-2,1e-20,0]");
+		expect(parseVector(formatVector(embedding))).toEqual(embedding);
+	});
+
+	test("parses an empty vector", () => {
+		expect(parseVector("[]")).toEqual([]);
+	});
 });

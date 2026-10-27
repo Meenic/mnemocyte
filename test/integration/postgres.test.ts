@@ -10,6 +10,7 @@ import {
 	type MnemocyteOperation,
 	type PruneInput,
 } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
@@ -105,7 +106,7 @@ async function main(databaseUrl: string) {
 
 		const events: MnemocyteObservation[] = [];
 		const client = createMnemocyte({
-			databaseUrl,
+			store: postgresStore({ client: postgresJs(sql) }),
 			embedder: {
 				model: "mnemocyte-integration-test",
 				dimensions: 1536,

@@ -1,7 +1,12 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-	entry: ["src/index.ts", "src/embedders/*.ts", "src/stores/*.ts"],
+	entry: [
+		"src/index.ts",
+		"src/postgres.ts",
+		"src/embedders/*.ts",
+		"src/stores/*.ts",
+	],
 	sourcemap: true,
 	dts: { sourcemap: false },
 	plugins: [

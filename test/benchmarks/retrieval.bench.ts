@@ -5,6 +5,7 @@ import {
 	type MnemocyteClient,
 	type RememberInput,
 } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import {
@@ -168,13 +169,14 @@ describe("retrieval benchmarks", () => {
 		async ({ bench }) => {
 			const url = expectDefined(databaseUrl);
 			const sql = postgres(url, { max: 1 });
+			const storeSql = postgres(url, { max: 5 });
 			const seeded: SeededClient[] = [];
 			try {
 				await ensureMigrations(sql);
 				for (const memoryCount of POSTGRES_SIZES) {
 					const entry = {
 						client: createMnemocyte({
-							databaseUrl: url,
+							store: postgresStore({ client: postgresJs(storeSql) }),
 							embedder: postgresEmbedder,
 							retrieval: retrievalConfig,
 						}),
@@ -199,7 +201,7 @@ describe("retrieval benchmarks", () => {
 				for (const { entityId } of seeded) {
 					await deleteEntity(sql, entityId);
 				}
-				await sql.end();
+				await Promise.all([sql.end(), storeSql.end()]);
 			}
 		},
 	);

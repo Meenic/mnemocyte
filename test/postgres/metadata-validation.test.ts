@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { DatabaseHandle, MnemocyteDatabase } from "../../src/db/index.js";
 import { createPostgresClient } from "../../src/memory/postgres.js";
+import type { SqlExecutor } from "../../src/sql/executor.js";
 import type { MnemocyteConfig } from "../../src/types.js";
 import { expectMnemocyteError } from "../helpers.js";
 
@@ -11,7 +11,7 @@ interface FakeMetaRow {
 }
 
 interface FakeHandle {
-	handle: DatabaseHandle;
+	handle: SqlExecutor;
 	getDistinctSelectCount(): number;
 	getExecuteCount(): number;
 	getMeta(): FakeMetaRow | null;
@@ -19,12 +19,10 @@ interface FakeHandle {
 	getUpdateCount(): number;
 }
 
-interface FakeSelectChain {
-	from(table: unknown): FakeSelectChain;
-	where(condition: unknown): FakeSelectChain;
-	limit(limit: number): Promise<unknown[]>;
-}
-
+/**
+ * An executor that answers the installation-metadata statements from memory
+ * and counts everything else as an "execute" (recall, duplicates, stats).
+ */
 function createFakeHandle(options: {
 	metaRows?: FakeMetaRow[];
 	storedModels?: string[];
@@ -36,86 +34,45 @@ function createFakeHandle(options: {
 	let executeCount = 0;
 	let selectCount = 0;
 	let updateCount = 0;
-	const metaChain: FakeSelectChain = {
-		from() {
-			return metaChain;
-		},
-		where() {
-			return metaChain;
-		},
-		async limit() {
-			selectCount += 1;
-			if (options.error) {
-				throw options.error;
+	const handle: SqlExecutor = {
+		async query<Row>(sql: string, params: readonly unknown[]): Promise<Row[]> {
+			if (sql.includes("FROM mnemocyte_meta")) {
+				selectCount += 1;
+				if (options.error) {
+					throw options.error;
+				}
+				return metaRows.map((row) => ({ ...row })) as Row[];
 			}
-			return metaRows.map((row) => ({ ...row }));
-		},
-	};
-	const modelChain: FakeSelectChain = {
-		from() {
-			return modelChain;
-		},
-		where() {
-			return modelChain;
-		},
-		async limit(limit) {
-			distinctSelectCount += 1;
-			return (options.storedModels ?? [])
-				.slice(0, limit)
-				.map((embeddingModel) => ({ embeddingModel }));
-		},
-	};
-	const db = {
-		select() {
-			return metaChain;
-		},
-		selectDistinct() {
-			return modelChain;
-		},
-		update() {
-			return {
-				set(values: unknown) {
-					const embeddingModel =
-						typeof values === "object" &&
-						values !== null &&
-						"embeddingModel" in values &&
-						typeof values.embeddingModel === "string"
-							? values.embeddingModel
-							: null;
-					return {
-						where() {
-							return {
-								async returning() {
-									updateCount += 1;
-									const meta = metaRows.find(
-										(row) =>
-											row.key === "installation" && row.embeddingModel === null,
-									);
-									if (!meta || embeddingModel === null) {
-										return [];
-									}
-									meta.embeddingModel = embeddingModel;
-									return [{ ...meta }];
-								},
-							};
-						},
-					};
-				},
-			};
-		},
-		async execute() {
+			if (sql.includes("SELECT DISTINCT embedding_model")) {
+				distinctSelectCount += 1;
+				return (options.storedModels ?? []).map((embeddingModel) => ({
+					embeddingModel,
+				})) as Row[];
+			}
+			if (sql.includes("UPDATE mnemocyte_meta")) {
+				updateCount += 1;
+				const embeddingModel = params[0];
+				const meta = metaRows.find(
+					(row) => row.key === "installation" && row.embeddingModel === null,
+				);
+				if (!meta || typeof embeddingModel !== "string") {
+					return [];
+				}
+				meta.embeddingModel = embeddingModel;
+				return [{ ...meta }] as Row[];
+			}
 			executeCount += 1;
 			if (options.executeError) {
 				throw options.executeError;
 			}
 			return [];
 		},
-	} as unknown as MnemocyteDatabase;
-	return {
-		handle: {
-			db,
-			async close() {},
+		async transaction(fn) {
+			return fn(handle);
 		},
+	};
+	return {
+		handle,
 		getDistinctSelectCount() {
 			return distinctSelectCount;
 		},

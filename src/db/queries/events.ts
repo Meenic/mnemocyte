@@ -1,9 +1,13 @@
-import { sql } from "drizzle-orm";
 import { MnemocyteError } from "../../errors.js";
-import type { AuditLogCursor } from "../../types.js";
-import { executeCancelableSql } from "../cancellation.js";
-import type { MnemocyteDatabase } from "../index.js";
-import { type EventRow, eventsTable, type NewEventRow } from "../schema.js";
+import type { SqlExecutor } from "../../sql/executor.js";
+import type { AuditLogCursor, JsonObject } from "../../types.js";
+import {
+	EVENT_COLUMNS,
+	type EventRow,
+	type RawEventRow,
+	toEventRow,
+} from "../rows.js";
+import { createSqlParams } from "../sql.js";
 
 export interface EventFilter {
 	entityId: string;
@@ -14,53 +18,69 @@ export interface EventFilter {
 	afterCursor?: AuditLogCursor;
 }
 
-function timestampParam(value: Date) {
-	return sql`${value.toISOString()}::timestamptz`;
+export interface NewEventRow {
+	id: string;
+	entityId: string;
+	description: string;
+	metadata: JsonObject;
+	timestamp: Date;
 }
 
 export async function insertEvent(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	row: NewEventRow,
 ): Promise<EventRow> {
-	const result = await db.insert(eventsTable).values(row).returning();
+	const params = createSqlParams();
+	const result = await db.query<RawEventRow>(
+		`INSERT INTO mnemocyte_events (id, entity_id, description, metadata, timestamp)
+		VALUES (
+			${params.add(row.id)},
+			${params.add(row.entityId)},
+			${params.add(row.description)},
+			${params.json(row.metadata)},
+			${params.timestamp(row.timestamp)}
+		)
+		RETURNING ${EVENT_COLUMNS}`,
+		params.values,
+	);
 	const inserted = result[0];
 	if (!inserted) {
 		throw new MnemocyteError("Event insert returned no rows.", "DB");
 	}
-	return inserted;
+	return toEventRow(inserted);
 }
 
 export async function listEvents(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	filter: EventFilter,
 	signal?: AbortSignal,
 ): Promise<EventRow[]> {
-	return executeCancelableSql<EventRow[]>(
-		db,
-		sql`
-			SELECT
-				id,
-				entity_id AS "entityId",
-				description,
-				metadata,
-				timestamp
-			FROM mnemocyte_events
-			WHERE entity_id = ${filter.entityId}
-				${filter.before ? sql`AND timestamp < ${timestampParam(filter.before)}` : sql``}
-				${filter.after ? sql`AND timestamp > ${timestampParam(filter.after)}` : sql``}
-				${
-					filter.beforeCursor
-						? sql`AND (timestamp, id) < (${timestampParam(filter.beforeCursor.timestamp)}, ${filter.beforeCursor.id})`
-						: sql``
-				}
-				${
-					filter.afterCursor
-						? sql`AND (timestamp, id) > (${timestampParam(filter.afterCursor.timestamp)}, ${filter.afterCursor.id})`
-						: sql``
-				}
-			ORDER BY timestamp DESC, id DESC
-			LIMIT ${filter.limit ?? 50}
-		`,
-		signal,
+	const params = createSqlParams();
+	const clauses: string[] = [`entity_id = ${params.add(filter.entityId)}`];
+	if (filter.before) {
+		clauses.push(`timestamp < ${params.timestamp(filter.before)}`);
+	}
+	if (filter.after) {
+		clauses.push(`timestamp > ${params.timestamp(filter.after)}`);
+	}
+	if (filter.beforeCursor) {
+		clauses.push(
+			`(timestamp, id) < (${params.timestamp(filter.beforeCursor.timestamp)}, ${params.add(filter.beforeCursor.id)})`,
+		);
+	}
+	if (filter.afterCursor) {
+		clauses.push(
+			`(timestamp, id) > (${params.timestamp(filter.afterCursor.timestamp)}, ${params.add(filter.afterCursor.id)})`,
+		);
+	}
+	const rows = await db.query<RawEventRow>(
+		`SELECT ${EVENT_COLUMNS}
+		FROM mnemocyte_events
+		WHERE ${clauses.join("\n\t\t\tAND ")}
+		ORDER BY timestamp DESC, id DESC
+		LIMIT ${params.add(filter.limit ?? 50)}`,
+		params.values,
+		signal ? { signal } : undefined,
 	);
+	return rows.map(toEventRow);
 }

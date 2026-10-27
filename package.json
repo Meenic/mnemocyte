@@ -22,6 +22,10 @@
 			"types": "./dist/embedders/openai.d.mts",
 			"default": "./dist/embedders/openai.mjs"
 		},
+		"./postgres": {
+			"types": "./dist/postgres.d.mts",
+			"default": "./dist/postgres.mjs"
+		},
 		"./stores/drizzle": {
 			"types": "./dist/stores/drizzle.d.mts",
 			"default": "./dist/stores/drizzle.mjs"
@@ -84,11 +88,21 @@
 	"engines": {
 		"node": ">=22.18"
 	},
-	"dependencies": {
+	"peerDependencies": {
 		"drizzle-orm": "^0.45.4",
 		"postgres": "^3.4.9"
 	},
+	"peerDependenciesMeta": {
+		"drizzle-orm": {
+			"optional": true
+		},
+		"postgres": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
+		"drizzle-orm": "^0.45.4",
+		"postgres": "^3.4.9",
 		"@arethetypeswrong/cli": "0.18.5",
 		"@biomejs/biome": "2.6.3",
 		"@types/node": "^22.20.5",

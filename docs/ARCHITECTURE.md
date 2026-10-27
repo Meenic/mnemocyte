@@ -34,18 +34,12 @@ application
 ```
 
 **Driver.** The user passes the client they already own; Mnemocyte never
-creates or closes it:
+creates or closes it. The two-method `SqlExecutor` and the postgres.js adapter
+have landed (see [features/postgres.md](./features/postgres.md)).
 
-```ts
-interface SqlExecutor {
-  query<Row>(sql: string, params: readonly unknown[], options?: { signal?: AbortSignal }): Promise<Row[]>;
-  transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
-}
-```
-
-Adapters: `postgresJs(sql)`, `nodePg(pool)`, `drizzle(db)` (unwraps the
-underlying client), `pglite(db)`, later `libsql(client)`. Each is a few dozen
-lines and peer-depends on its driver. We write our own interface instead of
+Adapters still to come: `nodePg(pool)`, `drizzle(db)` (unwraps the underlying
+client), `pglite(db)`, later `libsql(client)`. Each is a few dozen lines and
+peer-depends on its driver. We write our own interface instead of
 using Kysely: it is two methods, adds no dependency, and a query builder does
 not help with vector or full-text SQL, which is where dialects differ.
 
@@ -251,6 +245,13 @@ Dated 2026-10-26 unless noted.
 15. **Releases:** manual `pnpm version`, then a tag-triggered GitHub Actions
     workflow publishes with provenance. Changesets only once there are
     several packages.
+
+16. **Atomic statements over interactive transactions** (2026-10-27): write
+    paths are designed as single statements where possible. `transaction(fn)`
+    holds a connection open across round trips, which stateless HTTP drivers
+    (Neon HTTP, D1) cannot do. `SqlExecutor` keeps `transaction` for drivers
+    that support it and gains an optional `batch` where one statement is not
+    enough. Only `consolidate` needs more than one statement today.
 
 ### Open: `agentId`
 

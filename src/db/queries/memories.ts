@@ -328,7 +328,7 @@ function pruneConditions(params: SqlParams, filter: PruneFilter): string {
 	}
 	if (filter.notAccessedSince) {
 		clauses.push(
-			`(last_accessed_at IS NULL OR last_accessed_at < ${params.timestamp(filter.notAccessedSince)})`,
+			`COALESCE(last_accessed_at, created_at) < ${params.timestamp(filter.notAccessedSince)}`,
 		);
 	}
 	if (filter.types && filter.types.length > 0) {
@@ -693,43 +693,36 @@ export async function consolidateMemories(
 	};
 }
 
+/**
+ * Rows are locked in id order before the update, so two recalls with
+ * overlapping results take their row locks in the same order and cannot
+ * deadlock. Rows deleted in the meantime are skipped, and `updated_at` is
+ * left alone.
+ */
 export async function markMemoriesAccessed(
 	db: SqlExecutor,
 	scope: StoreScope,
 	memoryIds: readonly string[],
-): Promise<
-	Array<{
-		id: string;
-		lastAccessedAt: Date | null;
-		accessCount: number;
-		updatedAt: Date;
-	}>
-> {
+): Promise<void> {
 	if (memoryIds.length === 0) {
-		return [];
+		return;
 	}
 	const params = createSqlParams();
-	const now = params.timestamp(new Date());
-	const rows = await db.query<{
-		id: string;
-		lastAccessedAt: Date | string | null;
-		accessCount: number;
-		updatedAt: Date | string;
-	}>(
-		`UPDATE mnemocyte_memories
-		SET last_accessed_at = ${now}, access_count = access_count + 1, updated_at = ${now}
-		WHERE ${scopeConditions(params, scope)}
-			AND id IN (${params.uuidList(memoryIds)})
-		RETURNING id::text AS id, last_accessed_at AS "lastAccessedAt", access_count AS "accessCount", updated_at AS "updatedAt"`,
+	await db.query(
+		`WITH target AS (
+			SELECT id
+			FROM mnemocyte_memories
+			WHERE ${scopeConditions(params, scope)}
+				AND id IN (${params.uuidList(memoryIds)})
+			ORDER BY id
+			FOR UPDATE
+		)
+		UPDATE mnemocyte_memories AS m
+		SET last_accessed_at = ${params.timestamp(new Date())}, access_count = m.access_count + 1
+		FROM target
+		WHERE m.id = target.id`,
 		params.values,
 	);
-	return rows.map((row) => ({
-		id: row.id,
-		lastAccessedAt:
-			row.lastAccessedAt === null ? null : new Date(row.lastAccessedAt),
-		accessCount: row.accessCount,
-		updatedAt: new Date(row.updatedAt),
-	}));
 }
 
 export async function vectorSearch(

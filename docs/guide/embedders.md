@@ -125,7 +125,8 @@ const client = createMnemocyte({
 ```
 
 Each public operation emits one `start` event, then one `success` or `error`
-event, with `operation`, `phase`, `backend`, `timestamp`, `durationMs`, and
+event; so does the access write of a tracked recall (`"trackAccess"`, see
+[recall](./api.md#recall)), with `operation`, `phase`, `backend`, `timestamp`, `durationMs`, and
 `entityId`, `memoryId`, `count` or `error` where they apply. Errors thrown by
 `onEvent` are ignored, but an async `onEvent` is awaited, so a slow hook
 slows every operation.

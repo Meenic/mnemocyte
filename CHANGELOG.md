@@ -24,6 +24,12 @@ behavioural changes documented in their entries.
   `transaction`). `postgresJs(sql)` wraps a postgres.js client and
   `postgresStore({ client })` passes it to `createMnemocyte({ store })`.
 
+- **`trackAccess` and the `"trackAccess"` event.** `retrieval.trackAccess`
+  turns access tracking on for a client and `trackAccess` on `recall` or
+  `buildContext` overrides it per call. Each access write emits its own
+  `start` and `success` or `error` events to `onEvent`, with operation
+  `"trackAccess"`, `entityId` and `count`.
+
 ### Changed
 
 - **Breaking: no runtime dependencies.** `drizzle-orm` and `postgres` moved
@@ -62,6 +68,23 @@ behavioural changes documented in their entries.
   // after
   retrieval: { fusion: { vector: 0.7, lexical: 0.3 } }
   ```
+- **Breaking: access tracking is opt-in and off the response path.** By
+  default recall no longer writes, so `accessCount` stays 0 and
+  `lastAccessedAt` stays null. With `trackAccess` on, the write starts as
+  recall returns and recall does not wait for it: results show the access
+  values from before the call, a failed write no longer fails the recall
+  (it is reported to `onEvent`), and a memory deleted at the same moment no
+  longer makes recall throw `"DB"`. Recall never changes `updatedAt`.
+
+  ```ts
+  // keep counting access on every recall
+  createMnemocyte({ embedder, store, retrieval: { trackAccess: true } });
+  ```
+- **`prune({ notAccessedSince })` counts never-accessed memories from
+  `createdAt`.** Before, a memory that had never been recalled always
+  matched, so with tracking off every memory in scope did. Now a memory
+  created after the date is kept, so this prune deletes the same or fewer
+  memories than before.
 
 ### Removed
 

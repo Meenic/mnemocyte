@@ -111,7 +111,8 @@ changes only on writes.
    This has landed; see
    [features/retrieval.md](./features/retrieval.md#fusion-and-boosts).
 4. Access tracking is opt-in, runs after the response is ready, ignores rows
-   that disappeared, and never touches `updatedAt`.
+   that disappeared, and never touches `updatedAt`. This has landed; see
+   [features/retrieval.md](./features/retrieval.md#access-tracking).
 
 Postgres specifics: the vector query runs in a transaction with
 `SET LOCAL hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least
@@ -256,3 +257,14 @@ Dated 2026-10-26 unless noted.
     has `uuidv7()` only from 18. Time-ordered ids keep primary-key inserts
     at the right edge of the btree; UUIDv4 would scatter them. Old text ids
     convert with `md5(id)::uuid` so applications can map stored ids.
+19. **No `close()`** (2026-10-27): the client created by `createMemory` has
+    no `close()`. Since `SqlExecutor` the caller owns the database client and
+    Mnemocyte holds no connections or timers, so on Postgres `close()` closes
+    nothing; like Drizzle, the client needs no shutdown call. Removed in
+    `feat/scoped-api`, which already replaces `createMnemocyte`, so users take
+    one breaking change instead of two. Until then `close()` stays and does
+    not wait for access writes. Access writes are started before recall
+    resolves, so the driver already has the statement when the caller ends
+    their client. Lost writes on serverless platforms are acceptable for
+    counts that do not affect ranking; an optional `waitUntil` hook can be
+    added later if that changes.

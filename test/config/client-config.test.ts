@@ -149,6 +149,17 @@ describe("client configuration", () => {
 		);
 	});
 
+	test.each(["yes", 1, null])("rejects trackAccess=%s as CONFIG", (value) => {
+		expectConfigError(
+			() =>
+				createMnemocyte({
+					embedder: validEmbedder,
+					retrieval: { trackAccess: value as unknown as boolean },
+				}),
+			"CONFIG",
+		);
+	});
+
 	test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
 		"rejects candidateMultiplier=%s as CONFIG",
 		(candidateMultiplier) => {

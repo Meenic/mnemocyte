@@ -67,7 +67,9 @@ export type MnemocyteBackend = "in-memory" | "postgres";
 
 /**
  * The set of public {@link MnemocyteClient} methods that emit
- * {@link MnemocyteObservation} events through {@link ObservabilityConfig.onEvent}.
+ * {@link MnemocyteObservation} events through {@link ObservabilityConfig.onEvent},
+ * plus `"trackAccess"`: the access-state write a tracked recall starts after
+ * its results are ready (see {@link RetrievalConfig.trackAccess}).
  */
 export type MnemocyteOperation =
 	| "remember"
@@ -81,6 +83,7 @@ export type MnemocyteOperation =
 	| "listAuditLog"
 	| "consolidate"
 	| "stats"
+	| "trackAccess"
 	| "close";
 
 /**
@@ -358,13 +361,16 @@ export interface Memory {
 	supersededAt: Date | null;
 	/** Optional expiry; expired memories are filtered out by default. */
 	expiresAt: Date | null;
-	/** Last time this memory was returned by {@link MnemocyteClient.recall}. */
+	/**
+	 * Last time a recall with access tracking returned this memory; `null`
+	 * if none has. See {@link RetrievalConfig.trackAccess}.
+	 */
 	lastAccessedAt: Date | null;
-	/** Cumulative number of times this memory has been recalled. */
+	/** Number of recalls with access tracking that returned this memory. */
 	accessCount: number;
 	/** Creation timestamp. */
 	createdAt: Date;
-	/** Most recent update timestamp. */
+	/** Most recent write timestamp. Recalls never change it. */
 	updatedAt: Date;
 }
 
@@ -437,6 +443,18 @@ export interface RetrievalConfig {
 	 * Must be an integer greater than or equal to 1. @defaultValue `3`
 	 */
 	candidateMultiplier?: number;
+	/**
+	 * Record access on recall: increment {@link Memory.accessCount} and set
+	 * {@link Memory.lastAccessedAt} on the returned memories. The write starts
+	 * once the results are ready and recall does not wait for it, so the
+	 * returned records carry the values from before this recall. Failures are
+	 * reported as `"trackAccess"` events to {@link ObservabilityConfig.onEvent}
+	 * and never fail the recall. {@link RecallInput.trackAccess} overrides it
+	 * per call.
+	 *
+	 * @defaultValue `false`
+	 */
+	trackAccess?: boolean;
 }
 
 /**
@@ -542,6 +560,11 @@ export interface RecallInput {
 	/** Populate {@link MemoryWithScore.explanation} on each result. @defaultValue `false` */
 	explain?: boolean;
 	/**
+	 * Record access for this call's results. Overrides
+	 * {@link RetrievalConfig.trackAccess}.
+	 */
+	trackAccess?: boolean;
+	/**
 	 * Optional cancellation signal. Forwarded to the embedder; when
 	 * aborted, the operation throws a {@link MnemocyteError} with code
 	 * `"ABORTED"`.
@@ -585,6 +608,11 @@ export interface BuildContextInput {
 	includeSuperseded?: boolean;
 	/** Include expired memories. @defaultValue `false` */
 	includeExpired?: boolean;
+	/**
+	 * Record access for the recalled memories. Overrides
+	 * {@link RetrievalConfig.trackAccess}.
+	 */
+	trackAccess?: boolean;
 	/** Tokenizer used to enforce {@link BuildContextInput.maxTokens}. */
 	tokenCounter?: TokenCounter;
 	/**
@@ -614,8 +642,9 @@ export interface PruneInput {
 	/** Match memories created strictly before this date. */
 	createdBefore?: Date;
 	/**
-	 * Match memories whose `lastAccessedAt` is `null` or strictly before
-	 * this date. Useful for evicting "cold" memories.
+	 * Match memories last accessed strictly before this date. A memory that
+	 * was never accessed counts from its `createdAt`, so one created after
+	 * the date is kept. Useful for evicting "cold" memories.
 	 */
 	notAccessedSince?: Date;
 	/** Restrict pruning to these memory types. */

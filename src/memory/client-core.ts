@@ -334,6 +334,37 @@ export function createMemoryClient(
 		}
 	}
 
+	/**
+	 * Starts the access write for a recall's results without waiting for it.
+	 * The store call begins before recall resolves, so the driver already has
+	 * the statement; failures go to `onEvent` as `"trackAccess"` errors.
+	 */
+	function trackAccess(entityId: string, memoryIds: readonly string[]): void {
+		if (memoryIds.length === 0) {
+			return;
+		}
+		// Settled into a value at once, so a failure that lands while the
+		// start event is still being emitted is never an unhandled rejection.
+		const outcome = store.markMemoriesAccessed(entityId, memoryIds).then(
+			() => ({ ok: true as const }),
+			(error: unknown) => ({ ok: false as const, error }),
+		);
+		observe(
+			config,
+			store.backend,
+			"trackAccess",
+			{ entityId, count: memoryIds.length },
+			async () => {
+				const result = await outcome;
+				if (!result.ok) {
+					throw result.error;
+				}
+			},
+		).catch(() => {
+			// Reported through onEvent; access tracking never fails a recall.
+		});
+	}
+
 	function remember(input: RememberInput): Promise<Memory> {
 		return runOperation("remember", { entityId: input.entityId }, () =>
 			observePrepared(
@@ -514,29 +545,13 @@ export function createMemoryClient(
 					.filter((memory) => memory.score >= minScore)
 					.sort(compareScoredMemories)
 					.slice(0, limit);
-				const accessUpdates = normalizeStoreRows(
-					scored,
-					await store.markMemoriesAccessed(
+				if (input.trackAccess ?? config.retrieval?.trackAccess ?? false) {
+					trackAccess(
 						input.entityId,
 						scored.map((memory) => memory.id),
-					),
-					"Memory access update",
-				);
-				return scored.map((memory, index) => {
-					const update = accessUpdates[index];
-					if (!update) {
-						throw new MnemocyteError(
-							"Memory access update did not return every requested ID.",
-							"DB",
-						);
-					}
-					return {
-						...memory,
-						lastAccessedAt: new Date(update.lastAccessedAt),
-						accessCount: update.accessCount,
-						updatedAt: new Date(update.updatedAt),
-					};
-				});
+					);
+				}
+				return scored;
 			},
 			(result) => ({ count: result.length }),
 		);

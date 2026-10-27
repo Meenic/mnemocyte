@@ -70,13 +70,6 @@ export interface StoreDuplicatePair {
 	similarity: number;
 }
 
-export interface StoreAccessUpdate {
-	id: string;
-	lastAccessedAt: Date;
-	accessCount: number;
-	updatedAt: Date;
-}
-
 export interface StorePruneEntityDeletion {
 	entityId: string;
 	deletedCount: number;
@@ -234,10 +227,9 @@ export interface MemoryStore {
 		input: StoreLexicalSearchInput,
 	): Promise<StoreLexicalCandidate[]>;
 	/**
-	 * Increments access state exactly once for each requested stored memory of
-	 * the entity and returns one record per ID containing its post-update `accessCount`,
-	 * `lastAccessedAt`, and `updatedAt`. Return order is untrusted and normalized
-	 * by shared orchestration.
+	 * Increments `accessCount` and sets `lastAccessedAt` once for each
+	 * requested memory of the entity that still exists; IDs that no longer
+	 * match a row are skipped. Never changes `updatedAt`.
 	 *
 	 * The input IDs must be distinct. Duplicate-ID behavior is backend-specific,
 	 * and callers must not rely on any particular deduplication or increment
@@ -246,7 +238,7 @@ export interface MemoryStore {
 	markMemoriesAccessed(
 		entityId: string,
 		memoryIds: readonly string[],
-	): Promise<StoreAccessUpdate[]>;
+	): Promise<void>;
 
 	/**
 	 * Deletes the memory only when both entity and memory ID match, returning

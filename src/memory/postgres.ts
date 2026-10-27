@@ -380,25 +380,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async markMemoriesAccessed(entityId, memoryIds) {
-			return runPostgresOperation(async () => {
-				const rows = await markMemoriesAccessed(
+			return runPostgresOperation(() =>
+				markMemoriesAccessed(
 					client,
 					entityScope(entityId),
 					uuidsOnly(memoryIds),
-				);
-				return rows.map((row) => {
-					if (row.lastAccessedAt === null) {
-						throw new MnemocyteError(
-							"Postgres access update returned no timestamp.",
-							"DB",
-						);
-					}
-					return {
-						...row,
-						lastAccessedAt: row.lastAccessedAt,
-					};
-				});
-			});
+				),
+			);
 		},
 		async deleteMemory(entityId, memoryId) {
 			return runPostgresDeleteOperation(async () => {

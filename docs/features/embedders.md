@@ -59,7 +59,8 @@ stop promptly only if the embedder forwards the signal to `fetch`.
 ## Observability
 
 `observability.onEvent(event)` receives one `start` and one `success` or
-`error` event per public operation, with `operation`, `backend`, `timestamp`,
+`error` event per public operation, and per access write of a tracked recall
+(`"trackAccess"`), with `operation`, `backend`, `timestamp`,
 `durationMs`, and `entityId`, `memoryId`, `count` where they apply. Errors
 thrown by the hook are swallowed, but the hook is **awaited**, so a slow async
 hook delays every operation.
@@ -67,5 +68,6 @@ hook delays every operation.
 ## Client lifecycle
 
 `close()` stops new operations (`"DB"`, "client is closed"), waits for running
-ones, then closes the store. Repeated calls share one promise; if closing the
+ones, then closes the store. It does not wait for access writes started by
+tracked recalls. Repeated calls share one promise; if closing the
 store fails, the client reopens so it can be retried.

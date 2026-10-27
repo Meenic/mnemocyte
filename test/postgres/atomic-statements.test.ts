@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createPostgresStore } from "../../src/memory/postgres.js";
 import { createUuidV7 } from "../../src/memory/records.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
 interface RecordedQuery {
 	sql: string;
@@ -102,5 +102,18 @@ describe("Postgres single-statement writes", () => {
 			expect(query.params).toContain("alice");
 			expect(query.params).not.toContain("mem_legacy");
 		}
+	});
+
+	test("locks access rows in id order and leaves updated_at alone", async () => {
+		const { executor, queries } = createRecordingExecutor([]);
+		const store = createPostgresStore(executor);
+
+		await store.markMemoriesAccessed("alice", [createUuidV7(), createUuidV7()]);
+
+		expect(queries).toHaveLength(1);
+		const sql = expectDefined(queries[0]).sql;
+		expect(sql).toMatch(/ORDER BY id\s+FOR UPDATE/);
+		expect(sql).not.toContain("updated_at");
+		expect(sql).not.toContain("RETURNING");
 	});
 });

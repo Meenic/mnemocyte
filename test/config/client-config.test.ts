@@ -17,13 +17,12 @@ const validEmbedder = {
 	},
 };
 
-const retrievalWeightKeys = [
-	"vector",
-	"lexical",
-	"recency",
-	"confidence",
-	"access",
-	"importance",
+const retrievalNumberFields = [
+	["fusion", "k"],
+	["fusion", "vector"],
+	["fusion", "lexical"],
+	["boosts", "recency"],
+	["boosts", "importance"],
 ] as const;
 
 function expectConfigError(action: () => unknown, code: MnemocyteErrorCode) {
@@ -98,49 +97,38 @@ describe("client configuration", () => {
 		);
 	});
 
-	test.each(retrievalWeightKeys)(
-		"rejects a negative %s retrieval weight as CONFIG",
-		(key) => {
-			expectConfigError(
-				() =>
-					createMnemocyte({
-						embedder: validEmbedder,
-						retrieval: { weights: { [key]: -1 } },
-					}),
-				"CONFIG",
-			);
-		},
-	);
-
-	test.each(retrievalWeightKeys)(
-		"rejects a non-finite %s retrieval weight as CONFIG",
-		(key) => {
-			expectConfigError(
-				() =>
-					createMnemocyte({
-						embedder: validEmbedder,
-						retrieval: { weights: { [key]: Number.NaN } },
-					}),
-				"CONFIG",
-			);
-		},
-	);
-
-	test("rejects an effective retrieval weight total of zero as CONFIG", () => {
+	test.each(
+		retrievalNumberFields.flatMap(([group, key]) =>
+			[-1, Number.NaN, Number.POSITIVE_INFINITY].map(
+				(value) => [group, key, value] as const,
+			),
+		),
+	)("rejects retrieval.%s.%s=%s as CONFIG", (group, key, value) => {
 		expectConfigError(
 			() =>
 				createMnemocyte({
 					embedder: validEmbedder,
-					retrieval: {
-						weights: {
-							vector: 0,
-							lexical: 0,
-							recency: 0,
-							confidence: 0,
-							access: 0,
-							importance: 0,
-						},
-					},
+					retrieval: { [group]: { [key]: value } },
+				}),
+			"CONFIG",
+		);
+	});
+
+	test("accepts zero for any single fusion weight, k or boost", () => {
+		for (const [group, key] of retrievalNumberFields) {
+			createMnemocyte({
+				embedder: validEmbedder,
+				retrieval: { [group]: { [key]: 0 } },
+			});
+		}
+	});
+
+	test("rejects zero weight on both fusion lists as CONFIG", () => {
+		expectConfigError(
+			() =>
+				createMnemocyte({
+					embedder: validEmbedder,
+					retrieval: { fusion: { vector: 0, lexical: 0 } },
 				}),
 			"CONFIG",
 		);
@@ -150,9 +138,6 @@ describe("client configuration", () => {
 		["recencyHalfLifeDays", 0],
 		["recencyHalfLifeDays", -1],
 		["recencyHalfLifeDays", Number.POSITIVE_INFINITY],
-		["accessSaturation", 0],
-		["accessSaturation", -1],
-		["accessSaturation", Number.NaN],
 	] as const)("rejects invalid %s=%s as CONFIG", (field, value) => {
 		expectConfigError(
 			() =>

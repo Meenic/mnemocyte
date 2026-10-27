@@ -107,12 +107,10 @@ changes only on writes.
 1. Embed the query as a query.
 2. One `searchCandidates` call returns two ranked lists: vector (k nearest)
    and lexical (full-text), each with the same scope and filters.
-3. **Reciprocal rank fusion (RRF)**: `score = Σ 1 / (k + rank)` over the lists
-   a memory appears in, with `k = 60`. RRF uses positions, not raw scores, so
-   `ts_rank`, BM25 and cosine never have to share a scale, and backends with
-   different scoring still fuse the same way.
-4. Small, configurable boosts for recency and importance, then `limit`.
-5. Access tracking is opt-in, runs after the response is ready, ignores rows
+3. Reciprocal rank fusion with recency and importance boosts, then `limit`.
+   This has landed; see
+   [features/retrieval.md](./features/retrieval.md#fusion-and-boosts).
+4. Access tracking is opt-in, runs after the response is ready, ignores rows
    that disappeared, and never touches `updatedAt`.
 
 Postgres specifics: the vector query runs in a transaction with

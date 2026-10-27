@@ -93,11 +93,10 @@ describe("Postgres single-statement writes", () => {
 		const store = createPostgresStore(executor);
 		const id = createUuidV7();
 
-		await store.getMemoryEmbeddings("alice", [id, "mem_legacy"]);
-		await store.markMemoriesAccessed("alice", [id]);
+		await store.markMemoriesAccessed("alice", [id, "mem_legacy"]);
 		expect(await store.deleteMemory("alice", "mem_legacy")).toBe(false);
 
-		expect(queries).toHaveLength(2);
+		expect(queries).toHaveLength(1);
 		for (const query of queries) {
 			expect(query.sql).toContain("entity_id = $");
 			expect(query.params).toContain("alice");

@@ -23,10 +23,11 @@ import type {
 	RecallInput,
 	RememberInput,
 	RememberManyInput,
+	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
+	RetrievalFusionConfig,
 	RetrievalScores,
-	RetrievalScoreWeights,
 	TokenCounter,
 } from "mnemocyte";
 import { createMnemocyte, MnemocyteError, migrate } from "mnemocyte";
@@ -48,8 +49,9 @@ import {
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 
 const format: ContextFormat = "markdown";
-const weights: RetrievalScoreWeights = { vector: 1 };
-const retrieval: RetrievalConfig = { weights };
+const fusion: RetrievalFusionConfig = { k: 60, lexical: 0.5 };
+const boosts: RetrievalBoosts = { recency: 0 };
+const retrieval: RetrievalConfig = { fusion, boosts };
 const counter: TokenCounter = { count: (text) => text.length };
 const embedder: Embedder = {
 	model: "exports-types",
@@ -101,30 +103,19 @@ const context: BuildContextInput = {
 	tokenCounter: counter,
 };
 const scores: RetrievalScores = {
+	vectorRank: 1,
+	lexicalRank: null,
 	vector: 1,
-	lexical: 0,
-	recency: 0,
-	confidence: 1,
-	access: 0,
+	lexical: null,
+	fused: 0.5,
+	recency: 1,
 	importance: 0.5,
 };
 const explanation: RetrievalExplanation = {
-	vectorScore: scores.vector,
-	lexicalScore: scores.lexical,
-	recencyScore: scores.recency,
-	confidenceScore: scores.confidence,
-	accessScore: scores.access,
-	importanceScore: scores.importance,
-	importanceBoost: 0,
-	weights: {
-		vector: 1,
-		lexical: 0,
-		recency: 0,
-		confidence: 0,
-		access: 0,
-		importance: 0,
-	},
-	finalScore: 1,
+	fusion: { k: 60, vector: 1, lexical: 1 },
+	boosts: { recency: 0.1, importance: 0.1 },
+	boostFactor: 1,
+	finalScore: scores.fused,
 };
 
 const findDuplicates: FindDuplicatesInput = {

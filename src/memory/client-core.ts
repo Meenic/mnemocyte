@@ -3,12 +3,12 @@ import { MnemocyteError } from "../errors.js";
 import { observe, observePrepared } from "../observability.js";
 import { throwIfAborted } from "../resilience.js";
 import {
-	cosineSimilarity,
-	createLexicalScorer,
+	compareScoredMemories,
 	createScoringConfig,
 	DEFAULT_CANDIDATE_MULTIPLIER,
-	toScoredMemoryWithConfig,
-	toVectorScore,
+	type FusionCandidate,
+	rankByScore,
+	toScoredMemory,
 } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
@@ -58,12 +58,6 @@ import {
 	validateRecallInput,
 	validateRememberInput,
 } from "./validation.js";
-
-interface ScoredCandidate {
-	memory: Memory;
-	vectorScore: number;
-	lexicalScore: number;
-}
 
 interface OperationMetadata {
 	entityId?: string;
@@ -467,60 +461,58 @@ export function createMemoryClient(
 				const candidateMultiplier =
 					config.retrieval?.candidateMultiplier ?? DEFAULT_CANDIDATE_MULTIPLIER;
 				const candidateLimit = Math.max(limit, limit * candidateMultiplier);
-				const scoreLexical = createLexicalScorer(input.query);
 				const scoringConfig = createScoringConfig(config.retrieval);
+				// A list with weight 0 cannot change the fused score, so its
+				// search is skipped instead of adding unranked candidates.
 				const [vectorCandidates, lexicalCandidates] = await Promise.all([
-					store.vectorSearch({
-						...input,
-						embedding: queryEmbedding,
-						limit: candidateLimit,
-						minVectorScore: 0,
-					}),
-					store.lexicalSearch({ ...input, limit: candidateLimit }),
+					scoringConfig.fusion.vector > 0
+						? store.vectorSearch({
+								...input,
+								embedding: queryEmbedding,
+								limit: candidateLimit,
+								minVectorScore: 0,
+							})
+						: [],
+					scoringConfig.fusion.lexical > 0
+						? store.lexicalSearch({ ...input, limit: candidateLimit })
+						: [],
 				]);
-				const merged = new Map<string, ScoredCandidate>();
-				for (const candidate of vectorCandidates) {
+				const merged = new Map<string, FusionCandidate>();
+				const vectorRanks = rankByScore(
+					vectorCandidates.map((candidate) => candidate.vectorScore),
+				);
+				vectorCandidates.forEach((candidate, index) => {
 					merged.set(candidate.memory.id, {
 						memory: candidate.memory,
+						vectorRank: vectorRanks[index] ?? null,
+						lexicalRank: null,
 						vectorScore: candidate.vectorScore,
-						lexicalScore: scoreLexical(candidate.memory.content),
+						lexicalScore: null,
 					});
-				}
-				const lexicalOnly = lexicalCandidates.filter(
-					(candidate) => !merged.has(candidate.memory.id),
+				});
+				const lexicalRanks = rankByScore(
+					lexicalCandidates.map((candidate) => candidate.lexicalScore),
 				);
-				const lexicalOnlyEmbeddings = await store.getMemoryEmbeddings(
-					input.entityId,
-					lexicalOnly.map((candidate) => candidate.memory.id),
-				);
-				for (const candidate of lexicalCandidates) {
+				lexicalCandidates.forEach((candidate, index) => {
+					const lexicalRank = lexicalRanks[index] ?? null;
 					const existing = merged.get(candidate.memory.id);
 					if (existing) {
+						existing.lexicalRank = lexicalRank;
 						existing.lexicalScore = candidate.lexicalScore;
-						continue;
+						return;
 					}
-					const embedding = lexicalOnlyEmbeddings.get(candidate.memory.id);
-					const similarity = embedding
-						? cosineSimilarity(embedding, queryEmbedding)
-						: 0;
 					merged.set(candidate.memory.id, {
 						memory: candidate.memory,
-						vectorScore: toVectorScore(similarity),
+						vectorRank: null,
+						lexicalRank,
+						vectorScore: null,
 						lexicalScore: candidate.lexicalScore,
 					});
-				}
+				});
 				const scored: MemoryWithScore[] = Array.from(merged.values())
-					.map((entry) =>
-						toScoredMemoryWithConfig(
-							entry.memory,
-							Math.max(0, entry.vectorScore),
-							Math.max(0, entry.lexicalScore),
-							input,
-							scoringConfig,
-						),
-					)
+					.map((candidate) => toScoredMemory(candidate, input, scoringConfig))
 					.filter((memory) => memory.score >= minScore)
-					.sort((a, b) => b.score - a.score)
+					.sort(compareScoredMemories)
 					.slice(0, limit);
 				const accessUpdates = normalizeStoreRows(
 					scored,

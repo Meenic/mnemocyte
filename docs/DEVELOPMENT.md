@@ -66,7 +66,7 @@ src/
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
     migrations/         Postgres migration runner and bundled.ts (generated)
-  retrieval/scorer.ts   cosine, lexical overlap, weighted scoring
+  retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              buildContext, formatters, token budget
   embedders/            openaiEmbedder (fetch only)
   stores/drizzle.ts     drizzleStore(db)

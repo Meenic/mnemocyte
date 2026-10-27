@@ -4,8 +4,9 @@ import type {
 	Memory,
 	MemoryWithScore,
 	RecallInput,
+	RetrievalBoosts,
 	RetrievalConfig,
-	RetrievalScoreWeights,
+	RetrievalFusionConfig,
 } from "../types.js";
 
 const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
@@ -15,25 +16,36 @@ const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
 	critical: 1,
 };
 
-export const DEFAULT_RETRIEVAL_WEIGHTS: Readonly<
-	Required<RetrievalScoreWeights>
-> = {
-	vector: 0.55,
-	lexical: 0.2,
+export const DEFAULT_FUSION: Readonly<Required<RetrievalFusionConfig>> = {
+	k: 60,
+	vector: 1,
+	lexical: 1,
+};
+
+export const DEFAULT_BOOSTS: Readonly<Required<RetrievalBoosts>> = {
 	recency: 0.1,
-	confidence: 0.05,
-	access: 0.05,
-	importance: 0.05,
+	importance: 0.1,
 };
 
 const DEFAULT_RECENCY_HALF_LIFE_DAYS = 90;
-const DEFAULT_ACCESS_SATURATION = 10;
 export const DEFAULT_CANDIDATE_MULTIPLIER = 3;
 
 export interface ScoringConfig {
-	weights: Required<RetrievalScoreWeights>;
+	fusion: Required<RetrievalFusionConfig>;
+	boosts: Required<RetrievalBoosts>;
 	recencyHalfLifeDays: number;
-	accessSaturation: number;
+}
+
+/**
+ * A memory's position in each candidate list. Ranks are 1-based; `null`
+ * means the memory is not in that list.
+ */
+export interface FusionCandidate {
+	memory: Memory;
+	vectorRank: number | null;
+	lexicalRank: number | null;
+	vectorScore: number | null;
+	lexicalScore: number | null;
 }
 
 export function cosineSimilarity(
@@ -90,37 +102,52 @@ export function toVectorScore(cosineSimilarity: number): number {
 	return clampScore(cosineSimilarity);
 }
 
-function normalizeWeights(
-	weights: RetrievalScoreWeights | undefined,
-): Required<RetrievalScoreWeights> {
-	const merged = { ...DEFAULT_RETRIEVAL_WEIGHTS, ...weights };
-	const total =
-		merged.vector +
-		merged.lexical +
-		merged.recency +
-		merged.confidence +
-		merged.access +
-		merged.importance;
-	if (total <= 0) {
-		return { ...DEFAULT_RETRIEVAL_WEIGHTS };
-	}
+export function createScoringConfig(config?: RetrievalConfig): ScoringConfig {
 	return {
-		vector: merged.vector / total,
-		lexical: merged.lexical / total,
-		recency: merged.recency / total,
-		confidence: merged.confidence / total,
-		access: merged.access / total,
-		importance: merged.importance / total,
+		fusion: { ...DEFAULT_FUSION, ...config?.fusion },
+		boosts: { ...DEFAULT_BOOSTS, ...config?.boosts },
+		recencyHalfLifeDays:
+			config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
 	};
 }
 
-export function createScoringConfig(config?: RetrievalConfig): ScoringConfig {
-	return {
-		weights: normalizeWeights(config?.weights),
-		recencyHalfLifeDays:
-			config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
-		accessSaturation: config?.accessSaturation ?? DEFAULT_ACCESS_SATURATION,
-	};
+/**
+ * Assigns 1-based competition ranks ("1224") to a list already sorted by
+ * decreasing score, so equal scores share a rank whatever order the store
+ * returned them in.
+ */
+export function rankByScore(scores: readonly number[]): number[] {
+	const ranks: number[] = [];
+	for (let i = 0; i < scores.length; i += 1) {
+		const previousRank = ranks[i - 1];
+		ranks.push(
+			previousRank !== undefined && scores[i] === scores[i - 1]
+				? previousRank
+				: i + 1,
+		);
+	}
+	return ranks;
+}
+
+/**
+ * Weighted reciprocal rank fusion, `Σ w / (k + rank)` over the lists the
+ * memory appears in, divided by the score of rank 1 in every list so the
+ * result is in `[0, 1]`.
+ */
+export function fusedScore(
+	vectorRank: number | null,
+	lexicalRank: number | null,
+	fusion: Required<RetrievalFusionConfig>,
+): number {
+	const best = (fusion.vector + fusion.lexical) / (fusion.k + 1);
+	let score = 0;
+	if (vectorRank !== null) {
+		score += fusion.vector / (fusion.k + vectorRank);
+	}
+	if (lexicalRank !== null) {
+		score += fusion.lexical / (fusion.k + lexicalRank);
+	}
+	return clampScore(score / best);
 }
 
 function recencyScore(createdAt: Date, halfLifeDays: number): number {
@@ -129,60 +156,59 @@ function recencyScore(createdAt: Date, halfLifeDays: number): number {
 	return Math.exp((-Math.LN2 * ageDays) / halfLifeDays);
 }
 
-function accessScore(accessCount: number, saturation: number): number {
-	if (accessCount <= 0) {
-		return 0;
-	}
-	return Math.min(1, Math.log1p(accessCount) / Math.log1p(saturation));
-}
-
-export function toScoredMemoryWithConfig(
-	memory: Memory,
-	vector: number,
-	lexical: number,
+export function toScoredMemory(
+	candidate: FusionCandidate,
 	input: RecallInput,
 	config: ScoringConfig,
 ): MemoryWithScore {
-	const { weights } = config;
+	const { memory } = candidate;
+	const { fusion, boosts } = config;
+	const fused = fusedScore(candidate.vectorRank, candidate.lexicalRank, fusion);
 	const recency = recencyScore(memory.createdAt, config.recencyHalfLifeDays);
-	const confidence = clampScore(memory.confidence);
-	const access = accessScore(memory.accessCount, config.accessSaturation);
 	const importance = IMPORTANCE_SCORES[memory.importance];
-	const score = Math.max(
-		0,
-		Math.min(
-			1,
-			clampScore(vector) * weights.vector +
-				clampScore(lexical) * weights.lexical +
-				recency * weights.recency +
-				confidence * weights.confidence +
-				access * weights.access +
-				importance * weights.importance,
-		),
-	);
+	// Boosts scale the fused score instead of adding to it, so a memory that
+	// matched neither search well cannot rank high only for being new.
+	const boostFactor =
+		(1 + boosts.recency * recency + boosts.importance * importance) /
+		(1 + boosts.recency + boosts.importance);
+	const score = clampScore(fused * boostFactor);
 	return {
 		...cloneMemory(memory),
 		score,
 		scores: {
-			vector: clampScore(vector),
-			lexical: clampScore(lexical),
+			vectorRank: candidate.vectorRank,
+			lexicalRank: candidate.lexicalRank,
+			vector:
+				candidate.vectorScore === null
+					? null
+					: clampScore(candidate.vectorScore),
+			lexical: candidate.lexicalScore,
+			fused,
 			recency,
-			confidence,
-			access,
 			importance,
 		},
 		explanation: input.explain
 			? {
-					vectorScore: clampScore(vector),
-					lexicalScore: clampScore(lexical),
-					recencyScore: recency,
-					confidenceScore: confidence,
-					accessScore: access,
-					importanceScore: importance,
-					importanceBoost: importance * weights.importance,
-					weights,
+					fusion: { ...fusion },
+					boosts: { ...boosts },
+					boostFactor,
 					finalScore: score,
 				}
 			: null,
 	};
+}
+
+/**
+ * Orders scored memories by decreasing score; ties go to the newer memory,
+ * then to the lower id, so the order does not depend on the stores.
+ */
+export function compareScoredMemories(
+	a: MemoryWithScore,
+	b: MemoryWithScore,
+): number {
+	return (
+		b.score - a.score ||
+		b.createdAt.getTime() - a.createdAt.getTime() ||
+		(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+	);
 }

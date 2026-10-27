@@ -37,6 +37,32 @@ behavioural changes documented in their entries.
   Statements never use named prepared statements, so transaction-mode poolers
   work without `prepare: false`.
 
+- **Breaking: recall ranks by reciprocal rank fusion.** The vector and
+  keyword searches are fused by rank (`Σ weight / (k + rank)`, `k = 60`)
+  instead of a weighted sum of raw scores, so a real full-text match on
+  Postgres no longer ranks below a substring coincidence, and both backends
+  fuse the same way. Recency and importance now scale the fused score
+  instead of adding to it; `confidence` and `accessCount` no longer affect
+  ranking. `score` stays between 0 and 1 but values change: a memory found
+  by only one search scores at most 0.5, so revisit any `minScore`. When the
+  keyword search finds memories the vector search missed, recall no longer
+  loads their embeddings in a second query.
+- **Breaking: retrieval config and scores.** `retrieval.weights` and
+  `retrieval.accessSaturation` are replaced by
+  `retrieval.fusion: { k, vector, lexical }` and
+  `retrieval.boosts: { recency, importance }`; `RetrievalScoreWeights` is
+  replaced by `RetrievalFusionConfig` and `RetrievalBoosts`. `scores` now
+  has `vectorRank`, `lexicalRank`, `vector`, `lexical` (`null` when the
+  memory is not in that list), `fused`, `recency` and `importance`;
+  `explanation` has `fusion`, `boosts`, `boostFactor` and `finalScore`.
+
+  ```ts
+  // before
+  retrieval: { weights: { vector: 0.7, lexical: 0.3 } }
+  // after
+  retrieval: { fusion: { vector: 0.7, lexical: 0.3 } }
+  ```
+
 ### Removed
 
 - **Breaking: `databaseUrl`.** Create the client yourself and pass it in.

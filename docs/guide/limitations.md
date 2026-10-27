@@ -28,10 +28,10 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 
 ## Retrieval
 
-- **Keyword scores are on different scales on Postgres.** Full-text matches
-  and substring matches are scored differently, so a real keyword match can
-  rank below a coincidental one, and the two backends can rank the same data
-  differently. Planned: reciprocal rank fusion (`fix/hybrid-fusion`).
+- **Keyword search differs by backend.** Postgres uses English full-text
+  search (stemming, stop words); the in-memory store matches query words as
+  substrings. Both fuse ranks the same way, but they can find different
+  keyword matches, so results for the same data can differ.
 - **Selective filters can return too few results.** Filters are applied after
   the approximate vector search, so a narrow `types` or `tags` filter can
   return fewer memories than exist. Planned: iterative index scans

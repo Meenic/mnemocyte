@@ -9,7 +9,6 @@ import {
 	getEntityMemoryStatsCounts,
 	getGlobalMemoryStatsCounts,
 	getMemoryById,
-	getMemoryEmbeddings as getMemoryEmbeddingsQuery,
 	insertMemories as insertMemoryRows,
 	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
@@ -379,15 +378,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 						}) satisfies StoreLexicalCandidate,
 				);
 			});
-		},
-		async getMemoryEmbeddings(entityId, memoryIds) {
-			return runPostgresOperation(() =>
-				getMemoryEmbeddingsQuery(
-					client,
-					entityScope(entityId),
-					uuidsOnly(memoryIds),
-				),
-			);
 		},
 		async markMemoriesAccessed(entityId, memoryIds) {
 			return runPostgresOperation(async () => {

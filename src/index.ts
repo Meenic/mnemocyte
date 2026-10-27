@@ -76,9 +76,10 @@ export type {
 	RecallInput,
 	RememberInput,
 	RememberManyInput,
+	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
+	RetrievalFusionConfig,
 	RetrievalScores,
-	RetrievalScoreWeights,
 	TokenCounter,
 } from "./types.js";

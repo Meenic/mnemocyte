@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../errors.js";
-import { DEFAULT_RETRIEVAL_WEIGHTS } from "../retrieval/scorer.js";
+import { DEFAULT_BOOSTS, DEFAULT_FUSION } from "../retrieval/scorer.js";
 import type {
 	AuditLogCursor,
 	BuildContextInput,
@@ -15,7 +15,6 @@ import type {
 	RecallInput,
 	RememberInput,
 	RetrievalConfig,
-	RetrievalScoreWeights,
 } from "../types.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
@@ -158,19 +157,22 @@ export function assertEmbedder(embedder: Embedder): void {
 	}
 }
 
-const RETRIEVAL_WEIGHT_KEYS = [
-	"vector",
-	"lexical",
-	"recency",
-	"confidence",
-	"access",
-	"importance",
-] as const satisfies readonly (keyof RetrievalScoreWeights)[];
-
 function assertPositiveFiniteConfigValue(value: number, field: string): void {
 	if (!Number.isFinite(value) || value <= 0) {
 		throw new MnemocyteError(
 			`${field} must be a positive finite number.`,
+			"CONFIG",
+		);
+	}
+}
+
+function assertNonNegativeFiniteConfigValue(
+	value: number,
+	field: string,
+): void {
+	if (!Number.isFinite(value) || value < 0) {
+		throw new MnemocyteError(
+			`${field} must be a non-negative finite number.`,
 			"CONFIG",
 		);
 	}
@@ -183,34 +185,25 @@ export function validateRetrievalConfig(
 		return;
 	}
 
-	let weightTotal = 0;
-	for (const key of RETRIEVAL_WEIGHT_KEYS) {
-		const weight = config.weights?.[key] ?? DEFAULT_RETRIEVAL_WEIGHTS[key];
-		if (!Number.isFinite(weight) || weight < 0) {
-			throw new MnemocyteError(
-				`retrieval.weights.${key} must be a non-negative finite number.`,
-				"CONFIG",
-			);
-		}
-		weightTotal += weight;
+	const fusion = { ...DEFAULT_FUSION, ...config.fusion };
+	for (const key of ["k", "vector", "lexical"] as const) {
+		assertNonNegativeFiniteConfigValue(fusion[key], `retrieval.fusion.${key}`);
 	}
-	if (weightTotal === 0) {
+	if (fusion.vector + fusion.lexical === 0) {
 		throw new MnemocyteError(
-			"retrieval.weights must have an effective total greater than zero.",
+			"retrieval.fusion.vector and retrieval.fusion.lexical must not both be zero.",
 			"CONFIG",
 		);
+	}
+	const boosts = { ...DEFAULT_BOOSTS, ...config.boosts };
+	for (const key of ["recency", "importance"] as const) {
+		assertNonNegativeFiniteConfigValue(boosts[key], `retrieval.boosts.${key}`);
 	}
 
 	if (config.recencyHalfLifeDays !== undefined) {
 		assertPositiveFiniteConfigValue(
 			config.recencyHalfLifeDays,
 			"retrieval.recencyHalfLifeDays",
-		);
-	}
-	if (config.accessSaturation !== undefined) {
-		assertPositiveFiniteConfigValue(
-			config.accessSaturation,
-			"retrieval.accessSaturation",
 		);
 	}
 	if (

@@ -33,8 +33,6 @@ export async function verifyRecallAccessMetadata(
 	for (const memory of first) {
 		expect(memory.accessCount).toBe(1);
 		expect(memory.lastAccessedAt).toBeInstanceOf(Date);
-		expect(memory.scores.access).toBe(0);
-		expect(memory.explanation?.accessScore).toBe(0);
 		expect(memory.updatedAt).toEqual(memory.lastAccessedAt);
 	}
 
@@ -56,16 +54,10 @@ export async function verifyRecallAccessMetadata(
 		limit: 2,
 		explain: true,
 	});
-	const preSecondRecallAccessScore = Math.log1p(1) / Math.log1p(10);
 	expect(second).toHaveLength(2);
 	for (const memory of second) {
 		expect(memory.accessCount).toBe(2);
 		expect(memory.lastAccessedAt).toBeInstanceOf(Date);
-		expect(memory.scores.access).toBeCloseTo(preSecondRecallAccessScore, 12);
-		expect(memory.explanation?.accessScore).toBeCloseTo(
-			preSecondRecallAccessScore,
-			12,
-		);
 		expect(memory.updatedAt).toEqual(memory.lastAccessedAt);
 	}
 

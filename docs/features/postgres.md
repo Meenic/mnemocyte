@@ -312,9 +312,6 @@ queries are not cancelled.
 
 Each one is a roadmap item in Phase 1 unless noted.
 
-- Lexical candidates are scored with `ts_rank`, vector-only candidates with a
-  substring scorer, so the two scales mix (see
-  [retrieval.md](./retrieval.md)).
 - Filters are applied after the HNSW scan and `hnsw.ef_search` stays at its
   default of 40, so filtered recall can return fewer matches than exist.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going

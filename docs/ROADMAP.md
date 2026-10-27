@@ -65,7 +65,7 @@ None.
 - [x] `feat/migrate-runner`: exported `migrate()` with tracking table,
   advisory lock and one transaction per migration; README and
   `docs/guide/postgres.md` install steps use it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
-- [ ] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
+- [x] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
   boosts; Postgres ranking tests (none exist today, which is how the
   `ts_rank`/substring scale mix went unnoticed).
 - [ ] `fix/access-tracking`: opt-in, after the response, tolerant of deleted

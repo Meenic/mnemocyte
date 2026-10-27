@@ -234,17 +234,6 @@ export interface MemoryStore {
 		input: StoreLexicalSearchInput,
 	): Promise<StoreLexicalCandidate[]>;
 	/**
-	 * Returns available embeddings for the requested IDs of the entity, keyed by
-	 * memory ID. Missing memories, memories of another entity and memories
-	 * without an embedding are omitted. Returned vectors are detached from
-	 * stored state, and input or map iteration order is not part of the
-	 * contract.
-	 */
-	getMemoryEmbeddings(
-		entityId: string,
-		memoryIds: readonly string[],
-	): Promise<Map<string, number[]>>;
-	/**
 	 * Increments access state exactly once for each requested stored memory of
 	 * the entity and returns one record per ID containing its post-update `accessCount`,
 	 * `lastAccessedAt`, and `updatedAt`. Return order is untrusted and normalized

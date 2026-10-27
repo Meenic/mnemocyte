@@ -219,9 +219,9 @@ describe("Postgres vector correctness", () => {
 					limit: 2,
 				});
 				expect(recalled).toHaveLength(2);
-				expect(recalled.every((memory) => memory.scores.vector >= 0.99)).toBe(
-					true,
-				);
+				expect(
+					recalled.every((memory) => (memory.scores.vector ?? 0) >= 0.99),
+				).toBe(true);
 				const tinyQueryVector = `[1e-20,${Array.from(
 					{ length: 1535 },
 					() => "0",

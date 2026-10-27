@@ -33,18 +33,8 @@ describe("retrieval quality", () => {
 					testCase.expectedTopContent,
 				);
 				expect(results[0]?.explanation, testCase.name).toBeTruthy();
-				expect(
-					results[0]?.scores.confidence !== undefined,
-					testCase.name,
-				).toBeTruthy();
-				expect(
-					results[0]?.scores.access !== undefined,
-					testCase.name,
-				).toBeTruthy();
-				expect(
-					results[0]?.scores.importance !== undefined,
-					testCase.name,
-				).toBeTruthy();
+				expect(results[0]?.scores.vectorRank, testCase.name).toBe(1);
+				expect(results[0]?.scores.lexicalRank, testCase.name).toBe(1);
 			} finally {
 				await client.close();
 			}
@@ -73,24 +63,20 @@ describe("retrieval quality", () => {
 				expect(result).toBeTruthy();
 				const scoredMemory = expectDefined(result);
 				const explanation = expectDefined(scoredMemory.explanation);
-				expect(explanation.lexicalScore).toBe(2 / 3);
-				expect(explanation.weights).toEqual({
-					vector: 0.55,
-					lexical: 0.2,
-					recency: 0.1,
-					confidence: 0.05,
-					access: 0.05,
-					importance: 0.05,
-				});
-				const expectedFinalScore =
-					scoredMemory.scores.vector * explanation.weights.vector +
-					scoredMemory.scores.lexical * explanation.weights.lexical +
-					scoredMemory.scores.recency * explanation.weights.recency +
-					scoredMemory.scores.confidence * explanation.weights.confidence +
-					scoredMemory.scores.access * explanation.weights.access +
-					scoredMemory.scores.importance * explanation.weights.importance;
-				expect(Math.abs(scoredMemory.score - expectedFinalScore)).toBeLessThan(
-					1e-12,
+				const { scores } = scoredMemory;
+				expect(scores.lexical).toBe(2 / 3);
+				expect(scores.vectorRank).toBe(1);
+				expect(scores.lexicalRank).toBe(1);
+				expect(scores.fused).toBe(1);
+				expect(scores.importance).toBe(0.8);
+				expect(explanation.fusion).toEqual({ k: 60, vector: 1, lexical: 1 });
+				expect(explanation.boosts).toEqual({ recency: 0.1, importance: 0.1 });
+				const expectedBoostFactor =
+					(1 + 0.1 * scores.recency + 0.1 * scores.importance) / 1.2;
+				expect(explanation.boostFactor).toBeCloseTo(expectedBoostFactor, 12);
+				expect(scoredMemory.score).toBeCloseTo(
+					scores.fused * expectedBoostFactor,
+					12,
 				);
 				expect(explanation.finalScore).toBe(scoredMemory.score);
 			} finally {
@@ -99,7 +85,7 @@ describe("retrieval quality", () => {
 		}
 	});
 
-	test("clamps negative cosine candidates before final-score filtering", async () => {
+	test("clamps negative cosine scores and ranks equal scores together", async () => {
 		const vectorByText = new Map<string, number[]>([
 			["positive", [1, 0]],
 			["orthogonal", [0, 1]],
@@ -141,17 +127,23 @@ describe("retrieval quality", () => {
 			expect(vectorScores.get("orthogonal")).toBe(0);
 			expect(vectorScores.get("slightly-negative")).toBe(0);
 			expect(vectorScores.get("opposite")).toBe(0);
-			expect(
-				all
-					.filter((memory) => memory.content !== "positive")
-					.every((memory) => memory.score > 0),
-			).toBe(true);
+			expect(all.map((memory) => memory.scores.vectorRank)).toEqual([
+				1, 2, 2, 2,
+			]);
+			expect(all.every((memory) => memory.scores.lexicalRank === null)).toBe(
+				true,
+			);
+			const [first, second] = all;
+			expect(expectDefined(first).score).toBeGreaterThan(
+				expectDefined(second).score,
+			);
 
 			const finalScoreFiltered = await client.recall({
 				entityId: "signed",
 				query: "query",
 				limit: 4,
-				minScore: 0.2,
+				minScore:
+					(expectDefined(first).score + expectDefined(second).score) / 2,
 			});
 			expect(finalScoreFiltered.map((memory) => memory.content)).toEqual([
 				"positive",

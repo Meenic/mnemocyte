@@ -341,7 +341,7 @@ export interface Memory {
 	source: string | null;
 	/** JSON-compatible metadata persisted by value alongside the memory. */
 	metadata: JsonObject;
-	/** Confidence in `[0, 1]`. Used in retrieval ranking. */
+	/** Confidence in `[0, 1]`. Stored for callers; recall does not rank by it. */
 	confidence: number;
 	/** {@link Embedder.model} value at write time. */
 	embeddingModel: string;
@@ -369,43 +369,54 @@ export interface Memory {
 }
 
 /**
- * Per-component scores produced during retrieval ranking. Each value is
- * normalised to `[0, 1]` before being combined via
- * {@link RetrievalScoreWeights}.
+ * Per-component values behind a recall result's
+ * {@link MemoryWithScore.score}. Ranks are 1-based positions in each
+ * candidate list; a memory missing from a list has `null` for that list's
+ * rank and score.
  */
 export interface RetrievalScores {
-	/** Cosine similarity between the query embedding and the memory embedding. */
-	vector: number;
-	/** Token-overlap (lexical) score between query and memory content. */
-	lexical: number;
-	/** Time-decay score based on {@link RetrievalConfig.recencyHalfLifeDays}. */
+	/** Position in the vector (nearest-neighbour) list, or `null`. */
+	vectorRank: number | null;
+	/** Position in the lexical (full-text) list, or `null`. */
+	lexicalRank: number | null;
+	/** Cosine similarity clamped to `[0, 1]`, or `null` when not in the vector list. */
+	vector: number | null;
+	/**
+	 * Backend-defined lexical score (`ts_rank` on Postgres, the fraction of
+	 * query terms found on the in-memory store), or `null` when not in the
+	 * lexical list. Only comparable within one recall on one backend.
+	 */
+	lexical: number | null;
+	/** Reciprocal rank fusion score in `[0, 1]`, before boosts. */
+	fused: number;
+	/** Time-decay score in `[0, 1]` based on {@link RetrievalConfig.recencyHalfLifeDays}. */
 	recency: number;
-	/** Pass-through of the memory's stored `confidence`. */
-	confidence: number;
-	/** Saturating score derived from `accessCount`. */
-	access: number;
-	/** Score derived from {@link ImportanceLevel}. */
+	/** Score in `[0, 1]` derived from {@link ImportanceLevel}. */
 	importance: number;
 }
 
 /**
- * Optional overrides for the per-component retrieval weights. Missing keys
- * fall back to library defaults. Weights must be finite and non-negative, and
- * their effective total must be greater than zero. They need not sum to 1;
- * the final score is computed as a weighted sum of {@link RetrievalScores}.
+ * Reciprocal rank fusion settings. Each list contributes
+ * `weight / (k + rank)`; the sum is divided by its best possible value.
  */
-export interface RetrievalScoreWeights {
-	/** Non-negative finite weight applied to {@link RetrievalScores.vector}. */
+export interface RetrievalFusionConfig {
+	/** Non-negative finite rank constant. Larger values flatten rank differences. @defaultValue `60` */
+	k?: number;
+	/** Non-negative finite weight of the vector list. `0` skips the vector search. @defaultValue `1` */
 	vector?: number;
-	/** Non-negative finite weight applied to {@link RetrievalScores.lexical}. */
+	/** Non-negative finite weight of the lexical list. `0` skips the lexical search. @defaultValue `1` */
 	lexical?: number;
-	/** Non-negative finite weight applied to {@link RetrievalScores.recency}. */
+}
+
+/**
+ * Boosts that scale the fused score by
+ * `(1 + recency × recencyScore + importance × importanceScore) / (1 + recency + importance)`.
+ * `0` turns a boost off.
+ */
+export interface RetrievalBoosts {
+	/** Non-negative finite strength of the recency boost. @defaultValue `0.1` */
 	recency?: number;
-	/** Non-negative finite weight applied to {@link RetrievalScores.confidence}. */
-	confidence?: number;
-	/** Non-negative finite weight applied to {@link RetrievalScores.access}. */
-	access?: number;
-	/** Non-negative finite weight applied to {@link RetrievalScores.importance}. */
+	/** Non-negative finite strength of the importance boost. @defaultValue `0.1` */
 	importance?: number;
 }
 
@@ -414,43 +425,33 @@ export interface RetrievalScoreWeights {
  * used for any field that is omitted.
  */
 export interface RetrievalConfig {
-	/** Per-component score weights. See {@link RetrievalScoreWeights}. */
-	weights?: RetrievalScoreWeights;
-	/** Positive finite half-life (days) for the time-decay recency component. */
+	/** Reciprocal rank fusion settings. See {@link RetrievalFusionConfig}. */
+	fusion?: RetrievalFusionConfig;
+	/** Recency and importance boosts. See {@link RetrievalBoosts}. */
+	boosts?: RetrievalBoosts;
+	/** Positive finite half-life (days) for the recency score. @defaultValue `90` */
 	recencyHalfLifeDays?: number;
-	/** Positive finite access count at which the access score is saturated. */
-	accessSaturation?: number;
 	/**
 	 * Multiplier applied to {@link RecallInput.limit} to determine how many
-	 * candidates are fetched from the underlying store before re-ranking.
-	 * Must be an integer greater than or equal to 1.
+	 * candidates each search fetches before fusion.
+	 * Must be an integer greater than or equal to 1. @defaultValue `3`
 	 */
 	candidateMultiplier?: number;
 }
 
 /**
- * Detailed scoring breakdown attached to each {@link MemoryWithScore} when
- * {@link RecallInput.explain} is `true`. Useful for debugging ranking and
- * tuning {@link RetrievalConfig}.
+ * Scoring settings attached to each {@link MemoryWithScore} when
+ * {@link RecallInput.explain} is `true`. Together with
+ * {@link MemoryWithScore.scores} they reproduce the final score.
  */
 export interface RetrievalExplanation {
-	/** Raw vector similarity in `[0, 1]`. */
-	vectorScore: number;
-	/** Raw lexical-overlap score in `[0, 1]`. */
-	lexicalScore: number;
-	/** Raw recency score in `[0, 1]`. */
-	recencyScore: number;
-	/** Raw confidence score in `[0, 1]`. */
-	confidenceScore: number;
-	/** Raw access score in `[0, 1]`. */
-	accessScore: number;
-	/** Raw importance score in `[0, 1]`. */
-	importanceScore: number;
-	/** Additive multiplier applied for high-importance memories. */
-	importanceBoost: number;
-	/** Effective weights used for this query (defaults filled in). */
-	weights: Required<RetrievalScoreWeights>;
-	/** Final combined score — same value as {@link MemoryWithScore.score}. */
+	/** Effective fusion settings (defaults filled in). */
+	fusion: Required<RetrievalFusionConfig>;
+	/** Effective boosts (defaults filled in). */
+	boosts: Required<RetrievalBoosts>;
+	/** Factor in `(0, 1]` applied to {@link RetrievalScores.fused}. */
+	boostFactor: number;
+	/** Final score — same value as {@link MemoryWithScore.score}. */
 	finalScore: number;
 }
 
@@ -459,7 +460,7 @@ export interface RetrievalExplanation {
  * with retrieval scores.
  */
 export interface MemoryWithScore extends Memory {
-	/** Final combined relevance score. Higher is better. */
+	/** Final relevance score in `[0, 1]`: the fused score times the boost factor. Higher is better. */
 	score: number;
 	/** Per-component scores that produced {@link MemoryWithScore.score}. */
 	scores: RetrievalScores;

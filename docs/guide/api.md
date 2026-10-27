@@ -134,14 +134,14 @@ const results = await client.recall({
 | `includeExpired` | `false` | Include memories past `expiresAt`. |
 | `explain` | `false` | Attach a score breakdown to each result. |
 
-Recall combines a vector search and a lexical (keyword) search, merges the
-candidates and ranks them by a weighted score (see
-[retrieval tuning](#retrieval-tuning)). Each result carries `score` and
-`scores`, plus `explanation` when `explain` is set.
+Recall runs a vector search and a lexical (keyword) search, fuses the two
+rankings and applies small recency and importance boosts (see
+[retrieval tuning](#retrieval-tuning)). Each result carries `score` (0 to 1)
+and `scores`, plus `explanation` when `explain` is set.
 
 Every recall increments `accessCount` and sets `lastAccessedAt` and
-`updatedAt` on the returned memories. Ranking uses the counts from before the
-call; the returned records show the values after it.
+`updatedAt` on the returned memories; the returned records show the values
+after the call. Access counts do not affect ranking.
 
 ## `buildContext`
 
@@ -328,34 +328,42 @@ twice is safe.
 const client = createMnemocyte({
   embedder,
   retrieval: {
-    weights: {
-      vector: 0.55,
-      lexical: 0.2,
-      recency: 0.1,
-      confidence: 0.05,
-      access: 0.05,
-      importance: 0.05,
-    },
+    fusion: { k: 60, vector: 1, lexical: 1 },
+    boosts: { recency: 0.1, importance: 0.1 },
     recencyHalfLifeDays: 90,
-    accessSaturation: 10,
     candidateMultiplier: 3,
   },
 });
 ```
 
-The values above are the defaults. The score is a weighted sum of six
-components, each between 0 and 1:
+The values above are the defaults. Ranking uses reciprocal rank fusion
+(RRF): each search returns a ranked list, and a memory scores
+`weight / (k + rank)` in each list it appears in. Positions are compared, not
+raw scores, so keyword and vector scores never have to share a scale.
 
-- `vector`: cosine similarity between the query and the memory.
-- `lexical`: keyword match between the query and the content.
-- `recency`: halves every `recencyHalfLifeDays` since creation.
-- `confidence`: the memory's `confidence`.
-- `access`: grows with `accessCount`, reaching 1 at `accessSaturation`.
-- `importance`: low 0, normal 0.5, high 0.8, critical 1.
+- `fusion.vector`, `fusion.lexical`: how much each list counts. Set one to 0
+  to turn that search off.
+- `fusion.k`: larger values make rank differences matter less.
+- `boosts.recency`, `boosts.importance`: scale the fused score up for newer
+  memories (halving every `recencyHalfLifeDays`) and for higher importance
+  (low 0, normal 0.5, high 0.8, critical 1). They multiply, so they reorder
+  close matches but never lift a poor match. Set to 0 to turn one off.
+- `candidateMultiplier`: each search fetches `limit × candidateMultiplier`
+  memories before fusion.
 
-Weights are normalized to sum to 1; they must be finite, non-negative and not
-all zero. `candidateMultiplier` sets how many candidates each search fetches
-(`limit × candidateMultiplier`). Invalid values throw `"CONFIG"`.
+`score` is between 0 and 1: 1 means first in both searches with full boosts;
+a memory found by only one search scores at most 0.5. `confidence` and
+`accessCount` do not affect ranking.
+
+`scores` on each result has `vectorRank` and `lexicalRank` (1-based, `null`
+when the memory is not in that list), `vector` (cosine similarity) and
+`lexical` (the backend's keyword score; `ts_rank` on Postgres), each `null`
+when not in that list, and `fused`, `recency` and `importance`, each between
+0 and 1. With `explain: true`, `explanation` adds the effective `fusion` and
+`boosts`, the `boostFactor` and `finalScore`.
+
+Fusion weights, `k` and boosts must be finite and non-negative, and the two
+fusion weights must not both be 0. Invalid values throw `"CONFIG"`.
 
 ## Errors
 

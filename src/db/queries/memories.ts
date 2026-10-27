@@ -10,7 +10,7 @@ import {
 	type VectorType,
 } from "../rows.js";
 import { createSqlParams, type SqlParams } from "../sql.js";
-import { formatVector, parseVector } from "../vector.js";
+import { formatVector } from "../vector.js";
 
 export interface MemoryFilter {
 	scope: StoreScope;
@@ -732,26 +732,6 @@ export async function markMemoriesAccessed(
 	}));
 }
 
-export async function getMemoryEmbeddings(
-	db: SqlExecutor,
-	scope: StoreScope,
-	memoryIds: readonly string[],
-): Promise<Map<string, number[]>> {
-	if (memoryIds.length === 0) {
-		return new Map();
-	}
-	const params = createSqlParams();
-	const rows = await db.query<{ id: string; embedding: string }>(
-		`SELECT id::text AS id, embedding::text AS embedding
-		FROM mnemocyte_memories
-		WHERE ${scopeConditions(params, scope)}
-			AND id IN (${params.uuidList(memoryIds)})
-			AND embedding IS NOT NULL`,
-		params.values,
-	);
-	return new Map(rows.map((row) => [row.id, parseVector(row.embedding)]));
-}
-
 export async function vectorSearch(
 	db: SqlExecutor,
 	input: VectorSearchInput,
@@ -795,7 +775,7 @@ export async function lexicalSearch(
 		FROM mnemocyte_memories
 		WHERE ${filters}
 			AND content_tsv @@ ${query}
-		ORDER BY "lexicalScore" DESC
+		ORDER BY "lexicalScore" DESC, id
 		LIMIT ${params.add(input.limit)}`,
 		params.values,
 	);

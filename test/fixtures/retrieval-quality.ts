@@ -42,15 +42,8 @@ export const testEmbedder: Embedder = {
 };
 
 export const retrievalConfig: RetrievalConfig = {
-	weights: {
-		vector: 0.4,
-		lexical: 0.25,
-		recency: 0.05,
-		confidence: 0.1,
-		access: 0.05,
-		importance: 0.15,
-	},
-	accessSaturation: 3,
+	fusion: { k: 60, vector: 1, lexical: 1 },
+	boosts: { recency: 0.1, importance: 0.15 },
 	candidateMultiplier: 3,
 };
 

@@ -104,7 +104,7 @@ describe("Postgres hybrid ranking", () => {
 		const client = createMnemocyte({
 			store: postgresStore({ client: postgresJs(sql) }),
 			embedder: {
-				model: "mnemocyte-ranking-test",
+				model: "mnemocyte-integration-test",
 				dimensions: DIMENSIONS,
 				embed,
 			},

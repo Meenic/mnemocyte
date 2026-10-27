@@ -5,7 +5,7 @@ import { createMnemocyte } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError } from "../helpers.js";
 import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
@@ -342,12 +342,19 @@ describe("Postgres vector correctness", () => {
 						.filter((memory) => memory.content !== "positive")
 						.every((memory) => memory.score > 0),
 				).toBe(true);
+				// Clamped scores of 0 tie, so the three share vector rank 2.
+				expect(all.map((memory) => memory.scores.vectorRank)).toEqual([
+					1, 2, 2, 2,
+				]);
+				const [first, second] = all;
+				const threshold =
+					(expectDefined(first).score + expectDefined(second).score) / 2;
 
 				const finalScoreFiltered = await client.recall({
 					entityId,
 					query: "query",
 					limit: 4,
-					minScore: 0.2,
+					minScore: threshold,
 				});
 				expect(finalScoreFiltered.map((memory) => memory.content)).toEqual([
 					"positive",

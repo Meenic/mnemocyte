@@ -25,6 +25,40 @@ Configuration is validated synchronously; invalid values throw `"CONFIG"`.
 Without `store` the client keeps memories in process memory, which suits
 tests and prototypes. For persistent storage see [postgres.md](./postgres.md).
 
+## `migrate`
+
+```ts
+import { migrate } from "mnemocyte";
+
+const { applied, adopted } = await migrate({
+  store,             // from postgresStore() or drizzleStore()
+  dimensions: 1536,  // required on an empty database
+  signal,            // optional
+});
+```
+
+Creates or upgrades the Postgres schema and records each migration in
+`mnemocyte_migrations`. `applied` lists the migrations this call ran;
+`adopted` lists those it found already applied in a schema installed without
+`migrate` (with `psql` or drizzle-kit) and recorded without running. Calling
+it again applies nothing. Each migration runs in its own transaction behind
+an advisory lock, so concurrent calls from several app instances wait for
+each other and apply every migration once. See
+[postgres.md](./postgres.md#install-the-schema) for what each case does.
+
+- `dimensions` is an integer from 1 to 4,000. It is required when the
+  database has no Mnemocyte tables (`"VALIDATION"` otherwise) and fixes the
+  embedding column: `vector` up to 2,000, `halfvec` above. On an existing
+  installation a different value throws `"CONFIG"` before anything runs.
+- pgvector must already be installed; otherwise a fresh install throws
+  `"MIGRATION"`. `migrate` never creates extensions.
+- A failing migration rolls back and throws `"MIGRATION"` with the driver
+  error as `cause`; migrations that committed before it stay applied.
+- A schema that matches no migration (for example a half-applied file run
+  with plain `psql -f`) throws `"MIGRATION"` without changing anything.
+- An abort cancels the running statement and rolls back the current
+  migration.
+
 ## Memories
 
 A memory belongs to one `entityId` (a user, agent, session or anything else
@@ -344,12 +378,12 @@ try {
 
 | Code | Thrown when |
 |---|---|
-| `CONFIG` | Invalid client configuration, or the embedder does not match the Postgres installation. |
+| `CONFIG` | Invalid client configuration, or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
 | `VALIDATION` | Invalid method input. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
 | `ABORTED` | The caller's `AbortSignal` fired. |
 | `NOT_FOUND` | A referenced memory does not exist for that entity. |
 | `CONFLICT` | A delete or consolidation conflicts with a consolidation link. |
-| `MIGRATION` | Mnemocyte tables or columns are missing, or the installation holds mixed models. |
+| `MIGRATION` | Mnemocyte tables or columns are missing, the installation holds mixed models, or `migrate` could not apply a migration. |
 | `DB` | Any other database failure, or a call on a closed client. |

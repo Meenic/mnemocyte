@@ -84,6 +84,9 @@ export function createInMemoryStore(): MemoryStore {
 	return {
 		backend: "in-memory",
 		async ensureSchema() {},
+		async migrate() {
+			return { applied: [], adopted: [] };
+		},
 		async ensureEmbeddingCompatibility() {},
 		async insertMemories(rows) {
 			const inserted: Memory[] = [];

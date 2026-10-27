@@ -9,6 +9,7 @@ import type {
 	ListAuditLogInput,
 	Memory,
 	MemoryType,
+	MigrateResult,
 	MnemocyteBackend,
 	PruneResult,
 	RecallInput,
@@ -108,6 +109,11 @@ export interface StoreOperationOptions {
 	signal?: AbortSignal;
 }
 
+export interface StoreMigrateInput {
+	readonly dimensions?: number;
+	readonly signal?: AbortSignal;
+}
+
 export interface ValidatedPruneFilter {
 	readonly entityId?: string;
 	readonly expired?: true;
@@ -177,6 +183,13 @@ export interface MemoryStore {
 	 * migration.
 	 */
 	ensureSchema(): Promise<void>;
+	/**
+	 * Applies the store's pending schema migrations. This is the only method
+	 * that changes schema, and it runs only when the caller asks for it through
+	 * `migrate()`. A store without persistent schema resolves with nothing
+	 * applied.
+	 */
+	migrate(input: StoreMigrateInput): Promise<MigrateResult>;
 	/**
 	 * Enforces the embedding compatibility check meaningful to this store's
 	 * persistence model before embedding-dependent work proceeds.

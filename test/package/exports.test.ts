@@ -1,4 +1,4 @@
-import { createMnemocyte, MnemocyteError } from "mnemocyte";
+import { createMnemocyte, MnemocyteError, migrate } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
@@ -9,6 +9,7 @@ describe("package exports", () => {
 	test("exposes the built package runtime API", async () => {
 		expect(typeof createMnemocyte).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
+		expect(typeof migrate).toBe("function");
 		expect(typeof drizzleStore).toBe("function");
 		expect(typeof postgresJs).toBe("function");
 		expect(typeof postgresStore).toBe("function");

@@ -141,7 +141,7 @@ async function snapshotCleanInstall(
 	await sql.unsafe("BEGIN");
 	try {
 		await sql.unsafe(
-			'DROP TABLE IF EXISTS "mnemocyte_events", "mnemocyte_memories", "mnemocyte_meta" CASCADE',
+			'DROP TABLE IF EXISTS "mnemocyte_migrations", "mnemocyte_events", "mnemocyte_memories", "mnemocyte_meta" CASCADE',
 		);
 		for (const file of migrationFiles) {
 			await sql.unsafe(await readFile(resolve("migrations", file), "utf8"));

@@ -62,7 +62,7 @@ None.
   store instance. Enable `isolatedDeclarations` once the Drizzle table
   constants in `src/db/schema.ts` are gone; today they would need about 500
   lines of explicit `PgTableWithColumns` types.
-- [ ] `feat/migrate-runner`: exported `migrate()` with tracking table,
+- [x] `feat/migrate-runner`: exported `migrate()` with tracking table,
   advisory lock and one transaction per migration; README and
   `docs/guide/postgres.md` install steps use it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
 - [ ] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance

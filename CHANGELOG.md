@@ -10,6 +10,15 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **`migrate({ store, dimensions })`.** Creates or upgrades the Postgres
+  schema from the root `mnemocyte` import. Each migration runs in its own
+  transaction behind a transaction-level advisory lock, so app instances
+  that migrate at the same time apply each migration once, and applied
+  migrations are recorded in a new `mnemocyte_migrations` table. A fresh
+  install takes `dimensions` (`halfvec` above 2,000); an installation set up
+  with `psql` or drizzle-kit is detected from its schema and adopted. The SQL
+  files keep shipping in `migrations/`.
+
 - **`SqlExecutor` and `mnemocyte/postgres`.** The Postgres backend now runs on
   a two-method `SqlExecutor` (`query` with an optional `AbortSignal`, and
   `transaction`). `postgresJs(sql)` wraps a postgres.js client and

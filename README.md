@@ -51,7 +51,7 @@ process memory, which suits tests and prototypes.
 
 ## Postgres
 
-Install the driver, then enable pgvector and apply the bundled schema:
+Install the driver and enable pgvector:
 
 ```bash
 pnpm add postgres
@@ -61,31 +61,31 @@ pnpm add postgres
 psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ```
 
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/fresh-install.sql
-```
-
-Pass your own postgres.js client:
+Pass your own postgres.js client, and create or upgrade the schema with
+`migrate`:
 
 ```ts
-import { createMnemocyte } from "mnemocyte";
+import { createMnemocyte, migrate } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
+const store = postgresStore({ client: postgresJs(sql) });
 
-const client = createMnemocyte({
-  store: postgresStore({ client: postgresJs(sql) }),
-  embedder,
-});
+await migrate({ store, dimensions: 1536 });
+
+const client = createMnemocyte({ store, embedder });
 ```
 
-`fresh-install.sql` is for 1536-dimension embeddings on an empty database.
-Other dimensions, upgrades, Drizzle and connection details are in the
+`dimensions` must match your embedder and is fixed when the schema is
+created. `migrate` applies only what is missing, so it is safe in every
+deploy. Applying the SQL files with `psql` instead, upgrades, Drizzle and
+connection details are in the
 [Postgres guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md).
 
 ## API at a glance
 
+- `migrate`: create or upgrade the Postgres schema.
 - `remember`, `rememberMany`: store memories for an entity.
 - `recall`: rank an entity's memories against a query.
 - `buildContext`: render recalled memories as Markdown, plain text or XML

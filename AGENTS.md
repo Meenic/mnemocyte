@@ -37,8 +37,12 @@ a Postgres + pgvector `DATABASE_URL` (see the safety rules above).
 
 ## Documentation
 
-- `README.md` is for users only. `docs/DEVELOPMENT.md` and
-  `docs/features/*.md` describe what is built. `docs/ARCHITECTURE.md` holds
+- `README.md` is for users only and stays short: install, quickstart,
+  Postgres setup, an API list, embedders and links. The full user reference
+  lives in `docs/guide/*.md`; its links in `README.md` are absolute GitHub
+  URLs, because npm shows the README but does not ship `docs/`.
+  `docs/DEVELOPMENT.md` and `docs/features/*.md` describe what is built, for
+  contributors. `docs/ARCHITECTURE.md` holds
   the target design and dated decisions and must never describe behavior the
   code does differently. `docs/ROADMAP.md` is the work queue.
   `CHANGELOG.md` records releases.

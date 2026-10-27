@@ -50,6 +50,14 @@ behavioural changes documented in their entries.
   // client.close() no longer ends the pool: call `await sql.end()` yourself.
   ```
 
+### Documentation
+
+- **Shorter README.** The README now covers install, a quickstart, Postgres
+  setup, an API list and embedders. The full reference moved to
+  `docs/guide/`: [API](docs/guide/api.md), [Postgres](docs/guide/postgres.md),
+  [embedders](docs/guide/embedders.md) and
+  [limitations](docs/guide/limitations.md).
+
 ## [0.5.1] - 2026-10-26
 
 ### Added

@@ -42,7 +42,7 @@ it.
   optional peer. The user's client owns TLS and pool settings, which removes
   today's `sslmode` override (it breaks `prefer`/`allow`) and the fixed
   `max: 10` pool.
-- [ ] `docs/readme-rewrite`: cut `README.md` to the shape of Ollama's: title
+- [x] `docs/readme-rewrite`: cut `README.md` to the shape of Ollama's: title
   and one-line pitch, install, a quickstart that fits one screen, the Postgres
   setup in a few commands, an API-at-a-glance list, embedders, and links to
   the docs. No HTML, images or badges. Move the long reference (every method,
@@ -63,8 +63,8 @@ it.
   constants in `src/db/schema.ts` are gone; today they would need about 500
   lines of explicit `PgTableWithColumns` types.
 - [ ] `feat/migrate-runner`: exported `migrate()` with tracking table,
-  advisory lock and one transaction per migration; README install steps use
-  it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
+  advisory lock and one transaction per migration; README and
+  `docs/guide/postgres.md` install steps use it (and `psql -v ON_ERROR_STOP=1 --single-transaction` for file users).
 - [ ] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
   boosts; Postgres ranking tests (none exist today, which is how the
   `ts_rank`/substring scale mix went unnoticed).

@@ -14,6 +14,7 @@ const sequentialMigrations = [
 	"0000_initial.sql",
 	"0001_add_mnemocyte_meta.sql",
 	"0002_add_embedding_model.sql",
+	"0003_schema_v2.sql",
 ] as const;
 
 interface TableDefinition {
@@ -46,6 +47,7 @@ interface InstallationMetadata {
 	key: string;
 	embeddingDimensions: number;
 	embeddingModel: string | null;
+	vectorType: string;
 }
 
 async function readSchemaSnapshot(sql: ReturnType<typeof postgres>) {
@@ -117,7 +119,8 @@ async function readSchemaSnapshot(sql: ReturnType<typeof postgres>) {
 		SELECT
 			"key",
 			"embedding_dimensions" AS "embeddingDimensions",
-			"embedding_model" AS "embeddingModel"
+			"embedding_model" AS "embeddingModel",
+			"vector_type" AS "vectorType"
 		FROM "mnemocyte_meta"
 		ORDER BY "key"
 	`;
@@ -175,6 +178,7 @@ describe("default fresh-install migration", () => {
 						key: "installation",
 						embeddingDimensions: 1536,
 						embeddingModel: null,
+						vectorType: "vector",
 					},
 				]);
 				expect(consolidated).toEqual(sequential);

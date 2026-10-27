@@ -1,5 +1,6 @@
 import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
+	consolidateMemories,
 	countPruneMatches,
 	deleteMemoriesForEntity as deleteMemoriesForEntityQuery,
 	deleteMemory as deleteMemoryQuery,
@@ -11,21 +12,19 @@ import {
 	insertMemories as insertMemoryRows,
 	lexicalSearch as lexicalSearchQuery,
 	loadConsolidationTargets,
-	lockConsolidationMemories,
 	markMemoriesAccessed,
-	markMemoriesSuperseded,
 	type NewMemoryRow,
 	type PruneFilter,
 	pruneMemories,
-	setMemoryTags,
 	vectorSearch as vectorSearchQuery,
 } from "../db/queries/memories.js";
 import {
 	getInstallationMeta,
+	getInstallationVectorType,
 	getStoredEmbeddingModels,
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
-import type { EventRow } from "../db/rows.js";
+import type { EventRow, VectorType } from "../db/rows.js";
 import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import type { SqlExecutor } from "../sql/executor.js";
@@ -48,9 +47,11 @@ import {
 import { memoryHasDependentsError } from "./deletion.js";
 import { cloneJsonObject } from "./json.js";
 import { rowToMemory } from "./postgres-records.js";
-import { createEventId, type StoredMemory } from "./records.js";
+import { createEventId, isUuid, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
+	DEFAULT_NAMESPACE,
+	entityScope,
 	type MemoryStore,
 	type StoreConsolidateInput,
 	type StoreConsolidateResult,
@@ -72,6 +73,7 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
 const CONSOLIDATION_SURVIVOR_FOREIGN_KEY =
 	"mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk";
+const VECTOR_TYPES: ReadonlySet<string> = new Set(["vector", "halfvec"]);
 
 function rowToAuditEvent(row: EventRow): AuditEvent {
 	return {
@@ -163,7 +165,7 @@ async function runPostgresDeleteOperation<T>(
 }
 
 function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
-	const filter: PruneFilter = {};
+	const filter: PruneFilter = { namespace: DEFAULT_NAMESPACE };
 	if (input.entityId !== undefined) {
 		filter.entityId = input.entityId;
 	}
@@ -192,32 +194,67 @@ function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
 }
 
 function toMemoryRow(memory: StoredMemory): NewMemoryRow {
+	const { entityId, ...rest } = memory;
 	return {
-		...memory,
+		...rest,
+		scope: entityScope(entityId),
 		tags: [...memory.tags],
 		embedding: [...memory.embedding],
 	};
 }
 
-export function createPostgresStore(client: SqlExecutor): MemoryStore {
-	let schemaValidated = false;
-	let schemaValidationPromise: Promise<void> | undefined;
+function assertVectorType(value: string | null): VectorType {
+	if (value === null || !VECTOR_TYPES.has(value)) {
+		throw new MnemocyteError(
+			'mnemocyte_meta.vector_type must be "vector" or "halfvec". Apply the bundled migrations through 0003_schema_v2.sql.',
+			"MIGRATION",
+		);
+	}
+	// Checked against VECTOR_TYPES above; the value is interpolated as a cast.
+	return value as VectorType;
+}
 
-	async function ensureEmbeddingCompatibility(
-		embedder: Embedder,
-	): Promise<void> {
-		if (schemaValidated) {
-			return;
-		}
-		if (!schemaValidationPromise) {
-			schemaValidationPromise = validateEmbeddingCompatibility(embedder).catch(
+/** Ids that are not UUIDs cannot match a row, so they are never sent. */
+function uuidsOnly(ids: readonly string[]): string[] {
+	return ids.filter(isUuid);
+}
+
+function compatibilityKey(embedder: Embedder): string {
+	return `${embedder.dimensions}:${embedder.model}`;
+}
+
+export function createPostgresStore(client: SqlExecutor): MemoryStore {
+	// Keyed by model and dimensions, not by store: one store value shared by
+	// clients with different embedders checks each embedder.
+	const compatibilityChecks = new Map<string, Promise<void>>();
+	let vectorTypePromise: Promise<VectorType> | undefined;
+
+	function ensureEmbeddingCompatibility(embedder: Embedder): Promise<void> {
+		const key = compatibilityKey(embedder);
+		let check = compatibilityChecks.get(key);
+		if (!check) {
+			check = validateEmbeddingCompatibility(embedder).catch(
 				(error: unknown) => {
-					schemaValidationPromise = undefined;
+					compatibilityChecks.delete(key);
 					throw error;
 				},
 			);
+			compatibilityChecks.set(key, check);
 		}
-		await schemaValidationPromise;
+		return check;
+	}
+
+	/** The installation's vector column type, read once from `mnemocyte_meta`. */
+	function getVectorType(): Promise<VectorType> {
+		if (!vectorTypePromise) {
+			vectorTypePromise = getInstallationVectorType(client)
+				.then(assertVectorType)
+				.catch((error: unknown) => {
+					vectorTypePromise = undefined;
+					throw error;
+				});
+		}
+		return vectorTypePromise;
 	}
 
 	async function validateEmbeddingCompatibility(
@@ -232,7 +269,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				hasPostgresErrorCode(error, "42703")
 			) {
 				throw new MnemocyteError(
-					"Postgres embedding metadata is missing or outdated. Apply the bundled migrations through 0002_add_embedding_model.sql, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.",
+					"Postgres embedding metadata is missing or outdated. Apply the bundled migrations through 0003_schema_v2.sql, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.",
 					"MIGRATION",
 					error,
 				);
@@ -245,6 +282,8 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				"MIGRATION",
 			);
 		}
+		const vectorType = assertVectorType(meta.vectorType);
+		vectorTypePromise ??= Promise.resolve(vectorType);
 		if (meta.embeddingDimensions !== embedder.dimensions) {
 			throw new MnemocyteError(
 				`embedder.dimensions (${embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
@@ -288,7 +327,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				"CONFIG",
 			);
 		}
-		schemaValidated = true;
 	}
 
 	return {
@@ -297,13 +335,22 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		ensureEmbeddingCompatibility,
 		async insertMemories(memories) {
 			return runPostgresOperation(async () => {
-				const rows = await insertMemoryRows(client, memories.map(toMemoryRow));
+				const rows = await insertMemoryRows(
+					client,
+					memories.map(toMemoryRow),
+					await getVectorType(),
+				);
 				return rows.map(rowToMemory);
 			});
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			return runPostgresOperation(async () => {
-				const rows = await vectorSearchQuery(client, input);
+				const { entityId, ...filters } = input;
+				const rows = await vectorSearchQuery(client, {
+					...filters,
+					scope: entityScope(entityId),
+					vectorType: await getVectorType(),
+				});
 				return rows.map(
 					(row) =>
 						({
@@ -315,7 +362,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {
 			return runPostgresOperation(async () => {
-				const rows = await lexicalSearchQuery(client, input);
+				const { entityId, ...filters } = input;
+				const rows = await lexicalSearchQuery(client, {
+					...filters,
+					scope: entityScope(entityId),
+				});
 				return rows.map(
 					(row) =>
 						({
@@ -325,14 +376,22 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				);
 			});
 		},
-		async getMemoryEmbeddings(memoryIds) {
+		async getMemoryEmbeddings(entityId, memoryIds) {
 			return runPostgresOperation(() =>
-				getMemoryEmbeddingsQuery(client, memoryIds),
+				getMemoryEmbeddingsQuery(
+					client,
+					entityScope(entityId),
+					uuidsOnly(memoryIds),
+				),
 			);
 		},
-		async markMemoriesAccessed(memoryIds) {
+		async markMemoriesAccessed(entityId, memoryIds) {
 			return runPostgresOperation(async () => {
-				const rows = await markMemoriesAccessed(client, memoryIds);
+				const rows = await markMemoriesAccessed(
+					client,
+					entityScope(entityId),
+					uuidsOnly(memoryIds),
+				);
 				return rows.map((row) => {
 					if (row.lastAccessedAt === null) {
 						throw new MnemocyteError(
@@ -349,7 +408,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async deleteMemory(entityId, memoryId) {
 			return runPostgresDeleteOperation(async () => {
-				const result = await deleteMemoryQuery(client, entityId, memoryId);
+				if (!isUuid(memoryId)) {
+					return false;
+				}
+				const result = await deleteMemoryQuery(
+					client,
+					entityScope(entityId),
+					memoryId,
+				);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -358,7 +424,10 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async deleteMemoriesForEntity(entityId) {
 			return runPostgresDeleteOperation(async () => {
-				const result = await deleteMemoriesForEntityQuery(client, entityId);
+				const result = await deleteMemoriesForEntityQuery(
+					client,
+					entityScope(entityId),
+				);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -400,7 +469,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				const rows = await findDuplicatePairsQuery(
 					client,
 					{
-						entityId: input.entityId,
+						scope: entityScope(input.entityId),
 						threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
 						limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
 						...(input.types === undefined ? {} : { types: input.types }),
@@ -429,7 +498,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				for (const event of events) {
 					await insertEvent(client, {
 						id: event.id,
-						entityId: event.entityId,
+						scope: entityScope(event.entityId),
 						description: event.description,
 						metadata: cloneJsonObject(event.metadata),
 						timestamp: event.timestamp,
@@ -439,10 +508,18 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async listAuditLog(input, options) {
 			return runPostgresOperation(async () => {
+				for (const cursor of [input.beforeCursor, input.afterCursor]) {
+					if (cursor !== undefined && !isUuid(cursor.id)) {
+						throw new MnemocyteError(
+							"Audit log cursor id must be an event id returned by listAuditLog.",
+							"VALIDATION",
+						);
+					}
+				}
 				const rows = await listEvents(
 					client,
 					{
-						entityId: input.entityId,
+						scope: entityScope(input.entityId),
 						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
 						...(input.before === undefined ? {} : { before: input.before }),
 						...(input.after === undefined ? {} : { after: input.after }),
@@ -461,17 +538,27 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		async getMemory(entityId, memoryId, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const row = await getMemoryById(client, entityId, memoryId);
-				throwIfAborted(options?.signal);
+				if (!isUuid(memoryId)) {
+					return null;
+				}
+				const row = await getMemoryById(
+					client,
+					entityScope(entityId),
+					memoryId,
+					options?.signal,
+				);
 				return row ? rowToMemory(row) : null;
 			});
 		},
 		async loadConsolidationTargets(entityId, ids, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const targets = await loadConsolidationTargets(client, entityId, ids);
-				throwIfAborted(options?.signal);
-				return targets;
+				return loadConsolidationTargets(
+					client,
+					entityScope(entityId),
+					uuidsOnly(ids),
+					options?.signal,
+				);
 			});
 		},
 		async consolidate(
@@ -480,86 +567,34 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		): Promise<StoreConsolidateResult> {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const newSupersededIds = await client.transaction(async (tx) => {
-					throwIfAborted(options?.signal);
-					const lockedMemories = await lockConsolidationMemories(
-						tx,
-						input.entityId,
-						input.survivorId,
-						input.supersededIds,
-					);
-					throwIfAborted(options?.signal);
-					const survivor = lockedMemories.find(
-						(memory) => memory.id === input.survivorId,
-					);
-					if (!survivor || survivor.supersededBy !== null) {
-						throw new MnemocyteError(
-							"Consolidation survivor changed before mutation.",
-							"CONFLICT",
-						);
-					}
-					const targets = lockedMemories.filter(
-						(memory) => memory.id !== input.survivorId,
-					);
-					if (
-						targets.some(
-							(target) =>
-								target.supersededBy !== null &&
-								target.supersededBy !== input.survivorId,
-						)
-					) {
-						throw new MnemocyteError(
-							"Superseded memory already belongs to a different survivor.",
-							"CONFLICT",
-						);
-					}
-					const activeIds = targets
-						.filter((target) => target.supersededBy === null)
-						.map((target) => target.id);
-					const updated = await markMemoriesSuperseded(tx, {
+				const supersededIds = uuidsOnly(input.supersededIds);
+				const result = await consolidateMemories(
+					client,
+					{
+						scope: entityScope(input.entityId),
 						survivorId: input.survivorId,
-						entityId: input.entityId,
-						ids: activeIds,
+						supersededIds,
+						mergeTags: input.mergeTags,
 						now: input.now,
-					});
-					throwIfAborted(options?.signal);
-					const ids = updated.map((row) => row.id);
-					if (input.auditEnabled) {
-						for (const id of ids) {
-							throwIfAborted(options?.signal);
-							await insertEvent(tx, {
-								id: createEventId(),
-								entityId: input.entityId,
-								description: "memory.superseded",
-								metadata: { memoryId: id, supersededBy: input.survivorId },
-								timestamp: input.now,
-							});
-							throwIfAborted(options?.signal);
-						}
-					}
-					if (input.mergeTags && updated.length > 0) {
-						const mergedTags = new Set(survivor.tags);
-						for (const row of updated) {
-							throwIfAborted(options?.signal);
-							for (const tag of row.tags) {
-								mergedTags.add(tag);
-							}
-						}
-						if (mergedTags.size !== survivor.tags.length) {
-							throwIfAborted(options?.signal);
-							await setMemoryTags(tx, {
-								entityId: input.entityId,
-								memoryId: input.survivorId,
-								tags: [...mergedTags],
-								now: input.now,
-							});
-							throwIfAborted(options?.signal);
-						}
-					}
-					throwIfAborted(options?.signal);
-					return ids;
-				});
-				return { supersededIds: newSupersededIds };
+						...(input.auditEnabled
+							? { auditEventIds: supersededIds.map(() => createEventId()) }
+							: {}),
+					},
+					options?.signal,
+				);
+				if (!result.survivorActive) {
+					throw new MnemocyteError(
+						"Consolidation survivor changed before mutation.",
+						"CONFLICT",
+					);
+				}
+				if (result.hasConflict) {
+					throw new MnemocyteError(
+						"Superseded memory already belongs to a different survivor.",
+						"CONFLICT",
+					);
+				}
+				return { supersededIds: result.supersededIds };
 			});
 		},
 		async stats(input, now) {
@@ -567,7 +602,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				if (input?.entityId) {
 					const counts = await getEntityMemoryStatsCounts(
 						client,
-						input.entityId,
+						entityScope(input.entityId),
 						now,
 					);
 					return {
@@ -577,6 +612,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				}
 				return (await getGlobalMemoryStatsCounts(
 					client,
+					DEFAULT_NAMESPACE,
 					now,
 				)) satisfies GlobalStats;
 			});

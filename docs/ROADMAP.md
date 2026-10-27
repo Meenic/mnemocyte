@@ -7,8 +7,7 @@ it.
 
 ## Open decisions
 
-- `agentId` next to `entityId` (see ARCHITECTURE "Open: `agentId`"). Needed
-  before the scope migration in Phase 1.
+None.
 
 ## Phase 0: reset (0.5.x)
 
@@ -49,13 +48,14 @@ it.
   limitations, error codes, maintenance details) into user-facing pages under
   `docs/` and link them. Keep the tagline "Infrastructure-native memory for
   TypeScript AI applications."
-- [ ] `feat/postgres-schema-v2`: migration 0003 with scope columns,
+- [x] `feat/postgres-schema-v2`: migration 0003 with scope columns,
   `superseded_by` index, generated `tsvector` + GIN, UUID ids, `halfvec`
   above 2,000 dimensions; Postgres backend rewritten on the executor with
   each write path as one atomic statement (a CTE, for example `consolidate`
   without `SELECT … FOR UPDATE` across round trips), so stateless HTTP
   drivers such as Neon's HTTP driver and D1 can run it; add an optional
-  `batch` to `SqlExecutor` where one statement is not enough. Every
+  `batch` to `SqlExecutor` where one statement is not enough (moved to
+  `fix/batch-writes`, the first path that needs it). Every
   query filters by scope, including id lookups (today
   `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only). The
   embedding-compatibility cache is keyed by model and dimensions, not by
@@ -77,7 +77,9 @@ it.
 - [ ] `feat/scoped-api`: `createMemory` with scopes, `add` (with `key`
   upserts), `search`, `get`, `list` (cursor), `update`, `delete`,
   `deleteScope`, `context`; prune requires a scope; upgrade note.
-- [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction;
+- [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction,
+  through an optional `SqlExecutor.batch` for drivers without interactive
+  transactions;
   input size caps (`limit`, content, tags, metadata); validate every recall
   filter (today `tags`, `before` and `after` are not checked) and
   consolidate's `supersededIds` type.

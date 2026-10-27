@@ -55,6 +55,7 @@ async function runPostgresPolicyScenario(url: string) {
 	await applyMigration(admin, "0000_initial.sql", ["42P07"]);
 	await applyMigration(admin, "0001_add_mnemocyte_meta.sql", ["42P07"]);
 	await applyMigration(admin, "0002_add_embedding_model.sql", ["42701"]);
+	await applyMigration(admin, "0003_schema_v2.sql", ["42701"]);
 
 	const client = createMnemocyte({
 		store: postgresStore({ client: postgresJs(storeSql) }),

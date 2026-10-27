@@ -1,4 +1,5 @@
 import { MnemocyteError } from "../../errors.js";
+import type { StoreScope } from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
 import type { AuditLogCursor, JsonObject } from "../../types.js";
 import {
@@ -10,7 +11,7 @@ import {
 import { createSqlParams } from "../sql.js";
 
 export interface EventFilter {
-	entityId: string;
+	scope: StoreScope;
 	limit?: number;
 	before?: Date;
 	after?: Date;
@@ -20,7 +21,7 @@ export interface EventFilter {
 
 export interface NewEventRow {
 	id: string;
-	entityId: string;
+	scope: StoreScope;
 	description: string;
 	metadata: JsonObject;
 	timestamp: Date;
@@ -32,10 +33,16 @@ export async function insertEvent(
 ): Promise<EventRow> {
 	const params = createSqlParams();
 	const result = await db.query<RawEventRow>(
-		`INSERT INTO mnemocyte_events (id, entity_id, description, metadata, timestamp)
+		`INSERT INTO mnemocyte_events (
+			id, namespace, entity_id, agent_id, session_id, description, metadata,
+			timestamp
+		)
 		VALUES (
-			${params.add(row.id)},
-			${params.add(row.entityId)},
+			${params.uuid(row.id)},
+			${params.add(row.scope.namespace)},
+			${params.add(row.scope.entityId)},
+			${params.add(row.scope.agentId)}::text,
+			${params.add(row.scope.sessionId)}::text,
 			${params.add(row.description)},
 			${params.json(row.metadata)},
 			${params.timestamp(row.timestamp)}
@@ -56,7 +63,11 @@ export async function listEvents(
 	signal?: AbortSignal,
 ): Promise<EventRow[]> {
 	const params = createSqlParams();
-	const clauses: string[] = [`entity_id = ${params.add(filter.entityId)}`];
+	// Audit events are listed for the whole entity, across agents and sessions.
+	const clauses: string[] = [
+		`namespace = ${params.add(filter.scope.namespace)}`,
+		`entity_id = ${params.add(filter.scope.entityId)}`,
+	];
 	if (filter.before) {
 		clauses.push(`timestamp < ${params.timestamp(filter.before)}`);
 	}
@@ -65,19 +76,19 @@ export async function listEvents(
 	}
 	if (filter.beforeCursor) {
 		clauses.push(
-			`(timestamp, id) < (${params.timestamp(filter.beforeCursor.timestamp)}, ${params.add(filter.beforeCursor.id)})`,
+			`(timestamp, id) < (${params.timestamp(filter.beforeCursor.timestamp)}, ${params.uuid(filter.beforeCursor.id)})`,
 		);
 	}
 	if (filter.afterCursor) {
 		clauses.push(
-			`(timestamp, id) > (${params.timestamp(filter.afterCursor.timestamp)}, ${params.add(filter.afterCursor.id)})`,
+			`(timestamp, id) > (${params.timestamp(filter.afterCursor.timestamp)}, ${params.uuid(filter.afterCursor.id)})`,
 		);
 	}
 	const rows = await db.query<RawEventRow>(
 		`SELECT ${EVENT_COLUMNS}
 		FROM mnemocyte_events
 		WHERE ${clauses.join("\n\t\t\tAND ")}
-		ORDER BY timestamp DESC, id DESC
+		ORDER BY mnemocyte_events.timestamp DESC, mnemocyte_events.id DESC
 		LIMIT ${params.add(filter.limit ?? 50)}`,
 		params.values,
 		signal ? { signal } : undefined,

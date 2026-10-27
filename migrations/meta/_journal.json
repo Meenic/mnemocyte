@@ -22,6 +22,13 @@
 			"when": 1784201870906,
 			"tag": "0002_add_embedding_model",
 			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1793059200000,
+			"tag": "0003_schema_v2",
+			"breakpoints": true
 		}
 	]
 }

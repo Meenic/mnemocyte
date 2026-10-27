@@ -79,17 +79,18 @@ interface MemoryScope {
 }
 ```
 
-Scope columns are indexed together. Searching at a scope matches that scope
-and, for optional fields, rows where the field is null (shared memories),
-unless the query asks for an exact match. `deleteScope({ namespace, entityId
+The scope columns, `key` and UUID ids are in the schema (see
+[features/postgres.md](./features/postgres.md#scope)); the public API still
+takes only `entityId`. Searching at a scope matches that scope and, for
+optional fields, rows where the field is null (shared memories), unless the
+query asks for an exact match. `deleteScope({ namespace, entityId
 })` removes everything about an entity across agents and sessions in one
 statement, which is what an erasure request needs.
 
 Other fields carry over: `content`, `kind` (today's `type`), `importance`,
 `tags`, `source`, `metadata` (JSON), `confidence`, `expiresAt`,
 `supersededBy`/`supersededAt`, timestamps. New: an optional `key` for
-idempotent upserts (`add` with an existing key updates in place). Ids become
-UUIDs (`crypto.randomUUID()`, or `uuidv7()` in Postgres 18). `updatedAt`
+idempotent upserts (`add` with an existing key updates in place). `updatedAt`
 changes only on writes.
 
 ## Write path
@@ -117,8 +118,7 @@ changes only on writes.
 Postgres specifics: the vector query runs in a transaction with
 `SET LOCAL hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least
 the candidate count, so filters cannot silently empty the result
-(pgvector 0.8+). Full-text uses a generated `tsvector` column with a GIN
-index.
+(pgvector 0.8+).
 
 ## Context
 
@@ -225,8 +225,8 @@ Dated 2026-10-26 unless noted.
    promise covers the user-facing API; `MemoryStore` stays internal.
 4. **Database access:** our own two-method `SqlExecutor`, not Kysely.
 5. **Drizzle:** an optional driver adapter, not a runtime dependency.
-6. **Scope:** `namespace` + `entityId` + optional `sessionId` as indexed
-   columns. `agentId` is open (below).
+6. **Scope:** `namespace` + `entityId` + optional `agentId` and `sessionId`
+   as indexed columns (see 17).
 7. **Fusion:** RRF over vector and lexical ranks, with small recency and
    importance boosts.
 8. **Access tracking:** opt-in and fire-and-forget.
@@ -251,26 +251,19 @@ Dated 2026-10-26 unless noted.
     holds a connection open across round trips, which stateless HTTP drivers
     (Neon HTTP, D1) cannot do. `SqlExecutor` keeps `transaction` for drivers
     that support it and gains an optional `batch` where one statement is not
-    enough. Only `consolidate` needs more than one statement today.
+    enough. Every write path is one statement today, `consolidate`
+    included; chunked inserts in `fix/batch-writes` are the first that need
+    `batch`.
 
-### Open: `agentId`
-
-Question: should a memory carry an `agentId` next to `entityId`, for "a
-memory about user Y held by agent X"?
-
-Recommendation: **yes, as a nullable column in the first scope migration.**
-
-- `entityId` is who the memory is about; `agentId` is who holds it. Null
-  means shared by every agent.
-- Search at `{ entityId, agentId: "x" }` returns x's memories plus shared
-  ones; `exactAgent: true` returns only x's.
-- `deleteScope({ namespace, entityId })` still erases the user across all
-  agents, which is impossible if the agent is folded into `entityId` (for
-  example `"x:user_y"`).
-- Adding the column now costs one nullable column and a wider index. Adding
-  it after 1.0 means a migration on every installation and a breaking change
-  to the scope type.
-
-Without it, apps that run several agents must either share every memory
-between agents or encode the agent in `entityId` and lose cross-agent
-erasure and per-user views.
+17. **`agentId`** (2026-10-27): a nullable column next to `entityId`, added
+    in the first scope migration (`0003`). `entityId` is who a memory is
+    about, `agentId` who holds it; null means shared by every agent. Search
+    at `{ entityId, agentId: "x" }` returns x's memories plus shared ones,
+    and `exactAgent: true` only x's. `deleteScope({ namespace, entityId })`
+    erases the user across all agents, which folding the agent into
+    `entityId` would make impossible. Adding it after 1.0 would have meant a
+    migration on every installation and a breaking scope type.
+18. **UUIDv7 ids** (2026-10-27): generated in JavaScript, because Postgres
+    has `uuidv7()` only from 18. Time-ordered ids keep primary-key inserts
+    at the right edge of the btree; UUIDv4 would scatter them. Old text ids
+    convert with `md5(id)::uuid` so applications can map stored ids.

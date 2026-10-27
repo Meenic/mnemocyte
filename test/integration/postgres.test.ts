@@ -14,6 +14,7 @@ import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -99,6 +100,7 @@ async function main(databaseUrl: string) {
 			throw error;
 		}
 	}
+	await applySchemaV2Migration(sql);
 
 	try {
 		await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;

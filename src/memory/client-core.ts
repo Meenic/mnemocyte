@@ -490,6 +490,7 @@ export function createMemoryClient(
 					(candidate) => !merged.has(candidate.memory.id),
 				);
 				const lexicalOnlyEmbeddings = await store.getMemoryEmbeddings(
+					input.entityId,
 					lexicalOnly.map((candidate) => candidate.memory.id),
 				);
 				for (const candidate of lexicalCandidates) {
@@ -523,7 +524,10 @@ export function createMemoryClient(
 					.slice(0, limit);
 				const accessUpdates = normalizeStoreRows(
 					scored,
-					await store.markMemoriesAccessed(scored.map((memory) => memory.id)),
+					await store.markMemoriesAccessed(
+						input.entityId,
+						scored.map((memory) => memory.id),
+					),
 					"Memory access update",
 				);
 				return scored.map((memory, index) => {

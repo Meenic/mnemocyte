@@ -1,5 +1,5 @@
 import type { SqlExecutor } from "../../sql/executor.js";
-import { META_COLUMNS, type MetaRow } from "../rows.js";
+import { META_COLUMNS, type MetaRow, type VectorType } from "../rows.js";
 
 export const INSTALLATION_META_KEY = "installation";
 
@@ -40,4 +40,17 @@ export async function recordInstallationEmbeddingModel(
 		[embeddingModel, INSTALLATION_META_KEY],
 	);
 	return rows[0] ?? null;
+}
+
+export async function getInstallationVectorType(
+	db: SqlExecutor,
+): Promise<VectorType | null> {
+	const rows = await db.query<{ vectorType: VectorType }>(
+		`SELECT vector_type AS "vectorType"
+		FROM mnemocyte_meta
+		WHERE key = $1
+		LIMIT 1`,
+		[INSTALLATION_META_KEY],
+	);
+	return rows[0]?.vectorType ?? null;
 }

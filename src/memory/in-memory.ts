@@ -121,22 +121,22 @@ export function createInMemoryStore(): MemoryStore {
 				.sort((a, b) => b.lexicalScore - a.lexicalScore)
 				.slice(0, input.limit) satisfies StoreLexicalCandidate[];
 		},
-		async getMemoryEmbeddings(memoryIds) {
+		async getMemoryEmbeddings(entityId, memoryIds) {
 			const result = new Map<string, number[]>();
 			for (const id of memoryIds) {
 				const memory = memories.get(id);
-				if (memory) {
+				if (memory && memory.entityId === entityId) {
 					result.set(id, [...memory.embedding]);
 				}
 			}
 			return result;
 		},
-		async markMemoriesAccessed(memoryIds) {
+		async markMemoriesAccessed(entityId, memoryIds) {
 			const now = new Date();
 			const updates: StoreAccessUpdate[] = [];
 			for (const id of memoryIds) {
 				const memory = memories.get(id);
-				if (memory) {
+				if (memory && memory.entityId === entityId) {
 					memory.lastAccessedAt = now;
 					memory.accessCount += 1;
 					memory.updatedAt = now;

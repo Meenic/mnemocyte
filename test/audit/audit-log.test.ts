@@ -71,7 +71,9 @@ describe("audit log", () => {
 				expect(created.metadata.type).toBe("preference");
 				expect(created.metadata.importance).toBe("high");
 				for (const event of log) {
-					expect(event.id).toMatch(/^evt_/);
+					expect(event.id).toMatch(
+						/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+					);
 					expect(event.timestamp).toBeInstanceOf(Date);
 				}
 			} finally {

@@ -136,12 +136,12 @@ and `includeExpired`, plus:
 ## `forget` and `forgetAll`
 
 ```ts
-await client.forget({ entityId: "user_123", memoryId: "mem_old" });
+await client.forget({ entityId: "user_123", memoryId: memory.id });
 await client.forgetAll({ entityId: "user_123" });
 ```
 
 `forget` throws `"NOT_FOUND"` when the memory does not exist or belongs to
-another entity.
+another entity. Memory and audit event ids are UUIDv7 strings.
 
 Both throw `"CONFLICT"` and delete nothing while another memory's
 `supersededBy` points at a memory they would delete, even when `forgetAll`
@@ -211,8 +211,8 @@ few thousand memories per entity.
 ```ts
 const result = await client.experimental.consolidate({
   entityId: "user_123",
-  survivorId: "mem_survivor",
-  supersededIds: ["mem_duplicate"],
+  survivorId: survivor.id,
+  supersededIds: [duplicate.id],
   mergeTags: true,
 });
 // { survivorId, supersededCount, supersededIds }

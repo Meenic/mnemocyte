@@ -47,8 +47,8 @@ it.
   setup in a few commands, an API-at-a-glance list, embedders, and links to
   the docs. No HTML, images or badges. Move the long reference (every method,
   limitations, error codes, maintenance details) into user-facing pages under
-  `docs/` and link them. Say "memory that lives in your database" instead of
-  "infrastructure-native".
+  `docs/` and link them. Keep the tagline "Infrastructure-native memory for
+  TypeScript AI applications."
 - [ ] `feat/postgres-schema-v2`: migration 0003 with scope columns,
   `superseded_by` index, generated `tsvector` + GIN, UUID ids, `halfvec`
   above 2,000 dimensions; Postgres backend rewritten on the executor with

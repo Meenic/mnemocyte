@@ -8,9 +8,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 - **One embedding model per Postgres installation.** A second model or
   dimension throws `"CONFIG"`, and mixed history throws `"MIGRATION"` until
   repaired ([postgres.md](./postgres.md#repair-mixed-models)).
-- **At most 2,000 dimensions on Postgres.** pgvector's HNSW index on `vector`
-  stops there; a schema rendered above that fails at `CREATE INDEX`. Planned:
-  `halfvec` above 2,000 dimensions (`feat/postgres-schema-v2`).
+- **At most 4,000 dimensions on Postgres.** Above 2,000 the schema stores
+  embeddings as `halfvec` (16-bit floats), because pgvector's HNSW index on
+  `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and the renderer
+  refuses larger sizes. Half precision is close to lossless for cosine
+  ranking but not bit-for-bit equal to the vectors you sent.
 - **postgres.js only.** `postgresJs` is the only `SqlExecutor` adapter, and
   `drizzleStore` accepts only `drizzle-orm/postgres-js` instances. Planned:
   Drizzle, PGlite and node-postgres adapters (`feat/postgres-drivers`).
@@ -18,7 +20,7 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   outside the repository's Drizzle journal. Planned: an exported `migrate()`
   (`feat/migrate-runner`).
 - **Large batches fail on Postgres.** `rememberMany` sends one `INSERT`; past
-  about 3,400 memories it exceeds Postgres's 65,535 bind-parameter limit and
+  about 2,900 memories it exceeds Postgres's 65,535 bind-parameter limit and
   throws `"DB"`. The whole batch is also embedded in one embedder call. Split
   large batches yourself. Planned: chunked writes (`fix/batch-writes`).
 

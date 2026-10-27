@@ -15,6 +15,33 @@ import type {
 } from "../types.js";
 import type { StoredMemory } from "./records.js";
 
+/**
+ * The namespace every memory is stored in until scopes reach the public API.
+ * Migration 0003 assigns it to rows written before scopes existed.
+ */
+export const DEFAULT_NAMESPACE = "default";
+
+/**
+ * Where a memory lives. `agentId` and `sessionId` are null for memories shared
+ * by every agent or session. The public API passes only `entityId` today, so
+ * the Postgres backend builds this with {@link entityScope}.
+ */
+export interface StoreScope {
+	readonly namespace: string;
+	readonly entityId: string;
+	readonly agentId: string | null;
+	readonly sessionId: string | null;
+}
+
+export function entityScope(entityId: string): StoreScope {
+	return {
+		namespace: DEFAULT_NAMESPACE,
+		entityId,
+		agentId: null,
+		sessionId: null,
+	};
+}
+
 export interface StoreVectorSearchInput extends Omit<RecallInput, "minScore"> {
 	embedding: readonly number[];
 	limit: number;
@@ -194,17 +221,19 @@ export interface MemoryStore {
 		input: StoreLexicalSearchInput,
 	): Promise<StoreLexicalCandidate[]>;
 	/**
-	 * Returns available embeddings for the requested IDs, keyed by memory ID.
-	 * Missing memories and memories without an embedding are omitted. Returned
-	 * vectors are detached from stored state, and input or map iteration order is
-	 * not part of the contract.
+	 * Returns available embeddings for the requested IDs of the entity, keyed by
+	 * memory ID. Missing memories, memories of another entity and memories
+	 * without an embedding are omitted. Returned vectors are detached from
+	 * stored state, and input or map iteration order is not part of the
+	 * contract.
 	 */
 	getMemoryEmbeddings(
+		entityId: string,
 		memoryIds: readonly string[],
 	): Promise<Map<string, number[]>>;
 	/**
-	 * Increments access state exactly once for each requested stored memory and
-	 * returns one record per ID containing its post-update `accessCount`,
+	 * Increments access state exactly once for each requested stored memory of
+	 * the entity and returns one record per ID containing its post-update `accessCount`,
 	 * `lastAccessedAt`, and `updatedAt`. Return order is untrusted and normalized
 	 * by shared orchestration.
 	 *
@@ -213,6 +242,7 @@ export interface MemoryStore {
 	 * behavior when this precondition is violated.
 	 */
 	markMemoriesAccessed(
+		entityId: string,
 		memoryIds: readonly string[],
 	): Promise<StoreAccessUpdate[]>;
 

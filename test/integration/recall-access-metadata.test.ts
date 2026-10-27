@@ -22,6 +22,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 		["0000_initial.sql", "42P07"],
 		["0001_add_mnemocyte_meta.sql", "42P07"],
 		["0002_add_embedding_model.sql", "42701"],
+		["0003_schema_v2.sql", "42701"],
 	] as const) {
 		try {
 			await sql.unsafe(await readFile(resolve("migrations", file), "utf8"));
@@ -74,7 +75,7 @@ describe("Postgres recall access metadata", () => {
 							last_accessed_at AS "lastAccessedAt",
 							updated_at AS "updatedAt"
 						FROM mnemocyte_memories
-						WHERE id = ANY(${ids})
+						WHERE id = ANY(${ids}::uuid[])
 					`;
 				});
 			} finally {

@@ -3,6 +3,8 @@
 	"compilerOptions": {
 		"rootDir": ".",
 		"noEmit": true,
+		"declaration": false,
+		"isolatedDeclarations": false,
 		"types": ["node"],
 		"paths": {
 			"mnemocyte": ["./src/index.ts"],

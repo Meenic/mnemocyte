@@ -42,9 +42,12 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_
 ```
 
 The rendered file is a complete schema; do not also apply the numbered
-migrations. The bundled HNSW index supports at most 2,000 dimensions, so a
-rendered file above that fails at `CREATE INDEX` (see
-[limitations](./limitations.md)).
+migrations. pgvector's HNSW index holds at most 2,000 dimensions of `vector`,
+so above 2,000 the renderer switches the column to `halfvec` (16-bit floats,
+half the storage) and indexes it with `halfvec_cosine_ops`. `halfvec` indexes
+stop at 4,000 dimensions, and the renderer refuses anything larger. The
+choice is recorded in `mnemocyte_meta.vector_type` and fixed for the
+installation.
 
 ## Connect
 
@@ -120,19 +123,53 @@ tables, but the migrations must already be applied. Only
 Existing installations use the numbered migrations. Never apply
 `fresh-install.sql` over an existing Mnemocyte schema.
 
-| Installed version | Apply |
+| Installed version | Apply, in order |
 |---|---|
-| 0.1.x | `0001_add_mnemocyte_meta.sql`, then `0002_add_embedding_model.sql` |
-| 0.2.x, 0.3.x | `0002_add_embedding_model.sql` |
-| 0.4.x and later | nothing |
+| 0.1.x | `0001_add_mnemocyte_meta.sql`, `0002_add_embedding_model.sql`, `0003_schema_v2.sql` |
+| 0.2.x, 0.3.x | `0002_add_embedding_model.sql`, `0003_schema_v2.sql` |
+| 0.4.x, 0.5.x | `0003_schema_v2.sql` |
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0001_add_mnemocyte_meta.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0002_add_embedding_model.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0003_schema_v2.sql
 ```
 
 Installations from 0.1.x stay at 1536 dimensions. Changing the dimension of
 an existing table is a migration you plan and run yourself.
+
+### Upgrading to 0.6 (`0003_schema_v2.sql`)
+
+- **Ids become UUIDs.** `id` and `superseded_by` change from `text` to
+  `uuid`, and so do audit event ids. New ids are UUIDv7: time-ordered, so new
+  rows land at the end of the primary-key index instead of on a random page.
+  An existing id that is already a UUID keeps its value; any other id, such
+  as `mem_lx2…`, becomes `md5(id)::uuid`. The `memoryId` and `supersededBy`
+  values in audit event metadata are converted the same way. If your
+  application stores memory ids, convert them with the same rule:
+
+  ```sql
+  SELECT md5('mem_lx2abc_k3j9d0q1')::uuid;
+  ```
+
+  ```ts
+  import { createHash } from "node:crypto";
+
+  const hex = createHash("md5").update(oldId).digest("hex");
+  const newId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  ```
+
+- **The tables are rewritten.** Changing the id type and adding the stored
+  full-text column rewrite `mnemocyte_memories` and `mnemocyte_events` and
+  rebuild every index on them, including HNSW. The migration holds an
+  `ACCESS EXCLUSIVE` lock on each table while it runs, which blocks reads and
+  writes. Plan a maintenance window for large tables.
+- **Scope columns.** Memories and audit events gain `namespace`, `agent_id`
+  and `session_id`; existing rows get the namespace `default` and no agent or
+  session. Memories also gain `key` (unique per scope when set), and `type` is
+  renamed to `kind`. The public API is unchanged in this release: it reads
+  and writes the `default` namespace.
+- **Full text is precomputed.** `content_tsv` is a stored generated column
+  (`to_tsvector('english', content)`) with a GIN index, so keyword search no
+  longer parses every row on each query.
 
 ## One embedding model per installation
 
@@ -171,9 +208,15 @@ WHERE key = 'installation';
 
 ## Indexes
 
-The schema creates btree indexes on `entity_id` and `(entity_id, type)` for
-memories, on `(entity_id, timestamp)` for audit events, and an HNSW index on
-the embedding for cosine search.
+The schema creates:
+
+- a btree on the scope, `(namespace, entity_id, agent_id, session_id)`, for
+  memories, and `(namespace, entity_id, timestamp, id)` for audit events;
+- a unique btree on the scope plus `key`, only for rows with a key;
+- a partial btree on `superseded_by`, so deleting a memory does not scan the
+  table to check that nothing was consolidated into it;
+- a GIN index on `content_tsv` for full-text search;
+- an HNSW index on the embedding for cosine search.
 
 HNSW (hierarchical navigable small world) is an approximate nearest-neighbor
 index: fast, but it can miss close matches, it uses memory to build and it
@@ -181,7 +224,6 @@ adds cost to every write. Filters such as `entityId`, `types` and `tags` are
 applied after the index scan, so very selective filters can return fewer
 results than exist (see [limitations](./limitations.md)).
 
-There is no full-text or tag index yet. Benchmark against representative data
-before adding indexes of your own, for example an expression index on
-`to_tsvector('english', content)`. IVFFlat can suit large, steady-state
-tables, but needs tuning once the table holds representative vectors.
+There is no tag index. Benchmark against representative data before adding
+indexes of your own. IVFFlat can suit large, steady-state tables, but needs
+tuning once the table holds representative vectors.

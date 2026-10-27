@@ -6,6 +6,7 @@ import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError } from "../helpers.js";
+import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -77,6 +78,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 			throw error;
 		}
 	}
+	await applySchemaV2Migration(sql);
 }
 
 function firstVectorComponent(value: unknown): number {

@@ -6,6 +6,7 @@ import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError } from "../helpers.js";
+import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -85,6 +86,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 			throw error;
 		}
 	}
+	await applySchemaV2Migration(sql);
 }
 
 function holdMemoryLock(sql: ReturnType<typeof postgres>, memoryId: string) {
@@ -103,7 +105,7 @@ function holdMemoryLock(sql: ReturnType<typeof postgres>, memoryId: string) {
 			await transaction`
 				SELECT id
 				FROM mnemocyte_memories
-				WHERE id = ${memoryId}
+				WHERE id = ${memoryId}::uuid
 				FOR UPDATE
 			`;
 			markLocked?.();
@@ -250,34 +252,26 @@ async function runCancellationScenario(databaseUrl: string) {
 			memoryCount: 3,
 		});
 
+		// Consolidation is one statement, so aborting cancels it while it waits
+		// for the row lock, before anything is written.
 		const consolidateLock = holdMemoryLock(locker, loser.id);
 		await consolidateLock.locked;
-		const controller = new AbortController();
-		const pending = client.experimental.consolidate({
-			entityId,
-			survivorId: survivor.id,
-			supersededIds: [loser.id],
-			signal: controller.signal,
-		});
-		let settled = false;
-		void pending.then(
-			() => {
-				settled = true;
-			},
-			() => {
-				settled = true;
-			},
-		);
 		try {
+			const controller = new AbortController();
+			const pending = client.experimental.consolidate({
+				entityId,
+				survivorId: survivor.id,
+				supersededIds: [loser.id],
+				signal: controller.signal,
+			});
 			await waitForBlockedQuery(observer, "select");
 			controller.abort("cancel blocked consolidation");
-			await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-			expect(settled).toBe(false);
+
+			await expectMnemocyteError(withTimeout(pending), "ABORTED");
 		} finally {
 			consolidateLock.release();
 			await consolidateLock.done;
 		}
-		await expectMnemocyteError(withTimeout(pending), "ABORTED");
 		await expect(client.stats({ entityId })).resolves.toMatchObject({
 			memoryCount: 3,
 			supersededMemoryCount: 0,
@@ -297,7 +291,7 @@ async function runCancellationScenario(databaseUrl: string) {
 
 describe("Postgres cancellation", () => {
 	test.skipIf(!databaseUrl)(
-		"cancels standalone queries and rolls back an aborted consolidation",
+		"cancels standalone queries and a blocked consolidation",
 		async () => {
 			await runCancellationScenario(databaseUrl ?? "");
 		},

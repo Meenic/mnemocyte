@@ -114,6 +114,7 @@ async function ensureMigrations(sql: ReturnType<typeof postgres>) {
 	await applyMigration(sql, "0000_initial.sql");
 	await applyMigration(sql, "0001_add_mnemocyte_meta.sql");
 	await applyMigration(sql, "0002_add_embedding_model.sql");
+	await applyMigration(sql, "0003_schema_v2.sql");
 	await sql`
 		INSERT INTO mnemocyte_meta (key, embedding_dimensions)
 		VALUES ('installation', 1536)

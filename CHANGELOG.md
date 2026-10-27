@@ -50,6 +50,35 @@ behavioural changes documented in their entries.
   // client.close() no longer ends the pool: call `await sql.end()` yourself.
   ```
 
+- **Breaking: Postgres schema v2 (`0003_schema_v2.sql`).** Existing
+  installations must apply `migrations/0003_schema_v2.sql`; fresh installs
+  get it from `fresh-install.sql` or the rendered template. It adds
+  `namespace`, `agent_id` and `session_id` scope columns (existing rows get
+  namespace `default`), an optional `key` with a unique index per scope,
+  renames `type` to `kind`, precomputes full text in a stored `content_tsv`
+  column with a GIN index, and indexes `superseded_by`. The migration
+  rewrites both tables under an `ACCESS EXCLUSIVE` lock. The public API is
+  unchanged and uses the `default` namespace.
+- **Breaking: UUID ids.** Memory and audit event ids are now UUIDv7 strings
+  in `uuid` columns. `0003` converts existing ids that are not UUIDs to
+  `md5(id)::uuid`, including the ids inside audit event metadata; convert
+  ids your application stored the same way (see
+  [Postgres upgrade](docs/guide/postgres.md#upgrading-to-06-0003_schema_v2sql)).
+- **Up to 4,000 dimensions on Postgres.** `render-initial.mjs` uses
+  `halfvec` with `halfvec_cosine_ops` above 2,000 dimensions, and refuses
+  more than 4,000. `mnemocyte_meta.vector_type` records the choice.
+- **Consolidation is one statement.** `experimental.consolidate` no longer
+  opens an interactive transaction; aborting it cancels the statement even
+  while it waits for a row lock, before anything is written.
+
+### Fixed
+
+- **Scoped id lookups.** Loading embeddings for lexical-only candidates and
+  updating access counts now filter by entity as well as id.
+- **Embedder checks per model.** The Postgres installation check is cached
+  per embedder model and dimensions instead of per store, so two clients with
+  different embedders sharing one `drizzleStore(db)` are both checked.
+
 ### Documentation
 
 - **Shorter README.** The README now covers install, a quickstart, Postgres

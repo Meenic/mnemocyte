@@ -286,7 +286,7 @@ export interface Embedder {
  * new memory and link the previous one via {@link Memory.supersededBy}.
  */
 export interface Memory {
-	/** Unique identifier (`mem_*` prefixed string). */
+	/** Unique identifier: a UUIDv7 string. */
 	id: string;
 	/** Owning entity — typically a user, agent, or session ID. */
 	entityId: string;
@@ -680,7 +680,7 @@ export interface DuplicatePair {
  * @experimental Part of Phase 6 (consolidation tooling).
  */
 export interface AuditEvent {
-	/** Unique identifier (`evt_*` prefixed string). */
+	/** Unique identifier: a UUIDv7 string. */
 	id: string;
 	/** Entity whose state was changed. */
 	entityId: string;

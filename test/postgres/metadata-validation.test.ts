@@ -8,6 +8,7 @@ interface FakeMetaRow {
 	key: string;
 	embeddingDimensions: number;
 	embeddingModel: string | null;
+	vectorType: "vector" | "halfvec";
 }
 
 interface FakeHandle {
@@ -121,6 +122,7 @@ function installationMeta(
 		key: "installation",
 		embeddingDimensions,
 		embeddingModel,
+		vectorType: "vector",
 	};
 }
 
@@ -337,7 +339,7 @@ describe("Postgres metadata validation", () => {
 				client.recall({ entityId: "alice", query: "hello" }),
 				"MIGRATION",
 			);
-			expect(error.message).toContain("0002_add_embedding_model.sql");
+			expect(error.message).toContain("0003_schema_v2.sql");
 			expect(embedCalls).toEqual([]);
 		}
 	});

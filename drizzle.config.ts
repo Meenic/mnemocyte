@@ -8,7 +8,6 @@ if (!process.env.DATABASE_URL && existsSync(envPath)) {
 }
 
 export default defineConfig({
-	schema: "./src/db/schema.ts",
 	out: "./migrations",
 	dialect: "postgresql",
 	dbCredentials: {

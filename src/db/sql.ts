@@ -10,6 +10,12 @@ export interface SqlParams {
 	list(values: readonly unknown[]): string;
 	/** A `timestamptz` placeholder. Sent as an ISO string, never a `Date`. */
 	timestamp(value: Date): string;
+	/** A `uuid` placeholder, cast so drivers that type strings as `text` work. */
+	uuid(value: string): string;
+	/** `$1::uuid, $2::uuid, …` for an `IN (…)` list of ids. */
+	uuidList(values: readonly string[]): string;
+	/** A JSON array parameter, read as rows of `(element, position)`. */
+	jsonArrayRows(values: readonly string[]): string;
 	/** `ARRAY[$1, $2]::text[]`, for containment checks. */
 	textArray(values: readonly string[]): string;
 	/** A `text[]` value built from one JSON parameter, in input order. */
@@ -31,6 +37,16 @@ export function createSqlParams(): SqlParams {
 		},
 		timestamp(value) {
 			return `${params.add(value.toISOString())}::timestamptz`;
+		},
+		uuid(value) {
+			return `${params.add(value)}::uuid`;
+		},
+		uuidList(items) {
+			return items.map((item) => params.uuid(item)).join(", ");
+		},
+		jsonArrayRows(items) {
+			const placeholder = params.add(JSON.stringify(items));
+			return `jsonb_array_elements_text(${placeholder}::text::jsonb) WITH ORDINALITY AS e(element, position)`;
 		},
 		textArray(items) {
 			return `ARRAY[${params.list(items)}]::text[]`;

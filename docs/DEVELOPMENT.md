@@ -61,7 +61,6 @@ src/
     executor.ts         SqlExecutor: query + transaction
     postgres-js.ts      postgresJs(sql): the postgres.js adapter
   db/
-    schema.ts           Drizzle table definitions (drizzle-kit only)
     sql.ts              bind-parameter collector for building statements
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
@@ -81,7 +80,10 @@ only, so no built entry imports them (a package test checks this). Their
 versions are also dev dependencies for the tests.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
-Node 22.18 fully supports. The `.mjs` files ship with source maps that embed
+Node 22.18 fully supports. `isolatedDeclarations` is on for `src/`, so every
+export needs a type a declaration emitter can read without inference
+(explicit return types on exported functions); the test projects turn it
+off. The `.mjs` files ship with source maps that embed
 their sources. The `.d.mts` files ship without maps, because a declaration
 map points at `src/`, which is not published. With `sourcemap` on, rolldown
 writes a `sourceMappingURL` comment into every chunk, `.d.mts` included, and

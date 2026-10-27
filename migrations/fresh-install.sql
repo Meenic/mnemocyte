@@ -1,24 +1,29 @@
 CREATE TABLE "mnemocyte_events" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"entity_id" text NOT NULL,
 	"description" text NOT NULL,
 	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"timestamp" timestamp with time zone DEFAULT now() NOT NULL
+	"timestamp" timestamp with time zone DEFAULT now() NOT NULL,
+	"namespace" text NOT NULL,
+	"agent_id" text,
+	"session_id" text
 );
 --> statement-breakpoint
 CREATE TABLE "mnemocyte_meta" (
 	"key" text PRIMARY KEY NOT NULL,
 	"embedding_dimensions" integer NOT NULL,
-	"embedding_model" text
+	"embedding_model" text,
+	"vector_type" text DEFAULT 'vector' NOT NULL,
+	CONSTRAINT "mnemocyte_meta_vector_type_check" CHECK ("vector_type" IN ('vector', 'halfvec'))
 );
 --> statement-breakpoint
-INSERT INTO "mnemocyte_meta" ("key", "embedding_dimensions") VALUES ('installation', 1536);
+INSERT INTO "mnemocyte_meta" ("key", "embedding_dimensions", "vector_type") VALUES ('installation', 1536, 'vector');
 --> statement-breakpoint
 CREATE TABLE "mnemocyte_memories" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"entity_id" text NOT NULL,
 	"content" text NOT NULL,
-	"type" text DEFAULT 'fact' NOT NULL,
+	"kind" text DEFAULT 'fact' NOT NULL,
 	"importance" text DEFAULT 'normal' NOT NULL,
 	"tags" text[] DEFAULT '{}'::text[] NOT NULL,
 	"source" text,
@@ -27,17 +32,30 @@ CREATE TABLE "mnemocyte_memories" (
 	"embedding" vector(1536),
 	"embedding_model" text NOT NULL,
 	"embedding_dimensions" integer NOT NULL,
-	"superseded_by" text,
+	"superseded_by" uuid,
 	"superseded_at" timestamp with time zone,
 	"expires_at" timestamp with time zone,
 	"last_accessed_at" timestamp with time zone,
 	"access_count" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"namespace" text NOT NULL,
+	"agent_id" text,
+	"session_id" text,
+	"key" text,
+	"content_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('english'::regconfig, "content")) STORED
 );
 --> statement-breakpoint
-ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "mnemocyte_events_entity_time_idx" ON "mnemocyte_events" USING btree ("entity_id","timestamp");--> statement-breakpoint
-CREATE INDEX "mnemocyte_memories_entity_idx" ON "mnemocyte_memories" USING btree ("entity_id");--> statement-breakpoint
-CREATE INDEX "mnemocyte_memories_entity_type_idx" ON "mnemocyte_memories" USING btree ("entity_id","type");--> statement-breakpoint
+ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;
+--> statement-breakpoint
+CREATE INDEX "mnemocyte_events_scope_time_idx" ON "mnemocyte_events" USING btree ("namespace","entity_id","timestamp","id");
+--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_scope_idx" ON "mnemocyte_memories" USING btree ("namespace","entity_id","agent_id","session_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "mnemocyte_memories_scope_key_idx" ON "mnemocyte_memories" USING btree ("namespace","entity_id","agent_id","session_id","key") NULLS NOT DISTINCT WHERE "key" IS NOT NULL;
+--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_superseded_by_idx" ON "mnemocyte_memories" USING btree ("superseded_by") WHERE "superseded_by" IS NOT NULL;
+--> statement-breakpoint
+CREATE INDEX "mnemocyte_memories_content_tsv_idx" ON "mnemocyte_memories" USING gin ("content_tsv");
+--> statement-breakpoint
 CREATE INDEX "mnemocyte_memories_embedding_hnsw_idx" ON "mnemocyte_memories" USING hnsw ("embedding" vector_cosine_ops);

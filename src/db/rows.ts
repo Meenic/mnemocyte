@@ -59,18 +59,26 @@ export type RawEventRow = Omit<EventRow, "metadata" | "timestamp"> & {
 	timestamp: RawTimestamp;
 };
 
+/** The pgvector column type chosen at install: `halfvec` above 2,000 dimensions. */
+export type VectorType = "vector" | "halfvec";
+
 export interface MetaRow {
 	key: string;
 	embeddingDimensions: number;
 	embeddingModel: string | null;
+	vectorType: VectorType;
 }
 
-/** Column, result key and optional cast, in `MemoryRow` order. */
+/**
+ * Column, result key and optional cast, in `MemoryRow` order. Ids are read as
+ * text so every driver returns them as strings; `kind` keeps its 0.x result
+ * key, `type`, until the public API renames it.
+ */
 const MEMORY_COLUMNS = [
-	["id", "id", undefined],
+	["id", "id", "text"],
 	["entity_id", "entityId", undefined],
 	["content", "content", undefined],
-	["type", "type", undefined],
+	["kind", "type", undefined],
 	["importance", "importance", undefined],
 	["tags", "tags", undefined],
 	["source", "source", undefined],
@@ -78,7 +86,7 @@ const MEMORY_COLUMNS = [
 	["confidence", "confidence", undefined],
 	["embedding_model", "embeddingModel", undefined],
 	["embedding_dimensions", "embeddingDimensions", undefined],
-	["superseded_by", "supersededBy", undefined],
+	["superseded_by", "supersededBy", "text"],
 	["superseded_at", "supersededAt", undefined],
 	["expires_at", "expiresAt", undefined],
 	["last_accessed_at", "lastAccessedAt", undefined],
@@ -121,9 +129,9 @@ export function extractPrefixedMemoryRow(
 	return picked as unknown as RawMemoryRow;
 }
 
-export const EVENT_COLUMNS = `id, entity_id AS "entityId", description, metadata::text AS metadata, timestamp`;
+export const EVENT_COLUMNS = `id::text AS id, entity_id AS "entityId", description, metadata::text AS metadata, timestamp`;
 
-export const META_COLUMNS = `key, embedding_dimensions AS "embeddingDimensions", embedding_model AS "embeddingModel"`;
+export const META_COLUMNS = `key, embedding_dimensions AS "embeddingDimensions", embedding_model AS "embeddingModel", vector_type AS "vectorType"`;
 
 export function toDate(value: RawTimestamp): Date {
 	return value instanceof Date ? value : new Date(value);

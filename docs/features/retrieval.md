@@ -14,8 +14,10 @@
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by
      `embedding <=> $query` (HNSW when the planner chooses it); in-memory scans
      every row.
-   - **lexical**: Postgres uses `to_tsvector('english', content) @@
-     websearch_to_tsquery('english', $query)` ranked by `ts_rank`; in-memory
+   - **lexical**: Postgres uses `content_tsv @@
+     websearch_to_tsquery('english', $query)` ranked by `ts_rank`, where
+     `content_tsv` is a stored `to_tsvector('english', content)` column with
+     a GIN index; in-memory
      uses the fraction of whitespace-split query terms found as substrings.
 4. Merge by id. Lexical-only candidates get their vector score from a second
    query that loads their embeddings.
@@ -50,7 +52,8 @@ roadmap replaces this with reciprocal rank fusion.
 After ranking, `markMemoriesAccessed` increments `access_count` and sets
 `last_accessed_at` and `updated_at` for every returned memory. Ranking uses
 the counts from before the update; the returned records carry the values
-after it. On Postgres this is an `UPDATE … WHERE id IN (…)` on every recall.
+after it. On Postgres this is an `UPDATE … WHERE id IN (…)` on every recall,
+limited to the recalled entity like every other id lookup.
 If a returned memory is deleted between the search and this update, recall
 rejects with `"DB"`.
 

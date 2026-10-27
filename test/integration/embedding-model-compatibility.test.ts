@@ -50,6 +50,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 		SET embedding_dimensions = EXCLUDED.embedding_dimensions
 	`;
 	await applyMigration(sql, "0002_add_embedding_model.sql", "42701");
+	await applyMigration(sql, "0003_schema_v2.sql", "42701");
 }
 
 function createEmbedder(model: string, embedCalls: string[]) {
@@ -73,7 +74,7 @@ describe("Postgres embedding-model compatibility", () => {
 		async () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityId = `model_compat_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-			const mixedMemoryId = `mem_mixed_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			const mixedMemoryId = crypto.randomUUID();
 			const incompatibleModel = "mnemocyte-incompatible-test";
 			const vector = `[1,${Array.from({ length: 1535 }, () => "0").join(",")}]`;
 			await applyMigrations(sql);
@@ -176,6 +177,7 @@ describe("Postgres embedding-model compatibility", () => {
 				await sql`
 					INSERT INTO mnemocyte_memories (
 						id,
+						namespace,
 						entity_id,
 						content,
 						embedding,
@@ -183,7 +185,8 @@ describe("Postgres embedding-model compatibility", () => {
 						embedding_dimensions
 					)
 					VALUES (
-						${mixedMemoryId},
+						${mixedMemoryId}::uuid,
+						'default',
 						${entityId},
 						'mixed-historical-model',
 						${vector}::vector,

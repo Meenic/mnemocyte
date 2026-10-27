@@ -4,6 +4,10 @@ What is built today and how to work on it. The target design lives in
 [ARCHITECTURE.md](./ARCHITECTURE.md); when one of its items lands, its section
 moves here or into [features/](./features/).
 
+User-facing documentation is `README.md` plus [guide/](./guide/): the API
+reference, Postgres setup, embedders and limitations. A change users can see
+updates the matching guide page in the same PR.
+
 Feature areas:
 
 - [features/postgres.md](./features/postgres.md): schema, migrations,

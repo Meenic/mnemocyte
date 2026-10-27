@@ -18,7 +18,7 @@ adapters, more SQL backends, AI SDK integration) is in
 - `docs/DEVELOPMENT.md`: what is built today, conventions, testing, releasing.
 - `docs/ARCHITECTURE.md`: the target design and the dated decisions behind it.
 - `docs/features/<area>.md` for the area you touch.
-- `README.md` before changing anything users see.
+- `README.md` and `docs/guide/` before changing anything users see.
 
 ## Rules
 

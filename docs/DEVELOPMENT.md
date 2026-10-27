@@ -10,8 +10,8 @@ updates the matching guide page in the same PR.
 
 Feature areas:
 
-- [features/postgres.md](./features/postgres.md): schema, migrations,
-  installation metadata, connections (`SqlExecutor`, `postgresStore`,
+- [features/postgres.md](./features/postgres.md): schema, migrations and
+  the `migrate()` runner, installation metadata, connections (`SqlExecutor`, `postgresStore`,
   `drizzleStore(db)`).
 - [features/retrieval.md](./features/retrieval.md): recall, scoring, access
   tracking, `buildContext`.
@@ -40,8 +40,9 @@ or from a consuming project.
 
 ```txt
 src/
-  index.ts              root entry: createMnemocyte, errors, public types
+  index.ts              root entry: createMnemocyte, migrate, errors, public types
   client.ts             backend selection (store | in-memory)
+  migrate.ts            migrate(): validates input, calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs
   types.ts              every public type
   errors.ts             MnemocyteError and its codes
@@ -49,7 +50,7 @@ src/
   resilience.ts         provider timeout, retry, abort
   memory/
     client-core.ts      shared orchestration for every client method
-    store.ts            the internal MemoryStore contract (18 methods)
+    store.ts            the internal MemoryStore contract (19 methods)
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     validation.ts       runtime input and config validation
@@ -64,11 +65,13 @@ src/
     sql.ts              bind-parameter collector for building statements
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
+    migrations/         Postgres migration runner and bundled.ts (generated)
   retrieval/scorer.ts   cosine, lexical overlap, weighted scoring
   context/              buildContext, formatters, token budget
   embedders/            openaiEmbedder (fetch only)
   stores/drizzle.ts     drizzleStore(db)
 migrations/             SQL migrations, template, renderer, Drizzle journal
+scripts/                bundle-migrations.mjs, check-package.mjs
 test/                   unit, package, integration, fixtures, benchmarks
 ```
 
@@ -115,8 +118,8 @@ plugin in `tsdown.config.ts` strips that comment.
 
 Exports:
 
-- `mnemocyte`: `createMnemocyte`, `MnemocyteError`, `isMnemocyteError` and
-  the public types.
+- `mnemocyte`: `createMnemocyte`, `migrate`, `MnemocyteError`,
+  `isMnemocyteError` and the public types.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
   `SqlExecutor` type.
@@ -178,8 +181,10 @@ Vitest has three projects (`vitest.config.ts`):
   pgvector available and a role that can create tables in `public`. Each file
   applies the bundled migrations, ignoring "already exists" errors, and uses
   random entity ids. Some tests rewrite `mnemocyte_meta` and drop tables
-  inside a transaction they roll back. Files run serially with a 60 s
-  timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
+  inside a transaction they roll back. `migrate.test.ts` cannot roll back,
+  because `migrate()` commits each migration: every test drops the Mnemocyte
+  tables and the file ends by leaving a tracked 1536-dimension schema for the
+  files after it. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
 - CI runs the integration suite on Node 24 against the
   `pgvector/pgvector:0.8.7-pg17` and `0.8.7-pg18` service containers after

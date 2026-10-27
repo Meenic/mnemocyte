@@ -9,6 +9,7 @@ import type {
 	ImportanceLevel,
 	ListAuditLogInput,
 	MemoryType,
+	MigrateInput,
 	ProviderResilienceConfig,
 	PruneInput,
 	RecallInput,
@@ -110,6 +111,19 @@ export function assertNonEmptyString(
 ): asserts value is string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new MnemocyteError(`${field} must be a non-empty string.`, code);
+	}
+}
+
+function assertOptionalSignal(signal: AbortSignal | undefined): void {
+	if (
+		signal !== undefined &&
+		(typeof signal !== "object" ||
+			signal === null ||
+			typeof signal.aborted !== "boolean" ||
+			typeof signal.addEventListener !== "function" ||
+			typeof signal.removeEventListener !== "function")
+	) {
+		throw new MnemocyteError("signal must be an AbortSignal.", "VALIDATION");
 	}
 }
 
@@ -395,16 +409,7 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	if (input.maxImportance !== undefined) {
 		assertImportanceLevel(input.maxImportance, "maxImportance");
 	}
-	if (
-		input.signal !== undefined &&
-		(typeof input.signal !== "object" ||
-			input.signal === null ||
-			typeof input.signal.aborted !== "boolean" ||
-			typeof input.signal.addEventListener !== "function" ||
-			typeof input.signal.removeEventListener !== "function")
-	) {
-		throw new MnemocyteError("signal must be an AbortSignal.", "VALIDATION");
-	}
+	assertOptionalSignal(input.signal);
 	const filter: ValidatedPruneFilter = {
 		...(input.entityId === undefined ? {} : { entityId: input.entityId }),
 		...(input.expired === true ? { expired: true as const } : {}),
@@ -518,4 +523,30 @@ function assertAuditLogCursor(
 	const cursor = value as { id?: unknown; timestamp?: unknown };
 	assertValidDate(cursor.timestamp, `${field}.timestamp`);
 	assertNonEmptyString(cursor.id, `${field}.id`);
+}
+
+// pgvector's HNSW index holds `halfvec` up to 4,000 dimensions, the largest
+// column a migration can create.
+const MAX_MIGRATE_DIMENSIONS = 4000;
+
+/**
+ * Validate a {@link MigrateInput} and throw a `"VALIDATION"`
+ * {@link MnemocyteError} when malformed.
+ */
+export function validateMigrateInput(input: MigrateInput): void {
+	if (typeof input !== "object" || input === null) {
+		throw new MnemocyteError("migrate requires an input object.", "VALIDATION");
+	}
+	if (
+		input.dimensions !== undefined &&
+		(!Number.isInteger(input.dimensions) ||
+			input.dimensions < 1 ||
+			input.dimensions > MAX_MIGRATE_DIMENSIONS)
+	) {
+		throw new MnemocyteError(
+			`dimensions must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
+			"VALIDATION",
+		);
+	}
+	assertOptionalSignal(input.signal);
 }

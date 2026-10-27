@@ -14,6 +14,8 @@ import type {
 	JsonObject,
 	JsonValue,
 	ListAuditLogInput,
+	MigrateInput,
+	MigrateResult,
 	MnemocyteClient,
 	MnemocyteConfig,
 	MnemocyteErrorCode,
@@ -27,7 +29,7 @@ import type {
 	RetrievalScoreWeights,
 	TokenCounter,
 } from "mnemocyte";
-import { createMnemocyte, MnemocyteError } from "mnemocyte";
+import { createMnemocyte, MnemocyteError, migrate } from "mnemocyte";
 import {
 	type OpenAIEmbedderOptions,
 	openaiEmbedder,
@@ -71,6 +73,12 @@ const postgresConfig: MnemocyteConfig = {
 	embedder,
 	store: postgresStore(postgresOptions),
 };
+const migrateInput: MigrateInput = {
+	store: postgresStore(postgresOptions),
+	dimensions: 1536,
+	signal: new AbortController().signal,
+};
+const migrated: Promise<MigrateResult> = migrate(migrateInput);
 const client: MnemocyteClient = createMnemocyte(config);
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
 const conflictError = new MnemocyteError("conflict", conflictCode);
@@ -207,6 +215,7 @@ const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
+void migrated;
 void callerStoreConfig;
 void postgresConfig;
 void queryOptions;

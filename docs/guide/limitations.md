@@ -10,15 +10,17 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   repaired ([postgres.md](./postgres.md#repair-mixed-models)).
 - **At most 4,000 dimensions on Postgres.** Above 2,000 the schema stores
   embeddings as `halfvec` (16-bit floats), because pgvector's HNSW index on
-  `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and the renderer
-  refuses larger sizes. Half precision is close to lossless for cosine
+  `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and `migrate` and
+  the renderer refuse larger sizes. Half precision is close to lossless for cosine
   ranking but not bit-for-bit equal to the vectors you sent.
 - **postgres.js only.** `postgresJs` is the only `SqlExecutor` adapter, and
   `drizzleStore` accepts only `drizzle-orm/postgres-js` instances. Planned:
   Drizzle, PGlite and node-postgres adapters (`feat/postgres-drivers`).
-- **Migrations are applied by hand.** Nothing records which files were applied
-  outside the repository's Drizzle journal. Planned: an exported `migrate()`
-  (`feat/migrate-runner`).
+- **`migrate` needs interactive transactions and the `public` schema.** It
+  runs each migration in a transaction, so HTTP drivers without one (Neon's
+  HTTP driver) cannot run it; use a regular connection for migrating. The
+  consolidation foreign key names `public.mnemocyte_memories`, so the tables
+  must live in `public`.
 - **Large batches fail on Postgres.** `rememberMany` sends one `INSERT`; past
   about 2,900 memories it exceeds Postgres's 65,535 bind-parameter limit and
   throws `"DB"`. The whole batch is also embedded in one embedder call. Split

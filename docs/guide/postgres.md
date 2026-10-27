@@ -8,33 +8,84 @@ in-memory backend needs none of this.
 - Postgres with the [pgvector](https://github.com/pgvector/pgvector)
   extension available. CI tests Postgres 17 and 18 with pgvector 0.8.
 - A database role that can create the extension (once) and the Mnemocyte
-  tables.
+  tables in the `public` schema.
 - The `postgres` (postgres.js) package next to Mnemocyte. It is an optional
   peer dependency; Mnemocyte itself has no runtime dependencies.
 
 Mnemocyte never creates extensions, tables or indexes when a client is
-created. You apply the bundled SQL files yourself.
+created. You create the schema with `migrate()`, or by applying the bundled
+SQL files yourself.
 
-## Fresh install
+## Install the schema
 
-The commands below use `psql` and assume `DATABASE_URL` points at the target
-database. `-v ON_ERROR_STOP=1 --single-transaction` makes `psql` stop at the
-first error and roll the whole file back, so a failed run never leaves a
-partial schema. Without those flags, `psql -f` keeps going after an error.
+Enable pgvector once, as a role that may create extensions:
 
 ```bash
 psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+```
+
+Then run `migrate` with the same client your app uses, for example in a
+deploy step or at startup:
+
+```ts
+import { migrate } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import postgres from "postgres";
+
+const sql = postgres(process.env.DATABASE_URL!);
+const store = postgresStore({ client: postgresJs(sql) });
+
+const { applied, adopted } = await migrate({ store, dimensions: 1536 });
+```
+
+What it does depends on the database:
+
+- **No Mnemocyte tables:** creates the current schema in one transaction for
+  `dimensions` (required here) and records every migration as applied.
+- **Tables from `migrate`:** applies the migrations that are not recorded
+  yet, in order. When there are none it changes nothing, so running it on
+  every deploy is safe.
+- **Tables installed with `psql` or drizzle-kit:** works out which migrations
+  were applied from the schema itself, records them as `adopted` without
+  running them, then applies the rest. A schema that matches no migration,
+  such as one left half-applied by `psql -f` without the flags below, throws
+  `"MIGRATION"` without changing anything.
+
+Each migration runs in its own transaction, which starts by taking a
+transaction-level advisory lock (`pg_advisory_xact_lock`). Two app instances
+that migrate at the same time therefore take turns, and the second one finds
+the work done. The lock is released when the transaction ends, so it also
+works through transaction-mode poolers such as PgBouncer and Supavisor, which
+do not support session-level locks. A failing migration rolls back on its
+own; the ones before it stay applied.
+
+`dimensions` decides the embedding column. pgvector's HNSW index holds at
+most 2,000 dimensions of `vector`, so above 2,000 the column is `halfvec`
+(16-bit floats, half the storage), indexed with `halfvec_cosine_ops`.
+`halfvec` indexes stop at 4,000 dimensions, and `migrate` refuses anything
+larger. The choice is recorded in `mnemocyte_meta.vector_type` and fixed for
+the installation; passing a different `dimensions` later throws `"CONFIG"`.
+
+`migrate` needs a driver with interactive transactions. Run it over a regular
+TCP connection even if the app itself uses an HTTP driver.
+
+### Apply the SQL files yourself
+
+The same SQL ships in `node_modules/mnemocyte/migrations/` for teams that run
+migrations with their own tools. `-v ON_ERROR_STOP=1 --single-transaction`
+makes `psql` stop at the first error and roll the whole file back, so a failed
+run never leaves a partial schema. Without those flags, `psql -f` keeps going
+after an error.
+
+```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/fresh-install.sql
 ```
 
 `fresh-install.sql` creates the schema for 1536-dimension embeddings
 (OpenAI's `text-embedding-3-small`, for example). Use it only on a database
-that has no Mnemocyte tables yet.
-
-### Other dimensions
-
-For a different embedding size, render the initial migration from the
-bundled template and apply the rendered file instead of `fresh-install.sql`:
+that has no Mnemocyte tables yet. For a different embedding size, render the
+initial migration from the bundled template and apply the rendered file
+instead:
 
 ```bash
 node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
@@ -42,12 +93,8 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_
 ```
 
 The rendered file is a complete schema; do not also apply the numbered
-migrations. pgvector's HNSW index holds at most 2,000 dimensions of `vector`,
-so above 2,000 the renderer switches the column to `halfvec` (16-bit floats,
-half the storage) and indexes it with `halfvec_cosine_ops`. `halfvec` indexes
-stop at 4,000 dimensions, and the renderer refuses anything larger. The
-choice is recorded in `mnemocyte_meta.vector_type` and fixed for the
-installation.
+migrations. If you switch to `migrate` later, it adopts a schema installed
+this way.
 
 ## Connect
 
@@ -120,7 +167,10 @@ tables, but the migrations must already be applied. Only
 
 ## Upgrade an existing installation
 
-Existing installations use the numbered migrations. Never apply
+Run `migrate({ store })` after upgrading the package. It applies the pending
+migrations, adopting an installation that was set up with `psql` first.
+
+With `psql`, apply the numbered migrations yourself. Never apply
 `fresh-install.sql` over an existing Mnemocyte schema.
 
 | Installed version | Apply, in order |

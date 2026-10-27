@@ -1,3 +1,4 @@
+import { runPostgresMigrations } from "../db/migrations/runner.js";
 import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
 	consolidateMemories,
@@ -332,6 +333,9 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	return {
 		backend: "postgres",
 		async ensureSchema() {},
+		migrate(input) {
+			return runPostgresMigrations(client, input);
+		},
 		ensureEmbeddingCompatibility,
 		async insertMemories(memories) {
 			return runPostgresOperation(async () => {

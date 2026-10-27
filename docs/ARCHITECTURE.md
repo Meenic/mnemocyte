@@ -137,15 +137,6 @@ hard token-budget guarantee. The query is no longer echoed into the output.
   design.
 - Audit events get a retention option.
 
-## Migrations
-
-`await migrate({ store })` applies pending migrations from the backend:
-a tracking table, an advisory lock so two app instances cannot migrate at
-once, one transaction per migration, and the dimension and vector type
-(`vector` up to 2,000 dimensions, `halfvec` up to 4,000) fixed at install.
-The same SQL ships as plain files for teams that run migrations with `psql`
-or `drizzle-kit`.
-
 ## Embedders
 
 ```ts

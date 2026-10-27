@@ -191,6 +191,45 @@ export interface MnemocyteStoreConfig {
 }
 
 /**
+ * Input for {@link migrate}.
+ */
+export interface MigrateInput {
+	/** The store to migrate, from `postgresStore()` or `drizzleStore()`. */
+	store: MnemocyteStoreConfig;
+	/**
+	 * Embedding dimensions of the installation. Required on a database with no
+	 * Mnemocyte tables, where it fixes the vector column for good: `vector` up
+	 * to 2,000 dimensions, `halfvec` up to 4,000. On an existing installation
+	 * it is optional, and a value that differs from the installed column
+	 * rejects with `"CONFIG"` before anything runs.
+	 */
+	dimensions?: number;
+	/**
+	 * Cancels the running statement when aborted. The migration in progress
+	 * rolls back; migrations that already committed stay applied.
+	 */
+	signal?: AbortSignal;
+}
+
+/**
+ * Result of {@link migrate}. Names are migration file names without the
+ * extension, such as `"0003_schema_v2"`.
+ */
+export interface MigrateResult {
+	/**
+	 * Migrations this call applied, in order. A fresh install creates the
+	 * final schema in one step and lists every migration it contains.
+	 */
+	applied: string[];
+	/**
+	 * Migrations found already applied in a database that had Mnemocyte tables
+	 * but no `mnemocyte_migrations` table (installed with `psql` or
+	 * drizzle-kit). They are recorded without running again.
+	 */
+	adopted: string[];
+}
+
+/**
  * Configuration passed to {@link createMnemocyte}.
  */
 export interface MnemocyteConfig {

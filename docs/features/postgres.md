@@ -90,8 +90,10 @@ Queries in `db/queries/` take that scope:
 
 ## Migrations
 
-pgvector is a prerequisite: no migration runs `CREATE EXTENSION`. Files in
-`migrations/`:
+pgvector is a prerequisite: no migration runs `CREATE EXTENSION`. The SQL
+lives in `migrations/`; `migrate()` runs the same SQL from
+`src/db/migrations/bundled.ts` (see [the runner](#the-migrate-runner)).
+Files in `migrations/`:
 
 | File | What it does |
 |---|---|
@@ -129,6 +131,7 @@ pgvector is a prerequisite: no migration runs `CREATE EXTENSION`. Files in
 
 Install paths:
 
+- Any database: `migrate({ store, dimensions })`.
 - New database, 1536 dimensions: apply `fresh-install.sql`.
 - New database, other dimensions: render the template and apply the result.
   It already contains the effects of `0001`→`0003`.
@@ -141,15 +144,76 @@ Install paths:
 `fresh-install.sql` is generated from the template; a unit test fails if the
 two drift, and an integration test compares its resulting catalog (columns
 in order, constraints, indexes, metadata) with the `0000`→`0003` sequence.
-Nothing records which files were applied outside Drizzle's own journal.
 
 To change the schema: write the next numbered migration by hand, add it to
 `meta/_journal.json`, update the template so a fresh install matches the
-upgraded catalog column for column, and re-render `fresh-install.sql` with
-`pnpm migration:render`. There is no Drizzle schema to generate from: the
+upgraded catalog column for column, re-render `fresh-install.sql` with
+`pnpm migration:render --dimensions 1536 --out migrations/fresh-install.sql`,
+and regenerate the bundled module with `pnpm migration:bundle`. Teach
+`installedVersion` in `src/db/migrations/runner.ts` the object the new
+migration adds, so untracked schemas at that level are still adopted. There is no Drizzle schema to generate from: the
 table definitions in `src/db/schema.ts` were removed with `0003`, because
 drizzle-kit cannot express the dimension-dependent vector type, and their
 inferred types blocked `isolatedDeclarations`.
+
+### The `migrate()` runner
+
+`migrate({ store, dimensions?, signal? })` is exported from the root
+`mnemocyte` import and calls the store's `migrate` method; the Postgres one is
+`runPostgresMigrations` in `src/db/migrations/runner.ts`. The root bundle
+contains no SQL: it reaches the runner only through a store from
+`mnemocyte/postgres` or `mnemocyte/stores/drizzle`.
+
+- **Bundled SQL.** `scripts/bundle-migrations.mjs` (`pnpm migration:bundle`)
+  writes every journal entry and the template into `bundled.ts` as template
+  literals. Reading `migrations/` at runtime through `import.meta.url` would
+  break in bundlers and serverless builds that do not copy the folder. Unit
+  tests fail when the module differs from the script's output or from the
+  `.sql` files, and when `renderInitialSchema(1536)` differs from
+  `fresh-install.sql`.
+- **Tracking table.** `mnemocyte_migrations(version integer PK, name text,
+  applied_at timestamptz)`, resolved through `search_path` like the other
+  tables. The runner creates it on its first call, after checking with
+  `to_regclass` that it is missing (`CREATE TABLE IF NOT EXISTS` would send a
+  notice on every later call, and postgres.js logs notices by default). It is
+  not part of `fresh-install.sql` or the template.
+- **One transaction per step.** The runner loops over
+  `SqlExecutor.transaction`. Each transaction first runs
+  `pg_advisory_xact_lock(7885351518266947956)` ("mnemocyt" in ASCII), then
+  reads the tracking table and does one step: a fresh install, an adoption,
+  or one numbered migration. The lock is transaction-level because a
+  session-level `pg_advisory_lock` must be released on the connection that
+  took it, which a pooled executor does not guarantee, and transaction-mode
+  poolers do not support session locks. Under `READ COMMITTED` every
+  statement after the lock sees what a concurrent caller committed before
+  releasing it, so the second caller finds the step done.
+- **Statements one at a time.** Each migration is split on
+  `--> statement-breakpoint` and every statement is sent with `tx.query`, so
+  drivers that use the extended query protocol (one statement per query)
+  work. A statement failure becomes `"MIGRATION"` naming the migration, with
+  the driver error as `cause`; the transaction rolls back.
+- **Fresh install.** With no Mnemocyte tables, the runner requires
+  `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`
+  (`"MIGRATION"` when missing), runs the template rendered for those
+  dimensions (`halfvec` above 2,000), and records `0000`→`0003`.
+- **Adoption.** With tables but an empty tracking table, `installedVersion`
+  reads the level from the catalog: `mnemocyte_memories` and
+  `mnemocyte_events` (`0000`), `mnemocyte_meta` (`0001`),
+  `mnemocyte_meta.embedding_model` (`0002`), `mnemocyte_memories.namespace`
+  (`0003`). Those versions are recorded without running; any other
+  combination throws `"MIGRATION"`.
+- **Dimensions.** Inside each locked transaction the runner reads the
+  embedding column's `atttypmod`, which pgvector sets to the declared size
+  of `vector(n)` and `halfvec(n)`, and throws `"CONFIG"` when `dimensions` is
+  given and differs.
+- **Tracking checks.** Recorded versions must be `0…n-1` without gaps, and
+  `n` may not exceed the bundled count (a newer Mnemocyte migrated the
+  database); both throw `"MIGRATION"`. There are no checksums: the SQL ships
+  inside the package and users do not edit it.
+- **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
+  migrate. The self foreign key names `public.mnemocyte_memories`, so the
+  tables must be in `public`. There is no `lock_timeout`: `0003` waits for
+  its `ACCESS EXCLUSIVE` locks as long as the server allows.
 
 ## Installation metadata
 
@@ -254,7 +318,8 @@ Each one is a roadmap item in Phase 1 unless noted.
 - Filters are applied after the HNSW scan and `hnsw.ef_search` stays at its
   default of 40, so filtered recall can return fewer matches than exist.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
-  after an error and can leave a partial schema.
+  after an error and can leave a partial schema; `migrate()` then refuses to
+  adopt it. The guide shows the flags.
 - `rememberMany` sends one `INSERT`; past about 2,900 rows it exceeds the
   65,535 bind-parameter limit.
 - The vector query computes the cosine distance three times per row.

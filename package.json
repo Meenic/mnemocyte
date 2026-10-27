@@ -56,6 +56,7 @@
 		"lint:package": "pnpm build && node scripts/check-package.mjs",
 		"format": "biome format --write",
 		"migration:render": "node migrations/render-initial.mjs",
+		"migration:bundle": "node scripts/bundle-migrations.mjs",
 		"db:migrate": "drizzle-kit migrate",
 		"pack:check": "pnpm pack --dry-run",
 		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"

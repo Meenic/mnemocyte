@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import type { MnemocyteConfig } from "mnemocyte";
 import postgres from "postgres";
 import { describe, test } from "vitest";
-import { createDatabase } from "../../src/db/index.js";
 import { createMemoryClient } from "../../src/memory/client-core.js";
 import { createPostgresStore } from "../../src/memory/postgres.js";
+import { postgresJs } from "../../src/sql/postgres-js.js";
 import {
 	createPausingConsolidationStore,
 	exerciseConsolidationSurvivorRaces,
@@ -52,6 +52,7 @@ async function applyMigration(
 
 async function runPostgresRaceScenario(url: string) {
 	const admin = postgres(url, { max: 1 });
+	const storeSql = postgres(url, { max: 5 });
 	const entityPrefix = `postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 	await applyMigration(admin, "0000_initial.sql", ["42P07"]);
@@ -68,7 +69,7 @@ async function runPostgresRaceScenario(url: string) {
 		},
 		audit: { enabled: true },
 	};
-	const baseStore = createPostgresStore(createDatabase(url));
+	const baseStore = createPostgresStore(postgresJs(storeSql));
 	const pausingStore = createPausingConsolidationStore(baseStore);
 	const client = createMemoryClient(config, pausingStore.store);
 	const mutator = createMemoryClient(config, baseStore);
@@ -90,7 +91,7 @@ async function runPostgresRaceScenario(url: string) {
 			DELETE FROM mnemocyte_events
 			WHERE entity_id LIKE ${`${entityPrefix}%`}
 		`;
-		await admin.end();
+		await Promise.all([admin.end(), storeSql.end()]);
 	}
 }
 

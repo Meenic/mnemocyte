@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError } from "../helpers.js";
@@ -94,7 +95,7 @@ describe("Postgres embedding-model compatibility", () => {
 
 				const matchingCalls: string[] = [];
 				const matchingClient = createMnemocyte({
-					databaseUrl: databaseUrl ?? "",
+					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, matchingCalls),
 				});
 				try {
@@ -119,7 +120,7 @@ describe("Postgres embedding-model compatibility", () => {
 
 				const incompatibleCalls: string[] = [];
 				const incompatibleClient = createMnemocyte({
-					databaseUrl: databaseUrl ?? "",
+					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(incompatibleModel, incompatibleCalls),
 				});
 				try {
@@ -152,7 +153,7 @@ describe("Postgres embedding-model compatibility", () => {
 				`;
 				const repairCalls: string[] = [];
 				const repairClient = createMnemocyte({
-					databaseUrl: databaseUrl ?? "",
+					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, repairCalls),
 				});
 				try {
@@ -196,7 +197,7 @@ describe("Postgres embedding-model compatibility", () => {
 					WHERE key = 'installation'
 				`;
 				const mixedClient = createMnemocyte({
-					databaseUrl: databaseUrl ?? "",
+					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, []),
 				});
 				try {

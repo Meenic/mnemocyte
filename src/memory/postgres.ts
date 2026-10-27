@@ -1,4 +1,3 @@
-import type { DatabaseHandle } from "../db/index.js";
 import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
 	countPruneMatches,
@@ -15,6 +14,7 @@ import {
 	lockConsolidationMemories,
 	markMemoriesAccessed,
 	markMemoriesSuperseded,
+	type NewMemoryRow,
 	type PruneFilter,
 	pruneMemories,
 	setMemoryTags,
@@ -25,9 +25,10 @@ import {
 	getStoredEmbeddingModels,
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
-import type { EventRow, NewMemoryRow } from "../db/schema.js";
+import type { EventRow } from "../db/rows.js";
 import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
+import type { SqlExecutor } from "../sql/executor.js";
 import type {
 	AuditEvent,
 	Embedder,
@@ -78,7 +79,7 @@ function rowToAuditEvent(row: EventRow): AuditEvent {
 		entityId: row.entityId,
 		description: row.description,
 		metadata: cloneJsonObject(row.metadata),
-		timestamp: new Date(row.timestamp),
+		timestamp: row.timestamp,
 	};
 }
 
@@ -198,7 +199,7 @@ function toMemoryRow(memory: StoredMemory): NewMemoryRow {
 	};
 }
 
-export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
+export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	let schemaValidated = false;
 	let schemaValidationPromise: Promise<void> | undefined;
 
@@ -224,7 +225,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 	): Promise<void> {
 		let meta: Awaited<ReturnType<typeof getInstallationMeta>>;
 		try {
-			meta = await getInstallationMeta(handle.db);
+			meta = await getInstallationMeta(client);
 		} catch (error) {
 			if (
 				hasPostgresErrorCode(error, "42P01") ||
@@ -253,7 +254,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		let installationModel = meta.embeddingModel;
 		if (installationModel === null) {
 			try {
-				const storedModels = await getStoredEmbeddingModels(handle.db);
+				const storedModels = await getStoredEmbeddingModels(client);
 				if (storedModels.length > 1) {
 					throw new MnemocyteError(
 						"mnemocyte_meta.embedding_model is unset, but stored memories contain multiple embedding_model values. Re-embed or remove the mixed historical rows, then explicitly record the installation model before using embedding-dependent operations.",
@@ -262,13 +263,13 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				}
 				const inferredModel = storedModels[0] ?? embedder.model;
 				const recorded = await recordInstallationEmbeddingModel(
-					handle.db,
+					client,
 					inferredModel,
 				);
 				if (recorded) {
 					installationModel = recorded.embeddingModel;
 				} else {
-					const concurrentlyRecorded = await getInstallationMeta(handle.db);
+					const concurrentlyRecorded = await getInstallationMeta(client);
 					installationModel = concurrentlyRecorded?.embeddingModel ?? null;
 				}
 			} catch (error) {
@@ -296,16 +297,13 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		ensureEmbeddingCompatibility,
 		async insertMemories(memories) {
 			return runPostgresOperation(async () => {
-				const rows = await insertMemoryRows(
-					handle.db,
-					memories.map(toMemoryRow),
-				);
+				const rows = await insertMemoryRows(client, memories.map(toMemoryRow));
 				return rows.map(rowToMemory);
 			});
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			return runPostgresOperation(async () => {
-				const rows = await vectorSearchQuery(handle.db, input);
+				const rows = await vectorSearchQuery(client, input);
 				return rows.map(
 					(row) =>
 						({
@@ -317,7 +315,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {
 			return runPostgresOperation(async () => {
-				const rows = await lexicalSearchQuery(handle.db, input);
+				const rows = await lexicalSearchQuery(client, input);
 				return rows.map(
 					(row) =>
 						({
@@ -329,12 +327,12 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		},
 		async getMemoryEmbeddings(memoryIds) {
 			return runPostgresOperation(() =>
-				getMemoryEmbeddingsQuery(handle.db, memoryIds),
+				getMemoryEmbeddingsQuery(client, memoryIds),
 			);
 		},
 		async markMemoriesAccessed(memoryIds) {
 			return runPostgresOperation(async () => {
-				const rows = await markMemoriesAccessed(handle.db, memoryIds);
+				const rows = await markMemoriesAccessed(client, memoryIds);
 				return rows.map((row) => {
 					if (row.lastAccessedAt === null) {
 						throw new MnemocyteError(
@@ -351,7 +349,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		},
 		async deleteMemory(entityId, memoryId) {
 			return runPostgresDeleteOperation(async () => {
-				const result = await deleteMemoryQuery(handle.db, entityId, memoryId);
+				const result = await deleteMemoryQuery(client, entityId, memoryId);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -360,7 +358,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		},
 		async deleteMemoriesForEntity(entityId) {
 			return runPostgresDeleteOperation(async () => {
-				const result = await deleteMemoriesForEntityQuery(handle.db, entityId);
+				const result = await deleteMemoriesForEntityQuery(client, entityId);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -376,7 +374,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 				if (dryRun) {
 					return {
 						matchedCount: await countPruneMatches(
-							handle.db,
+							client,
 							filter,
 							options?.signal,
 						),
@@ -385,7 +383,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 						deletedByEntity: [],
 					};
 				}
-				const result = await pruneMemories(handle.db, filter, options?.signal);
+				const result = await pruneMemories(client, filter, options?.signal);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -400,7 +398,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async findDuplicatePairs(input, options) {
 			return runPostgresOperation(async () => {
 				const rows = await findDuplicatePairsQuery(
-					handle.db,
+					client,
 					{
 						entityId: input.entityId,
 						threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
@@ -429,7 +427,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async addAuditEvents(events) {
 			return runPostgresOperation(async () => {
 				for (const event of events) {
-					await insertEvent(handle.db, {
+					await insertEvent(client, {
 						id: event.id,
 						entityId: event.entityId,
 						description: event.description,
@@ -442,7 +440,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async listAuditLog(input, options) {
 			return runPostgresOperation(async () => {
 				const rows = await listEvents(
-					handle.db,
+					client,
 					{
 						entityId: input.entityId,
 						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
@@ -463,7 +461,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async getMemory(entityId, memoryId, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const row = await getMemoryById(handle.db, entityId, memoryId);
+				const row = await getMemoryById(client, entityId, memoryId);
 				throwIfAborted(options?.signal);
 				return row ? rowToMemory(row) : null;
 			});
@@ -471,11 +469,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		async loadConsolidationTargets(entityId, ids, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const targets = await loadConsolidationTargets(
-					handle.db,
-					entityId,
-					ids,
-				);
+				const targets = await loadConsolidationTargets(client, entityId, ids);
 				throwIfAborted(options?.signal);
 				return targets;
 			});
@@ -486,7 +480,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 		): Promise<StoreConsolidateResult> {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
-				const newSupersededIds = await handle.db.transaction(async (tx) => {
+				const newSupersededIds = await client.transaction(async (tx) => {
 					throwIfAborted(options?.signal);
 					const lockedMemories = await lockConsolidationMemories(
 						tx,
@@ -572,7 +566,7 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 			return runPostgresOperation(async () => {
 				if (input?.entityId) {
 					const counts = await getEntityMemoryStatsCounts(
-						handle.db,
+						client,
 						input.entityId,
 						now,
 					);
@@ -582,20 +576,19 @@ export function createPostgresStore(handle: DatabaseHandle): MemoryStore {
 					} satisfies EntityStats;
 				}
 				return (await getGlobalMemoryStatsCounts(
-					handle.db,
+					client,
 					now,
 				)) satisfies GlobalStats;
 			});
 		},
-		async close() {
-			return runPostgresOperation(() => handle.close());
-		},
+		// The caller owns the database client, so there is nothing to release.
+		async close() {},
 	};
 }
 
 export function createPostgresClient(
 	config: MnemocyteConfig,
-	handle: DatabaseHandle,
+	client: SqlExecutor,
 ): MnemocyteClient {
-	return createMemoryClient(config, createPostgresStore(handle));
+	return createMemoryClient(config, createPostgresStore(client));
 }

@@ -65,23 +65,7 @@ describe("lifecycle", () => {
 			await expectClosed(() => client.stats());
 		}
 
-		// 3. createMnemocyte keeps Postgres construction synchronous and defers
-		// schema validation until the first operation.
-		{
-			const client = createMnemocyte({
-				databaseUrl: "postgres://invalid:invalid@127.0.0.1:1/none",
-				embedder: {
-					model: "custom-dims",
-					dimensions: 768,
-					async embed(texts) {
-						return texts.map(() => [0]);
-					},
-				},
-			});
-			await client.close();
-		}
-
-		// 4. Observability still fires for close() and is then quiet for the rejected calls.
+		// 3. Observability still fires for close() and is then quiet for the rejected calls.
 		{
 			const events: MnemocyteObservation[] = [];
 			const client = createMnemocyte({

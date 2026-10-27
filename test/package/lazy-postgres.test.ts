@@ -49,13 +49,30 @@ async function packPackage(tarball: string): Promise<void> {
 }
 
 describe("lazy Postgres package loading", () => {
-	test("keeps database packages out of the root entry's static imports", async () => {
-		const rootEntry = await readFile(resolve("dist/index.mjs"), "utf8");
-
-		expect(rootEntry).not.toMatch(
-			/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres)["'];?\s*$/m,
+	test("declares no runtime dependencies and marks database packages as optional peers", async () => {
+		const manifest = JSON.parse(
+			await readFile(resolve("package.json"), "utf8"),
 		);
+
+		expect(manifest.dependencies).toBeUndefined();
+		expect(Object.keys(manifest.peerDependencies).sort()).toEqual([
+			"drizzle-orm",
+			"postgres",
+		]);
+		expect(manifest.peerDependenciesMeta["drizzle-orm"].optional).toBe(true);
+		expect(manifest.peerDependenciesMeta.postgres.optional).toBe(true);
 	});
+
+	test.each(["dist/index.mjs", "dist/postgres.mjs", "dist/stores/drizzle.mjs"])(
+		"keeps database packages out of the static imports of %s",
+		async (entry) => {
+			const source = await readFile(resolve(entry), "utf8");
+
+			expect(source).not.toMatch(
+				/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres)["'];?\s*$/m,
+			);
+		},
+	);
 
 	test("runs an in-memory client from the packed package with database packages absent", async () => {
 		const temporaryRoot = await mkdtemp(
@@ -104,25 +121,6 @@ describe("lazy Postgres package loading", () => {
 				script,
 				`
 						import { createMnemocyte } from "mnemocyte";
-
-						let configError;
-						try {
-							createMnemocyte({
-								databaseUrl: "https://example.com/not-postgres",
-								embedder: {
-									model: "packed-invalid-config",
-									dimensions: 2,
-									async embed() {
-										return [];
-									},
-								},
-							});
-						} catch (error) {
-							configError = error;
-						}
-						if (configError?.code !== "CONFIG") {
-							throw new Error("Invalid databaseUrl did not fail synchronously.");
-						}
 
 						const client = createMnemocyte({
 							embedder: {

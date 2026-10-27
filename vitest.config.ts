@@ -6,6 +6,7 @@ const sourceAlias = [
 		find: /^mnemocyte\/stores\/(.+)$/,
 		replacement: resolve("src/stores/$1.ts"),
 	},
+	{ find: "mnemocyte/postgres", replacement: resolve("src/postgres.ts") },
 	{
 		find: /^mnemocyte\/embedders\/(.+)$/,
 		replacement: resolve("src/embedders/$1.ts"),

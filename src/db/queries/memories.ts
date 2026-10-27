@@ -1,21 +1,14 @@
-import {
-	and,
-	count,
-	countDistinct,
-	eq,
-	inArray,
-	isNotNull,
-	isNull,
-	lt,
-	or,
-	type SQL,
-	sql,
-} from "drizzle-orm";
+import type { SqlExecutor } from "../../sql/executor.js";
 import type { ImportanceLevel, MemoryType } from "../../types.js";
-import { executeCancelableSql } from "../cancellation.js";
-import type { MnemocyteDatabase } from "../index.js";
-import { type MemoryRow, memoriesTable, type NewMemoryRow } from "../schema.js";
-import { formatVectorComponent } from "../vector.js";
+import {
+	extractPrefixedMemoryRow,
+	type MemoryRow,
+	type RawMemoryRow,
+	selectMemoryColumns,
+	toMemoryRow,
+} from "../rows.js";
+import { createSqlParams, type SqlParams } from "../sql.js";
+import { formatVector, parseVector } from "../vector.js";
 
 export interface MemoryFilter {
 	entityId: string;
@@ -56,97 +49,80 @@ export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
 	entityCount: number;
 }
 
-function vectorLiteral(embedding: readonly number[]): string {
-	return `[${embedding.map(formatVectorComponent).join(",")}]`;
+export type VectorSearchRow = MemoryRow & { vectorScore: number };
+
+export type LexicalSearchRow = MemoryRow & { lexicalScore: number };
+
+export interface NewMemoryRow {
+	id: string;
+	entityId: string;
+	content: string;
+	type: string;
+	importance: string;
+	tags: string[];
+	source: string | null;
+	metadata: unknown;
+	confidence: number;
+	embedding: number[];
+	embeddingModel: string;
+	embeddingDimensions: number;
+	supersededBy: string | null;
+	supersededAt: Date | null;
+	expiresAt: Date | null;
+	lastAccessedAt: Date | null;
+	accessCount: number;
+	createdAt: Date;
+	updatedAt: Date;
 }
 
-function clampedVectorScore(embedding: string) {
-	const rawScore = sql`1 - (embedding <=> ${embedding}::vector)`;
-	return sql<number>`
-		CASE
-			WHEN ${rawScore} = 'NaN'::double precision
-				OR ${rawScore} = 'Infinity'::double precision
-				OR ${rawScore} = '-Infinity'::double precision
-				THEN 0::double precision
-			ELSE GREATEST(
-				0::double precision,
-				LEAST(1::double precision, ${rawScore})
-			)
-		END
+const MEMORY_COLUMNS = selectMemoryColumns();
+
+function nullableTimestamp(params: SqlParams, value: Date | null): string {
+	return value === null
+		? `${params.add(null)}::timestamptz`
+		: params.timestamp(value);
+}
+
+/**
+ * Filters shared by the recall queries, as `AND …` clauses for a table without
+ * an alias.
+ */
+function recallFilters(params: SqlParams, input: MemoryFilter): string {
+	const clauses: string[] = [`entity_id = ${params.add(input.entityId)}`];
+	if (!input.includeSuperseded) {
+		clauses.push("superseded_by IS NULL");
+	}
+	if (!input.includeExpired) {
+		clauses.push("(expires_at IS NULL OR expires_at > now())");
+	}
+	if (input.types && input.types.length > 0) {
+		clauses.push(`type IN (${params.list(input.types)})`);
+	}
+	if (input.tags && input.tags.length > 0) {
+		clauses.push(`tags @> ${params.textArray(input.tags)}`);
+	}
+	if (input.before) {
+		clauses.push(`created_at < ${params.timestamp(input.before)}`);
+	}
+	if (input.after) {
+		clauses.push(`created_at > ${params.timestamp(input.after)}`);
+	}
+	return clauses.join("\n\t\t\tAND ");
+}
+
+function memoryStatsCountColumns(params: SqlParams, now: Date): string {
+	const nowParam = params.timestamp(now);
+	return `
+		count(*)::int AS "memoryCount",
+		(count(*) FILTER (
+			WHERE superseded_by IS NULL
+				AND (expires_at IS NULL OR expires_at > ${nowParam})
+		))::int AS "activeMemoryCount",
+		(count(*) FILTER (
+			WHERE expires_at IS NOT NULL AND expires_at <= ${nowParam}
+		))::int AS "expiredMemoryCount",
+		(count(*) FILTER (WHERE superseded_by IS NOT NULL))::int AS "supersededMemoryCount"
 	`;
-}
-
-type RawTimestamp = Date | string;
-
-export type RecallMemoryRow = Omit<
-	MemoryRow,
-	| "embedding"
-	| "supersededAt"
-	| "expiresAt"
-	| "lastAccessedAt"
-	| "createdAt"
-	| "updatedAt"
-> & {
-	supersededAt: RawTimestamp | null;
-	expiresAt: RawTimestamp | null;
-	lastAccessedAt: RawTimestamp | null;
-	createdAt: RawTimestamp;
-	updatedAt: RawTimestamp;
-};
-
-export type VectorSearchRow = RecallMemoryRow & { vectorScore: number };
-
-export type LexicalSearchRow = RecallMemoryRow & { lexicalScore: number };
-
-function timestampParam(value: Date) {
-	return sql`${value.toISOString()}::timestamptz`;
-}
-
-function textArrayLiteral(values: readonly string[]) {
-	return sql`ARRAY[${sql.join(
-		values.map((value) => sql`${value}`),
-		sql`, `,
-	)}]::text[]`;
-}
-
-function tagsContainAll(tags: readonly string[] | undefined) {
-	return tags && tags.length > 0
-		? sql`${memoriesTable.tags} @> ${textArrayLiteral(tags)}`
-		: undefined;
-}
-
-function rawTagsFilter(tags: readonly string[] | undefined) {
-	return tags && tags.length > 0
-		? sql`AND tags @> ${textArrayLiteral(tags)}`
-		: sql``;
-}
-
-function duplicateTagsFilter(tags: readonly string[] | undefined) {
-	return tags && tags.length > 0
-		? sql`AND a.tags @> ${textArrayLiteral(tags)} AND b.tags @> ${textArrayLiteral(tags)}`
-		: sql``;
-}
-
-function memoryStatsCountFields(now: Date) {
-	return {
-		memoryCount: count(),
-		activeMemoryCount: sql<number>`
-			(count(*) FILTER (
-				WHERE ${memoriesTable.supersededBy} IS NULL
-					AND (${memoriesTable.expiresAt} IS NULL OR ${memoriesTable.expiresAt} > ${timestampParam(now)})
-			))::int
-		`.mapWith(Number),
-		expiredMemoryCount: sql<number>`
-			(count(*) FILTER (
-				WHERE ${memoriesTable.expiresAt} IS NOT NULL
-					AND ${memoriesTable.expiresAt} <= ${timestampParam(now)}
-			))::int
-		`.mapWith(Number),
-		supersededMemoryCount:
-			sql<number>`(count(*) FILTER (WHERE ${memoriesTable.supersededBy} IS NOT NULL))::int`.mapWith(
-				Number,
-			),
-	};
 }
 
 function emptyMemoryStatsCounts(): MemoryStatsCounts {
@@ -159,74 +135,113 @@ function emptyMemoryStatsCounts(): MemoryStatsCounts {
 }
 
 export async function insertMemories(
-	db: MnemocyteDatabase,
-	rows: NewMemoryRow[],
+	db: SqlExecutor,
+	rows: readonly NewMemoryRow[],
 ): Promise<MemoryRow[]> {
 	if (rows.length === 0) {
 		return [];
 	}
-	return db.insert(memoriesTable).values(rows).returning();
+	const params = createSqlParams();
+	const tuples = rows.map(
+		(row) => `(
+			${params.add(row.id)},
+			${params.add(row.entityId)},
+			${params.add(row.content)},
+			${params.add(row.type)},
+			${params.add(row.importance)},
+			${params.textArrayValue(row.tags)},
+			${params.add(row.source)}::text,
+			${params.json(row.metadata)},
+			${params.add(row.confidence)}::real,
+			${params.add(formatVector(row.embedding))}::vector,
+			${params.add(row.embeddingModel)},
+			${params.add(row.embeddingDimensions)}::int,
+			${params.add(row.supersededBy)}::text,
+			${nullableTimestamp(params, row.supersededAt)},
+			${nullableTimestamp(params, row.expiresAt)},
+			${nullableTimestamp(params, row.lastAccessedAt)},
+			${params.add(row.accessCount)}::int,
+			${params.timestamp(row.createdAt)},
+			${params.timestamp(row.updatedAt)}
+		)`,
+	);
+	const result = await db.query<RawMemoryRow>(
+		`INSERT INTO mnemocyte_memories (
+			id, entity_id, content, type, importance, tags, source, metadata,
+			confidence, embedding, embedding_model, embedding_dimensions,
+			superseded_by, superseded_at, expires_at, last_accessed_at,
+			access_count, created_at, updated_at
+		)
+		VALUES ${tuples.join(",\n")}
+		RETURNING ${MEMORY_COLUMNS}`,
+		params.values,
+	);
+	return result.map(toMemoryRow);
 }
 
 export async function getMemoryById(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 	memoryId: string,
 ): Promise<MemoryRow | null> {
-	const result = await db
-		.select()
-		.from(memoriesTable)
-		.where(
-			and(eq(memoriesTable.entityId, entityId), eq(memoriesTable.id, memoryId)),
-		)
-		.limit(1);
-	return result[0] ?? null;
+	const rows = await db.query<RawMemoryRow>(
+		`SELECT ${MEMORY_COLUMNS}
+		FROM mnemocyte_memories
+		WHERE entity_id = $1 AND id = $2
+		LIMIT 1`,
+		[entityId, memoryId],
+	);
+	const row = rows[0];
+	return row ? toMemoryRow(row) : null;
 }
 
 export async function getEntityMemoryStatsCounts(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 	now: Date,
 ): Promise<MemoryStatsCounts> {
-	const rows = await db
-		.select(memoryStatsCountFields(now))
-		.from(memoriesTable)
-		.where(eq(memoriesTable.entityId, entityId));
+	const params = createSqlParams();
+	const columns = memoryStatsCountColumns(params, now);
+	const rows = await db.query<MemoryStatsCounts>(
+		`SELECT ${columns}
+		FROM mnemocyte_memories
+		WHERE entity_id = ${params.add(entityId)}`,
+		params.values,
+	);
 	return rows[0] ?? emptyMemoryStatsCounts();
 }
 
 export async function getGlobalMemoryStatsCounts(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	now: Date,
 ): Promise<GlobalMemoryStatsCounts> {
-	const rows = await db
-		.select({
-			entityCount: countDistinct(memoriesTable.entityId),
-			...memoryStatsCountFields(now),
-		})
-		.from(memoriesTable);
+	const params = createSqlParams();
+	const columns = memoryStatsCountColumns(params, now);
+	const rows = await db.query<GlobalMemoryStatsCounts>(
+		`SELECT count(DISTINCT entity_id)::int AS "entityCount", ${columns}
+		FROM mnemocyte_memories`,
+		params.values,
+	);
 	return rows[0] ?? { entityCount: 0, ...emptyMemoryStatsCounts() };
 }
 
 export async function deleteMemory(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 	memoryId: string,
 ): Promise<GuardedDeleteResult> {
-	return deleteMemoriesWithDependentGuard(
-		db,
-		and(eq(memoriesTable.entityId, entityId), eq(memoriesTable.id, memoryId)),
-	);
+	const params = createSqlParams();
+	const conditions = `entity_id = ${params.add(entityId)} AND id = ${params.add(memoryId)}`;
+	return deleteMemoriesWithDependentGuard(db, conditions, params);
 }
 
 export async function deleteMemoriesForEntity(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 ): Promise<GuardedDeleteResult> {
-	return deleteMemoriesWithDependentGuard(
-		db,
-		eq(memoriesTable.entityId, entityId),
-	);
+	const params = createSqlParams();
+	const conditions = `entity_id = ${params.add(entityId)}`;
+	return deleteMemoriesWithDependentGuard(db, conditions, params);
 }
 
 export interface PruneFilter {
@@ -240,120 +255,121 @@ export interface PruneFilter {
 	maxImportanceLevels?: readonly ImportanceLevel[];
 }
 
-function pruneConditions(filter: PruneFilter) {
-	return and(
-		filter.entityId !== undefined
-			? eq(memoriesTable.entityId, filter.entityId)
-			: undefined,
-		filter.expired
-			? and(
-					isNotNull(memoriesTable.expiresAt),
-					sql`${memoriesTable.expiresAt} <= now()`,
-				)
-			: undefined,
-		filter.superseded ? isNotNull(memoriesTable.supersededBy) : undefined,
-		filter.createdBefore
-			? lt(memoriesTable.createdAt, filter.createdBefore)
-			: undefined,
-		filter.notAccessedSince
-			? or(
-					isNull(memoriesTable.lastAccessedAt),
-					lt(memoriesTable.lastAccessedAt, filter.notAccessedSince),
-				)
-			: undefined,
-		filter.types && filter.types.length > 0
-			? inArray(memoriesTable.type, [...filter.types])
-			: undefined,
-		tagsContainAll(filter.tags),
-		filter.maxImportanceLevels && filter.maxImportanceLevels.length > 0
-			? inArray(memoriesTable.importance, [...filter.maxImportanceLevels])
-			: undefined,
-	);
+/** The `WHERE` conditions of a prune, or `undefined` when nothing filters. */
+function pruneConditions(
+	params: SqlParams,
+	filter: PruneFilter,
+): string | undefined {
+	const clauses: string[] = [];
+	if (filter.entityId !== undefined) {
+		clauses.push(`entity_id = ${params.add(filter.entityId)}`);
+	}
+	if (filter.expired) {
+		clauses.push("(expires_at IS NOT NULL AND expires_at <= now())");
+	}
+	if (filter.superseded) {
+		clauses.push("superseded_by IS NOT NULL");
+	}
+	if (filter.createdBefore) {
+		clauses.push(`created_at < ${params.timestamp(filter.createdBefore)}`);
+	}
+	if (filter.notAccessedSince) {
+		clauses.push(
+			`(last_accessed_at IS NULL OR last_accessed_at < ${params.timestamp(filter.notAccessedSince)})`,
+		);
+	}
+	if (filter.types && filter.types.length > 0) {
+		clauses.push(`type IN (${params.list(filter.types)})`);
+	}
+	if (filter.tags && filter.tags.length > 0) {
+		clauses.push(`tags @> ${params.textArray(filter.tags)}`);
+	}
+	if (filter.maxImportanceLevels && filter.maxImportanceLevels.length > 0) {
+		clauses.push(`importance IN (${params.list(filter.maxImportanceLevels)})`);
+	}
+	return clauses.length > 0 ? clauses.join(" AND ") : undefined;
 }
 
 export async function countPruneMatches(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	filter: PruneFilter,
 	signal?: AbortSignal,
 ): Promise<number> {
-	const conditions = pruneConditions(filter);
-	const rows = await executeCancelableSql<Array<{ count: number | string }>>(
-		db,
-		sql`
-			SELECT count(*)::int AS count
-			FROM ${memoriesTable}
-			${conditions ? sql`WHERE ${conditions}` : sql``}
-		`,
-		signal,
+	const params = createSqlParams();
+	const conditions = pruneConditions(params, filter);
+	const rows = await db.query<{ count: number | string }>(
+		`SELECT count(*)::int AS count
+		FROM mnemocyte_memories
+		${conditions ? `WHERE ${conditions}` : ""}`,
+		params.values,
+		signal ? { signal } : undefined,
 	);
 	return Number(rows[0]?.count ?? 0);
 }
 
 export async function pruneMemories(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	filter: PruneFilter,
 	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
-	const conditions = pruneConditions(filter);
-	return deleteMemoriesWithDependentGuard(db, conditions, signal);
+	const params = createSqlParams();
+	const conditions = pruneConditions(params, filter);
+	return deleteMemoriesWithDependentGuard(db, conditions, params, signal);
 }
 
 async function deleteMemoriesWithDependentGuard(
-	db: MnemocyteDatabase,
-	conditions: SQL | undefined,
+	db: SqlExecutor,
+	conditions: string | undefined,
+	params: SqlParams,
 	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
-	const rows = await executeCancelableSql<
-		Array<{
-			matchedCount: number | string;
-			deletedCount: number | string;
-			hasDependents: boolean;
-			entityId: string | null;
-			entityDeletedCount: number | string | null;
-		}>
-	>(
-		db,
-		sql`
-			WITH candidates AS MATERIALIZED (
-				SELECT id, entity_id
-				FROM ${memoriesTable}
-				${conditions ? sql`WHERE ${conditions}` : sql``}
-			),
-			dependents AS MATERIALIZED (
-				SELECT 1
-				FROM ${memoriesTable} AS dependent
-				INNER JOIN candidates AS target
-					ON dependent.superseded_by = target.id
-				LIMIT 1
-			),
-			deleted AS (
-				DELETE FROM ${memoriesTable}
-				WHERE ${memoriesTable.id} IN (SELECT id FROM candidates)
-					AND NOT EXISTS (SELECT 1 FROM dependents)
-				RETURNING id, entity_id
-			),
-			deleted_counts AS (
-				SELECT entity_id, count(*)::int AS deleted_count
-				FROM deleted
-				GROUP BY entity_id
-			),
-			summary AS (
-				SELECT
-					(SELECT count(*)::int FROM candidates) AS matched_count,
-					(SELECT count(*)::int FROM deleted) AS deleted_count,
-					EXISTS (SELECT 1 FROM dependents) AS has_dependents
-			)
+	const rows = await db.query<{
+		matchedCount: number | string;
+		deletedCount: number | string;
+		hasDependents: boolean;
+		entityId: string | null;
+		entityDeletedCount: number | string | null;
+	}>(
+		`WITH candidates AS MATERIALIZED (
+			SELECT id, entity_id
+			FROM mnemocyte_memories
+			${conditions ? `WHERE ${conditions}` : ""}
+		),
+		dependents AS MATERIALIZED (
+			SELECT 1
+			FROM mnemocyte_memories AS dependent
+			INNER JOIN candidates AS target
+				ON dependent.superseded_by = target.id
+			LIMIT 1
+		),
+		deleted AS (
+			DELETE FROM mnemocyte_memories
+			WHERE id IN (SELECT id FROM candidates)
+				AND NOT EXISTS (SELECT 1 FROM dependents)
+			RETURNING id, entity_id
+		),
+		deleted_counts AS (
+			SELECT entity_id, count(*)::int AS deleted_count
+			FROM deleted
+			GROUP BY entity_id
+		),
+		summary AS (
 			SELECT
-				summary.matched_count AS "matchedCount",
-				summary.deleted_count AS "deletedCount",
-				summary.has_dependents AS "hasDependents",
-				deleted_counts.entity_id AS "entityId",
-				deleted_counts.deleted_count AS "entityDeletedCount"
-			FROM summary
-			LEFT JOIN deleted_counts ON true
-			ORDER BY deleted_counts.entity_id
-		`,
-		signal,
+				(SELECT count(*)::int FROM candidates) AS matched_count,
+				(SELECT count(*)::int FROM deleted) AS deleted_count,
+				EXISTS (SELECT 1 FROM dependents) AS has_dependents
+		)
+		SELECT
+			summary.matched_count AS "matchedCount",
+			summary.deleted_count AS "deletedCount",
+			summary.has_dependents AS "hasDependents",
+			deleted_counts.entity_id AS "entityId",
+			deleted_counts.deleted_count AS "entityDeletedCount"
+		FROM summary
+		LEFT JOIN deleted_counts ON true
+		ORDER BY deleted_counts.entity_id`,
+		params.values,
+		signal ? { signal } : undefined,
 	);
 	const row = rows[0];
 	return {
@@ -384,130 +400,53 @@ export interface DuplicateSearchInput {
 }
 
 export async function findDuplicatePairs(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	input: DuplicateSearchInput,
 	signal?: AbortSignal,
 ): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
-	const rows = await executeCancelableSql<Array<Record<string, unknown>>>(
-		db,
-		sql`
-			SELECT
-				a.id AS "aId",
-				a.entity_id AS "aEntityId",
-				a.content AS "aContent",
-				a.type AS "aType",
-				a.importance AS "aImportance",
-				a.tags AS "aTags",
-				a.source AS "aSource",
-				a.metadata AS "aMetadata",
-				a.confidence AS "aConfidence",
-				a.embedding AS "aEmbedding",
-				a.embedding_model AS "aEmbeddingModel",
-				a.embedding_dimensions AS "aEmbeddingDimensions",
-				a.superseded_by AS "aSupersededBy",
-				a.superseded_at AS "aSupersededAt",
-				a.expires_at AS "aExpiresAt",
-				a.last_accessed_at AS "aLastAccessedAt",
-				a.access_count AS "aAccessCount",
-				a.created_at AS "aCreatedAt",
-				a.updated_at AS "aUpdatedAt",
-				b.id AS "bId",
-				b.entity_id AS "bEntityId",
-				b.content AS "bContent",
-				b.type AS "bType",
-				b.importance AS "bImportance",
-				b.tags AS "bTags",
-				b.source AS "bSource",
-				b.metadata AS "bMetadata",
-				b.confidence AS "bConfidence",
-				b.embedding AS "bEmbedding",
-				b.embedding_model AS "bEmbeddingModel",
-				b.embedding_dimensions AS "bEmbeddingDimensions",
-				b.superseded_by AS "bSupersededBy",
-				b.superseded_at AS "bSupersededAt",
-				b.expires_at AS "bExpiresAt",
-				b.last_accessed_at AS "bLastAccessedAt",
-				b.access_count AS "bAccessCount",
-				b.created_at AS "bCreatedAt",
-				b.updated_at AS "bUpdatedAt",
-				1 - (a.embedding <=> b.embedding) AS "similarity"
-			FROM mnemocyte_memories a
-			JOIN mnemocyte_memories b
-				ON b.entity_id = a.entity_id
-				AND a.id < b.id
-				AND a.embedding IS NOT NULL
-				AND b.embedding IS NOT NULL
-			WHERE
-				a.entity_id = ${input.entityId}
-				${input.includeSuperseded ? sql`` : sql`AND a.superseded_by IS NULL AND b.superseded_by IS NULL`}
-				${input.includeExpired ? sql`` : sql`AND (a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())`}
-				${
-					input.types && input.types.length > 0
-						? sql`AND a.type IN (${sql.join(
-								input.types.map((type) => sql`${type}`),
-								sql`, `,
-							)}) AND b.type IN (${sql.join(
-								input.types.map((type) => sql`${type}`),
-								sql`, `,
-							)})`
-						: sql``
-				}
-				${duplicateTagsFilter(input.tags)}
-				AND 1 - (a.embedding <=> b.embedding) >= ${input.threshold}
-			ORDER BY "similarity" DESC
-			LIMIT ${input.limit}
-		`,
-		signal,
+	const params = createSqlParams();
+	const clauses: string[] = [`a.entity_id = ${params.add(input.entityId)}`];
+	if (!input.includeSuperseded) {
+		clauses.push("a.superseded_by IS NULL AND b.superseded_by IS NULL");
+	}
+	if (!input.includeExpired) {
+		clauses.push(
+			"(a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())",
+		);
+	}
+	if (input.types && input.types.length > 0) {
+		const types = params.list(input.types);
+		clauses.push(`a.type IN (${types}) AND b.type IN (${types})`);
+	}
+	if (input.tags && input.tags.length > 0) {
+		const tags = params.textArray(input.tags);
+		clauses.push(`a.tags @> ${tags} AND b.tags @> ${tags}`);
+	}
+	clauses.push(
+		`1 - (a.embedding <=> b.embedding) >= ${params.add(input.threshold)}`,
 	);
-	return rows.map((row) => {
-		const a = {
-			id: row.aId,
-			entityId: row.aEntityId,
-			content: row.aContent,
-			type: row.aType,
-			importance: row.aImportance,
-			tags: row.aTags,
-			source: row.aSource,
-			metadata: row.aMetadata,
-			confidence: row.aConfidence,
-			embedding: row.aEmbedding,
-			embeddingModel: row.aEmbeddingModel,
-			embeddingDimensions: row.aEmbeddingDimensions,
-			supersededBy: row.aSupersededBy,
-			supersededAt: row.aSupersededAt,
-			expiresAt: row.aExpiresAt,
-			lastAccessedAt: row.aLastAccessedAt,
-			accessCount: row.aAccessCount,
-			createdAt: row.aCreatedAt,
-			updatedAt: row.aUpdatedAt,
-		} as unknown as MemoryRow;
-		const b = {
-			id: row.bId,
-			entityId: row.bEntityId,
-			content: row.bContent,
-			type: row.bType,
-			importance: row.bImportance,
-			tags: row.bTags,
-			source: row.bSource,
-			metadata: row.bMetadata,
-			confidence: row.bConfidence,
-			embedding: row.bEmbedding,
-			embeddingModel: row.bEmbeddingModel,
-			embeddingDimensions: row.bEmbeddingDimensions,
-			supersededBy: row.bSupersededBy,
-			supersededAt: row.bSupersededAt,
-			expiresAt: row.bExpiresAt,
-			lastAccessedAt: row.bLastAccessedAt,
-			accessCount: row.bAccessCount,
-			createdAt: row.bCreatedAt,
-			updatedAt: row.bUpdatedAt,
-		} as unknown as MemoryRow;
-		return {
-			a,
-			b,
-			similarity: Number(row.similarity) || 0,
-		};
-	});
+	const rows = await db.query<Record<string, unknown>>(
+		`SELECT
+			${selectMemoryColumns({ table: "a", prefix: "a" })},
+			${selectMemoryColumns({ table: "b", prefix: "b" })},
+			1 - (a.embedding <=> b.embedding) AS "similarity"
+		FROM mnemocyte_memories a
+		JOIN mnemocyte_memories b
+			ON b.entity_id = a.entity_id
+			AND a.id < b.id
+			AND a.embedding IS NOT NULL
+			AND b.embedding IS NOT NULL
+		WHERE ${clauses.join("\n\t\t\tAND ")}
+		ORDER BY "similarity" DESC
+		LIMIT ${params.add(input.limit)}`,
+		params.values,
+		signal ? { signal } : undefined,
+	);
+	return rows.map((row) => ({
+		a: toMemoryRow(extractPrefixedMemoryRow(row, "a")),
+		b: toMemoryRow(extractPrefixedMemoryRow(row, "b")),
+		similarity: Number(row.similarity) || 0,
+	}));
 }
 
 export interface SupersedeRow {
@@ -516,102 +455,89 @@ export interface SupersedeRow {
 }
 
 export async function loadConsolidationTargets(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 	ids: readonly string[],
 ): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
 	if (ids.length === 0) {
 		return [];
 	}
-	const rows = await db
-		.select({
-			id: memoriesTable.id,
-			tags: memoriesTable.tags,
-			supersededBy: memoriesTable.supersededBy,
-		})
-		.from(memoriesTable)
-		.where(
-			and(
-				eq(memoriesTable.entityId, entityId),
-				inArray(memoriesTable.id, [...ids]),
-			),
-		);
-	return rows;
+	const params = createSqlParams();
+	return db.query(
+		`SELECT id, tags, superseded_by AS "supersededBy"
+		FROM mnemocyte_memories
+		WHERE entity_id = ${params.add(entityId)}
+			AND id IN (${params.list(ids)})`,
+		params.values,
+	);
 }
 
 export async function lockConsolidationMemories(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	entityId: string,
 	survivorId: string,
 	supersededIds: readonly string[],
 ): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
 	const ids = [...new Set([survivorId, ...supersededIds])].sort();
-	return db
-		.select({
-			id: memoriesTable.id,
-			tags: memoriesTable.tags,
-			supersededBy: memoriesTable.supersededBy,
-		})
-		.from(memoriesTable)
-		.where(
-			and(eq(memoriesTable.entityId, entityId), inArray(memoriesTable.id, ids)),
-		)
-		.orderBy(memoriesTable.id)
-		.for("update");
+	const params = createSqlParams();
+	return db.query(
+		`SELECT id, tags, superseded_by AS "supersededBy"
+		FROM mnemocyte_memories
+		WHERE entity_id = ${params.add(entityId)}
+			AND id IN (${params.list(ids)})
+		ORDER BY id
+		FOR UPDATE`,
+		params.values,
+	);
 }
 
 export async function markMemoriesSuperseded(
-	db: MnemocyteDatabase,
-	params: {
+	db: SqlExecutor,
+	input: {
 		survivorId: string;
 		entityId: string;
 		ids: readonly string[];
 		now: Date;
 	},
 ): Promise<SupersedeRow[]> {
-	if (params.ids.length === 0) {
+	if (input.ids.length === 0) {
 		return [];
 	}
-	const result = await db
-		.update(memoriesTable)
-		.set({
-			supersededBy: params.survivorId,
-			supersededAt: params.now,
-			updatedAt: params.now,
-		})
-		.where(
-			and(
-				eq(memoriesTable.entityId, params.entityId),
-				inArray(memoriesTable.id, [...params.ids]),
-				isNull(memoriesTable.supersededBy),
-			),
-		)
-		.returning({ id: memoriesTable.id, tags: memoriesTable.tags });
-	return result;
+	const params = createSqlParams();
+	const survivorId = params.add(input.survivorId);
+	const now = params.timestamp(input.now);
+	return db.query<SupersedeRow>(
+		`UPDATE mnemocyte_memories
+		SET superseded_by = ${survivorId}, superseded_at = ${now}, updated_at = ${now}
+		WHERE entity_id = ${params.add(input.entityId)}
+			AND id IN (${params.list(input.ids)})
+			AND superseded_by IS NULL
+		RETURNING id, tags`,
+		params.values,
+	);
 }
 
 export async function setMemoryTags(
-	db: MnemocyteDatabase,
-	params: {
+	db: SqlExecutor,
+	input: {
 		entityId: string;
 		memoryId: string;
 		tags: readonly string[];
 		now: Date;
 	},
 ): Promise<void> {
-	await db
-		.update(memoriesTable)
-		.set({ tags: [...params.tags], updatedAt: params.now })
-		.where(
-			and(
-				eq(memoriesTable.entityId, params.entityId),
-				eq(memoriesTable.id, params.memoryId),
-			),
-		);
+	const params = createSqlParams();
+	await db.query(
+		`UPDATE mnemocyte_memories
+		SET tags = ${params.textArrayValue(input.tags)}, updated_at = ${params.timestamp(input.now)}
+		WHERE entity_id = ${params.add(input.entityId)}
+			AND id = ${params.add(input.memoryId)}`,
+		params.values,
+	);
 }
 
 export async function markMemoriesAccessed(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	memoryIds: readonly string[],
 ): Promise<
 	Array<{
@@ -621,141 +547,100 @@ export async function markMemoriesAccessed(
 		updatedAt: Date;
 	}>
 > {
-	const now = new Date();
 	if (memoryIds.length === 0) {
 		return [];
 	}
-	return db
-		.update(memoriesTable)
-		.set({
-			lastAccessedAt: now,
-			accessCount: sql`${memoriesTable.accessCount} + 1`,
-			updatedAt: now,
-		})
-		.where(inArray(memoriesTable.id, [...memoryIds]))
-		.returning({
-			id: memoriesTable.id,
-			lastAccessedAt: memoriesTable.lastAccessedAt,
-			accessCount: memoriesTable.accessCount,
-			updatedAt: memoriesTable.updatedAt,
-		});
+	const params = createSqlParams();
+	const now = params.timestamp(new Date());
+	const rows = await db.query<{
+		id: string;
+		lastAccessedAt: Date | string | null;
+		accessCount: number;
+		updatedAt: Date | string;
+	}>(
+		`UPDATE mnemocyte_memories
+		SET last_accessed_at = ${now}, access_count = access_count + 1, updated_at = ${now}
+		WHERE id IN (${params.list(memoryIds)})
+		RETURNING id, last_accessed_at AS "lastAccessedAt", access_count AS "accessCount", updated_at AS "updatedAt"`,
+		params.values,
+	);
+	return rows.map((row) => ({
+		id: row.id,
+		lastAccessedAt:
+			row.lastAccessedAt === null ? null : new Date(row.lastAccessedAt),
+		accessCount: row.accessCount,
+		updatedAt: new Date(row.updatedAt),
+	}));
 }
 
 export async function getMemoryEmbeddings(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	memoryIds: readonly string[],
 ): Promise<Map<string, number[]>> {
 	if (memoryIds.length === 0) {
 		return new Map();
 	}
-	const rows = await db
-		.select({
-			id: memoriesTable.id,
-			embedding: memoriesTable.embedding,
-		})
-		.from(memoriesTable)
-		.where(inArray(memoriesTable.id, [...memoryIds]));
-	return new Map(
-		rows.flatMap((row) => (row.embedding ? [[row.id, row.embedding]] : [])),
+	const params = createSqlParams();
+	const rows = await db.query<{ id: string; embedding: string }>(
+		`SELECT id, embedding::text AS embedding
+		FROM mnemocyte_memories
+		WHERE id IN (${params.list(memoryIds)})
+			AND embedding IS NOT NULL`,
+		params.values,
 	);
+	return new Map(rows.map((row) => [row.id, parseVector(row.embedding)]));
 }
 
 export async function vectorSearch(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	input: VectorSearchInput,
 ): Promise<VectorSearchRow[]> {
-	const embedding = vectorLiteral(input.embedding);
-	const vectorScore = clampedVectorScore(embedding);
-	const minVectorScore = input.minVectorScore ?? 0;
-	const rows = await db.execute(sql`
-		SELECT
-			id,
-			entity_id AS "entityId",
-			content,
-			type,
-			importance,
-			tags,
-			source,
-			metadata,
-			confidence,
-			embedding_model AS "embeddingModel",
-			embedding_dimensions AS "embeddingDimensions",
-			superseded_by AS "supersededBy",
-			superseded_at AS "supersededAt",
-			expires_at AS "expiresAt",
-			last_accessed_at AS "lastAccessedAt",
-			access_count AS "accessCount",
-			created_at AS "createdAt",
-			updated_at AS "updatedAt",
-			${vectorScore} AS "vectorScore"
+	const params = createSqlParams();
+	const embedding = `${params.add(formatVector(input.embedding))}::vector`;
+	const rawScore = `1 - (embedding <=> ${embedding})`;
+	const vectorScore = `CASE
+		WHEN ${rawScore} = 'NaN'::double precision
+			OR ${rawScore} = 'Infinity'::double precision
+			OR ${rawScore} = '-Infinity'::double precision
+			THEN 0::double precision
+		ELSE GREATEST(0::double precision, LEAST(1::double precision, ${rawScore}))
+	END`;
+	const filters = recallFilters(params, input);
+	const rows = await db.query<RawMemoryRow & { vectorScore: number }>(
+		`SELECT ${MEMORY_COLUMNS}, ${vectorScore} AS "vectorScore"
 		FROM mnemocyte_memories
-		WHERE
-			entity_id = ${input.entityId}
+		WHERE ${filters}
 			AND embedding IS NOT NULL
-			${input.includeSuperseded ? sql`` : sql`AND superseded_by IS NULL`}
-			${input.includeExpired ? sql`` : sql`AND (expires_at IS NULL OR expires_at > now())`}
-			${
-				input.types && input.types.length > 0
-					? sql`AND type IN (${sql.join(
-							input.types.map((type) => sql`${type}`),
-							sql`, `,
-						)})`
-					: sql``
-			}
-			${rawTagsFilter(input.tags)}
-			${input.before ? sql`AND created_at < ${timestampParam(input.before)}` : sql``}
-			${input.after ? sql`AND created_at > ${timestampParam(input.after)}` : sql``}
-			AND ${vectorScore} >= ${minVectorScore}
-		ORDER BY embedding <=> ${embedding}::vector
-		LIMIT ${input.limit}
-	`);
-	return rows as unknown as VectorSearchRow[];
+			AND ${vectorScore} >= ${params.add(input.minVectorScore ?? 0)}
+		ORDER BY embedding <=> ${embedding}
+		LIMIT ${params.add(input.limit)}`,
+		params.values,
+	);
+	return rows.map((row) => ({
+		...toMemoryRow(row),
+		vectorScore: row.vectorScore,
+	}));
 }
 
 export async function lexicalSearch(
-	db: MnemocyteDatabase,
+	db: SqlExecutor,
 	input: LexicalSearchInput,
 ): Promise<LexicalSearchRow[]> {
-	const rows = await db.execute(sql`
-		SELECT
-			id,
-			entity_id AS "entityId",
-			content,
-			type,
-			importance,
-			tags,
-			source,
-			metadata,
-			confidence,
-			embedding_model AS "embeddingModel",
-			embedding_dimensions AS "embeddingDimensions",
-			superseded_by AS "supersededBy",
-			superseded_at AS "supersededAt",
-			expires_at AS "expiresAt",
-			last_accessed_at AS "lastAccessedAt",
-			access_count AS "accessCount",
-			created_at AS "createdAt",
-			updated_at AS "updatedAt",
-			ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', ${input.query})) AS "lexicalScore"
+	const params = createSqlParams();
+	const query = params.add(input.query);
+	const filters = recallFilters(params, input);
+	const rows = await db.query<RawMemoryRow & { lexicalScore: number }>(
+		`SELECT ${MEMORY_COLUMNS},
+			ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', ${query})) AS "lexicalScore"
 		FROM mnemocyte_memories
-		WHERE
-			entity_id = ${input.entityId}
-			${input.includeSuperseded ? sql`` : sql`AND superseded_by IS NULL`}
-			${input.includeExpired ? sql`` : sql`AND (expires_at IS NULL OR expires_at > now())`}
-			${
-				input.types && input.types.length > 0
-					? sql`AND type IN (${sql.join(
-							input.types.map((type) => sql`${type}`),
-							sql`, `,
-						)})`
-					: sql``
-			}
-			${rawTagsFilter(input.tags)}
-			${input.before ? sql`AND created_at < ${timestampParam(input.before)}` : sql``}
-			${input.after ? sql`AND created_at > ${timestampParam(input.after)}` : sql``}
-			AND to_tsvector('english', content) @@ websearch_to_tsquery('english', ${input.query})
+		WHERE ${filters}
+			AND to_tsvector('english', content) @@ websearch_to_tsquery('english', ${query})
 		ORDER BY "lexicalScore" DESC
-		LIMIT ${input.limit}
-	`);
-	return rows as unknown as LexicalSearchRow[];
+		LIMIT ${params.add(input.limit)}`,
+		params.values,
+	);
+	return rows.map((row) => ({
+		...toMemoryRow(row),
+		lexicalScore: row.lexicalScore,
+	}));
 }

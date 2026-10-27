@@ -7,7 +7,8 @@ moves here or into [features/](./features/).
 Feature areas:
 
 - [features/postgres.md](./features/postgres.md): schema, migrations,
-  installation metadata, connections, `drizzleStore(db)`.
+  installation metadata, connections (`SqlExecutor`, `postgresStore`,
+  `drizzleStore(db)`).
 - [features/retrieval.md](./features/retrieval.md): recall, scoring, access
   tracking, `buildContext`.
 - [features/maintenance.md](./features/maintenance.md): forget, prune,
@@ -36,28 +37,30 @@ or from a consuming project.
 ```txt
 src/
   index.ts              root entry: createMnemocyte, errors, public types
-  client.ts             backend selection (store | databaseUrl | in-memory)
+  client.ts             backend selection (store | in-memory)
+  postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs
   types.ts              every public type
   errors.ts             MnemocyteError and its codes
   observability.ts      onEvent lifecycle (start / success / error)
   resilience.ts         provider timeout, retry, abort
-  database-url.ts       postgres:/postgresql: URL check
   memory/
     client-core.ts      shared orchestration for every client method
     store.ts            the internal MemoryStore contract (18 methods)
     in-memory.ts        in-memory MemoryStore
-    postgres.ts         Postgres MemoryStore
-    lazy-postgres.ts    loads the Postgres runtime on first use
+    postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     validation.ts       runtime input and config validation
     json.ts             JSON metadata validation and deep clone
     embeddings.ts       embedder calls and output validation
     filters.ts          in-memory filter predicates
     records.ts          ids, tag normalization, cloning
+  sql/
+    executor.ts         SqlExecutor: query + transaction
+    postgres-js.ts      postgresJs(sql): the postgres.js adapter
   db/
-    schema.ts           Drizzle table definitions
-    index.ts            postgres.js + Drizzle handle creation
-    cancellation.ts     cancelable raw SQL through postgres.js
-    queries/            memories, events, meta SQL
+    schema.ts           Drizzle table definitions (drizzle-kit only)
+    sql.ts              bind-parameter collector for building statements
+    rows.ts             row types, column lists, row normalization
+    queries/            memories, events, meta SQL on a SqlExecutor
   retrieval/scorer.ts   cosine, lexical overlap, weighted scoring
   context/              buildContext, formatters, token budget
   embedders/            openaiEmbedder (fetch only)
@@ -67,10 +70,11 @@ test/                   unit, package, integration, fixtures, benchmarks
 ```
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
-`src/index.ts`, `src/embedders/*.ts` and `src/stores/*.ts`. The root entry
-imports nothing from `drizzle-orm` or `postgres` statically; the Postgres
-runtime is loaded through a dynamic `import()` the first time a Postgres
-store is used.
+`src/index.ts`, `src/postgres.ts`, `src/embedders/*.ts` and
+`src/stores/*.ts`. The package has no runtime dependencies. `drizzle-orm` and
+`postgres` are optional peer dependencies that source files import for types
+only, so no built entry imports them (a package test checks this). Their
+versions are also dev dependencies for the tests.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
 Node 22.18 fully supports. The `.mjs` files ship with source maps that embed
@@ -108,6 +112,8 @@ Exports:
 - `mnemocyte`: `createMnemocyte`, `MnemocyteError`, `isMnemocyteError` and
   the public types.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
+- `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
+  `SqlExecutor` type.
 - `mnemocyte/stores/drizzle`: `drizzleStore(db)`.
 
 `package.json` lists each subpath explicitly, with a `types` and a `default`

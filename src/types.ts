@@ -60,8 +60,8 @@ export interface JsonObject {
  * Identifies which backend a {@link MnemocyteClient} is using.
  *
  * Selected automatically by {@link createMnemocyte} from the configured
- * {@link MnemocyteConfig.store} or {@link MnemocyteConfig.databaseUrl}, with
- * in-memory storage used when neither is supplied.
+ * {@link MnemocyteConfig.store}, with in-memory storage used when none is
+ * supplied.
  */
 export type MnemocyteBackend = "in-memory" | "postgres";
 
@@ -181,8 +181,9 @@ declare const mnemocyteStoreConfigBrand: unique symbol;
 /**
  * Opaque storage-adapter value accepted by {@link MnemocyteConfig.store}.
  *
- * Obtain this value from a supported adapter factory such as `drizzleStore()`
- * from `mnemocyte/stores/drizzle`. The underlying `MemoryStore` contract stays
+ * Obtain this value from a supported adapter factory such as `postgresStore()`
+ * from `mnemocyte/postgres` or `drizzleStore()` from
+ * `mnemocyte/stores/drizzle`. The underlying `MemoryStore` contract stays
  * internal; this type intentionally exposes no adapter implementation methods.
  */
 export interface MnemocyteStoreConfig {
@@ -194,19 +195,10 @@ export interface MnemocyteStoreConfig {
  */
 export interface MnemocyteConfig {
 	/**
-	 * Postgres connection string. When set, the client uses the Postgres
-	 * backend (requires the `pgvector` extension and a rendered migration
-	 * with `mnemocyte_meta.embedding_dimensions` matching the embedder and
-	 * `embedding_model` metadata available). Must use the `postgres:` or
-	 * `postgresql:` protocol.
-	 * Cannot be combined with {@link MnemocyteConfig.store}. When both storage
-	 * fields are omitted, an in-memory backend is used.
-	 */
-	databaseUrl?: string;
-	/**
-	 * Caller-supplied storage adapter. Use `drizzleStore(db)` from
-	 * `mnemocyte/stores/drizzle` for a caller-owned postgres.js Drizzle instance.
-	 * Cannot be combined with {@link MnemocyteConfig.databaseUrl}.
+	 * Caller-supplied storage adapter. Use `postgresStore({ client })` from
+	 * `mnemocyte/postgres` with the database client you already own, or
+	 * `drizzleStore(db)` from `mnemocyte/stores/drizzle` for a postgres.js
+	 * Drizzle instance. When omitted, an in-memory backend is used.
 	 */
 	store?: MnemocyteStoreConfig;
 	/** Required embedder used to vectorise content for storage and retrieval. */

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError } from "../helpers.js";
@@ -169,6 +170,7 @@ async function runCancellationScenario(databaseUrl: string) {
 	const admin = postgres(databaseUrl, { max: 1 });
 	const locker = postgres(databaseUrl, { max: 1 });
 	const observer = postgres(databaseUrl, { max: 1 });
+	const storeSql = postgres(databaseUrl, { max: 3 });
 	const entityId = `cancellation_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 	await applyMigrations(admin);
@@ -176,7 +178,7 @@ async function runCancellationScenario(databaseUrl: string) {
 	await admin`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 
 	const client = createMnemocyte({
-		databaseUrl,
+		store: postgresStore({ client: postgresJs(storeSql) }),
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,
@@ -284,7 +286,12 @@ async function runCancellationScenario(databaseUrl: string) {
 		await client.close();
 		await admin`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 		await admin`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
-		await Promise.all([admin.end(), locker.end(), observer.end()]);
+		await Promise.all([
+			admin.end(),
+			locker.end(),
+			observer.end(),
+			storeSql.end(),
+		]);
 	}
 }
 

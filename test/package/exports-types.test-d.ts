@@ -36,6 +36,13 @@ import {
 	type OpenAIEmbedderOptions as DirectOpenAIEmbedderOptions,
 	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
+import {
+	type PostgresStoreOptions,
+	postgresJs,
+	postgresStore,
+	type SqlExecutor,
+	type SqlQueryOptions,
+} from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 
 const format: ContextFormat = "markdown";
@@ -55,6 +62,14 @@ const callerStore: MnemocyteStoreConfig = drizzleStore(callerDatabase);
 const callerStoreConfig: MnemocyteConfig = {
 	embedder,
 	store: callerStore,
+};
+declare const callerSql: Parameters<typeof postgresJs>[0];
+const executor: SqlExecutor = postgresJs(callerSql);
+const queryOptions: SqlQueryOptions = { signal: new AbortController().signal };
+const postgresOptions: PostgresStoreOptions = { client: executor };
+const postgresConfig: MnemocyteConfig = {
+	embedder,
+	store: postgresStore(postgresOptions),
 };
 const client: MnemocyteClient = createMnemocyte(config);
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
@@ -193,6 +208,8 @@ const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
 void callerStoreConfig;
+void postgresConfig;
+void queryOptions;
 void conflictCode;
 void conflictError;
 void jsonValue;

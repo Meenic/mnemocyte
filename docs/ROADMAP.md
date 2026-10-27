@@ -37,14 +37,25 @@ it.
 
 ## Phase 1: core foundation (0.6, breaking)
 
-- [ ] `feat/sql-executor`: `SqlExecutor` interface and postgres.js
+- [x] `feat/sql-executor`: `SqlExecutor` interface and postgres.js
   adapter; the core has zero runtime dependencies and `postgres` becomes an
   optional peer. The user's client owns TLS and pool settings, which removes
   today's `sslmode` override (it breaks `prefer`/`allow`) and the fixed
   `max: 10` pool.
+- [ ] `docs/readme-rewrite`: cut `README.md` to the shape of Ollama's: title
+  and one-line pitch, install, a quickstart that fits one screen, the Postgres
+  setup in a few commands, an API-at-a-glance list, embedders, and links to
+  the docs. No HTML, images or badges. Move the long reference (every method,
+  limitations, error codes, maintenance details) into user-facing pages under
+  `docs/` and link them. Say "memory that lives in your database" instead of
+  "infrastructure-native".
 - [ ] `feat/postgres-schema-v2`: migration 0003 with scope columns,
   `superseded_by` index, generated `tsvector` + GIN, UUID ids, `halfvec`
-  above 2,000 dimensions; Postgres backend rewritten on the executor. Every
+  above 2,000 dimensions; Postgres backend rewritten on the executor with
+  each write path as one atomic statement (a CTE, for example `consolidate`
+  without `SELECT … FOR UPDATE` across round trips), so stateless HTTP
+  drivers such as Neon's HTTP driver and D1 can run it; add an optional
+  `batch` to `SqlExecutor` where one statement is not enough. Every
   query filters by scope, including id lookups (today
   `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only). The
   embedding-compatibility cache is keyed by model and dimensions, not by

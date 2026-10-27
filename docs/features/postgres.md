@@ -75,21 +75,42 @@ works on an incompatible installation.
 
 ## Connections
 
-`databaseUrl` must use `postgres:` or `postgresql:`. The client then owns a
-postgres.js pool (`max: 10`, `idle_timeout: 20`, `connect_timeout: 10`) and
-closes it in `client.close()`.
+Mnemocyte never creates or closes a database client. The application passes
+the client it already owns, wrapped as a `SqlExecutor`:
 
-- `sslmode=require|prefer|allow` become `ssl: { rejectUnauthorized: false }`;
-  `verify-full` is passed through; other values fall back to postgres.js
-  parsing.
-- Port `6543` or `pgbouncer=true` disables prepared statements for
-  transaction-mode poolers.
+```ts
+interface SqlExecutor {
+  query<Row>(sql: string, params: readonly unknown[], options?: { signal?: AbortSignal }): Promise<Row[]>;
+  transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+}
+```
 
-`drizzleStore(db)` (`mnemocyte/stores/drizzle`) wraps a caller-owned
-`drizzle-orm/postgres-js` instance. It uses the same SQL, never closes the
-caller's connection, and requires the migrations to be applied. Other Drizzle
-drivers are not supported. `databaseUrl` and `store` together throw
-`"CONFIG"`.
+- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js client.
+  `query` is `sql.unsafe(text, params)` with `$1…` placeholders; `transaction`
+  is `sql.begin`, or `sql.savepoint` inside a transaction.
+- `postgresStore({ client })` turns an executor into `MnemocyteConfig.store`.
+- `drizzleStore(db)` (`mnemocyte/stores/drizzle`) takes a
+  `drizzle-orm/postgres-js` instance and runs the same SQL on `db.$client`,
+  sharing its pool. Other Drizzle drivers are not supported. A value without a
+  postgres.js `$client` throws `"CONFIG"`.
+- TLS, pool size, timeouts and `prepare` are whatever the caller configured.
+  `unsafe` does not create named prepared statements, so transaction-mode
+  poolers work as they are.
+- `client.close()` releases nothing; the caller ends its own client.
+
+All queries are plain SQL strings built in `src/db/queries/`. Values are
+always parameters, never interpolated. Three type rules keep the SQL
+independent of driver-level parsers (Drizzle installs its own on a shared
+client):
+
+- Timestamps are sent as ISO strings with `::timestamptz` and read as `Date`
+  or string, then normalized.
+- `jsonb` is sent as text with `::text::jsonb` and read back with `::text`,
+  then parsed, so no driver serializer wraps it twice.
+- Vectors travel as text (`'[…]'::vector`, `embedding::text`).
+
+`tags` are written as one JSON parameter turned into a `text[]` in input
+order, so the number of bind parameters does not grow with the tag count.
 
 ## Errors
 
@@ -101,8 +122,12 @@ drivers are not supported. `databaseUrl` and `store` together throw
 
 ## Cancellation
 
-`prune`, `findDuplicates` and `listAuditLog` send a postgres.js query cancel
-when the signal aborts. `consolidate` checks the signal between statements
+`prune`, `findDuplicates` and `listAuditLog` pass their signal to
+`SqlExecutor.query`, and the postgres.js adapter sends `query.cancel()` when it
+aborts. postgres.js opens a second connection for the cancel request and
+documents that, in a race, it can cancel a different query on that backend;
+Mnemocyte accepts this and rejects the caller with `"ABORTED"` either way.
+`consolidate` checks the signal between statements
 inside its transaction; a statement already running finishes first, and an
 abort during commit may still commit. Other queries are not cancelled.
 
@@ -125,8 +150,6 @@ Each one is a roadmap item in Phase 1 unless noted.
   65,535 bind-parameter limit.
 - The compatibility cache is per store, not per embedder, so two clients with
   different models sharing one `drizzleStore(db)` value skip the second check.
-- `sslmode=prefer` and `allow` never fall back to plaintext, because the
-  object form forces TLS.
 - Lexical search computes `to_tsvector` per row on every query.
 - `getMemoryEmbeddings` and `markMemoriesAccessed` filter by id only, not by
   entity. The ids always come from entity-scoped results, so nothing leaks

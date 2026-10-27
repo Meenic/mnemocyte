@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import {
@@ -53,7 +54,7 @@ describe("Postgres recall access metadata", () => {
 			const entityId = `recall_access_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
 			const client = createMnemocyte({
-				databaseUrl: databaseUrl ?? "",
+				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
 					dimensions: 1536,

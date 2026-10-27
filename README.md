@@ -69,7 +69,7 @@ const context = await client.buildContext({
 await client.close();
 ```
 
-When both `databaseUrl` and `store` are omitted, Mnemocyte uses the in-memory
+When `store` is omitted, Mnemocyte uses the in-memory
 backend. That backend is intended for development, tests, and prototyping. For
 persistent or larger workloads, use Postgres.
 
@@ -118,7 +118,7 @@ boundary.
 ## Postgres
 
 For persistent storage, enable pgvector in your Postgres database, apply the
-appropriate bundled schema file, then pass `databaseUrl`. The commands below
+appropriate bundled schema file, then pass your own database client. The commands below
 use `psql` and assume `DATABASE_URL` points at the target database.
 `-v ON_ERROR_STOP=1 --single-transaction` makes `psql` stop at the first error
 and roll the whole file back, so a failed migration never leaves a partial
@@ -134,12 +134,36 @@ The database role running that command must be allowed to install the
 extension. Mnemocyte does not create extensions, tables, or indexes from the
 client constructor.
 
+Install the driver next to Mnemocyte (`npm install postgres`; it is an
+optional peer dependency, and Mnemocyte has no runtime dependencies of its
+own). You create and own the client, so pool size, TLS and timeouts are
+yours to set:
+
 ```ts
+import { createMnemocyte } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import postgres from "postgres";
+
+const sql = postgres(process.env.DATABASE_URL!, { ssl: "require", max: 10 });
+
 const client = createMnemocyte({
-  databaseUrl: process.env.DATABASE_URL!,
+  store: postgresStore({ client: postgresJs(sql) }),
   embedder,
 });
+
+try {
+  // ...
+} finally {
+  await client.close(); // does not end sql
+  await sql.end(); // the caller retains connection ownership
+}
 ```
+
+Mnemocyte sends plain parameterized statements and never uses named prepared
+statements, so a transaction-mode pooler (PgBouncer, Supavisor) works without
+`prepare: false`. The `SqlExecutor` interface that `postgresJs(sql)` returns
+has two methods, `query` and `transaction`, so other drivers can be wrapped
+the same way.
 
 Applications that already own a postgres.js Drizzle instance can pass it
 through the `mnemocyte/stores/drizzle` subpath:
@@ -171,15 +195,12 @@ try {
 ```
 
 `drizzleStore(db)` v1 accepts only Drizzle instances backed by postgres.js. It
-uses Mnemocyte's fixed tables in the `public` schema; the bundled migrations
-must already have been applied, and the adapter does not create or migrate
-tables. The caller's Drizzle schema map does not need to include Mnemocyte's
-tables. Supplying both `databaseUrl` and `store` is ambiguous and throws
+runs Mnemocyte's own SQL on the postgres.js client behind `db`, so it shares
+that client's pool. The tables are Mnemocyte's fixed tables; the bundled
+migrations must already have been applied, and the adapter does not create or
+migrate tables. The caller's Drizzle schema map does not need to include
+Mnemocyte's tables. A value that is not a postgres.js Drizzle instance throws
 synchronously with `MnemocyteError` code `"CONFIG"`.
-
-`databaseUrl` must use the `postgres:` or `postgresql:` protocol. Other URL
-protocols reject synchronously with `MnemocyteError` code `"CONFIG"`; detailed
-host, database, and credential validation remains the driver's responsibility.
 
 The package includes:
 
@@ -608,8 +629,9 @@ Mnemocyte is pre-1.0. Today:
   vector spaces in one database are not supported.
 - The bundled HNSW index supports at most 2,000 dimensions. Rendering a
   larger dimension produces a migration that fails at `CREATE INDEX`.
-- `drizzleStore(db)` supports only postgres.js-backed Drizzle instances, the
-  `public` schema and pre-applied migrations.
+- `drizzleStore(db)` supports only postgres.js-backed Drizzle instances and
+  pre-applied migrations. `postgresStore` currently ships a postgres.js
+  adapter only.
 - Without `entityId`, `prune` applies to every entity in the database.
 - `forgetAll` rejects with `"CONFLICT"` after a consolidation until the
   superseded memories are pruned first (`prune({ entityId, superseded: true

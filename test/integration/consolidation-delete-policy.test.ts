@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMnemocyte } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { exerciseConsolidationDeletePolicy } from "../fixtures/consolidation-delete-policy.js";
@@ -48,6 +49,7 @@ async function applyMigration(
 
 async function runPostgresPolicyScenario(url: string) {
 	const admin = postgres(url, { max: 1 });
+	const storeSql = postgres(url, { max: 5 });
 	const entityPrefix = `postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 	await applyMigration(admin, "0000_initial.sql", ["42P07"]);
@@ -55,7 +57,7 @@ async function runPostgresPolicyScenario(url: string) {
 	await applyMigration(admin, "0002_add_embedding_model.sql", ["42701"]);
 
 	const client = createMnemocyte({
-		databaseUrl: url,
+		store: postgresStore({ client: postgresJs(storeSql) }),
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,
@@ -80,7 +82,7 @@ async function runPostgresPolicyScenario(url: string) {
 			DELETE FROM mnemocyte_events
 			WHERE entity_id LIKE ${`${entityPrefix}%`}
 		`;
-		await admin.end();
+		await Promise.all([admin.end(), storeSql.end()]);
 	}
 }
 

@@ -5,6 +5,7 @@ import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as drizzleSql } from "drizzle-orm/sql";
 import { createMnemocyte, type MnemocyteClient } from "mnemocyte";
+import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
@@ -99,28 +100,28 @@ describe("drizzleStore integration", () => {
 
 			const callerDb = drizzle(callerSql, { schema: callerSchema });
 			const callerEntityId = `drizzle_store_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-			const urlEntityId = `${callerEntityId}_url`;
+			const postgresEntityId = `${callerEntityId}_postgres`;
 			const callerClient = createMnemocyte({
 				store: drizzleStore(callerDb),
 				embedder,
 			});
-			const urlClient = createMnemocyte({
-				databaseUrl: databaseUrl ?? "",
+			const postgresClient = createMnemocyte({
+				store: postgresStore({ client: postgresJs(callerSql) }),
 				embedder,
 			});
 			let callerClosed = false;
-			let urlClosed = false;
+			let postgresClosed = false;
 
 			try {
 				const callerResult = await exerciseRepresentativePath(
 					callerClient,
 					callerEntityId,
 				);
-				const urlResult = await exerciseRepresentativePath(
-					urlClient,
-					urlEntityId,
+				const postgresResult = await exerciseRepresentativePath(
+					postgresClient,
+					postgresEntityId,
 				);
-				expect(callerResult).toEqual(urlResult);
+				expect(callerResult).toEqual(postgresResult);
 
 				await callerClient.close();
 				callerClosed = true;
@@ -130,16 +131,19 @@ describe("drizzleStore integration", () => {
 				);
 				expect(probe).toHaveLength(1);
 
-				await urlClient.close();
-				urlClosed = true;
+				await postgresClient.close();
+				postgresClosed = true;
+				expect(
+					await callerDb.execute(drizzleSql`select 1 as still_open`),
+				).toHaveLength(1);
 			} finally {
 				if (!callerClosed) {
 					await callerClient.close();
 				}
-				if (!urlClosed) {
-					await urlClient.close();
+				if (!postgresClosed) {
+					await postgresClient.close();
 				}
-				await callerSql`DELETE FROM mnemocyte_memories WHERE entity_id IN (${callerEntityId}, ${urlEntityId})`;
+				await callerSql`DELETE FROM mnemocyte_memories WHERE entity_id IN (${callerEntityId}, ${postgresEntityId})`;
 				await callerSql.end();
 			}
 		},

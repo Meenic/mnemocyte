@@ -36,8 +36,8 @@ export function matchesPruneFilter(
 		return false;
 	}
 	if (input.notAccessedSince !== undefined) {
-		const last = memory.lastAccessedAt;
-		if (last !== null && last.getTime() >= input.notAccessedSince.getTime()) {
+		const last = memory.lastAccessedAt ?? memory.createdAt;
+		if (last.getTime() >= input.notAccessedSince.getTime()) {
 			return false;
 		}
 	}

@@ -68,15 +68,17 @@ None.
 - [x] `fix/hybrid-fusion`: reciprocal rank fusion with recency and importance
   boosts; Postgres ranking tests (none exist today, which is how the
   `ts_rank`/substring scale mix went unnoticed).
-- [ ] `fix/access-tracking`: opt-in, after the response, tolerant of deleted
-  rows, scoped, no `updatedAt` change.
+- [x] `fix/access-tracking`: opt-in, after the response, tolerant of deleted
+  rows, scoped, no `updatedAt` change; `notAccessedSince` falls back to
+  `createdAt`.
 - [ ] `fix/filtered-vector-search`: `hnsw.iterative_scan` and `ef_search` per
   query; compute the cosine distance once per row (today it appears in
   `SELECT`, a no-op `WHERE` clamp and `ORDER BY`); `EXPLAIN` tests on the
   real recall query.
 - [ ] `feat/scoped-api`: `createMemory` with scopes, `add` (with `key`
   upserts), `search`, `get`, `list` (cursor), `update`, `delete`,
-  `deleteScope`, `context`; prune requires a scope; upgrade note.
+  `deleteScope`, `context`; prune requires a scope; no `close()`
+  (ARCHITECTURE decision 19); upgrade note.
 - [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction,
   through an optional `SqlExecutor.batch` for drivers without interactive
   transactions;

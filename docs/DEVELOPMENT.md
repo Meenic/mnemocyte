@@ -105,8 +105,7 @@ plugin in `tsdown.config.ts` strips that comment.
   called. Returned records are detached copies.
 - Metadata is JSON value data (`JsonObject`). Anything else is rejected.
 - Store results are not trusted: shared code rejects missing, duplicate or
-  unknown ids from `insertMemories` and `markMemoriesAccessed` and restores
-  input order.
+  unknown ids from `insertMemories` and restores input order.
 - Vectors are written with the shortest round-trip number format
   (`db/vector.ts`). Fixed decimal precision would turn small components into
   zero.

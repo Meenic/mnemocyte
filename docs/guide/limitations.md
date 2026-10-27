@@ -36,10 +36,10 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   the approximate vector search, so a narrow `types` or `tags` filter can
   return fewer memories than exist. Planned: iterative index scans
   (`fix/filtered-vector-search`).
-- **Recall always writes.** Every recall updates the access count and
-  `updatedAt` of the returned memories. If one of them is deleted at the same
-  moment, the recall throws `"DB"`. Planned: opt-in access tracking
-  (`fix/access-tracking`).
+- **Access writes can be lost.** With `trackAccess` on, recall does not wait
+  for the access write. On platforms that freeze the process once the
+  response is sent (serverless functions), some writes may never run, so
+  `accessCount` can undercount.
 - **Queries and documents are embedded the same way.** The embedder is not
   told which one it is embedding, so providers with separate query and
   document modes cannot use them. Planned: `feat/embedder-purpose`.

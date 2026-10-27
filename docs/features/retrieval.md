@@ -23,7 +23,8 @@
 4. Rank each list and fuse the ranks (below). A memory missing from a list
    has no rank there; nothing is loaded to fill it in.
 5. Apply the boosts, filter by `minScore`, sort, keep `limit`.
-6. Increment access state for the returned ids (see below) and return them.
+6. Return them; with access tracking on, start the access write first (see
+   below).
 
 ## Fusion and boosts
 
@@ -80,13 +81,66 @@ across backends.
 
 ## Access tracking
 
-After ranking, `markMemoriesAccessed` increments `access_count` and sets
-`last_accessed_at` and `updated_at` for every returned memory; the returned
-records carry the values after the update. Access counts do not affect
-ranking. On Postgres this is an `UPDATE … WHERE id IN (…)` on every recall,
-limited to the recalled entity like every other id lookup.
-If a returned memory is deleted between the search and this update, recall
-rejects with `"DB"`.
+Off by default. `retrieval.trackAccess` sets it for the client and
+`trackAccess` on `recall` or `buildContext` overrides it per call. Access
+counts do not affect ranking.
+
+When it is on and recall returns at least one memory, `trackAccess` in
+`memory/client-core.ts` calls `markMemoriesAccessed` for the returned ids and
+does not wait for it ("fire-and-forget"):
+
+- The store call starts before recall resolves, so the driver already has the
+  statement, but recall's result never waits on it. The postgres.js adapter
+  calls `execute()` on every query, because postgres.js otherwise sends a
+  query only on the next tick; a caller that ends its client right after
+  recall therefore still gets the write (`sql.end()` waits for queued
+  queries). The returned records
+  carry the values from before this recall.
+- The write is observed as its own `"trackAccess"` operation: a `start` event,
+  then `success` or `error` with `entityId` and `count`. The store promise is
+  settled into a value as soon as it is created, so a failure that lands
+  while a slow `onEvent` is still handling `start` is never an unhandled
+  rejection. Errors go only to `onEvent`; recall has already resolved.
+- `close()` does not wait for it. A write that fails because the caller
+  ended their database client is reported like any other failure.
+  `feat/scoped-api` removes `close()` (ARCHITECTURE decision 19).
+- It increments `access_count` and sets `last_accessed_at`; `updated_at`
+  changes only on writes.
+- Ids that no longer match a row (deleted between the search and the write)
+  are skipped. The store returns nothing, so there is no per-id result to
+  check.
+
+On Postgres the write is one statement, limited to the recalled entity like
+every other id lookup:
+
+```sql
+WITH target AS (
+  SELECT id FROM mnemocyte_memories
+  WHERE <scope> AND id IN (...)
+  ORDER BY id
+  FOR UPDATE
+)
+UPDATE mnemocyte_memories AS m
+SET last_accessed_at = $now, access_count = m.access_count + 1
+FROM target
+WHERE m.id = target.id
+```
+
+The CTE takes the row locks in id order. A plain `UPDATE … WHERE id IN (…)`
+locks rows in whatever order its plan visits them, so two recalls with
+overlapping results could lock in opposite orders and deadlock; a fixed order
+rules that out. A row deleted after the snapshot drops out of `FOR UPDATE`.
+
+**Tests.** `test/fixtures/access-tracking.ts` runs on both backends
+(`test/retrieval/access-tracking.test.ts`,
+`test/integration/access-tracking.test.ts`): off by default, per-call
+overrides in both directions, pre-write values in the result, `updatedAt`
+unchanged, a row deleted just before the write, and `notAccessedSince`
+counting from `createdAt`. The unit test also covers a write that is still
+pending when recall resolves, a failed write reported to `onEvent`, and no
+write for an empty result; `test/postgres/atomic-statements.test.ts` checks
+the statement's lock order, and the integration test ends the postgres.js
+client right after a tracked recall and checks that the write landed.
 
 ## `buildContext`
 

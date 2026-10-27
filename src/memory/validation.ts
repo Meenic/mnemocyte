@@ -207,6 +207,15 @@ export function validateRetrievalConfig(
 		);
 	}
 	if (
+		config.trackAccess !== undefined &&
+		typeof config.trackAccess !== "boolean"
+	) {
+		throw new MnemocyteError(
+			"retrieval.trackAccess must be a boolean.",
+			"CONFIG",
+		);
+	}
+	if (
 		config.candidateMultiplier !== undefined &&
 		(!Number.isInteger(config.candidateMultiplier) ||
 			config.candidateMultiplier < 1)
@@ -261,6 +270,7 @@ export function validateProviderResilienceConfig(
 }
 
 export function validateBuildContextInput(input: BuildContextInput): void {
+	assertOptionalTrackAccess(input.trackAccess);
 	if (
 		input.maxTokens !== undefined &&
 		(!Number.isInteger(input.maxTokens) || input.maxTokens < 1)
@@ -325,6 +335,13 @@ export function validateRecallInput(input: RecallInput): void {
 	if (input.types !== undefined) {
 		assertMemoryTypeArray(input.types, "types");
 	}
+	assertOptionalTrackAccess(input.trackAccess);
+}
+
+function assertOptionalTrackAccess(value: unknown): void {
+	if (value !== undefined && typeof value !== "boolean") {
+		throw new MnemocyteError("trackAccess must be a boolean.", "VALIDATION");
+	}
 }
 
 export function contextInputToRecallInput(
@@ -343,6 +360,9 @@ export function contextInputToRecallInput(
 		...(input.includeExpired === undefined
 			? {}
 			: { includeExpired: input.includeExpired }),
+		...(input.trackAccess === undefined
+			? {}
+			: { trackAccess: input.trackAccess }),
 	};
 }
 

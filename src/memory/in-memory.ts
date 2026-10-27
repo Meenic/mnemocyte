@@ -31,7 +31,6 @@ import { cloneMemory, createEventId, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
-	type StoreAccessUpdate,
 	type StoreConsolidateInput,
 	type StoreConsolidateResult,
 	type StoreDuplicatePair,
@@ -126,22 +125,13 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async markMemoriesAccessed(entityId, memoryIds) {
 			const now = new Date();
-			const updates: StoreAccessUpdate[] = [];
 			for (const id of memoryIds) {
 				const memory = memories.get(id);
 				if (memory && memory.entityId === entityId) {
 					memory.lastAccessedAt = now;
 					memory.accessCount += 1;
-					memory.updatedAt = now;
-					updates.push({
-						id: memory.id,
-						lastAccessedAt: now,
-						accessCount: memory.accessCount,
-						updatedAt: now,
-					});
 				}
 			}
-			return updates;
 		},
 		async deleteMemory(entityId, memoryId) {
 			const memory = memories.get(memoryId);

@@ -133,15 +133,21 @@ const results = await client.recall({
 | `includeSuperseded` | `false` | Include memories replaced by consolidation. |
 | `includeExpired` | `false` | Include memories past `expiresAt`. |
 | `explain` | `false` | Attach a score breakdown to each result. |
+| `trackAccess` | `retrieval.trackAccess` or `false` | Record access for this call's results. |
 
 Recall runs a vector search and a lexical (keyword) search, fuses the two
 rankings and applies small recency and importance boosts (see
 [retrieval tuning](#retrieval-tuning)). Each result carries `score` (0 to 1)
 and `scores`, plus `explanation` when `explain` is set.
 
-Every recall increments `accessCount` and sets `lastAccessedAt` and
-`updatedAt` on the returned memories; the returned records show the values
-after the call. Access counts do not affect ranking.
+With access tracking on (`retrieval.trackAccess: true`, or `trackAccess` on
+the call), recall increments `accessCount` and sets `lastAccessedAt` on the
+returned memories. The write starts as recall returns and recall does not wait
+for it, so the returned records show the values from before this recall.
+If it fails, recall still succeeds and `onEvent` receives a `"trackAccess"`
+error event. Memories deleted in the meantime are skipped. `updatedAt` never
+changes on recall, and access counts do not affect ranking. With tracking
+off, `accessCount` stays 0 and `lastAccessedAt` stays null.
 
 ## `buildContext`
 
@@ -155,8 +161,8 @@ const context = await client.buildContext({
 ```
 
 Runs a recall and renders the results as a string to put in a prompt. It
-accepts recall's `limit`, `minScore`, `types`, `tags`, `includeSuperseded`
-and `includeExpired`, plus:
+accepts recall's `limit`, `minScore`, `types`, `tags`, `includeSuperseded`,
+`includeExpired` and `trackAccess`, plus:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content
   cannot break out of its block: Markdown and plain text use a fence longer
@@ -207,7 +213,7 @@ Selectors are combined with AND:
 | `expired: true` | Past `expiresAt`. |
 | `superseded: true` | Replaced by consolidation. |
 | `createdBefore` | Created before the date. |
-| `notAccessedSince` | Last accessed before the date, or never. |
+| `notAccessedSince` | Last accessed before the date; never-accessed memories count from `createdAt`. |
 | `types` | Any of these types. |
 | `tags` | Every listed tag. |
 | `maxImportance` | At or below this importance. |
@@ -319,8 +325,10 @@ it.
 ## `close`
 
 `await client.close()` rejects new operations, waits for running ones, then
-closes the store. It never closes a database client you passed in. Calling it
-twice is safe.
+closes the store. It never closes a database client you passed in, and it
+does not wait for access writes from tracked recalls. Calling it twice is
+safe. You only need it for a clean shutdown: with Postgres it closes nothing,
+and with the in-memory store it clears the stored memories.
 
 ## Retrieval tuning
 
@@ -332,6 +340,7 @@ const client = createMnemocyte({
     boosts: { recency: 0.1, importance: 0.1 },
     recencyHalfLifeDays: 90,
     candidateMultiplier: 3,
+    trackAccess: false,
   },
 });
 ```
@@ -350,6 +359,8 @@ raw scores, so keyword and vector scores never have to share a scale.
   close matches but never lift a poor match. Set to 0 to turn one off.
 - `candidateMultiplier`: each search fetches `limit × candidateMultiplier`
   memories before fusion.
+- `trackAccess`: record `accessCount` and `lastAccessedAt` on recall (see
+  [recall](#recall)). `trackAccess` on a call overrides it.
 
 `score` is between 0 and 1: 1 means first in both searches with full boosts;
 a memory found by only one search scores at most 0.5. `confidence` and

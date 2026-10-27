@@ -3,13 +3,24 @@ import { describe, expect, test, vi } from "vitest";
 import { postgresJs } from "../../src/sql/postgres-js.js";
 import { expectMnemocyteError } from "../helpers.js";
 
-type FakePending = Promise<unknown[]> & { cancel(): void };
+type FakePending = Promise<unknown[]> & {
+	cancel(): void;
+	execute(): FakePending;
+};
 
 function pendingQuery(
 	result: Promise<unknown[]>,
 	cancel: () => void = () => {},
+	execute: () => void = () => {},
 ): FakePending {
-	return Object.assign(result, { cancel });
+	const pending: FakePending = Object.assign(result, {
+		cancel,
+		execute() {
+			execute();
+			return pending;
+		},
+	});
+	return pending;
 }
 
 function createFakeClient(options: {
@@ -50,6 +61,18 @@ describe("postgresJs executor", () => {
 		expect(fake.calls).toEqual([
 			{ sql: "SELECT id FROM t WHERE id = $1", params: ["a"] },
 		]);
+	});
+
+	test("starts the statement in the same tick", () => {
+		const execute = vi.fn();
+		const fake = createFakeClient({
+			unsafe: () => pendingQuery(Promise.resolve([]), undefined, execute),
+		});
+
+		const result = postgresJs(fake.client).query("SELECT 1", []);
+
+		expect(execute).toHaveBeenCalledOnce();
+		return result;
 	});
 
 	test("cancels the running statement when the signal aborts", async () => {

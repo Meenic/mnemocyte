@@ -18,7 +18,8 @@ candidates and dependents, then deletes only if there are none); the
 ## `prune`
 
 Selectors (AND-combined): `entityId`, `expired`, `superseded`,
-`createdBefore`, `notAccessedSince` (also matches never-accessed rows),
+`createdBefore`, `notAccessedSince` (last access before the date; a
+never-accessed memory counts from `createdAt`, so a new one is kept),
 `types`, `tags` (all must match), `maxImportance` (at or below). At least one
 effective selector is required; `false` flags and empty arrays do not count.
 `dryRun: true` only counts.

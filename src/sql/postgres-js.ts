@@ -51,10 +51,12 @@ function createExecutor(client: Sql | TransactionSql): SqlExecutor {
 			throwIfAborted(options?.signal);
 			// postgres.js types parameters as its own `ParameterOrJSON`; callers
 			// pass strings, numbers, booleans and null, which it serializes.
-			const pending = client.unsafe(
-				sql,
-				params as Parameters<Sql["unsafe"]>[1],
-			);
+			// Its queries are lazy and start on the next tick; `execute()` starts
+			// this one now, so a statement begun before a caller's `sql.end()`
+			// is already queued and runs to completion.
+			const pending = client
+				.unsafe(sql, params as Parameters<Sql["unsafe"]>[1])
+				.execute();
 			const rows = await awaitCancelableQuery(pending, options?.signal);
 			// RowList<Row[]> is an array of `Row`; postgres.js constrains rows to
 			// `Record<string, any>`, which a generic `Row` cannot express.

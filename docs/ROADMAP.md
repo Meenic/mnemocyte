@@ -71,7 +71,7 @@ None.
 - [x] `fix/access-tracking`: opt-in, after the response, tolerant of deleted
   rows, scoped, no `updatedAt` change; `notAccessedSince` falls back to
   `createdAt`.
-- [ ] `fix/filtered-vector-search`: `hnsw.iterative_scan` and `ef_search` per
+- [x] `fix/filtered-vector-search`: `hnsw.iterative_scan` and `ef_search` per
   query; compute the cosine distance once per row (today it appears in
   `SELECT`, a no-op `WHERE` clamp and `ORDER BY`); `EXPLAIN` tests on the
   real recall query.

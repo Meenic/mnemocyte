@@ -131,6 +131,16 @@ behavioural changes documented in their entries.
 
 ### Fixed
 
+- **Breaking: filtered recall finds every match on Postgres; needs pgvector
+  0.8.0.** The vector search now runs in a short transaction with
+  `hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least the
+  candidate count (at most 1,000). Before, the HNSW index returned its 40
+  nearest rows and the filters ran afterwards, so a narrow `types` or `tags`
+  filter, or a small entity in a large table, could return fewer memories
+  than exist, or none. Recall throws `"MIGRATION"` on pgvector before 0.8.0;
+  upgrade the server package, then run `ALTER EXTENSION vector UPDATE`. Each
+  recall now needs a client with interactive transactions. The cosine
+  distance is also computed once per row instead of three times.
 - **Scoped id lookups.** Loading embeddings for lexical-only candidates and
   updating access counts now filter by entity as well as id.
 - **Embedder checks per model.** The Postgres installation check is cached

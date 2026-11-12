@@ -6,7 +6,11 @@ in-memory backend needs none of this.
 ## Requirements
 
 - Postgres with the [pgvector](https://github.com/pgvector/pgvector)
-  extension available. CI tests Postgres 17 and 18 with pgvector 0.8.
+  extension available, version 0.8.0 or later: recall uses its iterative
+  index scans and throws `"MIGRATION"` on older versions. CI tests Postgres
+  17 and 18 with pgvector 0.8.7.
+- A client with interactive transactions (postgres.js today): each recall
+  runs its vector search in a short transaction.
 - A database role that can create the extension (once) and the Mnemocyte
   tables in the `public` schema.
 - The `postgres` (postgres.js) package next to Mnemocyte. It is an optional

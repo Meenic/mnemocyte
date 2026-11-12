@@ -26,7 +26,6 @@ export interface VectorSearchInput extends MemoryFilter {
 	embedding: readonly number[];
 	vectorType: VectorType;
 	limit: number;
-	minVectorScore?: number;
 }
 
 export interface LexicalSearchInput extends MemoryFilter {
@@ -52,7 +51,8 @@ export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
 	entityCount: number;
 }
 
-export type VectorSearchRow = MemoryRow & { vectorScore: number };
+/** Cosine distance (`<=>`) from the query embedding, as Postgres returns it. */
+export type VectorSearchRow = MemoryRow & { vectorDistance: number };
 
 export type LexicalSearchRow = MemoryRow & { lexicalScore: number };
 
@@ -725,34 +725,65 @@ export async function markMemoriesAccessed(
 	);
 }
 
+/** pgvector's default and largest `hnsw.ef_search` (`src/hnsw.h`). */
+const HNSW_DEFAULT_EF_SEARCH = 40;
+const HNSW_MAX_EF_SEARCH = 1000;
+
+/**
+ * `hnsw.ef_search` for a vector search returning `limit` rows: at least the
+ * row count, so one HNSW pass can fill it, within pgvector's 1–1000 range.
+ */
+export function hnswEfSearch(limit: number): number {
+	return Math.min(
+		HNSW_MAX_EF_SEARCH,
+		Math.max(HNSW_DEFAULT_EF_SEARCH, Math.ceil(limit)),
+	);
+}
+
+/**
+ * The nearest `limit` rows that pass the recall filters, by cosine distance.
+ *
+ * The HNSW index returns its `ef_search` nearest rows before the filters run,
+ * so a selective filter could leave fewer rows than exist. The query runs in a
+ * transaction that first sets, for that transaction only,
+ * `hnsw.iterative_scan = strict_order` (pgvector 0.8+: keep scanning the
+ * index, in exact distance order, until `limit` rows pass or
+ * `hnsw.max_scan_tuples` is reached) and `hnsw.ef_search` from
+ * {@link hnswEfSearch}. Called inside a caller's transaction, the settings last
+ * until that transaction ends.
+ *
+ * The distance is computed once per row: `ORDER BY` names the selected
+ * `<=>` column, which the planner still matches to the index's ordering
+ * operator.
+ */
 export async function vectorSearch(
 	db: SqlExecutor,
 	input: VectorSearchInput,
 ): Promise<VectorSearchRow[]> {
 	const params = createSqlParams();
 	const embedding = `${params.add(formatVector(input.embedding))}::${input.vectorType}`;
-	const rawScore = `1 - (embedding <=> ${embedding})`;
-	const vectorScore = `CASE
-		WHEN ${rawScore} = 'NaN'::double precision
-			OR ${rawScore} = 'Infinity'::double precision
-			OR ${rawScore} = '-Infinity'::double precision
-			THEN 0::double precision
-		ELSE GREATEST(0::double precision, LEAST(1::double precision, ${rawScore}))
-	END`;
 	const filters = recallFilters(params, input);
-	const rows = await db.query<RawMemoryRow & { vectorScore: number }>(
-		`SELECT ${MEMORY_COLUMNS}, ${vectorScore} AS "vectorScore"
+	const text = `SELECT ${MEMORY_COLUMNS}, embedding <=> ${embedding} AS "vectorDistance"
 		FROM mnemocyte_memories
 		WHERE ${filters}
 			AND embedding IS NOT NULL
-			AND ${vectorScore} >= ${params.add(input.minVectorScore ?? 0)}
-		ORDER BY embedding <=> ${embedding}
-		LIMIT ${params.add(input.limit)}`,
-		params.values,
-	);
+		ORDER BY "vectorDistance"
+		LIMIT ${params.add(input.limit)}`;
+	const rows = await db.transaction(async (tx) => {
+		await tx.query(
+			`SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+				set_config('hnsw.ef_search', $1, true)`,
+			[String(hnswEfSearch(input.limit))],
+		);
+		return tx.query<RawMemoryRow & { vectorDistance: number | string }>(
+			text,
+			params.values,
+		);
+	});
 	return rows.map((row) => ({
 		...toMemoryRow(row),
-		vectorScore: row.vectorScore,
+		// Drivers may return float8 as a number or as text.
+		vectorDistance: Number(row.vectorDistance),
 	}));
 }
 

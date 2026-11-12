@@ -51,7 +51,7 @@ process memory, which suits tests and prototypes.
 
 ## Postgres
 
-Install the driver and enable pgvector:
+Install the driver and enable pgvector (0.8.0 or later):
 
 ```bash
 pnpm add postgres

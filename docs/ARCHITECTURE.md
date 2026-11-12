@@ -232,11 +232,10 @@ The target flow is three steps: install, export `memory` from a
   - `init` writes a `memory.ts` for the driver found in `package.json`
     and adds `OPENAI_API_KEY=` to `.env` when it is missing. It never
     overwrites a file and prints every change; `--dry-run` only prints.
-- **Missing-schema errors.** A call on a database without the tables
-  already throws `"MIGRATION"`, but the message names SQL files. Like
-  Better Auth's first-use schema check, it should name the command that
-  fixes it: `migrate({ memory })` until the CLI lands, then
-  `npx mnemocyte migrate`.
+- **Missing-schema errors.** Landed: the `"MIGRATION"` error for a missing
+  table or column names `migrate({ memory })` and links the Postgres
+  guide, as described in [features/postgres.md](./features/postgres.md#errors).
+  The CLI changes the named command to `npx mnemocyte migrate`.
 - **Getting started.** Landed as
   [guide/getting-started.md](./guide/getting-started.md), with a
   `migrate.ts` script that calls `migrate({ memory })`; `feat/cli` replaces

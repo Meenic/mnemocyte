@@ -347,7 +347,9 @@ describe("Postgres metadata validation", () => {
 				client.search({ scope: testScope("alice"), query: "hello" }),
 				"MIGRATION",
 			);
-			expect(error.message).toContain("0003_schema_v2.sql");
+			expect(error.message).toContain("Run migrate({ memory })");
+			expect(error.message).not.toContain(".sql");
+			expect(error.cause).toEqual({ code });
 			expect(embedCalls).toEqual([]);
 		}
 	});
@@ -364,7 +366,8 @@ describe("Postgres metadata validation", () => {
 			client.search({ scope: testScope("alice"), query: "hello" }),
 			"MIGRATION",
 		);
-		expect(error.message).toContain("installation");
+		expect(error.message).toContain('no "installation" row');
+		expect(error.message).not.toContain("Run migrate");
 		expect(embedCalls).toEqual([]);
 	});
 

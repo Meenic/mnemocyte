@@ -8,6 +8,17 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **Missing-schema errors name the fix.** A Postgres call that needs a
+  missing Mnemocyte table or column still throws `"MIGRATION"`, but the
+  message now says to run `migrate({ memory })`, links the Postgres guide
+  and repeats the driver's text (for example `relation "mnemocyte_memories"
+  does not exist`), instead of naming SQL files. The driver error is still
+  the `cause`. A missing `mnemocyte_meta` `installation` row has its own
+  message, because `migrate` does not restore a deleted row; the guide
+  shows the `INSERT` that does.
+
 ## [0.6.0] - 2026-11-13
 
 ### Added

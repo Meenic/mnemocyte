@@ -271,8 +271,11 @@ default (ARCHITECTURE decision 20): pgvector's control file is not marked
 content, the store reads
 it and:
 
-- rejects with `"MIGRATION"` when the table, a column or the row is missing,
-  or `vector_type` is not `vector` or `halfvec`;
+- rejects with `"MIGRATION"` when the table or a column is missing (the
+  migrate hint under [Errors](#errors)), when the row is missing, or when
+  `vector_type` is not `vector` or `halfvec`. The missing-row message does
+  not suggest `migrate`, which writes the row only on a fresh install; it
+  links the guide's section with the `INSERT` that restores it;
 - rejects with `"CONFIG"` when `embedder.dimensions` differs;
 - when `embedding_model` is null, records the single model found in stored
   rows, or the configured model for an empty table, with a conditional
@@ -534,7 +537,17 @@ ids) use the same trick.
 ## Errors
 
 - SQLSTATE `42P01`, `42703`, `42704`, `42883` (missing table, column, object,
-  function) become `"MIGRATION"`.
+  function) become `"MIGRATION"`, from `missingSchemaError` in
+  `src/memory/postgres.ts`: "Mnemocyte's tables are missing or out of date
+  in this database (*driver message*). Run migrate({ memory }) to create or
+  upgrade them:" followed by the guide's `#install-the-schema` URL. The
+  driver message is repeated (whitespace collapsed, cut at 200 characters)
+  because many log pipelines drop `cause`; the driver error is still the
+  `cause`. The message names no SQL files and does not mention
+  `createExtension`: when pgvector is also missing, `migrate` itself fails
+  before changing anything and names it. `MIGRATE_COMMAND` holds the fix,
+  so `feat/cli` changes one line. The guide URL points at `main`, like the
+  README's links.
 - A `23503` foreign-key violation on the `superseded_by` constraint during a
   delete becomes `"CONFLICT"`.
 - Everything else becomes `"DB"` with the driver error as `cause`.

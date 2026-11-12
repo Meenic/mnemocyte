@@ -62,7 +62,16 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 	"critical",
 ];
 
+/** Missing table, column, object or function: the schema is behind. */
 const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
+/** The fix the missing-schema error names; `feat/cli` changes it. */
+const MIGRATE_COMMAND = "migrate({ memory })";
+const POSTGRES_GUIDE_URL =
+	"https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md";
+const INSTALL_GUIDE_URL = `${POSTGRES_GUIDE_URL}#install-the-schema`;
+const INSTALLATION_GUIDE_URL = `${POSTGRES_GUIDE_URL}#one-embedding-model-per-installation`;
+/** Driver messages are one line; this only guards against a runaway one. */
+const MAX_DRIVER_DETAIL_LENGTH = 200;
 const CONSOLIDATION_SURVIVOR_FOREIGN_KEY =
 	"mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk";
 const VECTOR_TYPES: ReadonlySet<string> = new Set(["vector", "halfvec"]);
@@ -88,17 +97,56 @@ function hasPostgresConstraintName(error: unknown, name: string): boolean {
 	return postgresConstraintName(error) === name;
 }
 
+/** The driver's own message, such as `relation "…" does not exist`. */
+function driverDetail(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null || !("message" in error)) {
+		return undefined;
+	}
+	const { message } = error;
+	if (typeof message !== "string") {
+		return undefined;
+	}
+	const detail = message.trim().replace(/\s+/g, " ");
+	if (detail === "") {
+		return undefined;
+	}
+	return detail.length > MAX_DRIVER_DETAIL_LENGTH
+		? `${detail.slice(0, MAX_DRIVER_DETAIL_LENGTH)}…`
+		: detail;
+}
+
+/**
+ * A Mnemocyte table or column the query needs does not exist. The message
+ * names the fix and repeats the driver's text, because many log pipelines
+ * drop `cause`.
+ */
+function missingSchemaError(error: unknown): MnemocyteError {
+	const detail = driverDetail(error);
+	return new MnemocyteError(
+		`Mnemocyte's tables are missing or out of date in this database${detail ? ` (${detail})` : ""}. Run ${MIGRATE_COMMAND} to create or upgrade them: ${INSTALL_GUIDE_URL}`,
+		"MIGRATION",
+		error,
+	);
+}
+
+/**
+ * `migrate()` writes the row only when it creates the schema, so it is not
+ * the fix for a deleted one.
+ */
+function missingInstallationRowError(): MnemocyteError {
+	return new MnemocyteError(
+		`mnemocyte_meta has no "installation" row, so the embedder cannot be checked against this database. migrate() writes the row only when it creates the schema and does not restore a deleted one; insert it again as shown in ${INSTALLATION_GUIDE_URL}`,
+		"MIGRATION",
+	);
+}
+
 function normalizePostgresError(error: unknown): MnemocyteError {
 	if (error instanceof MnemocyteError) {
 		return error;
 	}
 	const code = postgresErrorCode(error);
 	if (code && MIGRATION_ERROR_CODES.has(code)) {
-		return new MnemocyteError(
-			"Postgres schema is missing or incompatible. Apply the bundled Mnemocyte migrations before using the Postgres backend.",
-			"MIGRATION",
-			error,
-		);
+		return missingSchemaError(error);
 	}
 	return new MnemocyteError("Postgres operation failed.", "DB", error);
 }
@@ -167,9 +215,14 @@ function toMemoryRow(memory: StoredMemory): NewMemoryRow {
 }
 
 function assertVectorType(value: string | null): VectorType {
-	if (value === null || !VECTOR_TYPES.has(value)) {
+	// `getInstallationVectorType` returns null when the row is missing; the
+	// column itself is NOT NULL.
+	if (value === null) {
+		throw missingInstallationRowError();
+	}
+	if (!VECTOR_TYPES.has(value)) {
 		throw new MnemocyteError(
-			'mnemocyte_meta.vector_type must be "vector" or "halfvec". Apply the bundled migrations through 0003_schema_v2.sql.',
+			`mnemocyte_meta.vector_type is ${JSON.stringify(value)}; it must be "vector" or "halfvec".`,
 			"MIGRATION",
 		);
 	}
@@ -269,23 +322,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		try {
 			meta = await getInstallationMeta(client);
 		} catch (error) {
-			if (
-				hasPostgresErrorCode(error, "42P01") ||
-				hasPostgresErrorCode(error, "42703")
-			) {
-				throw new MnemocyteError(
-					"Postgres embedding metadata is missing or outdated. Apply the bundled migrations through 0003_schema_v2.sql, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.",
-					"MIGRATION",
-					error,
-				);
-			}
+			// A missing table or column (an older schema) gets the migrate hint.
 			throw normalizePostgresError(error);
 		}
 		if (!meta) {
-			throw new MnemocyteError(
-				'mnemocyte_meta is missing the "installation" row. Apply the bundled migrations, or render a fresh dimension-specific initial migration, before using embedding-dependent operations.',
-				"MIGRATION",
-			);
+			throw missingInstallationRowError();
 		}
 		const vectorType = assertVectorType(meta.vectorType);
 		vectorTypePromise ??= Promise.resolve(vectorType);

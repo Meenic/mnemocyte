@@ -7,7 +7,10 @@ it.
 
 ## Open decisions
 
-None.
+- Rename `namespace` to `tenant` before 1.0? Other libraries use
+  "namespace" for different things (Supermemory: the user; LangGraph: a
+  key path), and ours means the tenant or app. A rename is breaking; the
+  alternative is calling it "tenant or app" everywhere in the docs.
 
 ## Phase 0: reset (0.5.x)
 
@@ -118,15 +121,41 @@ None.
   (`pgvector/pgvector:0.8.7-pg18`) and the in-memory backend for prototypes.
   `README.md` links it.
 
-## Phase 2: embedders and AI SDK (0.7)
+## Phase 2: setup, embedders and AI SDK (0.7)
 
+- [ ] `fix/migration-hint`: the `"MIGRATION"` errors for missing tables or
+  columns (`src/memory/postgres.ts`) tell the user to run
+  `migrate({ memory })` and link the Postgres guide, instead of naming SQL
+  files; `feat/cli` changes the hint to `npx mnemocyte migrate`.
+- [ ] `feat/store-client`: `createMemory({ store })` also takes a database
+  client (postgres.js, a `pg` Pool, PGlite, Drizzle over one of them, or a
+  `SqlExecutor`) and detects it with decision 21's checks, after store
+  configs from `postgresStore()`, which keeps working (decision 23). The
+  Postgres backend loads with a dynamic `import()` on first use so the root
+  import stays small for in-memory users; no top-level `await`, which would
+  break `require()`. Bundle sizes with and without the lazy load in the PR.
+  README, the getting-started guide and the Postgres guide use
+  `store: sql`.
 - [ ] `feat/embedder-purpose`: `purpose` and `maxBatch` on `Embedder`;
   `openaiCompatible`; retries with jitter and `Retry-After`; replace the
   message-substring retry heuristic (it retries any message containing
   "500"); keep provider error bodies as the error `cause`.
 - [ ] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
+  `aiSdkEmbedder({ model })` takes an AI SDK embedding model or a
+  `"provider/model"` string, which the AI SDK resolves through its global
+  provider (the AI Gateway by default). `dimensions` comes from a table of
+  known models; for any other model it is required (`"CONFIG"`).
 - [ ] `feat/ai-sdk-tools`: server-scoped memory tools.
-- [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook.
+- [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook,
+  plus `withMemory({ model, memory })`, which returns the model wrapped
+  with `wrapLanguageModel` and the middleware in one call.
+- [ ] `feat/ai-sdk-extraction`: an opt-in `save: { model }` on the
+  middleware and `withMemory` (decision 24). After a response, the user's
+  own AI SDK model extracts memories from the turn into the bound scope,
+  with structured output. Off by default, never delays or fails the
+  response (errors go to `onEvent`), and extracted facts that already exist
+  update in place instead of duplicating; how they are matched (keys or a
+  similarity threshold) is decided in the PR with tests.
 - [ ] `feat/embedders-voyage-cohere-google`: fetch-based embedders.
 
 ## Phase 3: operations (0.8)
@@ -149,7 +178,14 @@ None.
   schema without a database (replaces running `render-initial.mjs` by path).
   Without a memory file, `--dimensions` and `DATABASE_URL` with the installed
   `postgres` peer. No new dependencies. The getting-started guide's
-  `migrate.ts` and `db:migrate` script become `npx mnemocyte migrate`.
+  `migrate.ts` and `db:migrate` script become `npx mnemocyte migrate`, and
+  the missing-schema hint from `fix/migration-hint` names the command.
+- [ ] `feat/cli-init`: `npx mnemocyte init` writes a `memory.ts` for the
+  driver it finds in `package.json` (`postgres`, `pg`,
+  `@electric-sql/pglite`, `drizzle-orm`) in the first of the folders the
+  CLI searches that exists, and adds `OPENAI_API_KEY=` to `.env` when the
+  variable is missing. It never overwrites a file, prints every change, and
+  supports `--dry-run`.
 
 ## Phase 4: 1.0
 
@@ -159,12 +195,10 @@ None.
 ## Cut first if time runs short
 
 Voyage/Cohere/Google embedders, the AI SDK middleware, kNN duplicates,
-audit retention.
+audit retention, `mnemocyte init`.
 
 ## After 1.0
 
-- Optional memory extraction from conversations with the user's own AI SDK
-  model.
 - libSQL / Turso backend, then SQLite + sqlite-vec once it is stable.
 - Public `MemoryStore` contract and a monorepo split
   (`@mnemocyte/postgres`, …).

@@ -38,8 +38,10 @@ creates or closes it. This has landed: `SqlExecutor` (`query`, plus
 `transaction` and/or `batch`), and `postgresStore({ client })` detecting
 postgres.js, a node-postgres `Pool`, PGlite and Drizzle over them by shape
 (decision 21); see
-[features/postgres.md](./features/postgres.md#client-detection). libSQL
-later gets its own store. We write our own interface instead of using
+[features/postgres.md](./features/postgres.md#client-detection). Next,
+`createMemory({ store })` takes the client itself and runs the same
+detection, so `postgresStore` becomes optional (decision 23). libSQL later
+gets its own store. We write our own interface instead of using
 Kysely: it is two methods, adds no dependency, and a query builder does not
 help with vector or full-text SQL, which is where dialects differ.
 
@@ -150,8 +152,11 @@ the `cause`.
 
 `mnemocyte/ai-sdk`, with `ai` as an optional peer dependency:
 
-1. `aiSdkEmbedder(model)`: any AI SDK embedding model as an `Embedder`,
-   through `embedMany`.
+1. `aiSdkEmbedder({ model })`: any AI SDK embedding model as an
+   `Embedder`, through `embedMany`. `model` is a model object or a
+   `"provider/model"` string, which the AI SDK resolves through its global
+   provider (the AI Gateway by default). `dimensions` comes from a table of
+   known models and is required for any other.
 2. `memoryTools({ memory })`: `searchMemories`, `saveMemory`,
    `forgetMemory` built with `tool()`, from a bound client
    (`memory.for(scope)`). The scope is bound on the server when the tools are
@@ -159,8 +164,14 @@ the `cause`.
    reach another user's memories.
 3. `memoryMiddleware({ memory })`: from a bound client, a language model
    middleware for `wrapLanguageModel` whose `transformParams` adds
-   `context()` output to the prompt. Saving after a response is an opt-in hook the app controls; the
-   library makes no hidden LLM calls.
+   `context()` output to the prompt. `withMemory({ model, memory })`
+   returns `wrapLanguageModel({ model, middleware })` in one call, the
+   shape of Supermemory's `withSupermemory`.
+4. Saving (decision 24): an opt-in hook the app controls, and an opt-in
+   `save: { model }` that has the user's own AI SDK model extract memories
+   from the turn into the bound scope after the response. Nothing is
+   extracted unless configured, the response never waits for it, and
+   failures go to `onEvent`. The library makes no LLM calls of its own.
 
 Hosted alternatives (mem0's provider, Supermemory's tools) do the same jobs
 through their own APIs; ours run against the app's database.
@@ -218,6 +229,14 @@ The target flow is three steps: install, export `memory` from a
   - PGlite opens its data folder from one process at a time, so the CLI
     cannot migrate it while the app runs; PGlite users call
     `migrate({ memory })` from code instead.
+  - `init` writes a `memory.ts` for the driver found in `package.json`
+    and adds `OPENAI_API_KEY=` to `.env` when it is missing. It never
+    overwrites a file and prints every change; `--dry-run` only prints.
+- **Missing-schema errors.** A call on a database without the tables
+  already throws `"MIGRATION"`, but the message names SQL files. Like
+  Better Auth's first-use schema check, it should name the command that
+  fixes it: `migrate({ memory })` until the CLI lands, then
+  `npx mnemocyte migrate`.
 - **Getting started.** Landed as
   [guide/getting-started.md](./guide/getting-started.md), with a
   `migrate.ts` script that calls `migrate({ memory })`; `feat/cli` replaces
@@ -268,7 +287,7 @@ Dated 2026-10-26 unless noted.
     Google in 1.x as demand shows.
 11. **AI SDK saving:** an opt-in hook only for 1.0; no LLM extraction in the
     library. Extraction with the user's own AI SDK model is planned after
-    1.0.
+    1.0. (Superseded by 24.)
 12. **In-memory backend:** kept, small, for a zero-dependency quick start.
     The shared contract tests run on PGlite and real Postgres.
 13. **Minimum Node:** 22.18 until Node 22 reaches end of life (2027-04-30).
@@ -361,3 +380,19 @@ Dated 2026-10-26 unless noted.
     `"VALIDATION"` instead of ignoring it. Narrowing a bound client further
     (`user.for({ sessionId })`) is left out; it can be added without a
     breaking change.
+23. **Clients in `createMemory`** (2026-11-13): `createMemory({ store })`
+    also takes a database client and runs decision 21's detection, so
+    setup names one thing, as Better Auth's `database: new Pool()` does.
+    This revisits 21's "the input stays `postgresStore({ client })`":
+    `postgresStore` stays, and a store config from it is recognised before
+    any client check. The Postgres backend loads lazily on first use with a
+    dynamic `import()`, because a static import would put it in every
+    in-memory user's bundle and top-level `await` would break `require()`;
+    the PR measures both bundles to confirm the lazy load is worth it.
+24. **Extraction in 1.0** (2026-11-13): supersedes 11. mem0, Mastra and
+    Supermemory all save from the conversation without app code; with only
+    a bare hook, every Mnemocyte app would write its own extraction. The AI
+    SDK middleware gets an opt-in `save: { model }` that runs the user's
+    own model after the response and writes into the bound scope. It stays
+    off by default and makes no call unless configured, so the library
+    still has no model or provider of its own.

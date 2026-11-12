@@ -70,7 +70,7 @@ function createClient(
 		onEvent: (event: MnemocyteObservation) => void;
 		store?: MemoryStore;
 	},
-): MemoryClient {
+): Omit<MemoryClient, "for"> {
 	return createMemoryClient(
 		{
 			embedder: harness.embedder,

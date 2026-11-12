@@ -164,13 +164,18 @@ export function assertContent(
 	}
 }
 
-function assertMaxBytes(value: string, field: string, max: number): void {
+function assertMaxBytes(
+	value: string,
+	field: string,
+	max: number,
+	code: "CONFIG" | "VALIDATION" = "VALIDATION",
+): void {
 	// Each UTF-16 code unit takes at most 3 UTF-8 bytes, so short strings
 	// skip the encoding.
 	if (value.length * 3 > max && utf8Length(value) > max) {
 		throw new MnemocyteError(
 			`${field} must be at most ${max} bytes in UTF-8.`,
-			"VALIDATION",
+			code,
 		);
 	}
 }
@@ -188,9 +193,22 @@ export function assertKey(
 function assertScopeField(
 	value: unknown,
 	field: string,
+	code: "CONFIG" | "VALIDATION" = "VALIDATION",
 ): asserts value is string {
-	assertNonEmptyString(value, field);
-	assertMaxBytes(value, field, MAX_SCOPE_FIELD_BYTES);
+	assertNonEmptyString(value, field, code);
+	assertMaxBytes(value, field, MAX_SCOPE_FIELD_BYTES, code);
+}
+
+/**
+ * Check `createMemory({ namespace })`: absent, or a scope field. Throws
+ * `"CONFIG"`, since it is configuration rather than a call input.
+ */
+export function validateDefaultNamespace(value: unknown): string | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	assertScopeField(value, "namespace", "CONFIG");
+	return value;
 }
 
 export function assertMinScore(value: number): void {

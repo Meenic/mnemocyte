@@ -13,6 +13,7 @@ import { createMemory } from "mnemocyte";
 
 const memory = createMemory({
   embedder,                          // required, see embedders.md
+  namespace: "my-app",               // optional; see Scopes
   store,                             // optional; in-memory when omitted
   defaults: { limit: 10, minScore: 0 },
   retrieval: { /* see Retrieval tuning */ },
@@ -120,6 +121,60 @@ never visible.
 instead: a field that is set must match exactly, and an omitted `agentId` or
 `sessionId` matches any value. So `deleteScope({ scope: { namespace,
 entityId } })` erases the entity across every agent and session.
+
+### Default namespace
+
+`createMemory({ namespace })` sets a namespace for every call whose scope
+leaves it out. A scope that names its own namespace wins, so a multi-tenant
+app can still pass one per call:
+
+```ts
+const memory = createMemory({ namespace: "my-app", store, embedder });
+
+await memory.add({ scope: { entityId: "user_123" }, content: "…" });
+await memory.search({ scope: { namespace: "tenant_7", entityId: "u1" }, query: "…" });
+await memory.stats({ scope: {} }); // the whole "my-app" namespace
+```
+
+The namespace follows the scope rules above; a malformed one throws
+`"CONFIG"` from `createMemory`. With it set, `createMemory` returns a
+`MemoryClient<true>`, whose scopes take an optional `namespace`. Without
+it, TypeScript keeps `namespace` required, and a scope without one throws
+`"VALIDATION"`. `allNamespaces: true` still reaches every namespace.
+
+### Bound scopes
+
+`memory.for(scope)` returns a client bound to one scope. Its methods are
+the client's, without the `scope` field:
+
+```ts
+const user = memory.for({ entityId: user.id });            // namespace from the default
+const agent = memory.for({ entityId: user.id, agentId: "support" });
+
+await user.add({ content: "Prefers short, direct answers." });
+const context = await agent.context({ query: message });
+const { memories } = await user.list();
+await user.deleteScope();                                  // erase the user
+```
+
+- Reads and changes by id follow the visibility rules above: `agent` sees
+  the support agent's memories plus shared ones.
+- `deleteScope`, `prune`, `stats` and `listAuditLog` select within the
+  bound scope, where an omitted `agentId` or `sessionId` matches any
+  value: `user.deleteScope()` erases the user across every agent and
+  session.
+- Methods whose options are all optional (`list`, `deleteScope`,
+  `findDuplicates`, `listAuditLog`) can be called without an argument.
+  `stats()` takes none.
+- A bound client has no `allNamespaces` and no `for`. A `scope` or
+  `allNamespaces` field passed from untyped code throws `"VALIDATION"`
+  instead of being ignored, so a call cannot leave the bound scope.
+- `for()` validates and copies the scope when it is called: a malformed
+  scope, or one without a namespace on a client without a default, throws
+  `"VALIDATION"` at once. `bound.scope` is the frozen copy.
+- The bound client shares the parent's store, embedder and configuration,
+  and `migrate({ memory })` accepts it. Creating one is cheap, so binding
+  per request is fine.
 
 ## Memories
 
@@ -557,7 +612,7 @@ try {
 
 | Code | Thrown when |
 |---|---|
-| `CONFIG` | Invalid client configuration, or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
+| `CONFIG` | Invalid client configuration (including `namespace`), or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
 | `VALIDATION` | Invalid method input, including a missing or malformed scope. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |

@@ -110,6 +110,52 @@ export interface MemoryRecordScope {
 }
 
 /**
+ * A {@link MemoryScope} whose `namespace` may be omitted. Calls on a client
+ * created with {@link MemoryConfig.namespace} take it: an omitted namespace
+ * is the client's default, and one the scope names wins.
+ */
+export interface OptionalNamespaceScope {
+	/** Tenant or application. Defaults to {@link MemoryConfig.namespace}. */
+	namespace?: string;
+	/** Who or what the memory is about. Non-empty. */
+	entityId: string;
+	/** Agent that holds the memory; omit for memories shared by every agent. */
+	agentId?: string;
+	/** Session the memory belongs to; omit for memories outside any session. */
+	sessionId?: string;
+}
+
+/**
+ * A {@link ScopeSelector} whose `namespace` may be omitted, for a client
+ * created with {@link MemoryConfig.namespace}.
+ */
+export interface OptionalNamespaceSelector {
+	/** Tenant or application. Defaults to {@link MemoryConfig.namespace}. */
+	namespace?: string;
+	/** Limit to one entity. */
+	entityId?: string;
+	/** Limit to memories this agent holds (not shared ones). */
+	agentId?: string;
+	/** Limit to memories of this session (not session-less ones). */
+	sessionId?: string;
+}
+
+/**
+ * The scope a {@link MemoryClient} method takes: {@link MemoryScope}, or
+ * {@link OptionalNamespaceScope} when the client has a default namespace.
+ */
+export type ScopeInput<DefaultNamespace extends boolean = false> =
+	DefaultNamespace extends true ? OptionalNamespaceScope : MemoryScope;
+
+/**
+ * The selector {@link MemoryClient.prune} and {@link MemoryClient.stats}
+ * take: {@link ScopeSelector}, or {@link OptionalNamespaceSelector} when the
+ * client has a default namespace.
+ */
+export type ScopeSelectorInput<DefaultNamespace extends boolean = false> =
+	DefaultNamespace extends true ? OptionalNamespaceSelector : ScopeSelector;
+
+/**
  * Identifies which backend a {@link MemoryClient} is using: the configured
  * {@link MemoryConfig.store}, or in-memory storage when none is supplied.
  */
@@ -277,10 +323,11 @@ interface MigrateOptions {
 export type MigrateInput =
 	| (MigrateOptions & {
 			/**
-			 * The client from `createMemory()`. Its store is migrated and its
-			 * `embedder.dimensions` fixes the vector column on a fresh install.
+			 * The client from `createMemory()`, or one bound with `for()`. Its
+			 * store is migrated and its `embedder.dimensions` fixes the vector
+			 * column on a fresh install.
 			 */
-			memory: MemoryClient;
+			memory: MemoryClient<boolean> | BoundMemoryClient;
 			store?: never;
 			/**
 			 * Optional here. A value that differs from `embedder.dimensions`
@@ -330,6 +377,14 @@ export interface MigrateResult {
  * Configuration passed to {@link createMemory}.
  */
 export interface MemoryConfig {
+	/**
+	 * Default namespace for every call. A scope that omits `namespace` gets
+	 * this one; a scope that names its own wins, so multi-tenant apps can keep
+	 * per-call namespaces. Non-empty, at most 256 bytes in UTF-8. With it set,
+	 * {@link createMemory} returns a `MemoryClient<true>`, whose scopes take
+	 * an optional namespace.
+	 */
+	namespace?: string;
 	/**
 	 * Caller-supplied storage adapter. Use `postgresStore({ client })` from
 	 * `mnemocyte/postgres` with the database client you already own, or
@@ -627,9 +682,10 @@ export interface NewMemory {
 }
 
 /** Input for {@link MemoryClient.add}. */
-export interface AddInput extends NewMemory {
+export interface AddInput<DefaultNamespace extends boolean = false>
+	extends NewMemory {
 	/** Where the memory lives. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/**
 	 * Optional cancellation signal. Forwarded to the embedder; when aborted,
 	 * the operation throws a {@link MnemocyteError} with code `"ABORTED"`.
@@ -638,9 +694,9 @@ export interface AddInput extends NewMemory {
 }
 
 /** Input for {@link MemoryClient.addMany}. */
-export interface AddManyInput {
+export interface AddManyInput<DefaultNamespace extends boolean = false> {
 	/** Where every memory of the batch lives. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Memories to add, in order. Keys must be distinct within the batch. */
 	memories: readonly NewMemory[];
 	/** Optional cancellation signal for the whole batch. */
@@ -648,9 +704,10 @@ export interface AddManyInput {
 }
 
 /** Input for {@link MemoryClient.search}. */
-export interface SearchInput extends ScopedReadOptions {
+export interface SearchInput<DefaultNamespace extends boolean = false>
+	extends ScopedReadOptions {
 	/** Scope to search; see {@link MemoryScope} for shared memories. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Free-text query; embedded and matched against stored memories. */
 	query: string;
 	/** Maximum number of results. Falls back to {@link MemoryConfig.defaults}. */
@@ -688,15 +745,21 @@ export interface SearchInput extends ScopedReadOptions {
  * Input for {@link MemoryClient.get}: a memory by `id` (any memory visible at
  * the scope) or by `key` (the exact scope only, where keys are unique).
  */
-export type GetInput = ScopedReadOptions & {
-	scope: MemoryScope;
+export type GetInput<DefaultNamespace extends boolean = false> =
+	BoundGetInput & {
+		scope: ScopeInput<DefaultNamespace>;
+	};
+
+/** Input for {@link BoundMemoryClient.get}: {@link GetInput} without `scope`. */
+export type BoundGetInput = ScopedReadOptions & {
 	signal?: AbortSignal;
 } & ({ id: string; key?: never } | { key: string; id?: never });
 
 /** Input for {@link MemoryClient.list}. */
-export interface ListInput extends ScopedReadOptions {
+export interface ListInput<DefaultNamespace extends boolean = false>
+	extends ScopedReadOptions {
 	/** Scope to list; see {@link MemoryScope} for shared memories. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Page size; positive integer. @defaultValue `50` */
 	limit?: number;
 	/** `nextCursor` from the previous page. Omit for the first page. */
@@ -729,9 +792,9 @@ export interface ListResult {
  * stored value; omitted fields stay as they are. At least one field must be
  * present.
  */
-export interface UpdateInput {
+export interface UpdateInput<DefaultNamespace extends boolean = false> {
 	/** Scope the memory is visible at; see {@link MemoryScope}. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Id of the memory to update. */
 	id: string;
 	/** New content. The memory is re-embedded. */
@@ -752,9 +815,9 @@ export interface UpdateInput {
 }
 
 /** Input for {@link MemoryClient.delete}. */
-export interface DeleteInput {
+export interface DeleteInput<DefaultNamespace extends boolean = false> {
 	/** Scope the memory is visible at; see {@link MemoryScope}. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Id of the memory to delete. */
 	id: string;
 	/** Optional cancellation signal. */
@@ -766,9 +829,9 @@ export interface DeleteInput {
  * `sessionId` matches any value: `{ namespace, entityId }` deletes everything
  * about the entity across all agents and sessions.
  */
-export interface DeleteScopeInput {
+export interface DeleteScopeInput<DefaultNamespace extends boolean = false> {
 	/** What to delete; omitted optional fields match any value. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Optional cancellation signal. */
 	signal?: AbortSignal;
 }
@@ -793,9 +856,10 @@ export interface TokenCounter {
  * Input for {@link MemoryClient.context}, which renders relevant memories
  * into a prompt-ready string.
  */
-export interface ContextInput extends ScopedReadOptions {
+export interface ContextInput<DefaultNamespace extends boolean = false>
+	extends ScopedReadOptions {
 	/** Scope to search; see {@link MemoryScope} for shared memories. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Free-text query used to select relevant memories. It is not echoed. */
 	query: string;
 	/** Output format. @defaultValue `"markdown"` */
@@ -866,11 +930,15 @@ export interface PruneSelectors {
  * `allNamespaces: true` for the whole installation, plus at least one
  * selector. Selectors are combined with AND.
  */
-export type PruneInput = PruneSelectors &
-	(
-		| { scope: ScopeSelector; allNamespaces?: never }
-		| { allNamespaces: true; scope?: never }
-	);
+export type PruneInput<DefaultNamespace extends boolean = false> =
+	PruneSelectors &
+		(
+			| {
+					scope: ScopeSelectorInput<DefaultNamespace>;
+					allNamespaces?: never;
+			  }
+			| { allNamespaces: true; scope?: never }
+		);
 
 /**
  * Result returned by {@link MemoryClient.prune}.
@@ -891,9 +959,10 @@ export interface PruneResult {
  * Input for {@link MemoryClient.findDuplicates}: a pairwise cosine-similarity
  * scan of the memories visible at a scope. Read-only.
  */
-export interface FindDuplicatesInput extends ScopedReadOptions {
+export interface FindDuplicatesInput<DefaultNamespace extends boolean = false>
+	extends ScopedReadOptions {
 	/** Scope to scan; see {@link MemoryScope} for shared memories. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/**
 	 * Cosine-similarity cutoff in `[0, 1]`. Pairs whose similarity is at
 	 * or above this value are returned. @defaultValue `0.95`
@@ -967,9 +1036,9 @@ export interface AuditLogCursor {
  * `sessionId` in `scope` matches any value, so `{ namespace, entityId }`
  * lists every event about the entity.
  */
-export interface ListAuditLogInput {
+export interface ListAuditLogInput<DefaultNamespace extends boolean = false> {
 	/** Whose events to list; omitted optional fields match any value. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/**
 	 * Maximum number of entries to return, ordered newest first.
 	 * @defaultValue `50`
@@ -1001,9 +1070,9 @@ export interface ListAuditLogInput {
  * `supersededIds` as superseded by `survivorId`, optionally merging their
  * tags into the survivor.
  */
-export interface ConsolidateInput {
+export interface ConsolidateInput<DefaultNamespace extends boolean = false> {
 	/** Scope every referenced memory is visible at; see {@link MemoryScope}. */
-	scope: MemoryScope;
+	scope: ScopeInput<DefaultNamespace>;
 	/** Memory that should win the merge. Must not itself be superseded. */
 	survivorId: string;
 	/**
@@ -1048,8 +1117,8 @@ export interface ConsolidateResult {
  * Input for {@link MemoryClient.stats}: a {@link ScopeSelector}, or
  * `allNamespaces: true` for the whole installation.
  */
-export type StatsInput =
-	| { scope: ScopeSelector; allNamespaces?: never }
+export type StatsInput<DefaultNamespace extends boolean = false> =
+	| { scope: ScopeSelectorInput<DefaultNamespace>; allNamespaces?: never }
 	| { allNamespaces: true; scope?: never };
 
 /** Counts returned by {@link MemoryClient.stats}. */
@@ -1073,8 +1142,11 @@ export interface MemoryStats {
  *
  * Every method may throw {@link MnemocyteError}; use {@link isMnemocyteError}
  * to narrow caught values.
+ *
+ * `DefaultNamespace` is `true` for a client created with
+ * {@link MemoryConfig.namespace}: its scopes may then omit `namespace`.
  */
-export interface MemoryClient {
+export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	/**
 	 * Store one memory and return it. With a `key` that already exists in the
 	 * scope, the existing memory is updated in place instead.
@@ -1082,21 +1154,21 @@ export interface MemoryClient {
 	 * @throws {MnemocyteError} `"VALIDATION"` for invalid input, `"EMBEDDING"`
 	 * if the embedder fails, `"DB"` for storage failures.
 	 */
-	add(input: AddInput): Promise<Memory>;
+	add(input: AddInput<DefaultNamespace>): Promise<Memory>;
 	/**
 	 * Store several memories of one scope with one embedder call and one
 	 * statement. Returns them in input order.
 	 */
-	addMany(input: AddManyInput): Promise<Memory[]>;
+	addMany(input: AddManyInput<DefaultNamespace>): Promise<Memory[]>;
 	/**
 	 * Rank the memories visible at the scope against `query` with hybrid
 	 * vector and keyword search.
 	 */
-	search(input: SearchInput): Promise<MemoryWithScore[]>;
+	search(input: SearchInput<DefaultNamespace>): Promise<MemoryWithScore[]>;
 	/** Return one memory by id or key, or `null` when there is none. */
-	get(input: GetInput): Promise<Memory | null>;
+	get(input: GetInput<DefaultNamespace>): Promise<Memory | null>;
 	/** Page through the memories visible at the scope, newest first. */
-	list(input: ListInput): Promise<ListResult>;
+	list(input: ListInput<DefaultNamespace>): Promise<ListResult>;
 	/**
 	 * Change fields of one memory and return it. Content changes re-embed it.
 	 *
@@ -1104,7 +1176,7 @@ export interface MemoryClient {
 	 * visible at the scope; `"CONFLICT"` if the new key is already used in
 	 * the memory's scope.
 	 */
-	update(input: UpdateInput): Promise<Memory>;
+	update(input: UpdateInput<DefaultNamespace>): Promise<Memory>;
 	/**
 	 * Delete one memory.
 	 *
@@ -1112,7 +1184,7 @@ export interface MemoryClient {
 	 * visible at the scope; `"CONFLICT"` while another memory references it as
 	 * its consolidation survivor.
 	 */
-	delete(input: DeleteInput): Promise<void>;
+	delete(input: DeleteInput<DefaultNamespace>): Promise<void>;
 	/**
 	 * Delete every memory in a scope, and the scope's audit events, in one
 	 * statement. `{ namespace, entityId }` erases the entity across all agents
@@ -1121,12 +1193,14 @@ export interface MemoryClient {
 	 * @throws {MnemocyteError} `"CONFLICT"` when a memory outside the scope
 	 * still references a memory inside it as its consolidation survivor.
 	 */
-	deleteScope(input: DeleteScopeInput): Promise<DeleteScopeResult>;
+	deleteScope(
+		input: DeleteScopeInput<DefaultNamespace>,
+	): Promise<DeleteScopeResult>;
 	/**
 	 * Search and render the results as a prompt-ready string within a token
 	 * budget.
 	 */
-	context(input: ContextInput): Promise<string>;
+	context(input: ContextInput<DefaultNamespace>): Promise<string>;
 	/**
 	 * Bulk-delete memories that match a scope selector and at least one other
 	 * selector. Pass `dryRun: true` to count without deleting.
@@ -1136,21 +1210,44 @@ export interface MemoryClient {
 	 * non-dry-run prune selects a memory that still has consolidation
 	 * dependents. The prune deletes nothing in that case.
 	 */
-	prune(input: PruneInput): Promise<PruneResult>;
+	prune(input: PruneInput<DefaultNamespace>): Promise<PruneResult>;
 	/**
 	 * Return pairs of near-identical memories visible at the scope, most
 	 * similar first. Read-only.
 	 */
-	findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]>;
+	findDuplicates(
+		input: FindDuplicatesInput<DefaultNamespace>,
+	): Promise<DuplicatePair[]>;
 	/** Return audit-log events for a scope, newest first. */
-	listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]>;
+	listAuditLog(
+		input: ListAuditLogInput<DefaultNamespace>,
+	): Promise<AuditEvent[]>;
 	/** Count memories for a scope selector or the whole installation. */
-	stats(input: StatsInput): Promise<MemoryStats>;
+	stats(input: StatsInput<DefaultNamespace>): Promise<MemoryStats>;
+	/**
+	 * Return a client bound to `scope`: the same methods without the
+	 * `scope` field, so a call cannot drift to another entity. An omitted
+	 * `namespace` is the client's default. The bound client shares this
+	 * client's store and embedder and holds no state of its own besides the
+	 * scope.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` if the scope is malformed or
+	 * has no namespace and the client has no default.
+	 *
+	 * @example
+	 * ```ts
+	 * const memory = createMemory({ namespace: "my-app", store, embedder });
+	 * const userMemory = memory.for({ entityId: user.id });
+	 * await userMemory.add({ content: "Prefers short, direct answers." });
+	 * const context = await userMemory.context({ query: message });
+	 * ```
+	 */
+	for(scope: ScopeInput<DefaultNamespace>): BoundMemoryClient;
 	/**
 	 * Unstable surface. Members may change or be removed in a minor release
 	 * until they graduate to the main client interface.
 	 */
-	experimental: ExperimentalMemoryClient;
+	experimental: ExperimentalMemoryClient<DefaultNamespace>;
 }
 
 /**
@@ -1158,7 +1255,9 @@ export interface MemoryClient {
  *
  * @experimental Members may change or be removed in a minor release.
  */
-export interface ExperimentalMemoryClient {
+export interface ExperimentalMemoryClient<
+	DefaultNamespace extends boolean = false,
+> {
 	/**
 	 * Mark likely duplicates as superseded by one survivor, optionally merging
 	 * their tags into it. Idempotent for memories that already point to the
@@ -1171,5 +1270,89 @@ export interface ExperimentalMemoryClient {
 	 * the scope; `"CONFLICT"` if a memory points to a different survivor or
 	 * the survivor changed before the write. Nothing is written on any error.
 	 */
-	consolidate(input: ConsolidateInput): Promise<ConsolidateResult>;
+	consolidate(
+		input: ConsolidateInput<DefaultNamespace>,
+	): Promise<ConsolidateResult>;
+}
+
+/** Input for {@link BoundMemoryClient.add}. */
+export type BoundAddInput = Omit<AddInput, "scope">;
+/** Input for {@link BoundMemoryClient.addMany}. */
+export type BoundAddManyInput = Omit<AddManyInput, "scope">;
+/** Input for {@link BoundMemoryClient.search}. */
+export type BoundSearchInput = Omit<SearchInput, "scope">;
+/** Input for {@link BoundMemoryClient.list}. */
+export type BoundListInput = Omit<ListInput, "scope">;
+/** Input for {@link BoundMemoryClient.update}. */
+export type BoundUpdateInput = Omit<UpdateInput, "scope">;
+/** Input for {@link BoundMemoryClient.delete}. */
+export type BoundDeleteInput = Omit<DeleteInput, "scope">;
+/** Input for {@link BoundMemoryClient.deleteScope}. */
+export type BoundDeleteScopeInput = Omit<DeleteScopeInput, "scope">;
+/** Input for {@link BoundMemoryClient.context}. */
+export type BoundContextInput = Omit<ContextInput, "scope">;
+/** Input for {@link BoundMemoryClient.findDuplicates}. */
+export type BoundFindDuplicatesInput = Omit<FindDuplicatesInput, "scope">;
+/** Input for {@link BoundMemoryClient.listAuditLog}. */
+export type BoundListAuditLogInput = Omit<ListAuditLogInput, "scope">;
+/** Input for {@link BoundExperimentalMemoryClient.consolidate}. */
+export type BoundConsolidateInput = Omit<ConsolidateInput, "scope">;
+
+/**
+ * A client bound to one scope, from {@link MemoryClient.for}. Its methods
+ * take no `scope` field and reject one at runtime with `"VALIDATION"`, as
+ * they reject `allNamespaces`: operations across namespaces stay on the
+ * unbound client. Reads and changes by id see the bound scope plus shared
+ * memories, as on the unbound client; `deleteScope`, `prune`, `stats` and
+ * `listAuditLog` select within the bound scope, where an omitted `agentId`
+ * or `sessionId` matches any value.
+ */
+export interface BoundMemoryClient {
+	/** The bound scope. Frozen. */
+	readonly scope: Readonly<MemoryScope>;
+	/** {@link MemoryClient.add} at the bound scope. */
+	add(input: BoundAddInput): Promise<Memory>;
+	/** {@link MemoryClient.addMany} at the bound scope. */
+	addMany(input: BoundAddManyInput): Promise<Memory[]>;
+	/** {@link MemoryClient.search} at the bound scope. */
+	search(input: BoundSearchInput): Promise<MemoryWithScore[]>;
+	/** {@link MemoryClient.get} at the bound scope. */
+	get(input: BoundGetInput): Promise<Memory | null>;
+	/** {@link MemoryClient.list} at the bound scope. */
+	list(input?: BoundListInput): Promise<ListResult>;
+	/** {@link MemoryClient.update} at the bound scope. */
+	update(input: BoundUpdateInput): Promise<Memory>;
+	/** {@link MemoryClient.delete} at the bound scope. */
+	delete(input: BoundDeleteInput): Promise<void>;
+	/**
+	 * Delete every memory in the bound scope, and its audit events. A scope
+	 * without `agentId` or `sessionId` erases the entity across all agents
+	 * or sessions; see {@link MemoryClient.deleteScope}.
+	 */
+	deleteScope(input?: BoundDeleteScopeInput): Promise<DeleteScopeResult>;
+	/** {@link MemoryClient.context} at the bound scope. */
+	context(input: BoundContextInput): Promise<string>;
+	/** {@link MemoryClient.prune} within the bound scope. */
+	prune(input: PruneSelectors): Promise<PruneResult>;
+	/** {@link MemoryClient.findDuplicates} at the bound scope. */
+	findDuplicates(input?: BoundFindDuplicatesInput): Promise<DuplicatePair[]>;
+	/** {@link MemoryClient.listAuditLog} within the bound scope. */
+	listAuditLog(input?: BoundListAuditLogInput): Promise<AuditEvent[]>;
+	/** {@link MemoryClient.stats} within the bound scope. */
+	stats(): Promise<MemoryStats>;
+	/**
+	 * Unstable surface at the bound scope; see
+	 * {@link MemoryClient.experimental}.
+	 */
+	experimental: BoundExperimentalMemoryClient;
+}
+
+/**
+ * Unstable operations of a {@link BoundMemoryClient}.
+ *
+ * @experimental Members may change or be removed in a minor release.
+ */
+export interface BoundExperimentalMemoryClient {
+	/** {@link ExperimentalMemoryClient.consolidate} at the bound scope. */
+	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 }

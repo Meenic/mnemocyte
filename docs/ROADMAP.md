@@ -105,7 +105,7 @@ None.
   before the first migration; off by default, because managed databases and
   restricted roles cannot create extensions. `dryRun: true` returns the
   `applied` and `adopted` lists the call would produce and changes nothing.
-- [ ] `feat/bound-scope`: `createMemory({ namespace })` sets a default
+- [x] `feat/bound-scope`: `createMemory({ namespace })` sets a default
   namespace that a call's scope may override, and `memory.for(scope)` returns
   a client bound to that scope whose methods take no `scope` field. Global
   operations (`allNamespaces`) stay on the unbound client. Starts under

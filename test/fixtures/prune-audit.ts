@@ -4,7 +4,7 @@ import { expectDefined, TEST_NAMESPACE, testScope } from "../helpers.js";
 
 /** A namespace-wide prune writes one audit event per affected entity. */
 export async function verifyNamespacePruneAudit(
-	client: MemoryClient,
+	client: Omit<MemoryClient, "for">,
 	entityPrefix: string,
 ): Promise<void> {
 	const tag = `global-prune-${entityPrefix}`;

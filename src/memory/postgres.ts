@@ -35,13 +35,8 @@ import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
 import type { SqlExecutor } from "../sql/executor.js";
-import type {
-	Embedder,
-	ImportanceLevel,
-	MemoryClient,
-	MemoryConfig,
-} from "../types.js";
-import { createMemoryClient } from "./client-core.js";
+import type { Embedder, ImportanceLevel, MemoryConfig } from "../types.js";
+import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
 import { memoryHasDependentsError } from "./deletion.js";
 import { cloneJsonObject } from "./json.js";
@@ -624,6 +619,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 export function createPostgresClient(
 	config: MemoryConfig,
 	client: SqlExecutor,
-): MemoryClient {
+): CoreMemoryClient {
 	return createMemoryClient(config, createPostgresStore(client));
 }

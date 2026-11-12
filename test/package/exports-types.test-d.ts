@@ -11,6 +11,10 @@ import type {
 	AuditConfig,
 	AuditEvent,
 	AuditLogCursor,
+	BoundAddInput,
+	BoundExperimentalMemoryClient,
+	BoundGetInput,
+	BoundMemoryClient,
 	ConsolidateInput,
 	ConsolidateResult,
 	ContextFormat,
@@ -34,13 +38,17 @@ import type {
 	MnemocyteErrorCode,
 	MnemocyteStoreConfig,
 	NewMemory,
+	OptionalNamespaceScope,
+	OptionalNamespaceSelector,
 	PruneInput,
 	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
 	RetrievalFusionConfig,
 	RetrievalScores,
+	ScopeInput,
 	ScopeSelector,
+	ScopeSelectorInput,
 	SearchInput,
 	TokenCounter,
 	UpdateInput,
@@ -402,4 +410,65 @@ void MnemocyteError;
 void openai;
 void directOpenai;
 void batched;
+
+// A default namespace makes the scope's namespace optional; without one it
+// stays required.
+const defaulted: MemoryClient<true> = createMemory({
+	namespace: "app",
+	embedder,
+});
+void defaulted.add({ scope: { entityId: "entity" }, content: "content" });
+void defaulted.add({
+	scope: { namespace: "other", entityId: "e" },
+	content: "c",
+});
+void defaulted.stats({ scope: {} });
+void defaulted.prune({ scope: { entityId: "entity" }, expired: true });
+void defaulted.stats({ allNamespaces: true });
+// @ts-expect-error Without a default namespace the scope needs one.
+void client.add({ scope: { entityId: "entity" }, content: "content" });
+// @ts-expect-error Without a default namespace for() needs one.
+void client.for({ entityId: "entity" });
+const optionalScope: OptionalNamespaceScope = { entityId: "entity" };
+const optionalSelector: OptionalNamespaceSelector = {};
+const scopeInput: ScopeInput<true> = optionalScope;
+const fullScopeInput: ScopeInput = scope;
+const selectorInput: ScopeSelectorInput<true> = optionalSelector;
+const defaultedAsMigrateInput: MigrateInput = { memory: defaulted };
+
+// A bound client takes no scope and cannot reach across namespaces.
+const bound: BoundMemoryClient = defaulted.for({ entityId: "entity" });
+const boundScope: Readonly<MemoryScope> = bound.scope;
+const boundAdd: BoundAddInput = { content: "content", key: "key" };
+const boundGet: BoundGetInput = { key: "key" };
+void bound.add(boundAdd);
+void bound.get(boundGet);
+void bound.list();
+void bound.findDuplicates();
+void bound.listAuditLog();
+const boundStats: Promise<MemoryStats> = bound.stats();
+const boundErased: Promise<{ deletedCount: number }> = bound.deleteScope();
+void bound.prune({ expired: true, dryRun: true });
+const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
+void boundExperimental.consolidate({ survivorId: "a", supersededIds: ["b"] });
+const boundMigrate: MigrateInput = { memory: bound };
+// @ts-expect-error A bound client takes no scope.
+void bound.add({ scope, content: "content" });
+// @ts-expect-error A bound client has no allNamespaces.
+void bound.prune({ allNamespaces: true, expired: true });
+// @ts-expect-error A bound client's stats takes no input.
+void bound.stats({ allNamespaces: true });
+// @ts-expect-error A bound client cannot be bound again.
+void bound.for;
+// @ts-expect-error get takes an id or a key, not both.
+void bound.get({ id: "id", key: "key" });
+
+void scopeInput;
+void fullScopeInput;
+void selectorInput;
+void defaultedAsMigrateInput;
+void boundScope;
+void boundStats;
+void boundErased;
+void boundMigrate;
 void batchOnlyExecutor;

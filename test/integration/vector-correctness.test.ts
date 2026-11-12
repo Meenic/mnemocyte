@@ -170,6 +170,12 @@ describe("Postgres vector correctness", () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityId = `zero_norm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
+			// Earlier files leave deleted rows in the HNSW graph until autovacuum
+			// runs. Both rows below normalise to one direction that is equally far
+			// from every other vector, so in a crowded graph pruning can leave no
+			// edge leading to them and the index query below finds nothing.
+			// Vacuuming first removes the dead entries this check does not own.
+			await sql`VACUUM mnemocyte_memories`;
 			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {

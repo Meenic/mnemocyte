@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
 
 async function listEntityMemories(
-	client: MemoryClient,
+	client: Omit<MemoryClient, "for">,
 	entityId: string,
 ): Promise<MemoryWithScore[]> {
 	return client.search({
@@ -15,14 +15,17 @@ async function listEntityMemories(
 	});
 }
 
-async function listSupersededEvents(client: MemoryClient, entityId: string) {
+async function listSupersededEvents(
+	client: Omit<MemoryClient, "for">,
+	entityId: string,
+) {
 	return (
 		await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
 	).filter((event) => event.description === "memory.superseded");
 }
 
 export async function exerciseConsolidationDuplicateIdPolicy(params: {
-	client: MemoryClient;
+	client: Omit<MemoryClient, "for">;
 	entityPrefix: string;
 	afterDuplicateRejection?: () => void | Promise<void>;
 }): Promise<void> {

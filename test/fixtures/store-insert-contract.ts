@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import { testScope } from "../helpers.js";
 
 export async function verifyStoreInsertContract(
-	client: MemoryClient,
+	client: Omit<MemoryClient, "for">,
 	entityId: string,
 ): Promise<void> {
 	const inputs = [

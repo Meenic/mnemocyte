@@ -91,12 +91,13 @@ None.
   `postgresJs()` and `drizzleStore()` keep working. Shared contract suite on
   PGlite and real Postgres, including cross-scope isolation for search,
   prune, duplicates and consolidation, which no Postgres test covers today.
-- [ ] `chore/postgres-js-4`: support postgres.js 4 (4.0.0 shipped
+- [x] `chore/postgres-js-4`: support postgres.js 4 (4.0.0 shipped
   2026-10-29): peer range `^3.4.9 || ^4`, the contract and integration suites
-  on both majors. 4.x sends parameters untyped and lets the server decide
-  (Mnemocyte casts every parameter), removes `sql.array()`, rejects queries
-  on a transaction's `sql` after it ends, and adds `.signal()` and
-  `sql.batch()`, which could replace the adapter's `begin` pipelining.
+  on both majors. 4.x sends parameters untyped and lets the server decide;
+  Mnemocyte sends only strings, numbers and null (timestamps, JSON and tags
+  as text with casts), which both majors write the same, and the PGlite
+  contract checks it. `batch` uses `sql.batch()` on 4.1+ outside a
+  transaction; cancellation keeps `cancel()` on both majors.
 - [ ] `feat/migrate-setup`: `migrate({ memory })` reads the store and
   `dimensions` from the client (`{ store, dimensions }` stays; a
   `dimensions` that differs from the embedder's is a `"CONFIG"` error).

@@ -18,6 +18,13 @@ const sourceAlias = [
 	{ find: "mnemocyte", replacement: resolve("src/index.ts") },
 ];
 
+// `POSTGRES_JS=3` runs the integration project on postgres.js 3.x (the
+// `postgres-3` alias) instead of the 4.x dev dependency; CI runs both.
+const postgresJsAlias =
+	process.env.POSTGRES_JS === "3"
+		? [{ find: /^postgres$/, replacement: "postgres-3" }]
+		: [];
+
 export default defineConfig({
 	test: {
 		benchmark: {
@@ -52,7 +59,7 @@ export default defineConfig({
 			},
 			{
 				resolve: {
-					alias: sourceAlias,
+					alias: [...sourceAlias, ...postgresJsAlias],
 				},
 				test: {
 					name: "integration",

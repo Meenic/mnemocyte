@@ -16,7 +16,7 @@ in-memory backend needs none of this.
   one transaction.
 - A database role that can create the extension (once) and the Mnemocyte
   tables in the `public` schema.
-- Your driver next to Mnemocyte: `postgres` 3.4.9 or later 3.x, `pg` 8.23.1+
+- Your driver next to Mnemocyte: `postgres` 3.4.9+ or 4.x, `pg` 8.23.1+
   or `@electric-sql/pglite` 0.5.16+ (with `@electric-sql/pglite-pgvector`),
   and `drizzle-orm` 0.45.4+ if you use Drizzle. They are optional peer
   dependencies; Mnemocyte itself has no runtime dependencies and imports
@@ -129,7 +129,9 @@ configure. The memory client holds no connections and has no `close()`.
 
 Checks run in this order, and the first match wins:
 
-1. **postgres.js:** a function with `unsafe` and `begin`.
+1. **postgres.js:** a function with `unsafe` and `begin`, or `unsafe` and
+   `savepoint` (the `sql` a `sql.begin` callback receives). A reserved
+   connection from `sql.reserve()` has neither and throws `"CONFIG"`.
 2. **Drizzle:** an object with `$client`; Mnemocyte uses that client.
 3. **PGlite:** an object with `query`, `exec` and `transaction`.
 4. **node-postgres `Pool`:** an object with `query`, `connect` and a
@@ -198,6 +200,20 @@ migrations must be applied. `drizzleStore(db)` from
 types that omit `$client` (such as an instance annotated as
 `PostgresJsDatabase`) are accepted by `drizzleStore`; for `postgresStore`,
 let the type be inferred from `drizzle()`.
+
+### postgres.js 3 and 4
+
+Both majors work with the same code. postgres.js 4 leaves parameter types
+to the server unless you set `infer: true`; Mnemocyte sends only strings,
+numbers and null, with a cast wherever the query does not decide the type,
+so its statements behave the same either way.
+
+On postgres.js 4.1 or later, statements that must run together (the
+settings plus vector query of each search, and `addMany`'s chunks) go out
+as one `sql.batch`: one round trip that commits or rolls back as a unit,
+with no `BEGIN` or `COMMIT` of its own. On 3.x and 4.0 they are pipelined
+inside `sql.begin`. An aborted `signal` cancels the running statement on
+the server with either major.
 
 ### Poolers and prepared statements
 

@@ -51,8 +51,9 @@ export interface SqlExecutor {
 	 * takes effect and the call rejects. Settings made with
 	 * `set_config(…, true)` by one statement apply to the later ones.
 	 *
-	 * Optional; maps to a non-interactive transaction (postgres.js pipelining
-	 * inside `sql.begin`, Neon's `sql.transaction([...])`).
+	 * Optional; maps to a non-interactive transaction (postgres.js 4.1+
+	 * `sql.batch`, or pipelining inside `sql.begin` before that; Neon's
+	 * `sql.transaction([...])`).
 	 */
 	batch?(
 		statements: readonly SqlStatement[],

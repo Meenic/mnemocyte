@@ -4,13 +4,13 @@ import { postgresJs } from "../../src/sql/postgres-js.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 type FakePending = Promise<unknown[]> & {
-	cancel(): void;
+	cancel(): unknown;
 	execute(): FakePending;
 };
 
 function pendingQuery(
 	result: Promise<unknown[]>,
-	cancel: () => void = () => {},
+	cancel: () => unknown = () => {},
 	execute: () => void = () => {},
 ): FakePending {
 	const pending: FakePending = Object.assign(result, {
@@ -35,24 +35,41 @@ async function runScope(
 	return Array.isArray(result) ? Promise.all(result) : result;
 }
 
+/**
+ * A postgres.js client of either major. 3.x (and 4.0, which lacks
+ * `sql.batch`): the top-level `sql` has `begin`, a transaction's `sql` has
+ * `savepoint`. 4.1+: both have `batch`, and a transaction's `sql` also has
+ * `begin`, which opens a savepoint.
+ */
 function createFakeClient(options: {
 	unsafe: (sql: string, params: unknown[]) => FakePending;
+	major?: 3 | 4;
+	batch?: (queries: FakePending[]) => FakePending;
 }) {
 	const calls: Array<{ sql: string; params: unknown[] }> = [];
+	const unsafe = (sql: string, params: unknown[]) => {
+		calls.push({ sql, params });
+		return options.unsafe(sql, params);
+	};
+	const batch =
+		options.batch ??
+		((queries: FakePending[]) => pendingQuery(Promise.all(queries)));
 	const scoped = {
-		unsafe: vi.fn((sql: string, params: unknown[]) => {
-			calls.push({ sql, params });
-			return options.unsafe(sql, params);
-		}),
+		unsafe: vi.fn(unsafe),
 		savepoint: vi.fn((fn: (tx: unknown) => unknown) => runScope(fn, scoped)),
+		begin: vi.fn((fn: (tx: unknown) => unknown) => runScope(fn, scoped)),
+		batch: vi.fn(batch),
 	};
 	const client = {
-		unsafe: vi.fn((sql: string, params: unknown[]) => {
-			calls.push({ sql, params });
-			return options.unsafe(sql, params);
-		}),
+		unsafe: vi.fn(unsafe),
 		begin: vi.fn((fn: (tx: unknown) => unknown) => runScope(fn, scoped)),
+		batch: vi.fn(batch),
 	};
+	if (options.major !== 4) {
+		Reflect.deleteProperty(scoped, "begin");
+		Reflect.deleteProperty(scoped, "batch");
+		Reflect.deleteProperty(client, "batch");
+	}
 	return { client: client as unknown as Sql, raw: client, scoped, calls };
 }
 
@@ -280,5 +297,141 @@ describe("postgresJs executor", () => {
 			"ABORTED",
 		);
 		expect(fake.raw.begin).not.toHaveBeenCalled();
+	});
+
+	test("a cancel request that rejects is not left unhandled", async () => {
+		// postgres.js 4 returns the cancel request's promise, which rejects
+		// when the server never answers it (CANCEL_UNANSWERED).
+		const controller = new AbortController();
+		let rejectQuery: (reason: unknown) => void = () => {};
+		// A plain function: a vi.fn would handle the promise it returns.
+		let cancels = 0;
+		const cancel = () => {
+			cancels += 1;
+			rejectQuery(new Error("CONNECTION_DESTROYED"));
+			return Promise.reject(new Error("CANCEL_UNANSWERED"));
+		};
+		const fake = createFakeClient({
+			unsafe: () =>
+				pendingQuery(
+					new Promise<unknown[]>((_resolve, reject) => {
+						rejectQuery = reject;
+					}),
+					cancel,
+				),
+		});
+
+		const result = postgresJs(fake.client).query("SELECT pg_sleep(60)", [], {
+			signal: controller.signal,
+		});
+		controller.abort();
+
+		await expectMnemocyteError(result, "ABORTED");
+		expect(cancels).toBe(1);
+		// Vitest fails the run on an unhandled rejection; give it a turn.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+});
+
+describe("postgresJs executor on postgres.js 4.1+", () => {
+	test("batch sends one sql.batch outside a transaction", async () => {
+		const fake = createFakeClient({
+			major: 4,
+			unsafe: (sql) => pendingQuery(Promise.resolve([{ sql }])),
+		});
+
+		const results = await postgresJs(fake.client).batch([
+			{ sql: "SELECT set_config('a', $1, true)", params: ["1"] },
+			{ sql: "SELECT 2", params: [] },
+		]);
+
+		expect(results).toEqual([
+			[{ sql: "SELECT set_config('a', $1, true)" }],
+			[{ sql: "SELECT 2" }],
+		]);
+		expect(fake.raw.batch).toHaveBeenCalledOnce();
+		expect(fake.raw.batch.mock.calls[0]?.[0]).toHaveLength(2);
+		expect(fake.raw.begin).not.toHaveBeenCalled();
+		expect(fake.calls).toEqual([
+			{ sql: "SELECT set_config('a', $1, true)", params: ["1"] },
+			{ sql: "SELECT 2", params: [] },
+		]);
+	});
+
+	test("batch inside a transaction keeps the savepoint", async () => {
+		const fake = createFakeClient({
+			major: 4,
+			unsafe: () => pendingQuery(Promise.resolve([])),
+		});
+
+		await postgresJs(fake.client).transaction(async (tx) => {
+			await tx.batch([
+				{ sql: "SELECT 1", params: [] },
+				{ sql: "SELECT 2", params: [] },
+			]);
+			await tx.transaction(async (inner) => {
+				await inner.query("SELECT 3", []);
+			});
+		});
+
+		expect(fake.raw.begin).toHaveBeenCalledOnce();
+		expect(fake.scoped.savepoint).toHaveBeenCalledTimes(2);
+		expect(fake.scoped.begin).not.toHaveBeenCalled();
+		expect(fake.scoped.batch).not.toHaveBeenCalled();
+		expect(fake.raw.batch).not.toHaveBeenCalled();
+	});
+
+	test("batch rejects with the driver's error", async () => {
+		const failure = Object.assign(new Error("duplicate"), {
+			code: "23505",
+			index: 1,
+		});
+		const fake = createFakeClient({
+			major: 4,
+			unsafe: () => pendingQuery(Promise.resolve([])),
+			batch: () => pendingQuery(Promise.reject(failure)),
+		});
+
+		await expect(
+			postgresJs(fake.client).batch([
+				{ sql: "SELECT 1", params: [] },
+				{ sql: "SELECT 2", params: [] },
+			]),
+		).rejects.toBe(failure);
+	});
+
+	test("batch cancels the sql.batch when the signal aborts", async () => {
+		const controller = new AbortController();
+		let rejectBatch: (reason: unknown) => void = () => {};
+		let cancels = 0;
+		const cancel = () => {
+			cancels += 1;
+			rejectBatch(new Error("canceling statement due to user request"));
+			return Promise.reject(new Error("CANCEL_UNANSWERED"));
+		};
+		const execute = vi.fn();
+		const fake = createFakeClient({
+			major: 4,
+			unsafe: () => pendingQuery(Promise.resolve([])),
+			batch: () =>
+				pendingQuery(
+					new Promise<unknown[]>((_resolve, reject) => {
+						rejectBatch = reject;
+					}),
+					cancel,
+					execute,
+				),
+		});
+
+		const result = postgresJs(fake.client).batch(
+			[{ sql: "SELECT pg_sleep(60)", params: [] }],
+			{ signal: controller.signal },
+		);
+		expect(execute).toHaveBeenCalledOnce();
+		controller.abort();
+
+		await expectMnemocyteError(result, "ABORTED");
+		expect(cancels).toBe(1);
+		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 });

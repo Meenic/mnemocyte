@@ -10,6 +10,15 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **postgres.js 4.** The `postgres` peer range is now `^3.4.9 || ^4`.
+  Mnemocyte's statements send only strings, numbers and null, so 4.x
+  leaving parameter types to the server changes nothing for them. On
+  postgres.js 4.1 and later, a search's settings and vector query and
+  `addMany`'s insert chunks go out as one `sql.batch`: one round trip
+  instead of `BEGIN`, the statements and `COMMIT`. A transaction's `sql`
+  is now accepted by the `postgresStore` types on 3.x as well; a reserved
+  connection (`sql.reserve()`) throws `"CONFIG"` on both majors.
+
 - **node-postgres, PGlite and Drizzle clients in `postgresStore`.**
   `postgresStore({ client })` now takes the client your app already has: a
   postgres.js `sql`, a node-postgres `Pool`, a PGlite instance (with
@@ -212,6 +221,11 @@ behavioural changes documented in their entries.
 
 ### Fixed
 
+- **A failed postgres.js cancel request no longer goes unhandled.** When a
+  `signal` aborted, the adapter ignored the promise `query.cancel()`
+  returns; on postgres.js 4 it rejects when the server does not answer the
+  cancel in time (`CANCEL_UNANSWERED`), which crashed a Node process run
+  with the default `--unhandled-rejections=throw`.
 - **Breaking: filtered recall finds every match on Postgres; needs pgvector
   0.8.0.** The vector search now runs in a short transaction with
   `hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least the

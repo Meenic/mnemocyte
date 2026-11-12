@@ -65,6 +65,38 @@ describe("client detection", () => {
 		await expect(via(fakePool())).resolves.toEqual({ via: "pg" });
 	});
 
+	test("recognises postgres.js 3.x and 4.x sql functions and rejects a reserved one", async () => {
+		const unsafe = fakePostgresJs().unsafe;
+		const fn = () => Object.assign(() => undefined, { unsafe });
+		// The top-level `sql`: 4.x adds `batch` and `reserve`.
+		const top3 = Object.assign(fn(), { begin: vi.fn(), reserve: vi.fn() });
+		const top4 = Object.assign(fn(), {
+			begin: vi.fn(),
+			batch: vi.fn(),
+			reserve: vi.fn(),
+		});
+		// A transaction's `sql`: `savepoint` on 3.x; 4.x adds `begin` and `batch`.
+		const tx3 = Object.assign(fn(), { savepoint: vi.fn() });
+		const tx4 = Object.assign(fn(), {
+			savepoint: vi.fn(),
+			begin: vi.fn(),
+			batch: vi.fn(),
+			rollback: vi.fn(),
+		});
+		for (const client of [top3, top4, tx3, tx4]) {
+			await expect(via(client)).resolves.toEqual({ via: "postgres.js" });
+		}
+		// `sql.reserve()` has neither `begin` nor `savepoint` on either major.
+		const reserved3 = Object.assign(fn(), { release: vi.fn() });
+		const reserved4 = Object.assign(fn(), {
+			batch: vi.fn(),
+			release: vi.fn(),
+		});
+		for (const client of [reserved3, reserved4]) {
+			expectConfig(() => toSqlExecutor(client), /SqlExecutor/);
+		}
+	});
+
 	test("unwraps a Drizzle instance's $client", async () => {
 		for (const [client, expected] of [
 			[fakePostgresJs(), "postgres.js"],

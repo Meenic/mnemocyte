@@ -10,16 +10,24 @@ import { type PGliteClient, pgliteExecutor } from "./pglite.js";
 import { postgresJs } from "./postgres-js.js";
 
 /**
- * The part of a postgres.js `sql` function Mnemocyte checks for. Any client
- * created with `postgres(...)` matches.
+ * The part of a postgres.js `sql` function Mnemocyte checks for, on 3.4.9+
+ * and 4.x. Any client created with `postgres(...)` matches, and so does the
+ * `sql` a `sql.begin` callback receives, which has `savepoint` instead of
+ * (3.x) or next to (4.x) `begin`. A reserved connection (`sql.reserve()`)
+ * has neither and does not match.
  */
-export interface PostgresJsClient {
+export type PostgresJsClient =
 	// Only the presence of these methods is checked; postgres.js's own
 	// overloads take a callback of its `TransactionSql`, which a narrower
 	// signature here could not accept.
-	unsafe(...args: never[]): unknown;
-	begin(...args: never[]): unknown;
-}
+	| {
+			unsafe(...args: never[]): unknown;
+			begin(...args: never[]): unknown;
+	  }
+	| {
+			unsafe(...args: never[]): unknown;
+			savepoint(...args: never[]): unknown;
+	  };
 
 /**
  * A Drizzle instance built on postgres.js (`drizzle-orm/postgres-js`),

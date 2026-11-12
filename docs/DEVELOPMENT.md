@@ -46,7 +46,7 @@ or from a consuming project.
 src/
   index.ts              root entry: createMemory, migrate, errors, public types
   client.ts             createMemory: config checks, store (given | in-memory)
-  migrate.ts            migrate(): validates input, calls the store's migrate
+  migrate.ts            migrate(): validates input, resolves { memory } or { store }, calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   types.ts              every public type
   errors.ts             MnemocyteError and its codes
@@ -54,6 +54,7 @@ src/
   resilience.ts         provider timeout, retry, abort
   memory/
     client-core.ts      shared orchestration for every client method
+    client-internals.ts the client's store and embedder under a symbol, for migrate({ memory })
     store.ts            the internal MemoryStore contract, scopes and selectors
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
@@ -240,7 +241,10 @@ Vitest has three projects (`vitest.config.ts`):
   inside a transaction they roll back. `migrate.test.ts` cannot roll back,
   because `migrate()` commits each migration: every test drops the Mnemocyte
   tables and the file ends by leaving a tracked 1536-dimension schema for the
-  files after it. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
+  files after it. Its `createExtension` tests also drop the `vector`
+  extension and create and drop a non-superuser role
+  (`mnemocyte_restricted_test`), so the role in `DATABASE_URL` must be a
+  superuser, as it is on the Docker image and in CI. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
 - postgres.js is a dev dependency on 4.x, and `postgres-3`
   (`npm:postgres@3.4.9`) installs 3.x next to it, so both are in the

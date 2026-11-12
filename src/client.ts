@@ -1,4 +1,5 @@
 import { createMemoryClient } from "./memory/client-core.js";
+import { attachMemoryClientInternals } from "./memory/client-internals.js";
 import { createInMemoryStore } from "./memory/in-memory.js";
 import { unwrapMnemocyteStoreConfig } from "./memory/store-config.js";
 import {
@@ -41,5 +42,8 @@ export function createMemory(config: MemoryConfig): MemoryClient {
 		config.store === undefined
 			? createInMemoryStore()
 			: unwrapMnemocyteStoreConfig(config.store);
-	return createMemoryClient(config, store);
+	return attachMemoryClientInternals(createMemoryClient(config, store), {
+		store,
+		embedder: config.embedder,
+	});
 }

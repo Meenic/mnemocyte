@@ -877,16 +877,38 @@ export function validateMigrateInput(input: MigrateInput): void {
 	if (typeof input !== "object" || input === null) {
 		throw new MnemocyteError("migrate requires an input object.", "VALIDATION");
 	}
-	if (
-		input.dimensions !== undefined &&
-		(!Number.isInteger(input.dimensions) ||
-			input.dimensions < 1 ||
-			input.dimensions > MAX_MIGRATE_DIMENSIONS)
-	) {
+	const hasMemory = input.memory !== undefined;
+	const hasStore = input.store !== undefined;
+	if (hasMemory === hasStore) {
 		throw new MnemocyteError(
-			`dimensions must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
+			"migrate takes either memory (a client from createMemory()) or store, not both and not neither.",
 			"VALIDATION",
 		);
 	}
+	assertOptionalBoolean(input.createExtension, "createExtension");
+	assertOptionalBoolean(input.dryRun, "dryRun");
+	if (input.dimensions !== undefined) {
+		assertMigrateDimensions(input.dimensions, "dimensions");
+	}
 	assertOptionalSignal(input.signal);
+}
+
+/**
+ * Throw `"VALIDATION"` unless `dimensions` fits a column a migration can
+ * create. `field` names where the value came from.
+ */
+export function assertMigrateDimensions(
+	dimensions: number,
+	field: string,
+): void {
+	if (
+		!Number.isInteger(dimensions) ||
+		dimensions < 1 ||
+		dimensions > MAX_MIGRATE_DIMENSIONS
+	) {
+		throw new MnemocyteError(
+			`${field} must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
+			"VALIDATION",
+		);
+	}
 }

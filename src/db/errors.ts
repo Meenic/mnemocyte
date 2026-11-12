@@ -11,3 +11,15 @@ export function postgresConstraintName(error: unknown): string | undefined {
 	const name = fields.constraint_name ?? fields.constraint;
 	return typeof name === "string" ? name : undefined;
 }
+
+/**
+ * The SQLSTATE a driver error carries, or `undefined`. postgres.js,
+ * node-postgres and PGlite all expose it as `code`.
+ */
+export function postgresErrorCode(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null) {
+		return undefined;
+	}
+	const { code } = error as { code?: unknown };
+	return typeof code === "string" ? code : undefined;
+}

@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { type MnemocyteStoreConfig, migrate } from "mnemocyte";
+import {
+	createMemory,
+	type Embedder,
+	type MemoryClient,
+	type MigrateInput,
+	type MnemocyteStoreConfig,
+	migrate,
+} from "mnemocyte";
 import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
 import { describe, expect, test } from "vitest";
 import { MIGRATIONS } from "../../src/db/migrations/bundled.js";
@@ -26,6 +33,8 @@ interface FakeDatabaseState {
 	catalog?: Record<string, boolean>;
 	/** A statement containing this text throws a driver error. */
 	failOn?: string;
+	/** SQLSTATE of the `failOn` error; `42601` (syntax error) by default. */
+	failCode?: string;
 }
 
 /**
@@ -43,13 +52,34 @@ function fakeDatabase(initial: Partial<FakeDatabaseState> = {}) {
 	};
 	const log: string[] = [];
 	const executed: string[] = [];
+	let readOnly = false;
+	/** Writes fail in a read-only transaction, as they do in Postgres. */
+	const write = (sql: string): void => {
+		if (readOnly) {
+			throw Object.assign(
+				new Error(`cannot execute ${sql} in a read-only transaction`),
+				{ code: "25006" },
+			);
+		}
+	};
 
 	const executor: SqlExecutor = {
 		async query<Row>(sql: string, params: readonly unknown[]) {
 			log.push(sql);
 			const rows = (value: unknown[]): Row[] => value as Row[];
 			if (state.failOn !== undefined && sql.includes(state.failOn)) {
-				throw Object.assign(new Error("syntax error"), { code: "42601" });
+				throw Object.assign(new Error("driver error"), {
+					code: state.failCode ?? "42601",
+				});
+			}
+			if (sql === "SET TRANSACTION READ ONLY") {
+				readOnly = true;
+				return rows([]);
+			}
+			if (sql.startsWith("CREATE EXTENSION")) {
+				write(sql);
+				state.pgvector = true;
+				return rows([]);
 			}
 			if (sql.includes("pg_advisory_xact_lock")) {
 				return rows([{ pg_advisory_xact_lock: "" }]);
@@ -66,6 +96,7 @@ function fakeDatabase(initial: Partial<FakeDatabaseState> = {}) {
 				return rows((state.tracked ?? []).map((version) => ({ version })));
 			}
 			if (sql.startsWith("CREATE TABLE mnemocyte_migrations")) {
+				write(sql);
 				state.tracked = [];
 				return rows([]);
 			}
@@ -85,9 +116,11 @@ function fakeDatabase(initial: Partial<FakeDatabaseState> = {}) {
 				return rows(state.pgvector ? [{ "?column?": 1 }] : []);
 			}
 			if (sql.startsWith("INSERT INTO mnemocyte_migrations")) {
+				write(sql);
 				state.tracked?.push(Number(params[0]));
 				return rows([]);
 			}
+			write(sql);
 			executed.push(sql);
 			if (sql.startsWith('CREATE TABLE "mnemocyte_memories"')) {
 				state.schemaLevel = MIGRATIONS.length - 1;
@@ -96,6 +129,7 @@ function fakeDatabase(initial: Partial<FakeDatabaseState> = {}) {
 		},
 		async transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T> {
 			const snapshot = structuredClone(state);
+			readOnly = false;
 			log.push("BEGIN");
 			try {
 				const result = await fn(executor);
@@ -141,7 +175,11 @@ describe("migrate", () => {
 
 		const result = await migrate({ store: db.store, dimensions: 768 });
 
-		expect(result).toEqual({ applied: MIGRATION_NAMES, adopted: [] });
+		expect(result).toEqual({
+			applied: MIGRATION_NAMES,
+			adopted: [],
+			extensionCreated: false,
+		});
 		expect(db.state.tracked).toEqual([0, 1, 2, 3]);
 		expect(db.log.filter((entry) => entry === "BEGIN")).toHaveLength(1);
 		expect(db.executed).toEqual(splitStatements(renderInitialSchema(768)));
@@ -210,6 +248,7 @@ describe("migrate", () => {
 			expect(result).toEqual({
 				adopted,
 				applied: MIGRATION_NAMES.slice(adopted.length),
+				extensionCreated: false,
 			});
 			expect(db.state.tracked).toEqual([0, 1, 2, 3]);
 			// One transaction to adopt, then one per applied migration.
@@ -224,7 +263,11 @@ describe("migrate", () => {
 
 		const result = await migrate({ store: db.store });
 
-		expect(result).toEqual({ applied: ["0003_schema_v2"], adopted: [] });
+		expect(result).toEqual({
+			applied: ["0003_schema_v2"],
+			adopted: [],
+			extensionCreated: false,
+		});
 		const steps = transactions(db.log);
 		expect(steps).toHaveLength(1);
 		const migration = MIGRATIONS[3];
@@ -238,6 +281,7 @@ describe("migrate", () => {
 		await expect(migrate({ store: db.store })).resolves.toEqual({
 			applied: [],
 			adopted: [],
+			extensionCreated: false,
 		});
 		expect(db.executed).toEqual([]);
 	});
@@ -275,7 +319,7 @@ describe("migrate", () => {
 
 		await expect(
 			migrate({ store: db.store, dimensions: 1536 }),
-		).resolves.toEqual({ applied: [], adopted: [] });
+		).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
 	});
 
 	test("rejects a schema that matches no migration", async () => {
@@ -354,6 +398,326 @@ describe("migrate", () => {
 			"CONFIG",
 		);
 	});
+});
+
+function embedderOf(dimensions: number): Embedder {
+	return {
+		model: "migrate-unit",
+		dimensions,
+		async embed(texts) {
+			return texts.map(() => Array.from({ length: dimensions }, () => 0));
+		},
+	};
+}
+
+describe("migrate({ memory })", () => {
+	test("installs at the embedder's dimensions", async () => {
+		const db = fakeDatabase();
+		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
+
+		const result = await migrate({ memory });
+
+		expect(result).toEqual({
+			applied: MIGRATION_NAMES,
+			adopted: [],
+			extensionCreated: false,
+		});
+		expect(db.executed.join("\n")).toContain('"embedding" vector(768)');
+	});
+
+	test("accepts dimensions equal to the embedder's", async () => {
+		const db = fakeDatabase();
+		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
+
+		await expect(migrate({ memory, dimensions: 768 })).resolves.toMatchObject({
+			applied: MIGRATION_NAMES,
+		});
+	});
+
+	test("rejects dimensions that differ from the embedder's before any statement", async () => {
+		const db = fakeDatabase();
+		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
+
+		const error = await expectMnemocyteError(
+			migrate({ memory, dimensions: 1536 }),
+			"CONFIG",
+		);
+		expect(error.message).toContain("768");
+		expect(db.log).toEqual([]);
+	});
+
+	test("checks the embedder's dimensions against the installation", async () => {
+		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
+		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
+
+		await expectMnemocyteError(migrate({ memory }), "CONFIG");
+	});
+
+	test("rejects an embedder too large for any vector column", async () => {
+		const db = fakeDatabase();
+		const memory = createMemory({
+			store: db.store,
+			embedder: embedderOf(4001),
+		});
+
+		const error = await expectMnemocyteError(migrate({ memory }), "VALIDATION");
+		expect(error.message).toContain("embedder.dimensions");
+		expect(db.log).toEqual([]);
+	});
+
+	test("resolves with nothing to do for an in-memory client", async () => {
+		const memory = createMemory({ embedder: embedderOf(3) });
+
+		await expect(
+			migrate({ memory, createExtension: true, dryRun: true }),
+		).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
+	});
+
+	test("rejects both memory and store, and neither", async () => {
+		const db = fakeDatabase();
+		const memory = createMemory({ store: db.store, embedder: embedderOf(3) });
+
+		await expectMnemocyteError(
+			migrate({ memory, store: db.store } as unknown as MigrateInput),
+			"VALIDATION",
+		);
+		await expectMnemocyteError(
+			migrate({ dimensions: 3 } as unknown as MigrateInput),
+			"VALIDATION",
+		);
+		expect(db.log).toEqual([]);
+	});
+
+	test("rejects a memory that createMemory did not return", async () => {
+		await expectMnemocyteError(
+			migrate({ memory: {} as MemoryClient }),
+			"CONFIG",
+		);
+	});
+
+	test("keeps the store and embedder out of the client's own keys", () => {
+		const memory = createMemory({ embedder: embedderOf(3) });
+
+		expect(Object.getOwnPropertySymbols(memory)).toHaveLength(1);
+		expect(Object.keys(memory)).not.toContain("store");
+		expect({ ...memory }).not.toHaveProperty("embedder");
+	});
+});
+
+describe("migrate({ createExtension })", () => {
+	test("creates pgvector under the lock, before the schema, in the same transaction", async () => {
+		const db = fakeDatabase({ pgvector: false });
+
+		const result = await migrate({
+			store: db.store,
+			dimensions: 1536,
+			createExtension: true,
+		});
+
+		expect(result).toEqual({
+			applied: MIGRATION_NAMES,
+			adopted: [],
+			extensionCreated: true,
+		});
+		const steps = transactions(db.log);
+		expect(steps).toHaveLength(1);
+		const statements = steps[0] ?? [];
+		const create = statements.indexOf("CREATE EXTENSION IF NOT EXISTS vector");
+		expect(statements[0]).toContain("pg_advisory_xact_lock");
+		expect(create).toBeGreaterThan(0);
+		expect(statements.indexOf(db.executed[0] ?? "")).toBeGreaterThan(create);
+	});
+
+	test("does not run CREATE EXTENSION when pgvector is installed", async () => {
+		const db = fakeDatabase();
+
+		const result = await migrate({
+			store: db.store,
+			dimensions: 1536,
+			createExtension: true,
+		});
+
+		expect(result.extensionCreated).toBe(false);
+		expect(db.log.join("\n")).not.toContain("CREATE EXTENSION");
+	});
+
+	test("does not look at extensions on an existing installation", async () => {
+		const db = fakeDatabase({ schemaLevel: 2, tracked: [0, 1, 2] });
+
+		const result = await migrate({ store: db.store, createExtension: true });
+
+		expect(result).toEqual({
+			applied: ["0003_schema_v2"],
+			adopted: [],
+			extensionCreated: false,
+		});
+		expect(db.log.join("\n")).not.toContain("pg_extension");
+	});
+
+	test("names the option when pgvector is missing and it is off", async () => {
+		const db = fakeDatabase({ pgvector: false });
+
+		const error = await expectMnemocyteError(
+			migrate({ store: db.store, dimensions: 1536 }),
+			"MIGRATION",
+		);
+		expect(error.message).toContain("createExtension: true");
+		expect(db.log.join("\n")).not.toContain("CREATE EXTENSION");
+	});
+
+	test.each([
+		["42501", "admin"],
+		["0A000", "not available"],
+		["XX000", "CREATE EXTENSION vector failed"],
+	])(
+		"rejects a %s from CREATE EXTENSION with MIGRATION and rolls back",
+		async (code, message) => {
+			const db = fakeDatabase({
+				pgvector: false,
+				failOn: "CREATE EXTENSION",
+				failCode: code,
+			});
+
+			const error = await expectMnemocyteError(
+				migrate({ store: db.store, dimensions: 1536, createExtension: true }),
+				"MIGRATION",
+			);
+			expect(error.message).toContain(message);
+			expect(error.cause).toMatchObject({ code });
+			expect(db.state.tracked).toBeNull();
+			expect(db.state.pgvector).toBe(false);
+			expect(db.executed).toEqual([]);
+		},
+	);
+
+	test("rejects a non-boolean createExtension or dryRun", async () => {
+		const db = fakeDatabase();
+
+		for (const input of [
+			{ store: db.store, createExtension: "yes" },
+			{ store: db.store, dryRun: 1 },
+		]) {
+			await expectMnemocyteError(
+				migrate(input as unknown as MigrateInput),
+				"VALIDATION",
+			);
+		}
+		expect(db.log).toEqual([]);
+	});
+});
+
+describe("migrate({ dryRun })", () => {
+	type StoreOptions = Omit<Extract<MigrateInput, { store: unknown }>, "store">;
+
+	/** Runs a dry run and checks it read in one transaction, changing nothing. */
+	async function dryRun(
+		initial: Partial<FakeDatabaseState>,
+		input: StoreOptions,
+	) {
+		const db = fakeDatabase(initial);
+		const before = structuredClone(db.state);
+		const result = await migrate({ ...input, store: db.store, dryRun: true });
+		expect(db.state).toEqual(before);
+		expect(db.executed).toEqual([]);
+		const steps = transactions(db.log);
+		expect(steps).toHaveLength(1);
+		expect(steps[0]?.slice(0, 2)).toEqual([
+			"SET TRANSACTION READ ONLY",
+			`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`,
+		]);
+		return result;
+	}
+
+	test.each([
+		[true, false],
+		[false, true],
+	])(
+		"lists a fresh install (pgvector installed: %s)",
+		async (pgvector, extensionCreated) => {
+			await expect(
+				dryRun({ pgvector }, { dimensions: 768, createExtension: true }),
+			).resolves.toEqual({
+				applied: MIGRATION_NAMES,
+				adopted: [],
+				extensionCreated,
+			});
+		},
+	);
+
+	test.each([0, 1, 2, 3])(
+		"predicts a real run on an untracked schema at migration %i",
+		async (level) => {
+			const real = fakeDatabase({ schemaLevel: level });
+			const expected = await migrate({ store: real.store });
+
+			await expect(dryRun({ schemaLevel: level }, {})).resolves.toEqual(
+				expected,
+			);
+		},
+	);
+
+	test("predicts adoption when the tracking table exists but is empty", async () => {
+		await expect(dryRun({ schemaLevel: 3, tracked: [] }, {})).resolves.toEqual({
+			applied: [],
+			adopted: MIGRATION_NAMES,
+			extensionCreated: false,
+		});
+	});
+
+	test.each([
+		[[0, 1, 2], ["0003_schema_v2"]],
+		[[0, 1, 2, 3], []],
+	])("lists pending tracked migrations after %o", async (tracked, applied) => {
+		await expect(
+			dryRun({ schemaLevel: tracked.length - 1, tracked }, {}),
+		).resolves.toEqual({ applied, adopted: [], extensionCreated: false });
+	});
+
+	const failures: [
+		string,
+		Partial<FakeDatabaseState>,
+		StoreOptions,
+		"VALIDATION" | "MIGRATION" | "CONFIG",
+	][] = [
+		["no dimensions on a fresh install", {}, {}, "VALIDATION"],
+		[
+			"pgvector missing",
+			{ pgvector: false },
+			{ dimensions: 1536 },
+			"MIGRATION",
+		],
+		[
+			"dimensions that differ from the installation",
+			{ schemaLevel: 3, tracked: [0, 1, 2, 3] },
+			{ dimensions: 768 },
+			"CONFIG",
+		],
+		[
+			"tracking rows with gaps",
+			{ schemaLevel: 3, tracked: [0, 2, 3] },
+			{},
+			"MIGRATION",
+		],
+	];
+
+	test.each(failures)(
+		"rejects like a real run: %s",
+		async (_name, initial, input, code) => {
+			const real = fakeDatabase(initial);
+			await expectMnemocyteError(
+				migrate({ ...input, store: real.store }),
+				code,
+			);
+
+			const db = fakeDatabase(initial);
+			const before = structuredClone(db.state);
+			await expectMnemocyteError(
+				migrate({ ...input, store: db.store, dryRun: true }),
+				code,
+			);
+			expect(db.state).toEqual(before);
+		},
+	);
 });
 
 describe("bundled migrations", () => {

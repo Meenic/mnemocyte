@@ -174,7 +174,7 @@ export function describeStoreContract(
 			});
 			await expect(
 				migrate({ store, dimensions: CONTRACT_DIMENSIONS }),
-			).resolves.toEqual({ applied: [], adopted: [] });
+			).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
 		});
 
 		test("transactions commit, roll back and nest as savepoints", async () => {

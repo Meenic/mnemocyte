@@ -98,7 +98,7 @@ None.
   as text with casts), which both majors write the same, and the PGlite
   contract checks it. `batch` uses `sql.batch()` on 4.1+ outside a
   transaction; cancellation keeps `cancel()` on both majors.
-- [ ] `feat/migrate-setup`: `migrate({ memory })` reads the store and
+- [x] `feat/migrate-setup`: `migrate({ memory })` reads the store and
   `dimensions` from the client (`{ store, dimensions }` stays; a
   `dimensions` that differs from the embedder's is a `"CONFIG"` error).
   Opt-in `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector`

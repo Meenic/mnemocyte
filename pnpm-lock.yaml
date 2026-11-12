@@ -189,13 +189,16 @@ importers:
         version: 0.31.11
       drizzle-orm:
         specifier: ^0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.16)(@types/pg@8.23.1)(pg@8.23.1)(postgres@3.4.9)
+        version: 0.45.4(@electric-sql/pglite@0.5.16)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1)
       pg:
         specifier: ^8.23.1
         version: 8.23.1
       postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
+        specifier: ^4.1.1
+        version: 4.1.1
+      postgres-3:
+        specifier: npm:postgres@3.4.9
+        version: postgres@3.4.9
       publint:
         specifier: 0.3.25
         version: 0.3.25
@@ -1461,6 +1464,10 @@ packages:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
 
+  postgres@4.1.1:
+    resolution: {integrity: sha512-1kJDojqNZC+iTHHXh6eif0J98LUtyLAePe/qkW1GK35eh2JixlsAiIKq3FGI+xqI+SUGTNodzf7TScVeIIyUug==}
+    engines: {node: '>=18'}
+
   publint@0.3.25:
     resolution: {integrity: sha512-WMMbn/d7JqRlfXQL/JUI4n5skC8cJ5WVr8/wT5mmiYWkUdENkZr1I5rgs2+dQPVRgoJd+JRYtB46MTsuDylw9g==}
     engines: {node: '>=18'}
@@ -2293,12 +2300,12 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.2
 
-  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.16)(@types/pg@8.23.1)(pg@8.23.1)(postgres@3.4.9):
+  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.16)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1):
     optionalDependencies:
       '@electric-sql/pglite': 0.5.16
       '@types/pg': 8.23.1
       pg: 8.23.1
-      postgres: 3.4.9
+      postgres: 4.1.1
 
   dts-resolver@3.0.0: {}
 
@@ -2587,6 +2594,8 @@ snapshots:
       xtend: 4.0.2
 
   postgres@3.4.9: {}
+
+  postgres@4.1.1: {}
 
   publint@0.3.25:
     dependencies:

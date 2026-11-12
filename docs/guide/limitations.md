@@ -16,8 +16,9 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 - **Four drivers are built in.** postgres.js, a node-postgres `Pool`,
   PGlite, and Drizzle over one of them. A `pg.Client` and other Drizzle
   drivers throw `"CONFIG"`; anything else needs a hand-written `SqlExecutor`
-  ([postgres.md](./postgres.md#bring-another-driver)). postgres.js 4 is not
-  supported yet: the peer range is 3.x. Planned: `chore/postgres-js-4`.
+  ([postgres.md](./postgres.md#bring-another-driver)). postgres.js 3.4.9+
+  and 4.x both work; a reserved connection (`sql.reserve()`) throws
+  `"CONFIG"`, because it cannot open a transaction.
 - **node-postgres and PGlite cannot cancel a running query.** An aborted
   `signal` stops the next statement and the call rejects with `"ABORTED"`,
   but a statement already sent runs to the end. postgres.js cancels it on

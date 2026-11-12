@@ -315,7 +315,13 @@ Dated 2026-10-26 unless noted.
     and returns one rows array per statement; `transaction` became
     optional, an executor needs at least one of the two, and stores prefer
     `batch`. `addMany` is all or nothing: every embedder call finishes
-    first, then all insert chunks commit together.
+    first, then all insert chunks commit together. (2026-11-12) On
+    postgres.js 4.1+ the adapter's `batch` is `sql.batch`, one round trip
+    whose single Sync makes it one implicit transaction, instead of
+    pipelining inside `sql.begin` (`BEGIN`, the statements, `COMMIT`).
+    Inside a transaction it keeps the savepoint, because a failed
+    `sql.batch` there aborts the outer transaction; 3.x and 4.0 keep
+    `sql.begin`.
 
 17. **`agentId`** (2026-10-27): a nullable column next to `entityId`, added
     in the first scope migration (`0003`). `entityId` is who a memory is

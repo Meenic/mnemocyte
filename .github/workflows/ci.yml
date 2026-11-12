@@ -68,7 +68,7 @@ jobs:
         run: pnpm run lint:package
 
   postgres-integration:
-    name: Postgres ${{ matrix.postgres }} integration
+    name: Postgres ${{ matrix.postgres }} integration (postgres.js ${{ matrix.postgres-js }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -76,6 +76,9 @@ jobs:
         postgres:
           - 17
           - 18
+        postgres-js:
+          - 3
+          - 4
     services:
       postgres:
         image: pgvector/pgvector:0.8.7-pg${{ matrix.postgres }}
@@ -117,4 +120,5 @@ jobs:
       - name: Test integration
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          POSTGRES_JS: ${{ matrix.postgres-js }}
         run: pnpm run test:integration

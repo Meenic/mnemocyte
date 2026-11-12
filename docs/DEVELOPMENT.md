@@ -224,7 +224,10 @@ Vitest has three projects (`vitest.config.ts`):
   isolation for search, id lookups, prune, duplicates, consolidation,
   `deleteScope` and stats. The `contract` project runs it on PGlite, direct
   and through Drizzle: an in-process Postgres 18 with pgvector 0.8.7, so no
-  service is needed and every Node job in CI runs it (about 5 s).
+  service is needed and every Node job in CI runs it (about 10 s). A third
+  PGlite run wraps the executor and fails on any parameter that is not a
+  string, finite number or null, the values postgres.js 3.x and 4.x write
+  the same.
   `test/integration/drivers.test.ts` runs it on real Postgres through
   postgres.js, a node-postgres `Pool`, and Drizzle over each. Each run
   migrates (adopting an existing schema), works in its own namespaces,
@@ -239,10 +242,21 @@ Vitest has three projects (`vitest.config.ts`):
   tables and the file ends by leaving a tracked 1536-dimension schema for the
   files after it. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
+- postgres.js is a dev dependency on 4.x, and `postgres-3`
+  (`npm:postgres@3.4.9`) installs 3.x next to it, so both are in the
+  lockfile. With `POSTGRES_JS=3` the `integration` project aliases
+  `postgres` to `postgres-3` (`vitest.config.ts`); every integration file
+  then runs on 3.x, and `test/integration/postgres-js.test.ts` fails if the
+  alias did not apply. `test/package/exports-types.test-d.ts` checks both
+  majors' `Sql` and `TransactionSql` types against `postgresStore`.
+
+  ```bash
+  DATABASE_URL=postgres://… POSTGRES_JS=3 pnpm test:integration
+  ```
 - CI runs the integration suite on Node 24 against the
   `pgvector/pgvector:0.8.7-pg17` and `0.8.7-pg18` service containers after
-  `CREATE EXTENSION vector`. The tags are pinned, so pgvector upgrades are
-  deliberate.
+  `CREATE EXTENSION vector`, each with postgres.js 3 and 4 (four jobs). The
+  tags are pinned, so pgvector upgrades are deliberate.
 - `pnpm bench:retrieval` builds, then runs `test/benchmarks/retrieval.bench.ts`
   in the `package (bench)` project, against `dist/`. Vitest 5 adds a
   `<name> (bench)` variant of each project for `vitest bench`; it matches

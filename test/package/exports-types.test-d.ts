@@ -70,7 +70,11 @@ import {
 } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import type { Client, Pool } from "pg";
-import type { Sql } from "postgres";
+import type { ReservedSql, Sql, TransactionSql } from "postgres";
+import type {
+	Sql as Sql3,
+	TransactionSql as TransactionSql3,
+} from "postgres-3";
 
 const scope: MemoryScope = {
 	namespace: "app",
@@ -157,6 +161,17 @@ const drizzleStores: MnemocyteStoreConfig[] = [
 // A node-postgres Client type-checks (its query fits SqlExecutor's, whose
 // other methods are optional) and is rejected at runtime with "CONFIG".
 postgresStore({ client: nodePostgresClient });
+// postgres.js 3.x and 4.x, and the sql a transaction callback receives on
+// either: savepoint only on 3.x, savepoint and begin on 4.x.
+declare const postgresJs3Sql: Sql3;
+declare const postgresJs3Tx: TransactionSql3;
+declare const postgresJs4Tx: TransactionSql;
+declare const postgresJs4Reserved: ReservedSql;
+postgresStore({ client: postgresJs3Sql });
+postgresStore({ client: postgresJs3Tx });
+postgresStore({ client: postgresJs4Tx });
+// @ts-expect-error A reserved connection has neither begin nor savepoint.
+postgresStore({ client: postgresJs4Reserved });
 void postgresJsClient;
 void nodePostgresPoolClient;
 void pgliteClient;

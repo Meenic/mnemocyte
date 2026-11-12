@@ -313,15 +313,29 @@ interface SqlExecutor {
   non-interactive transaction: Neon's HTTP `sql.transaction([...])` and D1's
   `batch()` take a list of statements and return a list of results. A
   `set_config(…, true)` in one statement applies to the later ones.
-- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js client and
-  returns a `PostgresJsExecutor` with both optional methods. `query` is
-  `sql.unsafe(text, params)` with `$1…` placeholders; `transaction` is
-  `sql.begin`, or `sql.savepoint` inside a transaction; `batch` returns the
-  array of `unsafe` queries from the `sql.begin` (or `sql.savepoint`)
-  callback, which postgres.js awaits with `Promise.all`, so the statements
-  are pipelined on the transaction's connection and the transaction costs
-  `BEGIN`, one pipelined round trip and `COMMIT`. On abort it cancels every
-  statement it sent and throws `"ABORTED"`; postgres.js rolls back.
+- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js 3.4.9+ or
+  4.x client and returns a `PostgresJsExecutor` with both optional methods.
+  `query` is `sql.unsafe(text, params)` with `$1…` placeholders (`unsafe`
+  defaults to `prepare: false` on both majors); `transaction` is
+  `sql.begin`, or `sql.savepoint` inside a transaction (on 4.x a
+  transaction's `sql` also has `begin`, so `savepoint` is what marks it).
+  `batch` depends on the major:
+  - 4.1+, outside a transaction: `sql.batch([...unsafe queries])`, which
+    sends every statement in one round trip ending in a single Sync.
+    Postgres runs everything before a Sync as one implicit transaction, so
+    the statements commit together, roll back together, and a
+    `set_config(…, true)` reaches the later ones. No connection is held
+    for a transaction.
+  - 3.x and 4.0 (no `sql.batch`), and inside a transaction on any major:
+    the array of `unsafe` queries returned from the `sql.begin` (or
+    `sql.savepoint`) callback, which postgres.js awaits with `Promise.all`,
+    so the statements are pipelined on the transaction's connection at the
+    cost of `BEGIN`, one pipelined round trip and `COMMIT`. Inside a
+    transaction a failed `sql.batch` would abort the whole outer
+    transaction, so the savepoint keeps the failure to the batch.
+
+  On abort it cancels what it sent (the `sql.batch`, or every statement)
+  and throws `"ABORTED"`; postgres.js rolls back.
 - `postgresStore({ client })` turns a client into `MemoryConfig.store`
   through `toSqlExecutor` (`src/sql/clients.ts`); see
   [client detection](#client-detection).
@@ -348,7 +362,12 @@ entries stay free of driver imports (a package test checks this). Checks run
 in a fixed order and the first match wins (ARCHITECTURE decision 21):
 
 1. postgres.js: a function with `unsafe` and `begin` (or `savepoint`, a
-   transaction's `sql`) → `postgresJs`.
+   transaction's `sql`) → `postgresJs`. The top-level `sql` has `begin` on
+   both majors (4.x adds `batch`); a transaction's `sql` has `savepoint`,
+   and on 4.x also `begin` and `batch`. A reserved connection
+   (`sql.reserve()`) has neither `begin` nor `savepoint` on either major,
+   so it falls through to the `"CONFIG"` error: it cannot open a
+   transaction.
 2. Drizzle: an object with `$client`, which must match 1, 3 or 4. A
    `pg.Client` there gets the error below; anything else gets `"CONFIG"`
    naming the supported Drizzle drivers.
@@ -369,7 +388,8 @@ connection, which only `pool.connect()` gives without taking over the
 caller's client. Everything else throws `"CONFIG"` listing the accepted
 clients.
 
-The public types are structural (`PostgresJsClient`, `NodePostgresPool`,
+The public types are structural (`PostgresJsClient`, a union of the
+`begin` and `savepoint` shapes, `NodePostgresPool`,
 `PGliteClient`, `DrizzleClient`, their union `PostgresClient`), so the
 `.d.mts` files name no driver package either. A `pg.Client` still
 type-checks, because its `query` fits `SqlExecutor`, whose other methods are
@@ -422,7 +442,7 @@ inserts. Both go through `runAtomically` (`src/db/atomic.ts`):
 statement.
 
 - A memory row binds 23 parameters. Postgres allows 65,535 per statement
-  (the Bind message counts them in an Int16), and postgres.js 3.4 rejects
+  (the Bind message counts them in an Int16), and postgres.js (3.4 and 4.x) rejects
   65,534 or more (`MAX_PARAMETERS_EXCEEDED`), so one statement could hold
   2,849 rows; before chunking, larger `addMany` calls failed with `"DB"`.
 - 250 rows keep one statement near 4 MB at 1,536 dimensions. A `batch` over
@@ -435,8 +455,16 @@ statement.
 
 All queries are plain SQL strings built in `src/db/queries/`. Values are
 always parameters, never interpolated; the only interpolated value is the
-checked `vector_type`. Three type rules keep the SQL independent of
-driver-level parsers (Drizzle installs its own on a shared client):
+checked `vector_type`. Every parameter is a string, a finite number or null.
+postgres.js 3.x typed a `Date`, boolean, `bigint`, `Buffer` or array from
+JavaScript and 4.x sends every value untyped for the server to decide
+(unless `infer: true`); strings, numbers and null are written the same
+either way. Parameters that land on a typed column or function argument
+need no cast; the rest have one (`::timestamptz`, `::uuid`, `::text`,
+`::int`, `::real`, the vector type). The PGlite contract run "parameter
+types checked" wraps the executor and fails on any other value. Three type
+rules keep the SQL independent of driver-level parsers (Drizzle installs
+its own on a shared client):
 
 - Timestamps are sent as ISO strings with `::timestamptz` and read as `Date`
   or string, then normalized.
@@ -462,7 +490,12 @@ ids) use the same trick.
 `prune`, `findDuplicates`, `listAuditLog`, `consolidate` and its preflight
 lookups pass their signal to `SqlExecutor.query`, and the `addMany` insert
 passes it to `query`, `batch` or each statement of its transaction, and the postgres.js adapter
-sends `query.cancel()` when it aborts. The node-postgres and PGlite adapters
+sends `query.cancel()` when it aborts, on both majors. postgres.js 4 also
+has `query.signal(abortSignal)`, which only calls the same `cancel()`, so
+the adapter keeps one path. `cancel()` returns the cancel request's promise,
+which on 4.x rejects when the server does not answer within
+`cancel_timeout` (`CANCEL_UNANSWERED`); the adapter catches it, since the
+query rejects on its own. The node-postgres and PGlite adapters
 only check the signal before each statement (see
 [client detection](#client-detection)). postgres.js opens a second connection
 for the cancel request and documents that, in a race, it can cancel a

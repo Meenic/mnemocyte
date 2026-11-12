@@ -3,10 +3,10 @@ import type {
 	ImportanceLevel,
 	Memory,
 	MemoryWithScore,
-	RecallInput,
 	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalFusionConfig,
+	SearchInput,
 } from "../types.js";
 
 const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
@@ -158,7 +158,7 @@ function recencyScore(createdAt: Date, halfLifeDays: number): number {
 
 export function toScoredMemory(
 	candidate: FusionCandidate,
-	input: RecallInput,
+	input: SearchInput,
 	config: ScoringConfig,
 ): MemoryWithScore {
 	const { memory } = candidate;

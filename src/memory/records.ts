@@ -1,4 +1,4 @@
-import type { Memory } from "../types.js";
+import type { AuditEvent, Memory, MemoryRecordScope } from "../types.js";
 import { cloneJsonObject } from "./json.js";
 
 export interface StoredMemory extends Memory {
@@ -53,12 +53,22 @@ export function createEventId(): string {
 	return createUuidV7();
 }
 
+export function cloneScope(scope: MemoryRecordScope): MemoryRecordScope {
+	return {
+		namespace: scope.namespace,
+		entityId: scope.entityId,
+		agentId: scope.agentId,
+		sessionId: scope.sessionId,
+	};
+}
+
 export function cloneMemory(memory: Memory): Memory {
 	return {
 		id: memory.id,
-		entityId: memory.entityId,
+		scope: cloneScope(memory.scope),
+		key: memory.key,
 		content: memory.content,
-		type: memory.type,
+		kind: memory.kind,
 		importance: memory.importance,
 		tags: [...memory.tags],
 		source: memory.source,
@@ -75,5 +85,15 @@ export function cloneMemory(memory: Memory): Memory {
 		accessCount: memory.accessCount,
 		createdAt: new Date(memory.createdAt),
 		updatedAt: new Date(memory.updatedAt),
+	};
+}
+
+export function cloneAuditEvent(event: AuditEvent): AuditEvent {
+	return {
+		id: event.id,
+		scope: cloneScope(event.scope),
+		description: event.description,
+		metadata: cloneJsonObject(event.metadata),
+		timestamp: new Date(event.timestamp),
 	};
 }

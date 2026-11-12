@@ -14,11 +14,10 @@ export interface PostgresStoreOptions {
 
 /**
  * Create a Postgres + pgvector storage adapter for
- * {@link MnemocyteConfig.store}.
+ * {@link MemoryConfig.store}.
  *
  * The Mnemocyte tables must already exist in the schema the connection's
- * `search_path` resolves, through the bundled migrations. Closing the Mnemocyte
- * client does not close `client`.
+ * `search_path` resolves, through the bundled migrations. Mnemocyte never closes `client`.
  *
  * @example
  * ```ts

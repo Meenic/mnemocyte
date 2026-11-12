@@ -1,14 +1,14 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 describe("embedding output validation", () => {
 	test.each([
 		{
 			name: "single-memory embedding",
 			vectors: [[Number.NaN, 1]],
-			run: async (client: ReturnType<typeof createMnemocyte>) => {
-				await client.remember({ entityId: "alice", content: "invalid" });
+			run: async (client: ReturnType<typeof createMemory>) => {
+				await client.add({ scope: testScope("alice"), content: "invalid" });
 			},
 		},
 		{
@@ -17,15 +17,15 @@ describe("embedding output validation", () => {
 				[1, 0],
 				[Number.POSITIVE_INFINITY, 1],
 			],
-			run: async (client: ReturnType<typeof createMnemocyte>) => {
-				await client.rememberMany([
-					{ entityId: "alice", content: "valid" },
-					{ entityId: "alice", content: "invalid" },
-				]);
+			run: async (client: ReturnType<typeof createMemory>) => {
+				await client.addMany({
+					scope: testScope("alice"),
+					memories: [{ content: "valid" }, { content: "invalid" }],
+				});
 			},
 		},
 	])("rejects non-finite values from $name", async ({ vectors, run }) => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "non-finite-test",
 				dimensions: 2,
@@ -35,18 +35,16 @@ describe("embedding output validation", () => {
 			},
 		});
 
-		try {
-			await expectMnemocyteError(run(client), "EMBEDDING");
-			await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
-				memoryCount: 0,
-			});
-		} finally {
-			await client.close();
-		}
+		await expectMnemocyteError(run(client), "EMBEDDING");
+		await expect(
+			client.stats({ scope: testScope("alice") }),
+		).resolves.toMatchObject({
+			memoryCount: 0,
+		});
 	});
 
 	test("rejects zero-norm embeddings before writes or recall comparisons", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "zero-norm-test",
 				dimensions: 2,
@@ -58,39 +56,37 @@ describe("embedding output validation", () => {
 			},
 		});
 
-		try {
-			await expectMnemocyteError(
-				client.remember({ entityId: "alice", content: "zero single" }),
-				"EMBEDDING",
-			);
-			await expectMnemocyteError(
-				client.rememberMany({
-					inputs: [
-						{ entityId: "alice", content: "valid batch" },
-						{ entityId: "alice", content: "zero batch" },
-					],
-				}),
-				"EMBEDDING",
-			);
-			await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
-				memoryCount: 0,
-			});
+		await expectMnemocyteError(
+			client.add({ scope: testScope("alice"), content: "zero single" }),
+			"EMBEDDING",
+		);
+		await expectMnemocyteError(
+			client.addMany({
+				scope: testScope("alice"),
+				memories: [{ content: "valid batch" }, { content: "zero batch" }],
+			}),
+			"EMBEDDING",
+		);
+		await expect(
+			client.stats({ scope: testScope("alice") }),
+		).resolves.toMatchObject({
+			memoryCount: 0,
+		});
 
-			await client.remember({ entityId: "alice", content: "valid stored" });
-			await expectMnemocyteError(
-				client.recall({ entityId: "alice", query: "zero query" }),
-				"EMBEDDING",
-			);
-			await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
-				memoryCount: 1,
-			});
-		} finally {
-			await client.close();
-		}
+		await client.add({ scope: testScope("alice"), content: "valid stored" });
+		await expectMnemocyteError(
+			client.search({ scope: testScope("alice"), query: "zero query" }),
+			"EMBEDDING",
+		);
+		await expect(
+			client.stats({ scope: testScope("alice") }),
+		).resolves.toMatchObject({
+			memoryCount: 1,
+		});
 	});
 
 	test("accepts tiny nonzero embeddings without a magnitude threshold", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "tiny-norm-test",
 				dimensions: 2,
@@ -100,12 +96,8 @@ describe("embedding output validation", () => {
 			},
 		});
 
-		try {
-			await expect(
-				client.remember({ entityId: "alice", content: "tiny" }),
-			).resolves.toMatchObject({ entityId: "alice" });
-		} finally {
-			await client.close();
-		}
+		await expect(
+			client.add({ scope: testScope("alice"), content: "tiny" }),
+		).resolves.toMatchObject({ scope: testScope("alice") });
 	});
 });

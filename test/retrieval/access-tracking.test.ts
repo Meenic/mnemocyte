@@ -9,7 +9,8 @@ import {
 	verifyAccessTrackingSkipsDeletedRows,
 	verifyNotAccessedSinceUsesCreatedAt,
 } from "../fixtures/access-tracking.js";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
+import { testVisibility } from "../store-helpers.js";
 
 const embedder: Embedder = {
 	model: "access-tracking-test",
@@ -27,10 +28,14 @@ function createHarness(): AccessTrackingHarness {
 		entityId: "access_in_memory",
 		async readStoredState(ids) {
 			const rows = await Promise.all(
-				ids.map((id) => store.getMemory("access_in_memory", id)),
+				ids.map((id) =>
+					store.getMemory(testVisibility("access_in_memory"), id),
+				),
 			);
 			const deleted = await Promise.all(
-				ids.map((id) => store.getMemory("access_in_memory_deleted", id)),
+				ids.map((id) =>
+					store.getMemory(testVisibility("access_in_memory_deleted"), id),
+				),
 			);
 			return [...rows, ...deleted].filter((row) => row !== null);
 		},
@@ -39,30 +44,15 @@ function createHarness(): AccessTrackingHarness {
 
 describe("recall access tracking (in-memory)", () => {
 	test("is opt-in, deferred and leaves updatedAt alone", async () => {
-		const harness = createHarness();
-		try {
-			await verifyAccessTracking(harness);
-		} finally {
-			await harness.store.close();
-		}
+		await verifyAccessTracking(createHarness());
 	});
 
 	test("skips memories deleted before the write", async () => {
-		const harness = createHarness();
-		try {
-			await verifyAccessTrackingSkipsDeletedRows(harness);
-		} finally {
-			await harness.store.close();
-		}
+		await verifyAccessTrackingSkipsDeletedRows(createHarness());
 	});
 
 	test("prunes never-accessed memories by createdAt", async () => {
-		const harness = createHarness();
-		try {
-			await verifyNotAccessedSinceUsesCreatedAt(harness);
-		} finally {
-			await harness.store.close();
-		}
+		await verifyNotAccessedSinceUsesCreatedAt(createHarness());
 	});
 
 	test("resolves before the write settles", async () => {
@@ -78,33 +68,33 @@ describe("recall access tracking (in-memory)", () => {
 			},
 			{
 				...store,
-				markMemoriesAccessed(entityId, memoryIds) {
+				markMemoriesAccessed(visibility, memoryIds) {
 					started = true;
 					return new Promise<void>((resolve) => {
 						release = resolve;
-					}).then(() => store.markMemoriesAccessed(entityId, memoryIds));
+					}).then(() => store.markMemoriesAccessed(visibility, memoryIds));
 				},
 			},
 		);
-		try {
-			const memory = await client.remember({
-				entityId: "alice",
-				content: "pending access",
-			});
-			const results = await client.recall({
-				entityId: "alice",
-				query: "pending access",
-			});
-			expect(results.map((result) => result.id)).toEqual([memory.id]);
-			expect(started).toBe(true);
-			expect((await store.getMemory("alice", memory.id))?.accessCount).toBe(0);
+		const memory = await client.add({
+			scope: testScope("alice"),
+			content: "pending access",
+		});
+		const results = await client.search({
+			scope: testScope("alice"),
+			query: "pending access",
+		});
+		expect(results.map((result) => result.id)).toEqual([memory.id]);
+		expect(started).toBe(true);
+		expect(
+			(await store.getMemory(testVisibility("alice"), memory.id))?.accessCount,
+		).toBe(0);
 
-			expectDefined(release)();
-			expect(await events.nextSettled()).toMatchObject({ phase: "success" });
-			expect((await store.getMemory("alice", memory.id))?.accessCount).toBe(1);
-		} finally {
-			await client.close();
-		}
+		expectDefined(release)();
+		expect(await events.nextSettled()).toMatchObject({ phase: "success" });
+		expect(
+			(await store.getMemory(testVisibility("alice"), memory.id))?.accessCount,
+		).toBe(1);
 	});
 
 	test("reports a failed write to onEvent without failing recall", async () => {
@@ -132,23 +122,23 @@ describe("recall access tracking (in-memory)", () => {
 				},
 			},
 		);
-		try {
-			await client.remember({ entityId: "alice", content: "failing access" });
-			const results = await client.recall({
-				entityId: "alice",
-				query: "failing access",
-			});
-			expect(results).toHaveLength(1);
-			expect(await events.nextSettled()).toMatchObject({
-				operation: "trackAccess",
-				phase: "error",
-				entityId: "alice",
-				count: 1,
-				error: failure,
-			});
-		} finally {
-			await client.close();
-		}
+		await client.add({
+			scope: testScope("alice"),
+			content: "failing access",
+		});
+		const results = await client.search({
+			scope: testScope("alice"),
+			query: "failing access",
+		});
+		expect(results).toHaveLength(1);
+		expect(await events.nextSettled()).toMatchObject({
+			operation: "trackAccess",
+			phase: "error",
+			namespace: "test",
+			entityId: "alice",
+			count: 1,
+			error: failure,
+		});
 	});
 
 	test("does not write when recall returns nothing", async () => {
@@ -158,37 +148,29 @@ describe("recall access tracking (in-memory)", () => {
 			{ embedder, retrieval: { trackAccess: true } },
 			{
 				...store,
-				async markMemoriesAccessed(entityId, memoryIds) {
+				async markMemoriesAccessed(visibility, memoryIds) {
 					calls += 1;
-					return store.markMemoriesAccessed(entityId, memoryIds);
+					return store.markMemoriesAccessed(visibility, memoryIds);
 				},
 			},
 		);
-		try {
-			expect(
-				await client.recall({ entityId: "alice", query: "nothing" }),
-			).toEqual([]);
-			expect(calls).toBe(0);
-		} finally {
-			await client.close();
-		}
+		expect(
+			await client.search({ scope: testScope("alice"), query: "nothing" }),
+		).toEqual([]);
+		expect(calls).toBe(0);
 	});
 
 	test.each(["yes", 1, null])(
-		"rejects trackAccess=%s on recall and buildContext",
+		"rejects trackAccess=%s on search and context",
 		async (value) => {
 			const client = createMemoryClient({ embedder }, createInMemoryStore());
 			const input = {
-				entityId: "alice",
+				scope: testScope("alice"),
 				query: "anything",
 				trackAccess: value as unknown as boolean,
 			};
-			try {
-				await expectMnemocyteError(client.recall(input), "VALIDATION");
-				await expectMnemocyteError(client.buildContext(input), "VALIDATION");
-			} finally {
-				await client.close();
-			}
+			await expectMnemocyteError(client.search(input), "VALIDATION");
+			await expectMnemocyteError(client.context(input), "VALIDATION");
 		},
 	);
 });

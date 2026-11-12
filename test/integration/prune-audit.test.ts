@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
-import { verifyGlobalPruneAudit } from "../fixtures/prune-audit.js";
+import { verifyNamespacePruneAudit } from "../fixtures/prune-audit.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -46,12 +46,12 @@ function createEmbedding(seed: string): number[] {
 
 describe("Postgres prune audit coverage", () => {
 	test.skipIf(!databaseUrl)(
-		"audits a global prune once per affected entity",
+		"audits a namespace prune once per affected entity",
 		async () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityPrefix = `prune_audit_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -64,9 +64,8 @@ describe("Postgres prune audit coverage", () => {
 			});
 
 			try {
-				await verifyGlobalPruneAudit(client, entityPrefix);
+				await verifyNamespacePruneAudit(client, entityPrefix);
 			} finally {
-				await client.close();
 				await sql`
 					DELETE FROM mnemocyte_memories
 					WHERE entity_id LIKE ${`${entityPrefix}%`}

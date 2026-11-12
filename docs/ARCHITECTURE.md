@@ -68,30 +68,10 @@ does not branch on them otherwise.
 
 ## Data model
 
-A memory belongs to a **scope**:
-
-```ts
-interface MemoryScope {
-  namespace: string;   // tenant or app; required
-  entityId: string;    // who or what the memory is about
-  agentId?: string;    // open decision, see below
-  sessionId?: string;  // short-lived context
-}
-```
-
-The scope columns, `key` and UUID ids are in the schema (see
-[features/postgres.md](./features/postgres.md#scope)); the public API still
-takes only `entityId`. Searching at a scope matches that scope and, for
-optional fields, rows where the field is null (shared memories), unless the
-query asks for an exact match. `deleteScope({ namespace, entityId
-})` removes everything about an entity across agents and sessions in one
-statement, which is what an erasure request needs.
-
-Other fields carry over: `content`, `kind` (today's `type`), `importance`,
-`tags`, `source`, `metadata` (JSON), `confidence`, `expiresAt`,
-`supersededBy`/`supersededAt`, timestamps. New: an optional `key` for
-idempotent upserts (`add` with an existing key updates in place). `updatedAt`
-changes only on writes.
+This has landed: scopes (`namespace`, `entityId`, optional `agentId` and
+`sessionId`), keyed upserts, `get`, `list`, `update` and `deleteScope` are
+described in [features/scopes.md](./features/scopes.md). Field names carry
+over from 0.5 except `type`, now `kind`.
 
 ## Write path
 
@@ -120,12 +100,15 @@ so filters cannot silently empty the result. This has landed; see
 
 ## Context
 
-`context({ scope, query, maxTokens, format })` keeps today's formats and the
-hard token-budget guarantee. The query is no longer echoed into the output.
+This has landed: `context({ scope, query, maxTokens, format })` keeps the
+formats and the token-budget guarantee and no longer echoes the query; see
+[features/retrieval.md](./features/retrieval.md#context).
 
 ## Maintenance
 
-- `prune` requires a scope or `allNamespaces: true`.
+`prune` requiring a scope or `allNamespaces: true` has landed (see
+[features/maintenance.md](./features/maintenance.md#prune)). Still to come:
+
 - Deleting a consolidation survivor is allowed when its dependents are
   deleted in the same call; `delete` of a lone survivor repoints dependents to
   null or rejects, chosen per call.
@@ -262,9 +245,8 @@ Dated 2026-10-26 unless noted.
     no `close()`. Since `SqlExecutor` the caller owns the database client and
     Mnemocyte holds no connections or timers, so on Postgres `close()` closes
     nothing; like Drizzle, the client needs no shutdown call. Removed in
-    `feat/scoped-api`, which already replaces `createMnemocyte`, so users take
-    one breaking change instead of two. Until then `close()` stays and does
-    not wait for access writes. Access writes are started before recall
+    `feat/scoped-api` together with `createMnemocyte`, so users take one
+    breaking change instead of two. Access writes are started before search
     resolves, so the driver already has the statement when the caller ends
     their client. Lost writes on serverless platforms are acceptable for
     counts that do not affect ranking; an optional `waitUntil` hook can be

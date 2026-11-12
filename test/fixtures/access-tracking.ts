@@ -1,13 +1,13 @@
 import type {
 	Embedder,
 	Memory,
-	MnemocyteClient,
+	MemoryClient,
 	MnemocyteObservation,
 } from "mnemocyte";
 import { expect } from "vitest";
 import { createMemoryClient } from "../../src/memory/client-core.js";
 import type { MemoryStore } from "../../src/memory/store.js";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, TEST_NAMESPACE, testScope } from "../helpers.js";
 
 export interface StoredAccessState {
 	id: string;
@@ -17,9 +17,7 @@ export interface StoredAccessState {
 }
 
 /**
- * One backend under test. Clients built from it share `store`, which the
- * caller closes; the fixture never closes a client, because closing the
- * in-memory store clears it.
+ * One backend under test. Clients built from it share `store`.
  */
 export interface AccessTrackingHarness {
 	store: MemoryStore;
@@ -72,7 +70,7 @@ function createClient(
 		onEvent: (event: MnemocyteObservation) => void;
 		store?: MemoryStore;
 	},
-): MnemocyteClient {
+): MemoryClient {
 	return createMemoryClient(
 		{
 			embedder: harness.embedder,
@@ -105,24 +103,29 @@ export async function verifyAccessTracking(
 		trackAccess: true,
 		onEvent: events.onEvent,
 	});
-	const created = await untracked.rememberMany({
-		inputs: [
-			{ entityId, content: "shared access first" },
-			{ entityId, content: "shared access second" },
+	const created = await untracked.addMany({
+		scope: testScope(entityId),
+		memories: [
+			{ content: "shared access first" },
+			{ content: "shared access second" },
 		],
 	});
-	const query = { entityId, query: "shared access", limit: 2 };
+	const query = {
+		scope: testScope(entityId),
+		query: "shared access",
+		limit: 2,
+	};
 
 	// Off by default, and a per-call false overrides the config.
-	expect(await untracked.recall(query)).toHaveLength(2);
-	await untracked.buildContext(query);
-	expect(await tracked.recall({ ...query, trackAccess: false })).toHaveLength(
+	expect(await untracked.search(query)).toHaveLength(2);
+	await untracked.context(query);
+	expect(await tracked.search({ ...query, trackAccess: false })).toHaveLength(
 		2,
 	);
 
 	// A tracked recall returns the values from before its own write.
 	const beforeWrite = new Date();
-	const first = await tracked.recall(query);
+	const first = await tracked.search(query);
 	expect(first).toHaveLength(2);
 	for (const memory of first) {
 		expect(memory.accessCount).toBe(0);
@@ -132,6 +135,7 @@ export async function verifyAccessTracking(
 	expect(firstWrite).toMatchObject({
 		operation: "trackAccess",
 		phase: "success",
+		namespace: TEST_NAMESPACE,
 		entityId,
 		count: 2,
 	});
@@ -148,11 +152,11 @@ export async function verifyAccessTracking(
 	}
 
 	// A per-call true overrides a client that does not track.
-	await untracked.buildContext({ ...query, trackAccess: true });
+	await untracked.context({ ...query, trackAccess: true });
 	await events.nextSettled();
 
 	const afterSecond = await readById(harness, created);
-	const latest = await untracked.recall(query);
+	const latest = await untracked.search(query);
 	for (const memory of latest) {
 		const stored = expectDefined(afterSecond.get(memory.id));
 		expect(stored.accessCount).toBe(2);
@@ -185,12 +189,12 @@ export async function verifyAccessTrackingSkipsDeletedRows(
 	const { store } = harness;
 	const racingStore: MemoryStore = {
 		...store,
-		async markMemoriesAccessed(id, memoryIds) {
+		async markMemoriesAccessed(visibility, memoryIds) {
 			const [gone] = memoryIds;
 			if (gone !== undefined) {
-				await store.deleteMemory(id, gone);
+				await store.deleteMemory(visibility, gone);
 			}
-			return store.markMemoriesAccessed(id, memoryIds);
+			return store.markMemoriesAccessed(visibility, memoryIds);
 		},
 	};
 	const client = createClient(harness, {
@@ -198,15 +202,16 @@ export async function verifyAccessTrackingSkipsDeletedRows(
 		onEvent: events.onEvent,
 		store: racingStore,
 	});
-	await client.rememberMany({
-		inputs: [
-			{ entityId, content: "racing access first" },
-			{ entityId, content: "racing access second" },
+	await client.addMany({
+		scope: testScope(entityId),
+		memories: [
+			{ content: "racing access first" },
+			{ content: "racing access second" },
 		],
 	});
 
-	const results = await client.recall({
-		entityId,
+	const results = await client.search({
+		scope: testScope(entityId),
 		query: "racing access",
 		limit: 2,
 	});
@@ -231,16 +236,22 @@ export async function verifyNotAccessedSinceUsesCreatedAt(
 ): Promise<void> {
 	const entityId = `${harness.entityId}_prune`;
 	const client = createClient(harness, { onEvent() {} });
-	const memory = await client.remember({
-		entityId,
+	const memory = await client.add({
+		scope: testScope(entityId),
 		content: "never recalled",
 	});
 
 	const yesterday = new Date(memory.createdAt.getTime() - 86_400_000);
-	const kept = await client.prune({ entityId, notAccessedSince: yesterday });
+	const kept = await client.prune({
+		scope: testScope(entityId),
+		notAccessedSince: yesterday,
+	});
 	expect(kept.deletedCount).toBe(0);
 
 	const tomorrow = new Date(memory.createdAt.getTime() + 86_400_000);
-	const pruned = await client.prune({ entityId, notAccessedSince: tomorrow });
+	const pruned = await client.prune({
+		scope: testScope(entityId),
+		notAccessedSince: tomorrow,
+	});
 	expect(pruned.deletedCount).toBe(1);
 }

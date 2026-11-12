@@ -1,4 +1,4 @@
-import type { MnemocyteConfig } from "mnemocyte";
+import type { MemoryConfig } from "mnemocyte";
 import { describe, test } from "vitest";
 import { createMemoryClient } from "../../src/memory/client-core.js";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
@@ -9,7 +9,7 @@ import {
 
 describe("consolidation survivor mutation races", () => {
 	test("atomically protects the survivor and current tags in memory", async () => {
-		const config: MnemocyteConfig = {
+		const config: MemoryConfig = {
 			embedder: {
 				model: "consolidation-survivor-races",
 				dimensions: 2,
@@ -24,15 +24,11 @@ describe("consolidation survivor mutation races", () => {
 		const client = createMemoryClient(config, pausingStore.store);
 		const mutator = createMemoryClient(config, baseStore);
 
-		try {
-			await exerciseConsolidationSurvivorRaces({
-				client,
-				mutator,
-				pauseNext: pausingStore.pauseNext,
-				entityPrefix: `memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-			});
-		} finally {
-			await client.close();
-		}
+		await exerciseConsolidationSurvivorRaces({
+			client,
+			mutator,
+			pauseNext: pausingStore.pauseNext,
+			entityPrefix: `memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+		});
 	});
 });

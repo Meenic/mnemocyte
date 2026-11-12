@@ -1,13 +1,11 @@
 /**
- * Mnemocyte — persistent memory for TypeScript AI apps.
- *
- * The package is ESM-only. Use `import` rather than CommonJS `require`.
+ * Mnemocyte: memory for TypeScript AI apps, stored in your own database.
  *
  * @example Basic usage
  * ```ts
- * import { createMnemocyte } from "mnemocyte";
+ * import { createMemory } from "mnemocyte";
  *
- * const client = createMnemocyte({
+ * const memory = createMemory({
  *   embedder: {
  *     model: "demo",
  *     dimensions: 3,
@@ -17,69 +15,82 @@
  *   },
  * });
  *
- * await client.remember({
- *   entityId: "user_123",
+ * const scope = { namespace: "my-app", entityId: "user_123" };
+ *
+ * await memory.add({
+ *   scope,
  *   content: "Prefers short, direct answers.",
- *   type: "preference",
+ *   kind: "preference",
  * });
  *
- * const memories = await client.recall({
- *   entityId: "user_123",
+ * const results = await memory.search({
+ *   scope,
  *   query: "How should I respond?",
  *   limit: 5,
  * });
- *
- * await client.close();
  * ```
  *
  * @packageDocumentation
  */
 
-export { createMnemocyte } from "./client.js";
+export { createMemory } from "./client.js";
 export type { MnemocyteErrorCode } from "./errors.js";
 export { isMnemocyteError, MnemocyteError } from "./errors.js";
 export { migrate } from "./migrate.js";
 export type {
+	AddInput,
+	AddManyInput,
 	AuditConfig,
 	AuditEvent,
 	AuditLogCursor,
-	BuildContextInput,
 	ConsolidateInput,
 	ConsolidateResult,
 	ContextFormat,
+	ContextInput,
+	DeleteInput,
+	DeleteScopeInput,
+	DeleteScopeResult,
 	DuplicatePair,
 	Embedder,
-	EntityStats,
-	ExperimentalMnemocyteClient,
+	ExperimentalMemoryClient,
 	FindDuplicatesInput,
-	GlobalStats,
+	GetInput,
 	ImportanceLevel,
 	JsonObject,
 	JsonValue,
 	ListAuditLogInput,
+	ListInput,
+	ListResult,
 	Memory,
-	MemoryType,
+	MemoryClient,
+	MemoryConfig,
+	MemoryKind,
+	MemoryRecordScope,
+	MemoryScope,
+	MemoryStats,
 	MemoryWithScore,
 	MigrateInput,
 	MigrateResult,
 	MnemocyteBackend,
-	MnemocyteClient,
-	MnemocyteConfig,
 	MnemocyteObservation,
 	MnemocyteObservationPhase,
 	MnemocyteOperation,
 	MnemocyteStoreConfig,
+	NewMemory,
 	ObservabilityConfig,
 	ProviderResilienceConfig,
 	PruneInput,
 	PruneResult,
-	RecallInput,
-	RememberInput,
-	RememberManyInput,
+	PruneSelectors,
 	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
 	RetrievalFusionConfig,
 	RetrievalScores,
+	ScopedReadOptions,
+	ScopeSelector,
+	SearchInput,
+	StatsInput,
 	TokenCounter,
+	UpdateInput,
 } from "./types.js";

@@ -1,10 +1,10 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, test } from "vitest";
 import { exerciseConsolidationDeletePolicy } from "../fixtures/consolidation-delete-policy.js";
 
 describe("consolidation survivor deletion policy", () => {
 	test("rejects referenced survivors atomically in memory", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "consolidation-delete-policy",
 				dimensions: 2,
@@ -14,13 +14,9 @@ describe("consolidation survivor deletion policy", () => {
 			},
 		});
 
-		try {
-			await exerciseConsolidationDeletePolicy(
-				client,
-				`memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-			);
-		} finally {
-			await client.close();
-		}
+		await exerciseConsolidationDeletePolicy(
+			client,
+			`memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+		);
 	});
 });

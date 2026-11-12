@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createPostgresClient } from "../../src/memory/postgres.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
-import type { MnemocyteConfig } from "../../src/types.js";
-import { expectMnemocyteError } from "../helpers.js";
+import type { MemoryConfig } from "../../src/types.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 interface FakeMetaRow {
 	key: string;
@@ -100,7 +100,7 @@ function createConfig(
 	dimensions: number,
 	embedCalls: string[],
 	model = "metadata-test",
-): MnemocyteConfig {
+): MemoryConfig {
 	return {
 		embedder: {
 			model,
@@ -141,13 +141,13 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expect(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 		).resolves.toEqual([]);
 		expect(embedCalls).toEqual(["hello"]);
 		expect(fake.getSelectCount()).toBe(1);
 
 		await expect(
-			client.recall({ entityId: "alice", query: "again" }),
+			client.search({ scope: testScope("alice"), query: "again" }),
 		).resolves.toEqual([]);
 		expect(embedCalls).toEqual(["hello", "again"]);
 		expect(fake.getSelectCount()).toBe(1);
@@ -164,7 +164,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const error = await expectMnemocyteError(
-			client.remember({ entityId: "alice", content: "hello" }),
+			client.add({ scope: testScope("alice"), content: "hello" }),
 			"CONFIG",
 		);
 		expect(error.message).toContain("768");
@@ -184,13 +184,16 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const rememberError = await expectMnemocyteError(
-			client.remember({ entityId: "alice", content: "hello" }),
+			client.add({ scope: testScope("alice"), content: "hello" }),
 			"CONFIG",
 		);
 		expect(rememberError.message).toContain("configured-model");
 		expect(rememberError.message).toContain("recorded-model");
 		await expectMnemocyteError(
-			client.rememberMany([{ entityId: "alice", content: "batch" }]),
+			client.addMany({
+				scope: testScope("alice"),
+				memories: [{ content: "batch" }],
+			}),
 			"CONFIG",
 		);
 		expect(embedCalls).toEqual([]);
@@ -208,7 +211,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expectMnemocyteError(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 			"CONFIG",
 		);
 		expect(embedCalls).toEqual([]);
@@ -226,7 +229,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expectMnemocyteError(
-			client.findDuplicates({ entityId: "alice" }),
+			client.findDuplicates({ scope: testScope("alice") }),
 			"CONFIG",
 		);
 		expect(embedCalls).toEqual([]);
@@ -244,7 +247,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expect(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 		).resolves.toEqual([]);
 		expect(fake.getMeta()?.embeddingModel).toBe("first-model");
 		expect(fake.getDistinctSelectCount()).toBe(1);
@@ -264,7 +267,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expect(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 		).resolves.toEqual([]);
 		expect(fake.getMeta()?.embeddingModel).toBe("historical-model");
 		expect(embedCalls).toEqual(["hello"]);
@@ -282,7 +285,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		await expectMnemocyteError(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 			"CONFIG",
 		);
 		expect(fake.getMeta()?.embeddingModel).toBe("historical-model");
@@ -301,7 +304,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const error = await expectMnemocyteError(
-			client.findDuplicates({ entityId: "alice" }),
+			client.findDuplicates({ scope: testScope("alice") }),
 			"MIGRATION",
 		);
 		expect(error.message).toContain("multiple");
@@ -321,8 +324,10 @@ describe("Postgres metadata validation", () => {
 			fake.handle,
 		);
 
-		await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
-			entityId: "alice",
+		await expect(
+			client.stats({ scope: testScope("alice") }),
+		).resolves.toMatchObject({
+			entityCount: 0,
 			memoryCount: 0,
 		});
 		expect(embedCalls).toEqual([]);
@@ -339,7 +344,7 @@ describe("Postgres metadata validation", () => {
 			);
 
 			const error = await expectMnemocyteError(
-				client.recall({ entityId: "alice", query: "hello" }),
+				client.search({ scope: testScope("alice"), query: "hello" }),
 				"MIGRATION",
 			);
 			expect(error.message).toContain("0003_schema_v2.sql");
@@ -356,7 +361,7 @@ describe("Postgres metadata validation", () => {
 		);
 
 		const error = await expectMnemocyteError(
-			client.recall({ entityId: "alice", query: "hello" }),
+			client.search({ scope: testScope("alice"), query: "hello" }),
 			"MIGRATION",
 		);
 		expect(error.message).toContain("installation");
@@ -374,7 +379,7 @@ describe("Postgres metadata validation", () => {
 			migrationFailure.handle,
 		);
 		await expectMnemocyteError(
-			migrationClient.recall({ entityId: "alice", query: "hello" }),
+			migrationClient.search({ scope: testScope("alice"), query: "hello" }),
 			"MIGRATION",
 		);
 
@@ -387,7 +392,7 @@ describe("Postgres metadata validation", () => {
 			dbFailure.handle,
 		);
 		await expectMnemocyteError(
-			dbClient.recall({ entityId: "alice", query: "hello" }),
+			dbClient.search({ scope: testScope("alice"), query: "hello" }),
 			"DB",
 		);
 	});

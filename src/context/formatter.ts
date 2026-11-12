@@ -11,7 +11,7 @@ function escapeXml(value: string): string {
 
 function formatMetadata(memory: MemoryWithScore): string {
 	const parts = [
-		`type=${memory.type}`,
+		`kind=${memory.kind}`,
 		`importance=${memory.importance}`,
 		`score=${memory.score.toFixed(3)}`,
 	];
@@ -44,16 +44,9 @@ function plainFence(values: readonly string[]): string {
 
 function formatMarkdown(
 	memories: readonly MemoryWithScore[],
-	query: string,
 	omittedCount: number,
 ): string {
-	const lines = [
-		"# Memory Context",
-		"",
-		`Query: ${query}`,
-		"",
-		"## Relevant Memories",
-	];
+	const lines = ["# Memory Context", "", "## Relevant Memories"];
 	for (const memory of memories) {
 		const fence = markdownFence(memory.content);
 		lines.push(
@@ -72,7 +65,6 @@ function formatMarkdown(
 
 function formatPlain(
 	memories: readonly MemoryWithScore[],
-	query: string,
 	omittedCount: number,
 ): string {
 	const formattedMemories = memories.map((memory) => ({
@@ -80,19 +72,12 @@ function formatPlain(
 		metadata: formatMetadata(memory),
 	}));
 	const fence = plainFence([
-		query,
 		...formattedMemories.flatMap(({ memory, metadata }) => [
 			metadata,
 			memory.content,
 		]),
 	]);
-	const lines = [
-		"MEMORY CONTEXT",
-		"",
-		`QUERY: ${query}`,
-		"",
-		"RELEVANT MEMORIES",
-	];
+	const lines = ["MEMORY CONTEXT", "", "RELEVANT MEMORIES"];
 	for (const [index, { memory, metadata }] of formattedMemories.entries()) {
 		lines.push(
 			"",
@@ -110,13 +95,12 @@ function formatPlain(
 
 function formatXml(
 	memories: readonly MemoryWithScore[],
-	query: string,
 	omittedCount: number,
 ): string {
-	const lines = [`<memory_context query="${escapeXml(query)}">`];
+	const lines = ["<memory_context>"];
 	for (const memory of memories) {
 		lines.push(
-			`  <memory id="${escapeXml(memory.id)}" type="${escapeXml(memory.type)}" importance="${escapeXml(memory.importance)}" score="${memory.score.toFixed(3)}">`,
+			`  <memory id="${escapeXml(memory.id)}" kind="${escapeXml(memory.kind)}" importance="${escapeXml(memory.importance)}" score="${memory.score.toFixed(3)}">`,
 			`    <content>${escapeXml(memory.content)}</content>`,
 			`    <metadata>${escapeXml(formatMetadata(memory))}</metadata>`,
 			"  </memory>",
@@ -129,18 +113,22 @@ function formatXml(
 	return lines.join("\n");
 }
 
+/**
+ * Render memories for a prompt. The query is not echoed: it is already in the
+ * prompt the context goes into, and echoing it would put caller text inside
+ * the memory block.
+ */
 export function formatContext(
 	memories: readonly MemoryWithScore[],
-	query: string,
 	format: ContextFormat,
 	omittedCount = 0,
 ): string {
 	switch (format) {
 		case "markdown":
-			return formatMarkdown(memories, query, omittedCount);
+			return formatMarkdown(memories, omittedCount);
 		case "plain":
-			return formatPlain(memories, query, omittedCount);
+			return formatPlain(memories, omittedCount);
 		case "xml":
-			return formatXml(memories, query, omittedCount);
+			return formatXml(memories, omittedCount);
 	}
 }

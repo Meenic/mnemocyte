@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../../errors.js";
-import type { StoreScope } from "../../memory/store.js";
+import type { StoreEntitySelector, StoreScope } from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
 import type { AuditLogCursor, JsonObject } from "../../types.js";
 import {
@@ -9,9 +9,10 @@ import {
 	toEventRow,
 } from "../rows.js";
 import { createSqlParams } from "../sql.js";
+import { selectorConditions } from "./memories.js";
 
 export interface EventFilter {
-	scope: StoreScope;
+	selector: StoreEntitySelector;
 	limit?: number;
 	before?: Date;
 	after?: Date;
@@ -63,11 +64,9 @@ export async function listEvents(
 	signal?: AbortSignal,
 ): Promise<EventRow[]> {
 	const params = createSqlParams();
-	// Audit events are listed for the whole entity, across agents and sessions.
-	const clauses: string[] = [
-		`namespace = ${params.add(filter.scope.namespace)}`,
-		`entity_id = ${params.add(filter.scope.entityId)}`,
-	];
+	// An omitted agent or session matches every value, so `{ namespace,
+	// entityId }` lists the whole entity across agents and sessions.
+	const clauses: string[] = [selectorConditions(params, filter.selector)];
 	if (filter.before) {
 		clauses.push(`timestamp < ${params.timestamp(filter.before)}`);
 	}

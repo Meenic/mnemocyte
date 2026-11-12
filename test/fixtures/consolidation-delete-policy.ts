@@ -1,13 +1,13 @@
-import type { MemoryWithScore, MnemocyteClient } from "mnemocyte";
+import type { MemoryClient, MemoryWithScore } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
 
 async function listEntityMemories(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ): Promise<MemoryWithScore[]> {
-	return client.recall({
-		entityId,
+	return client.search({
+		scope: testScope(entityId),
 		query: "consolidation deletion policy",
 		limit: 20,
 		minScore: 0,
@@ -17,21 +17,20 @@ async function listEntityMemories(
 }
 
 async function createConsolidatedPair(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 	options: { survivorExpired?: boolean } = {},
 ) {
-	const [survivor, loser] = await client.rememberMany({
-		inputs: [
+	const [survivor, loser] = await client.addMany({
+		scope: testScope(entityId),
+		memories: [
 			{
-				entityId,
 				content: `${entityId} survivor`,
 				...(options.survivorExpired === true
 					? { expiresAt: new Date(Date.now() - 60_000) }
 					: {}),
 			},
 			{
-				entityId,
 				content: `${entityId} loser`,
 			},
 		],
@@ -39,7 +38,7 @@ async function createConsolidatedPair(
 	const definedSurvivor = expectDefined(survivor);
 	const definedLoser = expectDefined(loser);
 	await client.experimental.consolidate({
-		entityId,
+		scope: testScope(entityId),
 		survivorId: definedSurvivor.id,
 		supersededIds: [definedLoser.id],
 	});
@@ -47,7 +46,7 @@ async function createConsolidatedPair(
 }
 
 async function expectPairUnchanged(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 	survivorId: string,
 	loserId: string,
@@ -67,7 +66,7 @@ async function expectPairUnchanged(
 }
 
 export async function exerciseConsolidationDeletePolicy(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityPrefix: string,
 ): Promise<void> {
 	{
@@ -75,18 +74,51 @@ export async function exerciseConsolidationDeletePolicy(
 		const { survivor, loser } = await createConsolidatedPair(client, entityId);
 
 		await expectMnemocyteError(
-			client.forget({ entityId, memoryId: survivor.id }),
+			client.delete({ scope: testScope(entityId), id: survivor.id }),
 			"CONFLICT",
 		);
 		await expectPairUnchanged(client, entityId, survivor.id, loser.id);
 	}
 
 	{
-		const entityId = `${entityPrefix}_forget_all`;
-		const { survivor, loser } = await createConsolidatedPair(client, entityId);
+		// Erasing the whole entity takes the survivor and its dependents in one
+		// statement, so the consolidation link does not block it.
+		const entityId = `${entityPrefix}_delete_scope`;
+		await createConsolidatedPair(client, entityId);
 
-		await expectMnemocyteError(client.forgetAll({ entityId }), "CONFLICT");
-		await expectPairUnchanged(client, entityId, survivor.id, loser.id);
+		await expect(
+			client.deleteScope({ scope: testScope(entityId) }),
+		).resolves.toEqual({ deletedCount: 2 });
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({ memoryCount: 0 });
+	}
+
+	{
+		// A narrowed scope that would leave a dependent behind is rejected.
+		const entityId = `${entityPrefix}_delete_scope_narrow`;
+		const agentScope = testScope(entityId, { agentId: "agent-a" });
+		const survivor = await client.add({
+			scope: agentScope,
+			content: `${entityId} survivor`,
+		});
+		const loser = await client.add({
+			scope: testScope(entityId),
+			content: `${entityId} loser`,
+		});
+		await client.experimental.consolidate({
+			scope: agentScope,
+			survivorId: survivor.id,
+			supersededIds: [loser.id],
+		});
+
+		await expectMnemocyteError(
+			client.deleteScope({ scope: agentScope }),
+			"CONFLICT",
+		);
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({ memoryCount: 2 });
 	}
 
 	{
@@ -94,21 +126,21 @@ export async function exerciseConsolidationDeletePolicy(
 		const { survivor, loser } = await createConsolidatedPair(client, entityId, {
 			survivorExpired: true,
 		});
-		const unrelated = await client.remember({
-			entityId,
+		const unrelated = await client.add({
+			scope: testScope(entityId),
 			content: `${entityId} unrelated expired memory`,
 			expiresAt: new Date(Date.now() - 60_000),
 		});
 
 		await expect(
-			client.prune({ entityId, expired: true, dryRun: true }),
+			client.prune({ scope: testScope(entityId), expired: true, dryRun: true }),
 		).resolves.toEqual({
 			matchedCount: 2,
 			deletedCount: 0,
 			dryRun: true,
 		});
 		await expectMnemocyteError(
-			client.prune({ entityId, expired: true }),
+			client.prune({ scope: testScope(entityId), expired: true }),
 			"CONFLICT",
 		);
 
@@ -124,22 +156,24 @@ export async function exerciseConsolidationDeletePolicy(
 
 	{
 		const entityId = `${entityPrefix}_permitted`;
-		const ordinary = await client.remember({
-			entityId,
+		const ordinary = await client.add({
+			scope: testScope(entityId),
 			content: `${entityId} ordinary memory`,
 		});
 		await expect(
-			client.forget({ entityId, memoryId: ordinary.id }),
+			client.delete({ scope: testScope(entityId), id: ordinary.id }),
 		).resolves.toBeUndefined();
 
 		const { survivor, loser } = await createConsolidatedPair(client, entityId);
 		await expect(
-			client.forget({ entityId, memoryId: loser.id }),
+			client.delete({ scope: testScope(entityId), id: loser.id }),
 		).resolves.toBeUndefined();
 		await expect(
-			client.forget({ entityId, memoryId: survivor.id }),
+			client.delete({ scope: testScope(entityId), id: survivor.id }),
 		).resolves.toBeUndefined();
-		await expect(client.stats({ entityId })).resolves.toMatchObject({
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({
 			memoryCount: 0,
 		});
 	}

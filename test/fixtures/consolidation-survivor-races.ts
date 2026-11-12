@@ -1,7 +1,7 @@
-import type { MemoryWithScore, MnemocyteClient } from "mnemocyte";
+import type { MemoryClient, MemoryWithScore } from "mnemocyte";
 import { expect } from "vitest";
 import type { MemoryStore } from "../../src/memory/store.js";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
 
 interface Deferred {
 	promise: Promise<void>;
@@ -60,11 +60,11 @@ export function createPausingConsolidationStore(baseStore: MemoryStore): {
 }
 
 async function listEntityMemories(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ): Promise<MemoryWithScore[]> {
-	return client.recall({
-		entityId,
+	return client.search({
+		scope: testScope(entityId),
 		query: "consolidation survivor race",
 		limit: 20,
 		minScore: 0,
@@ -73,17 +73,17 @@ async function listEntityMemories(
 }
 
 async function countSupersededEvents(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ): Promise<number> {
-	return (await client.listAuditLog({ entityId, limit: 20 })).filter(
-		(event) => event.description === "memory.superseded",
-	).length;
+	return (
+		await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
+	).filter((event) => event.description === "memory.superseded").length;
 }
 
 export async function exerciseConsolidationSurvivorRaces(params: {
-	client: MnemocyteClient;
-	mutator: MnemocyteClient;
+	client: MemoryClient;
+	mutator: MemoryClient;
 	pauseNext(): ConsolidationPauseGate;
 	entityPrefix: string;
 }): Promise<void> {
@@ -91,24 +91,28 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 
 	{
 		const entityId = `${entityPrefix}_deleted`;
-		const [survivor, loser] = await client.rememberMany({
-			inputs: [
-				{ entityId, content: "survivor", tags: ["survivor"] },
-				{ entityId, content: "loser", tags: ["loser"] },
+		const [survivor, loser] = await client.addMany({
+			scope: testScope(entityId),
+			memories: [
+				{ content: "survivor", tags: ["survivor"] },
+				{ content: "loser", tags: ["loser"] },
 			],
 		});
 		const definedSurvivor = expectDefined(survivor);
 		const definedLoser = expectDefined(loser);
 		const gate = pauseNext();
 		const pending = client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
 		});
 
 		await gate.entered;
 		try {
-			await mutator.forget({ entityId, memoryId: definedSurvivor.id });
+			await mutator.delete({
+				scope: testScope(entityId),
+				id: definedSurvivor.id,
+			});
 		} finally {
 			gate.release();
 		}
@@ -127,11 +131,12 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 
 	{
 		const entityId = `${entityPrefix}_superseded`;
-		const [winner, survivor, loser] = await client.rememberMany({
-			inputs: [
-				{ entityId, content: "winner", tags: ["winner"] },
-				{ entityId, content: "survivor", tags: ["survivor"] },
-				{ entityId, content: "loser", tags: ["loser"] },
+		const [winner, survivor, loser] = await client.addMany({
+			scope: testScope(entityId),
+			memories: [
+				{ content: "winner", tags: ["winner"] },
+				{ content: "survivor", tags: ["survivor"] },
+				{ content: "loser", tags: ["loser"] },
 			],
 		});
 		const definedWinner = expectDefined(winner);
@@ -139,7 +144,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		const definedLoser = expectDefined(loser);
 		const gate = pauseNext();
 		const pending = client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
 		});
@@ -147,7 +152,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		await gate.entered;
 		try {
 			await mutator.experimental.consolidate({
-				entityId,
+				scope: testScope(entityId),
 				survivorId: definedWinner.id,
 				supersededIds: [definedSurvivor.id],
 			});
@@ -171,11 +176,12 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 
 	{
 		const entityId = `${entityPrefix}_tags`;
-		const [survivor, firstLoser, secondLoser] = await client.rememberMany({
-			inputs: [
-				{ entityId, content: "survivor", tags: ["base"] },
-				{ entityId, content: "first loser", tags: ["first"] },
-				{ entityId, content: "second loser", tags: ["second"] },
+		const [survivor, firstLoser, secondLoser] = await client.addMany({
+			scope: testScope(entityId),
+			memories: [
+				{ content: "survivor", tags: ["base"] },
+				{ content: "first loser", tags: ["first"] },
+				{ content: "second loser", tags: ["second"] },
 			],
 		});
 		const definedSurvivor = expectDefined(survivor);
@@ -184,12 +190,12 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		const firstGate = pauseNext();
 		const secondGate = pauseNext();
 		const firstPending = client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedFirstLoser.id],
 		});
 		const secondPending = client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedSecondLoser.id],
 		});

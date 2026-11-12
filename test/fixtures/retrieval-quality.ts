@@ -1,4 +1,4 @@
-import type { Embedder, RememberInput, RetrievalConfig } from "mnemocyte";
+import type { Embedder, NewMemory, RetrievalConfig } from "mnemocyte";
 
 const VOCABULARY = new Map([
 	["typescript", 0],
@@ -51,7 +51,7 @@ type RetrievalQualityCase = {
 	name: string;
 	query: string;
 	expectedTopContent: string;
-	memories: Array<Omit<RememberInput, "entityId">>;
+	memories: Array<NewMemory>;
 };
 
 export const retrievalQualityCases: RetrievalQualityCase[] = [
@@ -62,21 +62,21 @@ export const retrievalQualityCases: RetrievalQualityCase[] = [
 		memories: [
 			{
 				content: "Prefers concise TypeScript library answers.",
-				type: "preference",
+				kind: "preference",
 				importance: "high",
 				confidence: 0.95,
 				tags: ["typescript", "style"],
 			},
 			{
 				content: "Release workflow uses npm publish after version bump.",
-				type: "instruction",
+				kind: "instruction",
 				importance: "normal",
 				confidence: 0.9,
 				tags: ["release"],
 			},
 			{
 				content: "Postgres and pgvector store memory embeddings.",
-				type: "fact",
+				kind: "fact",
 				importance: "normal",
 				confidence: 0.85,
 				tags: ["database"],
@@ -90,21 +90,21 @@ export const retrievalQualityCases: RetrievalQualityCase[] = [
 		memories: [
 			{
 				content: "Prefers concise TypeScript library answers.",
-				type: "preference",
+				kind: "preference",
 				importance: "high",
 				confidence: 0.95,
 				tags: ["typescript", "style"],
 			},
 			{
 				content: "Postgres and pgvector store memory embeddings.",
-				type: "fact",
+				kind: "fact",
 				importance: "high",
 				confidence: 0.95,
 				tags: ["database"],
 			},
 			{
 				content: "Release workflow uses npm publish after version bump.",
-				type: "instruction",
+				kind: "instruction",
 				importance: "normal",
 				confidence: 0.9,
 				tags: ["release"],

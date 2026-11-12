@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { MnemocyteConfig } from "mnemocyte";
+import type { MemoryConfig } from "mnemocyte";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { createMemoryClient } from "../../src/memory/client-core.js";
@@ -60,7 +60,7 @@ async function runPostgresRaceScenario(url: string) {
 	await applyMigration(admin, "0002_add_embedding_model.sql", ["42701"]);
 	await applyMigration(admin, "0003_schema_v2.sql", ["42701"]);
 
-	const config: MnemocyteConfig = {
+	const config: MemoryConfig = {
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,
@@ -83,7 +83,6 @@ async function runPostgresRaceScenario(url: string) {
 			entityPrefix,
 		});
 	} finally {
-		await client.close();
 		await admin`
 			DELETE FROM mnemocyte_memories
 			WHERE entity_id LIKE ${`${entityPrefix}%`}

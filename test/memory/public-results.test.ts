@@ -1,6 +1,6 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, testScope } from "../helpers.js";
 
 function expectNoEmbedding(value: object): void {
 	expect(Object.hasOwn(value, "embedding")).toBe(false);
@@ -8,7 +8,7 @@ function expectNoEmbedding(value: object): void {
 
 describe("in-memory public results", () => {
 	test("never expose internal embedding vectors", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "public-results-test",
 				dimensions: 2,
@@ -20,54 +20,50 @@ describe("in-memory public results", () => {
 			},
 			audit: { enabled: true },
 		});
-		try {
-			const alpha = await client.remember({
-				entityId: "alice",
-				content: "alpha preference",
-			});
-			expectNoEmbedding(alpha);
+		const alpha = await client.add({
+			scope: testScope("alice"),
+			content: "alpha preference",
+		});
+		expectNoEmbedding(alpha);
 
-			const remembered = await client.rememberMany([
-				{ entityId: "alice", content: "alpha duplicate" },
-				{ entityId: "alice", content: "beta fact" },
-			]);
-			for (const memory of remembered) {
-				expectNoEmbedding(memory);
-			}
+		const remembered = await client.addMany({
+			scope: testScope("alice"),
+			memories: [{ content: "alpha duplicate" }, { content: "beta fact" }],
+		});
+		for (const memory of remembered) {
+			expectNoEmbedding(memory);
+		}
 
-			const duplicatePairs = await client.findDuplicates({
-				entityId: "alice",
-				threshold: 0.99,
-			});
-			const firstPair = expectDefined(duplicatePairs[0]);
-			expectNoEmbedding(firstPair.a);
-			expectNoEmbedding(firstPair.b);
+		const duplicatePairs = await client.findDuplicates({
+			scope: testScope("alice"),
+			threshold: 0.99,
+		});
+		const firstPair = expectDefined(duplicatePairs[0]);
+		expectNoEmbedding(firstPair.a);
+		expectNoEmbedding(firstPair.b);
 
-			const recalled = await client.recall({
-				entityId: "alice",
-				query: "alpha",
-				explain: true,
-			});
-			for (const memory of recalled) {
-				expectNoEmbedding(memory);
-			}
+		const recalled = await client.search({
+			scope: testScope("alice"),
+			query: "alpha",
+			explain: true,
+		});
+		for (const memory of recalled) {
+			expectNoEmbedding(memory);
+		}
 
-			const loser = expectDefined(remembered[0]);
-			await client.experimental.consolidate({
-				entityId: "alice",
-				survivorId: alpha.id,
-				supersededIds: [loser.id],
-			});
-			const withSuperseded = await client.recall({
-				entityId: "alice",
-				query: "alpha",
-				includeSuperseded: true,
-			});
-			for (const memory of withSuperseded) {
-				expectNoEmbedding(memory);
-			}
-		} finally {
-			await client.close();
+		const loser = expectDefined(remembered[0]);
+		await client.experimental.consolidate({
+			scope: testScope("alice"),
+			survivorId: alpha.id,
+			supersededIds: [loser.id],
+		});
+		const withSuperseded = await client.search({
+			scope: testScope("alice"),
+			query: "alpha",
+			includeSuperseded: true,
+		});
+		for (const memory of withSuperseded) {
+			expectNoEmbedding(memory);
 		}
 	});
 });

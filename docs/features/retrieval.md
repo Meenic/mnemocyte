@@ -1,15 +1,17 @@
 # Retrieval and context
 
-## Recall pipeline
+## Search pipeline
 
-`recall({ entityId, query, … })` in `memory/client-core.ts`:
+`search({ scope, query, … })` in `memory/client-core.ts`:
 
-1. Validate input; resolve `limit` (default 10) and `minScore` (default 0)
+1. Validate input (every filter, including `tags`, `before` and `after`);
+   resolve `limit` (default 10) and `minScore` (default 0)
    from the input, then `config.defaults`.
 2. Check embedding compatibility (Postgres) and embed the query.
 3. Run two candidate searches in parallel, each with
-   `limit × candidateMultiplier` (default 3) and the same filters (`types`,
-   `tags` must all match, `before`/`after` on `created_at`, superseded and
+   `limit × candidateMultiplier` (default 3) and the same filters (the
+   scope's visibility, see [scopes.md](./scopes.md#scope); `kinds`, `tags`
+   must all match, `before`/`after` on `created_at`, superseded and
    expired rows excluded unless asked for). A list whose fusion weight is 0
    is not searched.
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by
@@ -73,7 +75,7 @@ memory is not in that list, plus `fused`, `recency` and `importance`.
 `explain: true` adds the effective `fusion` and `boosts`, the `boostFactor`
 and `finalScore`.
 
-**Tests.** `test/retrieval/fusion.test.ts` covers the maths and the recall
+**Tests.** `test/retrieval/fusion.test.ts` covers the maths and the search
 merge. `test/integration/ranking.test.ts` checks on Postgres that a
 full-text match beats a substring coincidence, that a memory found by both
 searches comes first, that lexical-only candidates fuse without an
@@ -84,36 +86,34 @@ across backends.
 ## Access tracking
 
 Off by default. `retrieval.trackAccess` sets it for the client and
-`trackAccess` on `recall` or `buildContext` overrides it per call. Access
+`trackAccess` on `search` or `context` overrides it per call. Access
 counts do not affect ranking.
 
-When it is on and recall returns at least one memory, `trackAccess` in
+When it is on and search returns at least one memory, `trackAccess` in
 `memory/client-core.ts` calls `markMemoriesAccessed` for the returned ids and
 does not wait for it ("fire-and-forget"):
 
-- The store call starts before recall resolves, so the driver already has the
-  statement, but recall's result never waits on it. The postgres.js adapter
+- The store call starts before search resolves, so the driver already has the
+  statement, but search's result never waits on it. The postgres.js adapter
   calls `execute()` on every query, because postgres.js otherwise sends a
   query only on the next tick; a caller that ends its client right after
-  recall therefore still gets the write (`sql.end()` waits for queued
-  queries). The returned records
-  carry the values from before this recall.
+  search therefore still gets the write (`sql.end()` waits for queued
+  queries). The returned records carry the values from before this search.
 - The write is observed as its own `"trackAccess"` operation: a `start` event,
-  then `success` or `error` with `entityId` and `count`. The store promise is
+  then `success` or `error` with `namespace`, `entityId` and `count`. The store promise is
   settled into a value as soon as it is created, so a failure that lands
   while a slow `onEvent` is still handling `start` is never an unhandled
-  rejection. Errors go only to `onEvent`; recall has already resolved.
-- `close()` does not wait for it. A write that fails because the caller
-  ended their database client is reported like any other failure.
-  `feat/scoped-api` removes `close()` (ARCHITECTURE decision 19).
+  rejection. Errors go only to `onEvent`; search has already resolved.
+- A write that fails because the caller ended their database client is
+  reported like any other failure.
 - It increments `access_count` and sets `last_accessed_at`; `updated_at`
   changes only on writes.
 - Ids that no longer match a row (deleted between the search and the write)
   are skipped. The store returns nothing, so there is no per-id result to
   check.
 
-On Postgres the write is one statement, limited to the recalled entity like
-every other id lookup:
+On Postgres the write is one statement, limited to what the search scope
+sees like every other id lookup:
 
 ```sql
 WITH target AS (
@@ -129,7 +129,7 @@ WHERE m.id = target.id
 ```
 
 The CTE takes the row locks in id order. A plain `UPDATE … WHERE id IN (…)`
-locks rows in whatever order its plan visits them, so two recalls with
+locks rows in whatever order its plan visits them, so two searches with
 overlapping results could lock in opposite orders and deadlock; a fixed order
 rules that out. A row deleted after the snapshot drops out of `FOR UPDATE`.
 
@@ -139,21 +139,22 @@ rules that out. A row deleted after the snapshot drops out of `FOR UPDATE`.
 overrides in both directions, pre-write values in the result, `updatedAt`
 unchanged, a row deleted just before the write, and `notAccessedSince`
 counting from `createdAt`. The unit test also covers a write that is still
-pending when recall resolves, a failed write reported to `onEvent`, and no
+pending when search resolves, a failed write reported to `onEvent`, and no
 write for an empty result; `test/postgres/atomic-statements.test.ts` checks
 the statement's lock order, and the integration test ends the postgres.js
-client right after a tracked recall and checks that the write landed.
+client right after a tracked search and checks that the write landed.
 
-## `buildContext`
+## `context`
 
-`buildContext` runs the same recall (with its `signal`) and renders the
-results:
+`context` runs the same search (with its `signal`) and renders the results.
+The query is not echoed: it is already in the caller's prompt, and echoing
+it put caller text inside the memory block.
 
-- `markdown` (default): heading, the query, then each memory as a metadata
-  line plus a fenced block whose backtick fence is longer than any run in
-  the content.
+- `markdown` (default): heading, then each memory as a metadata line
+  (`kind=…; importance=…; score=…`) plus a fenced block whose backtick fence
+  is longer than any run in the content.
 - `plain`: `MEMORY N START/END` markers wrapped in an `=` fence longer than
-  any `=` run in the query, metadata or content.
+  any `=` run in the metadata or content.
 - `xml`: `<memory_context>` with escaped attributes and content.
 
 `maxTokens` defaults to 1200 and must be a positive integer. The builder

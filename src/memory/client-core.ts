@@ -1,6 +1,10 @@
 import { buildContext } from "../context/builder.js";
 import { MnemocyteError } from "../errors.js";
-import { observe, observePrepared } from "../observability.js";
+import {
+	type ObservationMetadata,
+	observe,
+	observePrepared,
+} from "../observability.js";
 import { throwIfAborted } from "../resilience.js";
 import {
 	compareScoredMemories,
@@ -11,25 +15,31 @@ import {
 	toScoredMemory,
 } from "../retrieval/scorer.js";
 import type {
+	AddInput,
+	AddManyInput,
 	AuditEvent,
-	ConsolidateInput,
 	ConsolidateResult,
 	DuplicatePair,
 	JsonObject,
 	Memory,
+	MemoryClient,
+	MemoryConfig,
+	MemoryRecordScope,
 	MemoryWithScore,
-	MnemocyteClient,
-	MnemocyteConfig,
-	MnemocyteOperation,
-	RecallInput,
-	RememberInput,
-	RememberManyInput,
+	NewMemory,
+	SearchInput,
+	UpdateInput,
 } from "../types.js";
+import { decodeListCursor, encodeListCursor } from "./cursor.js";
 import {
+	DEFAULT_AUDIT_LOG_LIMIT,
+	DEFAULT_DUPLICATE_LIMIT,
+	DEFAULT_DUPLICATE_THRESHOLD,
 	DEFAULT_IMPORTANCE,
+	DEFAULT_KIND,
 	DEFAULT_LIMIT,
+	DEFAULT_LIST_LIMIT,
 	DEFAULT_MIN_SCORE,
-	DEFAULT_TYPE,
 } from "./defaults.js";
 import { embedMany, embedOne } from "./embeddings.js";
 import { cloneJsonObject } from "./json.js";
@@ -38,41 +48,45 @@ import {
 	createEventId,
 	createId,
 	normalizeTags,
+	type StoredMemory,
 } from "./records.js";
 import type {
 	MemoryStore,
+	StoreMemoryFilter,
+	StoreMemoryPatch,
 	StorePruneEntityDeletion,
 	StorePruneResult,
+	StoreScope,
+	StoreSelector,
+	StoreVisibility,
 } from "./store.js";
 import {
+	assertDistinctKeys,
 	assertLimit,
 	assertMinScore,
 	assertNonEmptyString,
-	contextInputToRecallInput,
-	type PreparedRememberInput,
-	validateBuildContextInput,
+	assertOptionalSignal,
+	contextInputToSearchInput,
+	type PreparedNewMemory,
+	type PreparedUpdateFields,
 	validateConsolidateInput,
+	validateContextInput,
+	validateEntitySelector,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
+	validateListFilter,
+	validateNewMemory,
 	validatePruneInput,
-	validateRecallInput,
-	validateRememberInput,
+	validateScope,
+	validateSearchInput,
+	validateSelectorInput,
+	validateUpdateFields,
+	validateVisibility,
+	writeVisibility,
 } from "./validation.js";
 
-interface OperationMetadata {
-	entityId?: string;
-	memoryId?: string;
-	count?: number;
-}
-
-function isPositionalRememberManyInput(
-	input: RememberManyInput | readonly RememberInput[],
-): input is readonly RememberInput[] {
-	return Array.isArray(input);
-}
-
 function providerOptions(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	signal: AbortSignal | undefined,
 ) {
 	return {
@@ -85,13 +99,43 @@ function storeOptions(signal: AbortSignal | undefined) {
 	return signal === undefined ? undefined : { signal };
 }
 
-function snapshotRememberInput(input: RememberInput): PreparedRememberInput {
+/**
+ * Observation fields read from an unvalidated input's `scope`, so a
+ * malformed input still produces its start and error events.
+ */
+function scopeMetadata(input: unknown): ObservationMetadata {
+	if (typeof input !== "object" || input === null || !("scope" in input)) {
+		return {};
+	}
+	const scope: unknown = input.scope;
+	if (typeof scope !== "object" || scope === null) {
+		return {};
+	}
+	const { namespace, entityId } = scope as {
+		namespace?: unknown;
+		entityId?: unknown;
+	};
 	return {
-		...input,
+		...(typeof namespace === "string" ? { namespace } : {}),
+		...(typeof entityId === "string" ? { entityId } : {}),
+	};
+}
+
+function snapshotNewMemory(input: NewMemory): PreparedNewMemory {
+	if (typeof input !== "object" || input === null) {
+		throw new MnemocyteError("Each memory must be an object.", "VALIDATION");
+	}
+	return {
+		content: input.content,
+		...(input.key === undefined ? {} : { key: input.key }),
+		...(input.kind === undefined ? {} : { kind: input.kind }),
+		...(input.importance === undefined ? {} : { importance: input.importance }),
 		...(input.tags === undefined
 			? {}
 			: { tags: Array.isArray(input.tags) ? [...input.tags] : input.tags }),
+		...(input.source === undefined ? {} : { source: input.source }),
 		metadata: cloneJsonObject(input.metadata ?? {}),
+		...(input.confidence === undefined ? {} : { confidence: input.confidence }),
 		...(input.expiresAt === undefined
 			? {}
 			: {
@@ -103,17 +147,54 @@ function snapshotRememberInput(input: RememberInput): PreparedRememberInput {
 	};
 }
 
+function snapshotUpdateFields(input: UpdateInput): PreparedUpdateFields {
+	const fields: PreparedUpdateFields = {};
+	if (input.content !== undefined) {
+		fields.content = input.content;
+	}
+	if (input.key !== undefined) {
+		fields.key = input.key;
+	}
+	if (input.kind !== undefined) {
+		fields.kind = input.kind;
+	}
+	if (input.importance !== undefined) {
+		fields.importance = input.importance;
+	}
+	if (input.tags !== undefined) {
+		fields.tags = Array.isArray(input.tags) ? [...input.tags] : input.tags;
+	}
+	if (input.source !== undefined) {
+		fields.source = input.source;
+	}
+	if (input.metadata !== undefined) {
+		fields.metadata = cloneJsonObject(input.metadata);
+	}
+	if (input.confidence !== undefined) {
+		fields.confidence = input.confidence;
+	}
+	if (input.expiresAt !== undefined) {
+		fields.expiresAt =
+			input.expiresAt instanceof Date
+				? new Date(input.expiresAt)
+				: input.expiresAt;
+	}
+	return fields;
+}
+
 function createStoredMemory(
-	config: MnemocyteConfig,
-	input: PreparedRememberInput,
+	config: MemoryConfig,
+	scope: StoreScope,
+	input: PreparedNewMemory,
 	embedding: number[],
 	now: Date,
-) {
+): StoredMemory {
 	return {
 		id: createId(),
-		entityId: input.entityId,
+		scope: { ...scope },
+		key: input.key ?? null,
 		content: input.content,
-		type: input.type ?? DEFAULT_TYPE,
+		kind: input.kind ?? DEFAULT_KIND,
 		importance: input.importance ?? DEFAULT_IMPORTANCE,
 		tags: normalizeTags(input.tags),
 		source: input.source ?? null,
@@ -133,71 +214,104 @@ function createStoredMemory(
 }
 
 function auditEvent(
-	entityId: string,
+	scope: MemoryRecordScope,
 	description: string,
 	metadata: JsonObject,
 	timestamp = new Date(),
 ): AuditEvent {
 	return {
 		id: createEventId(),
-		entityId,
+		scope: { ...scope },
 		description,
 		metadata,
 		timestamp,
 	};
 }
 
-function normalizeStoreRows<T extends { id: string }>(
-	expected: readonly { id: string }[],
-	returned: readonly T[],
-	operation: string,
-): T[] {
-	const expectedIds = new Set(expected.map((memory) => memory.id));
-	const returnedById = new Map<string, T>();
+interface InsertOutcome {
+	memory: Memory;
+	/** `false` when a keyed row updated an existing memory. */
+	created: boolean;
+}
 
-	for (const row of returned) {
-		if (!expectedIds.has(row.id)) {
-			throw new MnemocyteError(`${operation} returned an unknown ID.`, "DB");
+/**
+ * Match store results to prepared rows. Store order is untrusted: an inserted
+ * row comes back with its prepared id, a keyed row that updated an existing
+ * memory with that memory's id and the prepared key.
+ */
+function matchInsertResults(
+	prepared: readonly StoredMemory[],
+	returned: readonly Memory[],
+): InsertOutcome[] {
+	const byId = new Map<string, Memory>();
+	const byKey = new Map<string, Memory>();
+	for (const memory of returned) {
+		if (byId.has(memory.id)) {
+			throw new MnemocyteError("Memory insert returned a duplicate ID.", "DB");
 		}
-		if (returnedById.has(row.id)) {
-			throw new MnemocyteError(`${operation} returned a duplicate ID.`, "DB");
+		byId.set(memory.id, memory);
+		if (memory.key !== null) {
+			byKey.set(memory.key, memory);
 		}
-		returnedById.set(row.id, row);
 	}
-
-	return expected.map((row) => {
-		const returnedRow = returnedById.get(row.id);
-		if (!returnedRow) {
+	const used = new Set<string>();
+	const outcomes = prepared.map((row) => {
+		const inserted = byId.get(row.id);
+		const memory =
+			inserted ?? (row.key === null ? undefined : byKey.get(row.key));
+		if (!memory || used.has(memory.id)) {
 			throw new MnemocyteError(
-				`${operation} did not return every requested ID.`,
+				"Memory insert did not return every requested row.",
 				"DB",
 			);
 		}
-		return returnedRow;
+		used.add(memory.id);
+		return { memory, created: inserted !== undefined };
 	});
+	if (used.size !== returned.length) {
+		throw new MnemocyteError("Memory insert returned an unknown ID.", "DB");
+	}
+	return outcomes;
+}
+
+function writeAuditEvent(outcome: InsertOutcome): AuditEvent {
+	const { memory } = outcome;
+	return auditEvent(
+		memory.scope,
+		outcome.created ? "memory.created" : "memory.updated",
+		{
+			memoryId: memory.id,
+			kind: memory.kind,
+			importance: memory.importance,
+			...(memory.key === null ? {} : { key: memory.key }),
+		},
+	);
 }
 
 function normalizePruneEntityDeletions(
 	result: StorePruneResult,
-	expectedEntityId: string | undefined,
+	selector: StoreSelector,
 ): StorePruneEntityDeletion[] {
-	const seenEntityIds = new Set<string>();
+	const seen = new Set<string>();
 	let detailedDeletedCount = 0;
 
 	for (const detail of result.deletedByEntity) {
+		const entityKey = JSON.stringify([detail.namespace, detail.entityId]);
 		if (
 			detail.entityId.length === 0 ||
 			!Number.isInteger(detail.deletedCount) ||
 			detail.deletedCount <= 0 ||
-			seenEntityIds.has(detail.entityId) ||
-			(expectedEntityId !== undefined && detail.entityId !== expectedEntityId)
+			seen.has(entityKey) ||
+			(selector.namespace !== null &&
+				detail.namespace !== selector.namespace) ||
+			(selector.entityId !== undefined && detail.entityId !== selector.entityId)
 		) {
 			throw new MnemocyteError(
 				"Memory prune returned invalid per-entity deletion details.",
 				"DB",
 			);
 		}
-		seenEntityIds.add(detail.entityId);
+		seen.add(entityKey);
 		detailedDeletedCount += detail.deletedCount;
 	}
 
@@ -211,9 +325,7 @@ function normalizePruneEntityDeletions(
 		);
 	}
 
-	return [...result.deletedByEntity].sort((a, b) =>
-		a.entityId.localeCompare(b.entityId),
-	);
+	return [...result.deletedByEntity];
 }
 
 function toDuplicatePair(pair: {
@@ -228,97 +340,36 @@ function toDuplicatePair(pair: {
 	};
 }
 
+function memoryFilter(
+	visibility: StoreVisibility,
+	input: {
+		kinds?: StoreMemoryFilter["kinds"];
+		tags?: StoreMemoryFilter["tags"];
+		before?: Date;
+		after?: Date;
+		includeSuperseded?: boolean;
+		includeExpired?: boolean;
+	},
+): StoreMemoryFilter {
+	return {
+		visibility,
+		...(input.kinds === undefined ? {} : { kinds: [...input.kinds] }),
+		...(input.tags === undefined ? {} : { tags: [...input.tags] }),
+		...(input.before === undefined ? {} : { before: new Date(input.before) }),
+		...(input.after === undefined ? {} : { after: new Date(input.after) }),
+		...(input.includeSuperseded === undefined
+			? {}
+			: { includeSuperseded: input.includeSuperseded }),
+		...(input.includeExpired === undefined
+			? {}
+			: { includeExpired: input.includeExpired }),
+	};
+}
+
 export function createMemoryClient(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	store: MemoryStore,
-): MnemocyteClient {
-	type ClientState = "open" | "closing" | "closed";
-
-	let state: ClientState = "open";
-	let activeOperations = 0;
-	let operationsDrainedPromise: Promise<void> | undefined;
-	let resolveOperationsDrained: (() => void) | undefined;
-	let closePromise: Promise<void> | undefined;
-
-	function assertOpen(): void {
-		if (state === "closed") {
-			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
-		}
-	}
-
-	function beginOperation(): () => void {
-		if (state !== "open") {
-			throw new MnemocyteError("Mnemocyte client is closed.", "DB");
-		}
-		activeOperations += 1;
-		let completed = false;
-		return () => {
-			if (completed) {
-				return;
-			}
-			completed = true;
-			activeOperations -= 1;
-			if (activeOperations === 0 && resolveOperationsDrained) {
-				const resolve = resolveOperationsDrained;
-				resolveOperationsDrained = undefined;
-				operationsDrainedPromise = undefined;
-				resolve();
-			}
-		};
-	}
-
-	function runOperation<T>(
-		operationName: MnemocyteOperation,
-		metadata: OperationMetadata,
-		operation: () => Promise<T>,
-	): Promise<T> {
-		let complete: () => void;
-		try {
-			complete = beginOperation();
-		} catch (error) {
-			return observe(
-				config,
-				store.backend,
-				operationName,
-				metadata,
-				async () => {
-					throw error;
-				},
-			);
-		}
-		try {
-			return operation().then(
-				(result) => {
-					complete();
-					return result;
-				},
-				(error: unknown) => {
-					complete();
-					throw error;
-				},
-			);
-		} catch (error) {
-			complete();
-			return Promise.reject(error);
-		}
-	}
-
-	function waitForActiveOperations(): Promise<void> {
-		if (activeOperations === 0) {
-			return Promise.resolve();
-		}
-		if (!operationsDrainedPromise) {
-			operationsDrainedPromise = new Promise<void>((resolve) => {
-				resolveOperationsDrained = resolve;
-			});
-		}
-		return operationsDrainedPromise;
-	}
-
-	async function ensureSchema(): Promise<void> {
-		await store.ensureSchema();
-	}
-
+): MemoryClient {
 	async function ensureEmbeddingCompatibility(): Promise<void> {
 		await store.ensureEmbeddingCompatibility(config.embedder);
 	}
@@ -335,17 +386,20 @@ export function createMemoryClient(
 	}
 
 	/**
-	 * Starts the access write for a recall's results without waiting for it.
-	 * The store call begins before recall resolves, so the driver already has
+	 * Starts the access write for a search's results without waiting for it.
+	 * The store call begins before search resolves, so the driver already has
 	 * the statement; failures go to `onEvent` as `"trackAccess"` errors.
 	 */
-	function trackAccess(entityId: string, memoryIds: readonly string[]): void {
+	function trackAccess(
+		visibility: StoreVisibility,
+		memoryIds: readonly string[],
+	): void {
 		if (memoryIds.length === 0) {
 			return;
 		}
 		// Settled into a value at once, so a failure that lands while the
 		// start event is still being emitted is never an unhandled rejection.
-		const outcome = store.markMemoriesAccessed(entityId, memoryIds).then(
+		const outcome = store.markMemoriesAccessed(visibility, memoryIds).then(
 			() => ({ ok: true as const }),
 			(error: unknown) => ({ ok: false as const, error }),
 		);
@@ -353,7 +407,11 @@ export function createMemoryClient(
 			config,
 			store.backend,
 			"trackAccess",
-			{ entityId, count: memoryIds.length },
+			{
+				namespace: visibility.scope.namespace,
+				entityId: visibility.scope.entityId,
+				count: memoryIds.length,
+			},
 			async () => {
 				const result = await outcome;
 				if (!result.ok) {
@@ -361,123 +419,114 @@ export function createMemoryClient(
 				}
 			},
 		).catch(() => {
-			// Reported through onEvent; access tracking never fails a recall.
+			// Reported through onEvent; access tracking never fails a search.
 		});
 	}
 
-	function remember(input: RememberInput): Promise<Memory> {
-		return runOperation("remember", { entityId: input.entityId }, () =>
-			observePrepared(
-				config,
-				store.backend,
-				"remember",
-				{ entityId: input.entityId },
-				() => snapshotRememberInput(input),
-				async (preparedInput) => {
-					assertOpen();
-					validateRememberInput(preparedInput);
-					await ensureEmbeddingCompatibility();
-					const embedding = await embedOne(
-						config.embedder,
-						preparedInput.content,
-						providerOptions(config, preparedInput.signal),
+	function add(input: AddInput): Promise<Memory> {
+		return observePrepared(
+			config,
+			store.backend,
+			"add",
+			scopeMetadata(input),
+			() => ({
+				scope: validateScope(input.scope),
+				memory: snapshotNewMemory(input),
+				signal: input.signal,
+			}),
+			async ({ scope, memory, signal }) => {
+				validateNewMemory(memory);
+				assertOptionalSignal(signal);
+				await ensureEmbeddingCompatibility();
+				const embedding = await embedOne(
+					config.embedder,
+					memory.content,
+					providerOptions(config, signal),
+				);
+				const stored = [
+					createStoredMemory(config, scope, memory, embedding, new Date()),
+				];
+				const [outcome] = matchInsertResults(
+					stored,
+					await store.insertMemories(stored),
+				);
+				if (!outcome) {
+					throw new MnemocyteError(
+						"Memory insert did not return the inserted row.",
+						"DB",
 					);
-					const stored = [
-						createStoredMemory(config, preparedInput, embedding, new Date()),
-					];
-					const [memory] = normalizeStoreRows(
-						stored,
-						await store.insertMemories(stored),
-						"Memory insert",
-					);
-					if (!memory) {
-						throw new MnemocyteError(
-							"Memory insert did not return the inserted ID.",
-							"DB",
-						);
-					}
-					await recordAudit([
-						auditEvent(memory.entityId, "memory.created", {
-							memoryId: memory.id,
-							type: memory.type,
-							importance: memory.importance,
-						}),
-					]);
-					return memory;
-				},
-				(memory) => ({ memoryId: memory.id, count: 1 }),
-			),
+				}
+				await recordAudit([writeAuditEvent(outcome)]);
+				return outcome.memory;
+			},
+			(memory) => ({ memoryId: memory.id, count: 1 }),
 		);
 	}
 
-	function rememberMany(
-		input: RememberManyInput | readonly RememberInput[],
-	): Promise<Memory[]> {
-		const count = isPositionalRememberManyInput(input)
-			? input.length
-			: input.inputs.length;
-		return runOperation("rememberMany", { count }, () =>
-			observePrepared(
-				config,
-				store.backend,
-				"rememberMany",
-				{ count },
-				() => {
-					const positional = isPositionalRememberManyInput(input);
-					const inputs = positional ? input : input.inputs;
-					return {
-						preparedInputs: inputs.map(snapshotRememberInput),
-						signal: positional ? input[0]?.signal : input.signal,
-					};
-				},
-				async ({ preparedInputs, signal }) => {
-					assertOpen();
-					if (preparedInputs.length === 0) {
-						return [];
-					}
-					for (const item of preparedInputs) {
-						validateRememberInput(item);
-					}
-					await ensureEmbeddingCompatibility();
-					const embeddings = await embedMany(
-						config.embedder,
-						preparedInputs.map((item) => item.content),
-						providerOptions(config, signal),
-					);
-					const now = new Date();
-					const stored = preparedInputs.map((item, idx) =>
-						createStoredMemory(config, item, embeddings[idx] as number[], now),
-					);
-					const memories = normalizeStoreRows(
-						stored,
-						await store.insertMemories(stored),
-						"Memory insert",
-					);
-					await recordAudit(
-						memories.map((memory) =>
-							auditEvent(memory.entityId, "memory.created", {
-								memoryId: memory.id,
-								type: memory.type,
-								importance: memory.importance,
-							}),
-						),
-					);
-					return memories;
-				},
-				(result) => ({ count: result.length }),
-			),
+	function addMany(input: AddManyInput): Promise<Memory[]> {
+		const count = Array.isArray(input?.memories)
+			? input.memories.length
+			: undefined;
+		return observePrepared(
+			config,
+			store.backend,
+			"addMany",
+			{ ...scopeMetadata(input), ...(count === undefined ? {} : { count }) },
+			() => {
+				const scope = validateScope(input.scope);
+				if (!Array.isArray(input.memories)) {
+					throw new MnemocyteError("memories must be an array.", "VALIDATION");
+				}
+				return {
+					scope,
+					memories: input.memories.map(snapshotNewMemory),
+					signal: input.signal,
+				};
+			},
+			async ({ scope, memories, signal }) => {
+				assertOptionalSignal(signal);
+				if (memories.length === 0) {
+					return [];
+				}
+				for (const memory of memories) {
+					validateNewMemory(memory);
+				}
+				assertDistinctKeys(memories);
+				await ensureEmbeddingCompatibility();
+				const embeddings = await embedMany(
+					config.embedder,
+					memories.map((memory) => memory.content),
+					providerOptions(config, signal),
+				);
+				const now = new Date();
+				const stored = memories.map((memory, index) =>
+					createStoredMemory(
+						config,
+						scope,
+						memory,
+						embeddings[index] as number[],
+						now,
+					),
+				);
+				const outcomes = matchInsertResults(
+					stored,
+					await store.insertMemories(stored),
+				);
+				await recordAudit(outcomes.map(writeAuditEvent));
+				return outcomes.map((outcome) => outcome.memory);
+			},
+			(result) => ({ count: result.length }),
 		);
 	}
 
-	function recall(input: RecallInput): Promise<MemoryWithScore[]> {
+	function search(input: SearchInput): Promise<MemoryWithScore[]> {
 		return observe(
 			config,
 			store.backend,
-			"recall",
-			{ entityId: input.entityId },
+			"search",
+			scopeMetadata(input),
 			async () => {
-				assertOpen();
-				validateRecallInput(input);
+				const visibility = validateSearchInput(input);
 				const limit = input.limit ?? config.defaults?.limit ?? DEFAULT_LIMIT;
 				const minScore =
 					input.minScore ?? config.defaults?.minScore ?? DEFAULT_MIN_SCORE;
@@ -493,19 +542,24 @@ export function createMemoryClient(
 					config.retrieval?.candidateMultiplier ?? DEFAULT_CANDIDATE_MULTIPLIER;
 				const candidateLimit = Math.max(limit, limit * candidateMultiplier);
 				const scoringConfig = createScoringConfig(config.retrieval);
+				const filter = memoryFilter(visibility, input);
 				// A list with weight 0 cannot change the fused score, so its
 				// search is skipped instead of adding unranked candidates.
 				const [vectorCandidates, lexicalCandidates] = await Promise.all([
 					scoringConfig.fusion.vector > 0
 						? store.vectorSearch({
-								...input,
+								...filter,
 								embedding: queryEmbedding,
 								limit: candidateLimit,
 								minVectorScore: 0,
 							})
 						: [],
 					scoringConfig.fusion.lexical > 0
-						? store.lexicalSearch({ ...input, limit: candidateLimit })
+						? store.lexicalSearch({
+								...filter,
+								query: input.query,
+								limit: candidateLimit,
+							})
 						: [],
 				]);
 				const merged = new Map<string, FusionCandidate>();
@@ -547,7 +601,7 @@ export function createMemoryClient(
 					.slice(0, limit);
 				if (input.trackAccess ?? config.retrieval?.trackAccess ?? false) {
 					trackAccess(
-						input.entityId,
+						visibility,
 						scored.map((memory) => memory.id),
 					);
 				}
@@ -557,311 +611,401 @@ export function createMemoryClient(
 		);
 	}
 
-	const client: MnemocyteClient = {
-		remember,
-		rememberMany,
-		recall(input) {
-			return runOperation("recall", { entityId: input.entityId }, () =>
-				recall(input),
-			);
-		},
-		buildContext(input) {
-			return runOperation("buildContext", { entityId: input.entityId }, () =>
-				observe(
-					config,
-					store.backend,
-					"buildContext",
-					{ entityId: input.entityId },
-					async () => {
-						assertOpen();
-						validateBuildContextInput(input);
-						return buildContext({
-							input,
-							recall: (contextInput) => {
-								const recallInput = contextInputToRecallInput(contextInput);
-								return recall(
-									input.signal === undefined
-										? recallInput
-										: { ...recallInput, signal: input.signal },
-								);
-							},
-						});
-					},
-				),
-			);
-		},
-		forget(input) {
-			return runOperation(
-				"forget",
-				{ entityId: input.entityId, memoryId: input.memoryId },
-				() =>
-					observe(
-						config,
-						store.backend,
-						"forget",
-						{ entityId: input.entityId, memoryId: input.memoryId },
-						async () => {
-							assertOpen();
-							assertNonEmptyString(input.entityId, "entityId");
-							assertNonEmptyString(input.memoryId, "memoryId");
-							await ensureSchema();
-							const deleted = await store.deleteMemory(
-								input.entityId,
-								input.memoryId,
-							);
-							if (!deleted) {
-								throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
-							}
-							await recordAudit([
-								auditEvent(input.entityId, "memory.deleted", {
-									memoryId: input.memoryId,
-								}),
-							]);
-						},
-					),
-			);
-		},
-		forgetAll(input) {
-			return runOperation("forgetAll", { entityId: input.entityId }, () =>
-				observe(
-					config,
-					store.backend,
-					"forgetAll",
-					{ entityId: input.entityId },
-					async () => {
-						assertOpen();
-						assertNonEmptyString(input.entityId, "entityId");
-						await ensureSchema();
-						const deletedCount = await store.deleteMemoriesForEntity(
-							input.entityId,
+	return {
+		add,
+		addMany,
+		search,
+		get(input) {
+			return observe(
+				config,
+				store.backend,
+				"get",
+				scopeMetadata(input),
+				async () => {
+					const visibility = validateVisibility(input);
+					assertOptionalSignal(input.signal);
+					throwIfAborted(input.signal);
+					const hasId = input.id !== undefined;
+					const hasKey = input.key !== undefined;
+					if (hasId === hasKey) {
+						throw new MnemocyteError(
+							"get requires exactly one of id or key.",
+							"VALIDATION",
 						);
-						await recordAudit([
-							auditEvent(input.entityId, "entity.cleared", {
-								count: deletedCount,
-							}),
-						]);
-						return deletedCount;
-					},
-					(count) => ({ count }),
-				).then(() => undefined),
+					}
+					if (hasId) {
+						assertNonEmptyString(input.id, "id");
+						return store.getMemory(
+							visibility,
+							input.id,
+							storeOptions(input.signal),
+						);
+					}
+					assertNonEmptyString(input.key, "key");
+					return store.getMemoryByKey(
+						visibility.scope,
+						input.key,
+						storeOptions(input.signal),
+					);
+				},
+				(memory) => ({
+					count: memory ? 1 : 0,
+					...(memory ? { memoryId: memory.id } : {}),
+				}),
+			);
+		},
+		list(input) {
+			return observe(
+				config,
+				store.backend,
+				"list",
+				scopeMetadata(input),
+				async () => {
+					const visibility = validateVisibility(input);
+					validateListFilter(input);
+					throwIfAborted(input.signal);
+					const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+					const position =
+						input.cursor === undefined
+							? undefined
+							: decodeListCursor(input.cursor);
+					// One extra row says whether another page exists.
+					const rows = await store.listMemories(
+						{
+							...memoryFilter(visibility, input),
+							limit: limit + 1,
+							...(position === undefined ? {} : { position }),
+						},
+						storeOptions(input.signal),
+					);
+					const memories = rows.slice(0, limit);
+					const last = memories.at(-1);
+					return {
+						memories,
+						nextCursor:
+							rows.length > limit && last
+								? encodeListCursor({ createdAt: last.createdAt, id: last.id })
+								: null,
+					};
+				},
+				(result) => ({ count: result.memories.length }),
+			);
+		},
+		update(input) {
+			return observePrepared(
+				config,
+				store.backend,
+				"update",
+				{
+					...scopeMetadata(input),
+					...(typeof input?.id === "string" ? { memoryId: input.id } : {}),
+				},
+				() => ({
+					scope: validateScope(input.scope),
+					fields: snapshotUpdateFields(input),
+				}),
+				async ({ scope, fields }) => {
+					assertNonEmptyString(input.id, "id");
+					validateUpdateFields(fields);
+					assertOptionalSignal(input.signal);
+					let embedding: number[] | undefined;
+					if (fields.content !== undefined) {
+						await ensureEmbeddingCompatibility();
+						embedding = await embedOne(
+							config.embedder,
+							fields.content,
+							providerOptions(config, input.signal),
+						);
+					}
+					throwIfAborted(input.signal);
+					const patch: StoreMemoryPatch = {
+						...fields,
+						...(fields.tags === undefined
+							? {}
+							: { tags: normalizeTags(fields.tags) }),
+						...(embedding === undefined
+							? {}
+							: {
+									embedding,
+									embeddingModel: config.embedder.model,
+									embeddingDimensions: config.embedder.dimensions,
+								}),
+					};
+					const memory = await store.updateMemory({
+						visibility: writeVisibility(scope),
+						id: input.id,
+						patch,
+						now: new Date(),
+					});
+					if (!memory) {
+						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+					}
+					await recordAudit([
+						auditEvent(memory.scope, "memory.updated", {
+							memoryId: memory.id,
+							fields: Object.keys(fields).sort(),
+						}),
+					]);
+					return memory;
+				},
+				(memory) => ({ memoryId: memory.id, count: 1 }),
+			);
+		},
+		delete(input) {
+			return observe(
+				config,
+				store.backend,
+				"delete",
+				{
+					...scopeMetadata(input),
+					...(typeof input?.id === "string" ? { memoryId: input.id } : {}),
+				},
+				async () => {
+					const scope = validateScope(input.scope);
+					assertNonEmptyString(input.id, "id");
+					assertOptionalSignal(input.signal);
+					throwIfAborted(input.signal);
+					const deleted = await store.deleteMemory(
+						writeVisibility(scope),
+						input.id,
+						storeOptions(input.signal),
+					);
+					if (!deleted) {
+						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+					}
+					await recordAudit([
+						auditEvent(scope, "memory.deleted", { memoryId: input.id }),
+					]);
+				},
+			);
+		},
+		deleteScope(input) {
+			return observe(
+				config,
+				store.backend,
+				"deleteScope",
+				scopeMetadata(input),
+				async () => {
+					const selector = validateEntitySelector(input?.scope);
+					assertOptionalSignal(input.signal);
+					throwIfAborted(input.signal);
+					const deletedCount = await store.deleteScope(
+						selector,
+						storeOptions(input.signal),
+					);
+					return { deletedCount };
+				},
+				(result) => ({ count: result.deletedCount }),
+			);
+		},
+		context(input) {
+			return observe(
+				config,
+				store.backend,
+				"context",
+				scopeMetadata(input),
+				async () => {
+					validateContextInput(input);
+					return buildContext({
+						input,
+						search: (contextInput) =>
+							search(contextInputToSearchInput(contextInput)),
+					});
+				},
 			);
 		},
 		prune(input) {
-			return runOperation(
+			return observe(
+				config,
+				store.backend,
 				"prune",
-				input.entityId === undefined ? {} : { entityId: input.entityId },
-				() =>
-					observe(
-						config,
-						store.backend,
-						"prune",
-						input.entityId === undefined ? {} : { entityId: input.entityId },
-						async () => {
-							assertOpen();
-							throwIfAborted(input.signal);
-							const filter = validatePruneInput(input);
-							await ensureSchema();
-							const result = await store.prune(
-								filter,
-								storeOptions(input.signal),
-							);
-							const deletedByEntity = normalizePruneEntityDeletions(
-								result,
-								input.entityId,
-							);
-							if (result.deletedCount > 0 && result.dryRun === false) {
-								await recordAudit(
-									deletedByEntity.map((detail) =>
-										auditEvent(detail.entityId, "memory.pruned", {
-											count: detail.deletedCount,
-										}),
-									),
-								);
-							}
-							return {
-								matchedCount: result.matchedCount,
-								deletedCount: result.deletedCount,
-								dryRun: result.dryRun,
-							};
-						},
-						(result) => ({ count: result.deletedCount }),
-					),
+				scopeMetadata(input),
+				async () => {
+					throwIfAborted(input?.signal);
+					const filter = validatePruneInput(input);
+					const result = await store.prune(filter, storeOptions(input.signal));
+					const deletedByEntity = normalizePruneEntityDeletions(
+						result,
+						filter.selector,
+					);
+					if (result.deletedCount > 0 && result.dryRun === false) {
+						await recordAudit(
+							deletedByEntity.map((detail) =>
+								auditEvent(
+									{
+										namespace: detail.namespace,
+										entityId: detail.entityId,
+										agentId: filter.selector.agentId ?? null,
+										sessionId: filter.selector.sessionId ?? null,
+									},
+									"memory.pruned",
+									{ count: detail.deletedCount },
+								),
+							),
+						);
+					}
+					return {
+						matchedCount: result.matchedCount,
+						deletedCount: result.deletedCount,
+						dryRun: result.dryRun,
+					};
+				},
+				(result) => ({ count: result.deletedCount }),
 			);
 		},
 		findDuplicates(input) {
-			return runOperation("findDuplicates", { entityId: input.entityId }, () =>
-				observe(
-					config,
-					store.backend,
-					"findDuplicates",
-					{ entityId: input.entityId },
-					async () => {
-						assertOpen();
-						throwIfAborted(input.signal);
-						validateFindDuplicatesInput(input);
-						await ensureEmbeddingCompatibility();
-						const pairs = await store.findDuplicatePairs(
-							input,
-							storeOptions(input.signal),
-						);
-						return pairs.map(toDuplicatePair);
-					},
-					(result) => ({ count: result.length }),
-				),
+			return observe(
+				config,
+				store.backend,
+				"findDuplicates",
+				scopeMetadata(input),
+				async () => {
+					throwIfAborted(input?.signal);
+					const visibility = validateFindDuplicatesInput(input);
+					await ensureEmbeddingCompatibility();
+					const pairs = await store.findDuplicatePairs(
+						{
+							...memoryFilter(visibility, input),
+							threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+							limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
+						},
+						storeOptions(input.signal),
+					);
+					return pairs.map(toDuplicatePair);
+				},
+				(result) => ({ count: result.length }),
 			);
 		},
 		listAuditLog(input) {
-			return runOperation("listAuditLog", { entityId: input.entityId }, () =>
-				observe(
-					config,
-					store.backend,
-					"listAuditLog",
-					{ entityId: input.entityId },
-					async () => {
-						assertOpen();
-						throwIfAborted(input.signal);
-						validateListAuditLogInput(input);
-						await ensureSchema();
-						const events = await store.listAuditLog(
-							input,
-							storeOptions(input.signal),
-						);
-						return events;
-					},
-					(result) => ({ count: result.length }),
-				),
+			return observe(
+				config,
+				store.backend,
+				"listAuditLog",
+				scopeMetadata(input),
+				async () => {
+					throwIfAborted(input?.signal);
+					const selector = validateListAuditLogInput(input);
+					return store.listAuditLog(
+						{
+							selector,
+							limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
+							...(input.before === undefined ? {} : { before: input.before }),
+							...(input.after === undefined ? {} : { after: input.after }),
+							...(input.beforeCursor === undefined
+								? {}
+								: { beforeCursor: input.beforeCursor }),
+							...(input.afterCursor === undefined
+								? {}
+								: { afterCursor: input.afterCursor }),
+						},
+						storeOptions(input.signal),
+					);
+				},
+				(result) => ({ count: result.length }),
 			);
 		},
 		stats(input) {
-			return runOperation(
+			return observe(
+				config,
+				store.backend,
 				"stats",
-				input?.entityId ? { entityId: input.entityId } : {},
-				() =>
-					observe(
-						config,
-						store.backend,
-						"stats",
-						input?.entityId ? { entityId: input.entityId } : {},
-						async () => {
-							assertOpen();
-							await ensureSchema();
-							return store.stats(input, new Date());
-						},
-					),
+				scopeMetadata(input),
+				async () => {
+					const selector = validateSelectorInput(input);
+					return store.stats(selector, new Date());
+				},
 			);
 		},
 		experimental: {
-			consolidate(input: ConsolidateInput): Promise<ConsolidateResult> {
-				return runOperation(
+			consolidate(input) {
+				return observe(
+					config,
+					store.backend,
 					"consolidate",
-					{ entityId: input.entityId, memoryId: input.survivorId },
-					() =>
-						observe(
-							config,
-							store.backend,
-							"consolidate",
-							{ entityId: input.entityId, memoryId: input.survivorId },
-							async () => {
-								assertOpen();
-								throwIfAborted(input.signal);
-								validateConsolidateInput(input);
-								await ensureSchema();
-								const survivor = await store.getMemory(
-									input.entityId,
-									input.survivorId,
-									storeOptions(input.signal),
+					{
+						...scopeMetadata(input),
+						...(typeof input?.survivorId === "string"
+							? { memoryId: input.survivorId }
+							: {}),
+					},
+					async () => {
+						throwIfAborted(input?.signal);
+						const visibility = writeVisibility(validateConsolidateInput(input));
+						const survivor = await store.getMemory(
+							visibility,
+							input.survivorId,
+							storeOptions(input.signal),
+						);
+						throwIfAborted(input.signal);
+						if (!survivor) {
+							throw new MnemocyteError(
+								"Survivor memory was not found.",
+								"NOT_FOUND",
+							);
+						}
+						if (survivor.supersededBy !== null) {
+							throw new MnemocyteError(
+								"Survivor memory is itself superseded.",
+								"VALIDATION",
+							);
+						}
+						const targets = await store.loadConsolidationTargets(
+							visibility,
+							input.supersededIds,
+							storeOptions(input.signal),
+						);
+						throwIfAborted(input.signal);
+						const foundIds = new Set(targets.map((target) => target.id));
+						for (const id of input.supersededIds) {
+							if (!foundIds.has(id)) {
+								throw new MnemocyteError(
+									"Superseded memory was not found.",
+									"NOT_FOUND",
 								);
-								throwIfAborted(input.signal);
-								if (!survivor) {
-									throw new MnemocyteError(
-										"Survivor memory was not found.",
-										"NOT_FOUND",
-									);
-								}
-								if (survivor.supersededBy !== null) {
-									throw new MnemocyteError(
-										"Survivor memory is itself superseded.",
-										"VALIDATION",
-									);
-								}
-								const targets = await store.loadConsolidationTargets(
-									input.entityId,
-									input.supersededIds,
-									storeOptions(input.signal),
-								);
-								throwIfAborted(input.signal);
-								const foundIds = new Set(targets.map((target) => target.id));
-								for (const id of input.supersededIds) {
-									if (!foundIds.has(id)) {
-										throw new MnemocyteError(
-											"Superseded memory was not found.",
-											"NOT_FOUND",
-										);
-									}
-								}
-								if (
-									targets.some(
-										(target) =>
-											target.supersededBy !== null &&
-											target.supersededBy !== survivor.id,
-									)
-								) {
-									throw new MnemocyteError(
-										"Superseded memory already belongs to a different survivor.",
-										"CONFLICT",
-									);
-								}
-								const losers = targets.filter(
-									(target) => target.supersededBy === null,
-								);
-								if (losers.length === 0) {
-									return {
-										survivorId: survivor.id,
-										supersededCount: 0,
-										supersededIds: [],
-									} satisfies ConsolidateResult;
-								}
-								const result = await store.consolidate(
-									{
-										entityId: input.entityId,
-										survivorId: survivor.id,
-										supersededIds: input.supersededIds,
-										mergeTags: input.mergeTags !== false,
-										now: new Date(),
-										auditEnabled: config.audit?.enabled === true,
-									},
-									storeOptions(input.signal),
-								);
-								return {
-									survivorId: survivor.id,
-									supersededCount: result.supersededIds.length,
-									supersededIds: result.supersededIds,
-								} satisfies ConsolidateResult;
+							}
+						}
+						if (
+							targets.some(
+								(target) =>
+									target.supersededBy !== null &&
+									target.supersededBy !== survivor.id,
+							)
+						) {
+							throw new MnemocyteError(
+								"Superseded memory already belongs to a different survivor.",
+								"CONFLICT",
+							);
+						}
+						const losers = targets.filter(
+							(target) => target.supersededBy === null,
+						);
+						if (losers.length === 0) {
+							return {
+								survivorId: survivor.id,
+								supersededCount: 0,
+								supersededIds: [],
+							} satisfies ConsolidateResult;
+						}
+						const result = await store.consolidate(
+							{
+								visibility,
+								survivorId: survivor.id,
+								supersededIds: input.supersededIds,
+								mergeTags: input.mergeTags !== false,
+								now: new Date(),
+								auditEnabled: config.audit?.enabled === true,
 							},
-							(result) => ({ count: result.supersededCount }),
-						),
+							storeOptions(input.signal),
+						);
+						return {
+							survivorId: survivor.id,
+							supersededCount: result.supersededIds.length,
+							supersededIds: result.supersededIds,
+						} satisfies ConsolidateResult;
+					},
+					(result) => ({ count: result.supersededCount }),
 				);
 			},
 		},
-		close() {
-			if (closePromise) {
-				return closePromise;
-			}
-			state = "closing";
-			closePromise = observe(config, store.backend, "close", {}, async () => {
-				await waitForActiveOperations();
-				try {
-					await store.close();
-					state = "closed";
-				} catch (error) {
-					state = "open";
-					closePromise = undefined;
-					throw error;
-				}
-			});
-			return closePromise;
-		},
 	};
-
-	return client;
 }

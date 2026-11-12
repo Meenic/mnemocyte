@@ -5,9 +5,13 @@ type RawTimestamp = Date | string;
 /** A `mnemocyte_memories` row without its embedding. */
 export interface MemoryRow {
 	id: string;
+	namespace: string;
 	entityId: string;
+	agentId: string | null;
+	sessionId: string | null;
+	key: string | null;
 	content: string;
-	type: string;
+	kind: string;
 	importance: string;
 	tags: string[];
 	source: string | null;
@@ -48,7 +52,10 @@ export type RawMemoryRow = Omit<
 
 export interface EventRow {
 	id: string;
+	namespace: string;
 	entityId: string;
+	agentId: string | null;
+	sessionId: string | null;
 	description: string;
 	metadata: JsonObject;
 	timestamp: Date;
@@ -71,14 +78,17 @@ export interface MetaRow {
 
 /**
  * Column, result key and optional cast, in `MemoryRow` order. Ids are read as
- * text so every driver returns them as strings; `kind` keeps its 0.x result
- * key, `type`, until the public API renames it.
+ * text so every driver returns them as strings.
  */
 const MEMORY_COLUMNS = [
 	["id", "id", "text"],
+	["namespace", "namespace", undefined],
 	["entity_id", "entityId", undefined],
+	["agent_id", "agentId", undefined],
+	["session_id", "sessionId", undefined],
+	["key", "key", undefined],
 	["content", "content", undefined],
-	["kind", "type", undefined],
+	["kind", "kind", undefined],
 	["importance", "importance", undefined],
 	["tags", "tags", undefined],
 	["source", "source", undefined],
@@ -129,7 +139,7 @@ export function extractPrefixedMemoryRow(
 	return picked as unknown as RawMemoryRow;
 }
 
-export const EVENT_COLUMNS = `id::text AS id, entity_id AS "entityId", description, metadata::text AS metadata, timestamp`;
+export const EVENT_COLUMNS = `id::text AS id, namespace, entity_id AS "entityId", agent_id AS "agentId", session_id AS "sessionId", description, metadata::text AS metadata, timestamp`;
 
 export const META_COLUMNS = `key, embedding_dimensions AS "embeddingDimensions", embedding_model AS "embeddingModel", vector_type AS "vectorType"`;
 

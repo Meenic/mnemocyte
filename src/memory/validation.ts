@@ -2,34 +2,39 @@ import { MnemocyteError } from "../errors.js";
 import { DEFAULT_BOOSTS, DEFAULT_FUSION } from "../retrieval/scorer.js";
 import type {
 	AuditLogCursor,
-	BuildContextInput,
 	ConsolidateInput,
+	ContextInput,
 	Embedder,
 	FindDuplicatesInput,
 	ImportanceLevel,
 	ListAuditLogInput,
-	MemoryType,
+	MemoryKind,
 	MigrateInput,
+	NewMemory,
 	ProviderResilienceConfig,
 	PruneInput,
-	RecallInput,
-	RememberInput,
 	RetrievalConfig,
+	ScopedReadOptions,
+	SearchInput,
 } from "../types.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
 	assertPruneFilterHasSelector,
+	type StoreEntitySelector,
+	type StoreScope,
+	type StoreSelector,
+	type StoreVisibility,
 	type ValidatedPruneFilter,
 } from "./store.js";
 
-const MEMORY_TYPES = [
+const MEMORY_KINDS = [
 	"fact",
 	"preference",
 	"instruction",
 	"backstory",
 	"episode",
 	"session",
-] as const satisfies readonly MemoryType[];
+] as const satisfies readonly MemoryKind[];
 
 const IMPORTANCE_LEVELS = [
 	"low",
@@ -38,14 +43,15 @@ const IMPORTANCE_LEVELS = [
 	"critical",
 ] as const satisfies readonly ImportanceLevel[];
 
-export interface PreparedRememberInput extends Omit<RememberInput, "metadata"> {
+/** A {@link NewMemory} snapshot whose metadata is an owned deep copy. */
+export interface PreparedNewMemory extends Omit<NewMemory, "metadata"> {
 	metadata: OwnedJsonObject;
 }
 
-function isMemoryType(value: unknown): value is MemoryType {
+function isMemoryKind(value: unknown): value is MemoryKind {
 	return (
 		typeof value === "string" &&
-		(MEMORY_TYPES as readonly string[]).includes(value)
+		(MEMORY_KINDS as readonly string[]).includes(value)
 	);
 }
 
@@ -56,13 +62,13 @@ function isImportanceLevel(value: unknown): value is ImportanceLevel {
 	);
 }
 
-function assertMemoryType(
+function assertMemoryKind(
 	value: unknown,
 	field: string,
-): asserts value is MemoryType {
-	if (!isMemoryType(value)) {
+): asserts value is MemoryKind {
+	if (!isMemoryKind(value)) {
 		throw new MnemocyteError(
-			`${field} must be a known memory type.`,
+			`${field} must be a known memory kind.`,
 			"VALIDATION",
 		);
 	}
@@ -80,17 +86,17 @@ function assertImportanceLevel(
 	}
 }
 
-function assertMemoryTypeArray(
+function assertMemoryKindArray(
 	value: unknown,
 	field: string,
-): asserts value is readonly MemoryType[] {
+): asserts value is readonly MemoryKind[] {
 	if (!Array.isArray(value)) {
 		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
 	}
 	for (const item of value) {
-		if (!isMemoryType(item)) {
+		if (!isMemoryKind(item)) {
 			throw new MnemocyteError(
-				`${field} must contain only known memory types.`,
+				`${field} must contain only known memory kinds.`,
 				"VALIDATION",
 			);
 		}
@@ -113,7 +119,7 @@ export function assertNonEmptyString(
 	}
 }
 
-function assertOptionalSignal(signal: AbortSignal | undefined): void {
+export function assertOptionalSignal(signal: AbortSignal | undefined): void {
 	if (
 		signal !== undefined &&
 		(typeof signal !== "object" ||
@@ -269,8 +275,258 @@ export function validateProviderResilienceConfig(
 	}
 }
 
-export function validateBuildContextInput(input: BuildContextInput): void {
+function assertObject(value: unknown, field: string): void {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new MnemocyteError(`${field} must be an object.`, "VALIDATION");
+	}
+}
+
+function optionalScopeField(value: unknown, field: string): string | null {
+	if (value === undefined) {
+		return null;
+	}
+	assertNonEmptyString(value, field);
+	return value;
+}
+
+/**
+ * Validate a {@link MemoryScope} and return a detached copy, with `null` for
+ * an omitted agent or session.
+ */
+export function validateScope(value: unknown, field = "scope"): StoreScope {
+	assertObject(value, field);
+	const scope = value as Record<string, unknown>;
+	assertNonEmptyString(scope.namespace, `${field}.namespace`);
+	assertNonEmptyString(scope.entityId, `${field}.entityId`);
+	return {
+		namespace: scope.namespace,
+		entityId: scope.entityId,
+		agentId: optionalScopeField(scope.agentId, `${field}.agentId`),
+		sessionId: optionalScopeField(scope.sessionId, `${field}.sessionId`),
+	};
+}
+
+function assertOptionalBoolean(value: unknown, field: string): void {
+	if (value !== undefined && typeof value !== "boolean") {
+		throw new MnemocyteError(`${field} must be a boolean.`, "VALIDATION");
+	}
+}
+
+/** What a read at `scope` sees; see {@link StoreVisibility}. */
+export function validateVisibility(
+	input: ScopedReadOptions & { scope: unknown },
+): StoreVisibility {
+	const scope = validateScope(input.scope);
+	assertOptionalBoolean(input.exactAgent, "exactAgent");
+	assertOptionalBoolean(input.exactSession, "exactSession");
+	return {
+		scope,
+		exactAgent: input.exactAgent === true,
+		exactSession: input.exactSession === true,
+	};
+}
+
+/** Visibility for a write by id: shared rows included. */
+export function writeVisibility(scope: StoreScope): StoreVisibility {
+	return { scope, exactAgent: false, exactSession: false };
+}
+
+function selectorFromScope(
+	value: unknown,
+	field: string,
+	requireEntity: boolean,
+): StoreSelector {
+	assertObject(value, field);
+	const scope = value as Record<string, unknown>;
+	assertNonEmptyString(scope.namespace, `${field}.namespace`);
+	if (requireEntity || scope.entityId !== undefined) {
+		assertNonEmptyString(scope.entityId, `${field}.entityId`);
+	}
+	const agentId = optionalScopeField(scope.agentId, `${field}.agentId`);
+	const sessionId = optionalScopeField(scope.sessionId, `${field}.sessionId`);
+	return {
+		namespace: scope.namespace,
+		...(scope.entityId === undefined
+			? {}
+			: { entityId: scope.entityId as string }),
+		...(agentId === null ? {} : { agentId }),
+		...(sessionId === null ? {} : { sessionId }),
+	};
+}
+
+/** Validate a scope used as a selector for one entity (`deleteScope`, audit). */
+export function validateEntitySelector(value: unknown): StoreEntitySelector {
+	// selectorFromScope checked namespace and entityId as non-empty strings.
+	return selectorFromScope(value, "scope", true) as StoreEntitySelector;
+}
+
+/**
+ * Validate `{ scope }` or `{ allNamespaces: true }`: exactly one of them.
+ * `allNamespaces` selects every namespace (a null namespace).
+ */
+export function validateSelectorInput(input: {
+	scope?: unknown;
+	allNamespaces?: unknown;
+}): StoreSelector {
+	assertObject(input, "input");
+	if (input.allNamespaces !== undefined && input.allNamespaces !== true) {
+		throw new MnemocyteError("allNamespaces must be true.", "VALIDATION");
+	}
+	if (input.allNamespaces === true) {
+		if (input.scope !== undefined) {
+			throw new MnemocyteError(
+				"Pass either scope or allNamespaces: true, not both.",
+				"VALIDATION",
+			);
+		}
+		return { namespace: null };
+	}
+	if (input.scope === undefined) {
+		throw new MnemocyteError(
+			"A scope (at least a namespace) or allNamespaces: true is required.",
+			"VALIDATION",
+		);
+	}
+	return selectorFromScope(input.scope, "scope", false);
+}
+
+function assertTags(value: unknown, field = "tags"): void {
+	if (!Array.isArray(value)) {
+		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
+	}
+	for (const tag of value as readonly unknown[]) {
+		if (typeof tag !== "string") {
+			throw new MnemocyteError(
+				`${field} must contain only strings.`,
+				"VALIDATION",
+			);
+		}
+	}
+}
+
+function assertConfidence(value: unknown): void {
+	if (
+		typeof value !== "number" ||
+		!Number.isFinite(value) ||
+		value < 0 ||
+		value > 1
+	) {
+		throw new MnemocyteError(
+			"confidence must be a number between 0 and 1.",
+			"VALIDATION",
+		);
+	}
+}
+
+export function validateNewMemory(input: PreparedNewMemory): void {
+	assertNonEmptyString(input.content, "content");
+	if (input.key !== undefined) {
+		assertNonEmptyString(input.key, "key");
+	}
+	if (input.kind !== undefined) {
+		assertMemoryKind(input.kind, "kind");
+	}
+	if (input.importance !== undefined) {
+		assertImportanceLevel(input.importance, "importance");
+	}
+	if (input.tags !== undefined) {
+		assertTags(input.tags);
+	}
+	if (input.source !== undefined && typeof input.source !== "string") {
+		throw new MnemocyteError("source must be a string.", "VALIDATION");
+	}
+	if (input.confidence !== undefined) {
+		assertConfidence(input.confidence);
+	}
+	if (input.expiresAt !== undefined) {
+		assertValidDate(input.expiresAt, "expiresAt");
+	}
+}
+
+/** Keys must be distinct in one batch: one statement cannot update a row twice. */
+export function assertDistinctKeys(memories: readonly NewMemory[]): void {
+	const seen = new Set<string>();
+	for (const memory of memories) {
+		if (memory.key === undefined) {
+			continue;
+		}
+		if (seen.has(memory.key)) {
+			throw new MnemocyteError(
+				"memories must not repeat a key within one addMany call.",
+				"VALIDATION",
+			);
+		}
+		seen.add(memory.key);
+	}
+}
+
+/** Shared filter fields of search, list, context and duplicate scans. */
+function validateMemoryFilterFields(input: {
+	kinds?: unknown;
+	tags?: unknown;
+	includeSuperseded?: unknown;
+	includeExpired?: unknown;
+}): void {
+	if (input.kinds !== undefined) {
+		assertMemoryKindArray(input.kinds, "kinds");
+	}
+	if (input.tags !== undefined) {
+		assertTags(input.tags);
+	}
+	assertOptionalBoolean(input.includeSuperseded, "includeSuperseded");
+	assertOptionalBoolean(input.includeExpired, "includeExpired");
+}
+
+export function validateSearchInput(input: SearchInput): StoreVisibility {
+	const visibility = validateVisibility(input);
+	assertNonEmptyString(input.query, "query");
+	if (input.limit !== undefined) {
+		assertLimit(input.limit);
+	}
+	if (input.minScore !== undefined) {
+		assertMinScore(input.minScore);
+	}
+	validateMemoryFilterFields(input);
+	if (input.before !== undefined) {
+		assertValidDate(input.before, "before");
+	}
+	if (input.after !== undefined) {
+		assertValidDate(input.after, "after");
+	}
+	assertOptionalBoolean(input.explain, "explain");
 	assertOptionalTrackAccess(input.trackAccess);
+	assertOptionalSignal(input.signal);
+	return visibility;
+}
+
+export function validateListFilter(input: {
+	limit?: number;
+	kinds?: unknown;
+	tags?: unknown;
+	includeSuperseded?: unknown;
+	includeExpired?: unknown;
+	signal?: AbortSignal;
+}): void {
+	if (input.limit !== undefined) {
+		assertLimit(input.limit);
+	}
+	validateMemoryFilterFields(input);
+	assertOptionalSignal(input.signal);
+}
+
+export function validateContextInput(input: ContextInput): void {
+	assertOptionalTrackAccess(input.trackAccess);
+	if (
+		input.format !== undefined &&
+		input.format !== "markdown" &&
+		input.format !== "plain" &&
+		input.format !== "xml"
+	) {
+		throw new MnemocyteError(
+			'format must be "markdown", "plain" or "xml".',
+			"VALIDATION",
+		);
+	}
 	if (
 		input.maxTokens !== undefined &&
 		(!Number.isInteger(input.maxTokens) || input.maxTokens < 1)
@@ -282,77 +538,23 @@ export function validateBuildContextInput(input: BuildContextInput): void {
 	}
 }
 
-export function validateRememberInput(input: PreparedRememberInput): void {
-	assertNonEmptyString(input.entityId, "entityId");
-	assertNonEmptyString(input.content, "content");
-	if (input.type !== undefined) {
-		assertMemoryType(input.type, "type");
-	}
-	if (input.importance !== undefined) {
-		assertImportanceLevel(input.importance, "importance");
-	}
-	if (input.tags !== undefined) {
-		if (!Array.isArray(input.tags)) {
-			throw new MnemocyteError("tags must be an array.", "VALIDATION");
-		}
-		for (const tag of input.tags as readonly unknown[]) {
-			if (typeof tag !== "string") {
-				throw new MnemocyteError(
-					"tags must contain only strings.",
-					"VALIDATION",
-				);
-			}
-		}
-	}
-	if (input.source !== undefined && typeof input.source !== "string") {
-		throw new MnemocyteError("source must be a string.", "VALIDATION");
-	}
-	if (
-		input.confidence !== undefined &&
-		(!Number.isFinite(input.confidence) ||
-			input.confidence < 0 ||
-			input.confidence > 1)
-	) {
-		throw new MnemocyteError(
-			"confidence must be a number between 0 and 1.",
-			"VALIDATION",
-		);
-	}
-	if (input.expiresAt !== undefined) {
-		assertValidDate(input.expiresAt, "expiresAt");
-	}
-}
-
-export function validateRecallInput(input: RecallInput): void {
-	assertNonEmptyString(input.entityId, "entityId");
-	assertNonEmptyString(input.query, "query");
-	if (input.limit !== undefined) {
-		assertLimit(input.limit);
-	}
-	if (input.minScore !== undefined) {
-		assertMinScore(input.minScore);
-	}
-	if (input.types !== undefined) {
-		assertMemoryTypeArray(input.types, "types");
-	}
-	assertOptionalTrackAccess(input.trackAccess);
-}
-
 function assertOptionalTrackAccess(value: unknown): void {
 	if (value !== undefined && typeof value !== "boolean") {
 		throw new MnemocyteError("trackAccess must be a boolean.", "VALIDATION");
 	}
 }
 
-export function contextInputToRecallInput(
-	input: BuildContextInput,
-): RecallInput {
+export function contextInputToSearchInput(input: ContextInput): SearchInput {
 	return {
-		entityId: input.entityId,
+		scope: input.scope,
 		query: input.query,
+		...(input.exactAgent === undefined ? {} : { exactAgent: input.exactAgent }),
+		...(input.exactSession === undefined
+			? {}
+			: { exactSession: input.exactSession }),
 		...(input.limit === undefined ? {} : { limit: input.limit }),
 		...(input.minScore === undefined ? {} : { minScore: input.minScore }),
-		...(input.types === undefined ? {} : { types: input.types }),
+		...(input.kinds === undefined ? {} : { kinds: input.kinds }),
 		...(input.tags === undefined ? {} : { tags: input.tags }),
 		...(input.includeSuperseded === undefined
 			? {}
@@ -363,26 +565,73 @@ export function contextInputToRecallInput(
 		...(input.trackAccess === undefined
 			? {}
 			: { trackAccess: input.trackAccess }),
+		...(input.signal === undefined ? {} : { signal: input.signal }),
 	};
+}
+
+/** The fields of an `update` call, snapshotted. */
+export interface PreparedUpdateFields {
+	content?: string;
+	key?: string | null;
+	kind?: MemoryKind;
+	importance?: ImportanceLevel;
+	tags?: readonly string[];
+	source?: string | null;
+	metadata?: OwnedJsonObject;
+	confidence?: number;
+	expiresAt?: Date | null;
+}
+
+export function validateUpdateFields(input: PreparedUpdateFields): void {
+	if (input.content !== undefined) {
+		assertNonEmptyString(input.content, "content");
+	}
+	if (input.key !== undefined && input.key !== null) {
+		assertNonEmptyString(input.key, "key");
+	}
+	if (input.kind !== undefined) {
+		assertMemoryKind(input.kind, "kind");
+	}
+	if (input.importance !== undefined) {
+		assertImportanceLevel(input.importance, "importance");
+	}
+	if (input.tags !== undefined) {
+		assertTags(input.tags);
+	}
+	if (
+		input.source !== undefined &&
+		input.source !== null &&
+		typeof input.source !== "string"
+	) {
+		throw new MnemocyteError("source must be a string or null.", "VALIDATION");
+	}
+	if (input.confidence !== undefined) {
+		assertConfidence(input.confidence);
+	}
+	if (input.expiresAt !== undefined && input.expiresAt !== null) {
+		assertValidDate(input.expiresAt, "expiresAt");
+	}
+	if (Object.values(input).every((value) => value === undefined)) {
+		throw new MnemocyteError(
+			"update requires at least one field to change.",
+			"VALIDATION",
+		);
+	}
 }
 
 /**
  * Validate and normalize a {@link PruneInput}. Throws a `"VALIDATION"`
- * {@link MnemocyteError} for malformed fields or when normalization leaves no
- * effective selector, preventing surprise full-table deletes.
+ * {@link MnemocyteError} for malformed fields, a missing scope, or when
+ * normalization leaves no selector besides the scope.
  */
 export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
-	if (input.entityId !== undefined) {
-		assertNonEmptyString(input.entityId, "entityId");
-	}
+	const selector = validateSelectorInput(input);
 	for (const [field, value] of [
 		["expired", input.expired],
 		["superseded", input.superseded],
 		["dryRun", input.dryRun],
 	] as const) {
-		if (value !== undefined && typeof value !== "boolean") {
-			throw new MnemocyteError(`${field} must be a boolean.`, "VALIDATION");
-		}
+		assertOptionalBoolean(value, field);
 	}
 	for (const [field, value] of [
 		["createdBefore", input.createdBefore],
@@ -392,12 +641,12 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 			assertValidDate(value, field);
 		}
 	}
-	let types: readonly MemoryType[] | undefined;
-	if (input.types !== undefined) {
-		assertMemoryTypeArray(input.types, "types");
-		const normalized = new Set<MemoryType>(input.types);
+	let kinds: readonly MemoryKind[] | undefined;
+	if (input.kinds !== undefined) {
+		assertMemoryKindArray(input.kinds, "kinds");
+		const normalized = new Set<MemoryKind>(input.kinds);
 		if (normalized.size > 0) {
-			types = [...normalized];
+			kinds = [...normalized];
 		}
 	}
 	let tags: readonly string[] | undefined;
@@ -424,7 +673,7 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	}
 	assertOptionalSignal(input.signal);
 	const filter: ValidatedPruneFilter = {
-		...(input.entityId === undefined ? {} : { entityId: input.entityId }),
+		selector,
 		...(input.expired === true ? { expired: true as const } : {}),
 		...(input.superseded === true ? { superseded: true as const } : {}),
 		...(input.createdBefore === undefined
@@ -433,7 +682,7 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 		...(input.notAccessedSince === undefined
 			? {}
 			: { notAccessedSince: new Date(input.notAccessedSince) }),
-		...(types === undefined ? {} : { types }),
+		...(kinds === undefined ? {} : { kinds }),
 		...(tags === undefined ? {} : { tags }),
 		...(input.maxImportance === undefined
 			? {}
@@ -444,12 +693,11 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	return filter;
 }
 
-/**
- * Validate a {@link FindDuplicatesInput} and throw a `"VALIDATION"`
- * {@link MnemocyteError} for malformed `threshold` / `limit` values.
- */
-export function validateFindDuplicatesInput(input: FindDuplicatesInput): void {
-	assertNonEmptyString(input.entityId, "entityId");
+/** Validate a {@link FindDuplicatesInput} and return its visibility. */
+export function validateFindDuplicatesInput(
+	input: FindDuplicatesInput,
+): StoreVisibility {
+	const visibility = validateVisibility(input);
 	if (input.threshold !== undefined) {
 		if (
 			!Number.isFinite(input.threshold) ||
@@ -465,19 +713,21 @@ export function validateFindDuplicatesInput(input: FindDuplicatesInput): void {
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
 	}
-	if (input.types !== undefined) {
-		assertMemoryTypeArray(input.types, "types");
-	}
+	validateMemoryFilterFields(input);
+	assertOptionalSignal(input.signal);
+	return visibility;
 }
 
 /**
- * Validate a {@link ConsolidateInput} and throw a `"VALIDATION"`
- * {@link MnemocyteError} for malformed inputs (empty `supersededIds`
- * a `survivorId` appearing in `supersededIds`, or duplicate loser IDs).
+ * Validate a {@link ConsolidateInput} (non-empty, distinct `supersededIds`
+ * without the survivor) and return its scope.
  */
-export function validateConsolidateInput(input: ConsolidateInput): void {
-	assertNonEmptyString(input.entityId, "entityId");
+export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
+	const scope = validateScope(input.scope);
 	assertNonEmptyString(input.survivorId, "survivorId");
+	if (!Array.isArray(input.supersededIds)) {
+		throw new MnemocyteError("supersededIds must be an array.", "VALIDATION");
+	}
 	if (input.supersededIds.length === 0) {
 		throw new MnemocyteError(
 			"supersededIds must contain at least one memory id.",
@@ -501,16 +751,24 @@ export function validateConsolidateInput(input: ConsolidateInput): void {
 		}
 		seenIds.add(id);
 	}
+	assertOptionalBoolean(input.mergeTags, "mergeTags");
+	assertOptionalSignal(input.signal);
+	return scope;
 }
 
-/**
- * Validate a {@link ListAuditLogInput} and throw a `"VALIDATION"`
- * {@link MnemocyteError} when malformed.
- */
-export function validateListAuditLogInput(input: ListAuditLogInput): void {
-	assertNonEmptyString(input.entityId, "entityId");
+/** Validate a {@link ListAuditLogInput} and return its selector. */
+export function validateListAuditLogInput(
+	input: ListAuditLogInput,
+): StoreEntitySelector {
+	const selector = validateEntitySelector(input.scope);
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
+	}
+	if (input.before !== undefined) {
+		assertValidDate(input.before, "before");
+	}
+	if (input.after !== undefined) {
+		assertValidDate(input.after, "after");
 	}
 	for (const [field, cursor] of [
 		["beforeCursor", input.beforeCursor],
@@ -521,6 +779,8 @@ export function validateListAuditLogInput(input: ListAuditLogInput): void {
 		}
 		assertAuditLogCursor(cursor, field);
 	}
+	assertOptionalSignal(input.signal);
+	return selector;
 }
 
 function assertAuditLogCursor(

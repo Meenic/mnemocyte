@@ -7,27 +7,28 @@ import {
 } from "../retrieval/scorer.js";
 import type {
 	AuditEvent,
-	EntityStats,
-	GlobalStats,
 	Memory,
-	MnemocyteClient,
-	MnemocyteConfig,
+	MemoryClient,
+	MemoryConfig,
+	MemoryStats,
 } from "../types.js";
 import { createMemoryClient } from "./client-core.js";
-import {
-	DEFAULT_AUDIT_LOG_LIMIT,
-	DEFAULT_DUPLICATE_LIMIT,
-	DEFAULT_DUPLICATE_THRESHOLD,
-} from "./defaults.js";
 import { memoryHasDependentsError } from "./deletion.js";
 import {
 	isExpired,
+	isSameScope,
+	isSelected,
+	isVisible,
 	matchesDuplicateFilter,
+	matchesMemoryFilter,
 	matchesPruneFilter,
-	matchesRecallFilter,
 } from "./filters.js";
-import { cloneJsonObject } from "./json.js";
-import { cloneMemory, createEventId, type StoredMemory } from "./records.js";
+import {
+	cloneAuditEvent,
+	cloneMemory,
+	createEventId,
+	type StoredMemory,
+} from "./records.js";
 import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
@@ -36,22 +37,13 @@ import {
 	type StoreDuplicatePair,
 	type StoreLexicalCandidate,
 	type StoreLexicalSearchInput,
+	type StoreListPosition,
 	type StorePruneEntityDeletion,
 	type StoreVectorCandidate,
 	type StoreVectorSearchInput,
 } from "./store.js";
 
-function cloneAuditEvent(event: AuditEvent): AuditEvent {
-	return {
-		id: event.id,
-		entityId: event.entityId,
-		description: event.description,
-		metadata: cloneJsonObject(event.metadata),
-		timestamp: new Date(event.timestamp),
-	};
-}
-
-function compareAuditPositions(
+function comparePositions(
 	a: { id: string; timestamp: Date },
 	b: { id: string; timestamp: Date },
 ): number {
@@ -65,41 +57,96 @@ function compareAuditPositions(
 	return a.id < b.id ? -1 : 1;
 }
 
-function assertNoDependentMemories(
-	memories: ReadonlyMap<string, StoredMemory>,
-	targetIds: ReadonlySet<string>,
-): void {
-	for (const memory of memories.values()) {
-		if (memory.supersededBy !== null && targetIds.has(memory.supersededBy)) {
-			throw memoryHasDependentsError();
-		}
-	}
+function listPosition(memory: Memory): { id: string; timestamp: Date } {
+	return { id: memory.id, timestamp: memory.createdAt };
+}
+
+function cursorPosition(position: StoreListPosition): {
+	id: string;
+	timestamp: Date;
+} {
+	return { id: position.id, timestamp: position.createdAt };
+}
+
+function keyConflictError(): MnemocyteError {
+	return new MnemocyteError(
+		"Another memory in this scope already uses that key.",
+		"CONFLICT",
+	);
 }
 
 export function createInMemoryStore(): MemoryStore {
 	const memories = new Map<string, StoredMemory>();
 	const auditLog: AuditEvent[] = [];
 
+	function findByKey(
+		scope: StoredMemory["scope"],
+		key: string,
+	): StoredMemory | undefined {
+		for (const memory of memories.values()) {
+			if (memory.key === key && isSameScope(memory.scope, scope)) {
+				return memory;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Throws `"CONFLICT"` when a memory outside `targetIds` (or any memory when
+	 * `allowSelectedDependents` is false) references a target.
+	 */
+	function assertNoDependents(
+		targetIds: ReadonlySet<string>,
+		allowSelectedDependents: boolean,
+	): void {
+		for (const memory of memories.values()) {
+			if (
+				memory.supersededBy !== null &&
+				targetIds.has(memory.supersededBy) &&
+				!(allowSelectedDependents && targetIds.has(memory.id))
+			) {
+				throw memoryHasDependentsError();
+			}
+		}
+	}
+
 	return {
 		backend: "in-memory",
-		async ensureSchema() {},
 		async migrate() {
 			return { applied: [], adopted: [] };
 		},
 		async ensureEmbeddingCompatibility() {},
 		async insertMemories(rows) {
-			const inserted: Memory[] = [];
+			const results: Memory[] = [];
 			for (const row of rows) {
-				memories.set(row.id, row);
-				inserted.push(cloneMemory(row));
+				const existing =
+					row.key === null ? undefined : findByKey(row.scope, row.key);
+				if (!existing) {
+					memories.set(row.id, row);
+					results.push(cloneMemory(row));
+					continue;
+				}
+				existing.content = row.content;
+				existing.kind = row.kind;
+				existing.importance = row.importance;
+				existing.tags = row.tags;
+				existing.source = row.source;
+				existing.metadata = row.metadata;
+				existing.confidence = row.confidence;
+				existing.embedding = row.embedding;
+				existing.embeddingModel = row.embeddingModel;
+				existing.embeddingDimensions = row.embeddingDimensions;
+				existing.expiresAt = row.expiresAt;
+				existing.updatedAt = row.updatedAt;
+				results.push(cloneMemory(existing));
 			}
-			return inserted;
+			return results;
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			const now = new Date();
 			const minVectorScore = input.minVectorScore ?? 0;
 			return Array.from(memories.values())
-				.filter((memory) => matchesRecallFilter(memory, input, now))
+				.filter((memory) => matchesMemoryFilter(memory, input, now))
 				.map((memory) => ({
 					memory: cloneMemory(memory),
 					vectorScore: toVectorScore(
@@ -114,7 +161,7 @@ export function createInMemoryStore(): MemoryStore {
 			const now = new Date();
 			const scoreLexical = createLexicalScorer(input.query);
 			return Array.from(memories.values())
-				.filter((memory) => matchesRecallFilter(memory, input, now))
+				.filter((memory) => matchesMemoryFilter(memory, input, now))
 				.map((memory) => ({
 					memory: cloneMemory(memory),
 					lexicalScore: scoreLexical(memory.content),
@@ -123,33 +170,122 @@ export function createInMemoryStore(): MemoryStore {
 				.sort((a, b) => b.lexicalScore - a.lexicalScore)
 				.slice(0, input.limit) satisfies StoreLexicalCandidate[];
 		},
-		async markMemoriesAccessed(entityId, memoryIds) {
+		async listMemories(input, options) {
+			throwIfAborted(options?.signal);
+			const now = new Date();
+			const after =
+				input.position === undefined
+					? undefined
+					: cursorPosition(input.position);
+			return Array.from(memories.values())
+				.filter(
+					(memory) =>
+						matchesMemoryFilter(memory, input, now) &&
+						(after === undefined ||
+							comparePositions(listPosition(memory), after) < 0),
+				)
+				.sort((a, b) => comparePositions(listPosition(b), listPosition(a)))
+				.slice(0, input.limit)
+				.map(cloneMemory);
+		},
+		async markMemoriesAccessed(visibility, memoryIds) {
 			const now = new Date();
 			for (const id of memoryIds) {
 				const memory = memories.get(id);
-				if (memory && memory.entityId === entityId) {
+				if (memory && isVisible(memory.scope, visibility)) {
 					memory.lastAccessedAt = now;
 					memory.accessCount += 1;
 				}
 			}
 		},
-		async deleteMemory(entityId, memoryId) {
+		async getMemory(visibility, memoryId, options) {
+			throwIfAborted(options?.signal);
 			const memory = memories.get(memoryId);
-			if (!memory || memory.entityId !== entityId) {
+			return memory && isVisible(memory.scope, visibility)
+				? cloneMemory(memory)
+				: null;
+		},
+		async getMemoryByKey(scope, key, options) {
+			throwIfAborted(options?.signal);
+			const memory = findByKey(scope, key);
+			return memory ? cloneMemory(memory) : null;
+		},
+		async updateMemory(input) {
+			const memory = memories.get(input.id);
+			if (!memory || !isVisible(memory.scope, input.visibility)) {
+				return null;
+			}
+			const { patch } = input;
+			if (patch.key !== undefined && patch.key !== null) {
+				const holder = findByKey(memory.scope, patch.key);
+				if (holder && holder.id !== memory.id) {
+					throw keyConflictError();
+				}
+			}
+			if (patch.content !== undefined) {
+				memory.content = patch.content;
+			}
+			if (patch.embedding !== undefined) {
+				memory.embedding = [...patch.embedding];
+			}
+			if (patch.embeddingModel !== undefined) {
+				memory.embeddingModel = patch.embeddingModel;
+			}
+			if (patch.embeddingDimensions !== undefined) {
+				memory.embeddingDimensions = patch.embeddingDimensions;
+			}
+			if (patch.key !== undefined) {
+				memory.key = patch.key;
+			}
+			if (patch.kind !== undefined) {
+				memory.kind = patch.kind;
+			}
+			if (patch.importance !== undefined) {
+				memory.importance = patch.importance;
+			}
+			if (patch.tags !== undefined) {
+				memory.tags = [...patch.tags];
+			}
+			if (patch.source !== undefined) {
+				memory.source = patch.source;
+			}
+			if (patch.metadata !== undefined) {
+				memory.metadata = patch.metadata;
+			}
+			if (patch.confidence !== undefined) {
+				memory.confidence = patch.confidence;
+			}
+			if (patch.expiresAt !== undefined) {
+				memory.expiresAt = patch.expiresAt;
+			}
+			memory.updatedAt = input.now;
+			return cloneMemory(memory);
+		},
+		async deleteMemory(visibility, memoryId, options) {
+			throwIfAborted(options?.signal);
+			const memory = memories.get(memoryId);
+			if (!memory || !isVisible(memory.scope, visibility)) {
 				return false;
 			}
-			assertNoDependentMemories(memories, new Set([memoryId]));
+			assertNoDependents(new Set([memoryId]), false);
 			return memories.delete(memoryId);
 		},
-		async deleteMemoriesForEntity(entityId) {
+		async deleteScope(selector, options) {
+			throwIfAborted(options?.signal);
 			const targetIds = new Set(
 				Array.from(memories.values())
-					.filter((memory) => memory.entityId === entityId)
+					.filter((memory) => isSelected(memory.scope, selector))
 					.map((memory) => memory.id),
 			);
-			assertNoDependentMemories(memories, targetIds);
+			assertNoDependents(targetIds, true);
 			for (const id of targetIds) {
 				memories.delete(id);
+			}
+			for (let index = auditLog.length - 1; index >= 0; index -= 1) {
+				const event = auditLog[index];
+				if (event && isSelected(event.scope, selector)) {
+					auditLog.splice(index, 1);
+				}
 			}
 			return targetIds.size;
 		},
@@ -165,25 +301,33 @@ export function createInMemoryStore(): MemoryStore {
 				}
 			}
 			const dryRun = input.dryRun === true;
-			let deletedByEntity: StorePruneEntityDeletion[] = [];
+			const deletedByEntity: StorePruneEntityDeletion[] = [];
 			if (!dryRun) {
 				throwIfAborted(options?.signal);
-				assertNoDependentMemories(
-					memories,
-					new Set(matched.map((memory) => memory.id)),
-				);
-				const deletedCounts = new Map<string, number>();
+				assertNoDependents(new Set(matched.map((memory) => memory.id)), false);
+				const deletedCounts = new Map<string, StorePruneEntityDeletion>();
 				for (const memory of matched) {
 					memories.delete(memory.id);
-					deletedCounts.set(
-						memory.entityId,
-						(deletedCounts.get(memory.entityId) ?? 0) + 1,
-					);
+					const entityKey = JSON.stringify([
+						memory.scope.namespace,
+						memory.scope.entityId,
+					]);
+					const detail = deletedCounts.get(entityKey) ?? {
+						namespace: memory.scope.namespace,
+						entityId: memory.scope.entityId,
+						deletedCount: 0,
+					};
+					detail.deletedCount += 1;
+					deletedCounts.set(entityKey, detail);
 				}
-				deletedByEntity = Array.from(
-					deletedCounts,
-					([entityId, deletedCount]) => ({ entityId, deletedCount }),
-				).sort((a, b) => a.entityId.localeCompare(b.entityId));
+				// Same order as the Postgres store: namespace, then entity.
+				deletedByEntity.push(
+					...[...deletedCounts.values()].sort(
+						(a, b) =>
+							a.namespace.localeCompare(b.namespace) ||
+							a.entityId.localeCompare(b.entityId),
+					),
+				);
 			}
 			return {
 				matchedCount: matched.length,
@@ -194,8 +338,6 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async findDuplicatePairs(input, options) {
 			throwIfAborted(options?.signal);
-			const threshold = input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
-			const limit = input.limit ?? DEFAULT_DUPLICATE_LIMIT;
 			const now = new Date();
 			const candidates = Array.from(memories.values()).filter((memory) => {
 				throwIfAborted(options?.signal);
@@ -218,7 +360,7 @@ export function createInMemoryStore(): MemoryStore {
 						0,
 						Math.min(1, cosineSimilarity(a.embedding, b.embedding)),
 					);
-					if (similarity >= threshold) {
+					if (similarity >= input.threshold) {
 						pairs.push({
 							a: cloneMemory(a),
 							b: cloneMemory(b),
@@ -228,18 +370,17 @@ export function createInMemoryStore(): MemoryStore {
 				}
 			}
 			pairs.sort((x, y) => y.similarity - x.similarity);
-			return pairs.slice(0, limit);
+			return pairs.slice(0, input.limit);
 		},
 		async addAuditEvents(events) {
 			auditLog.push(...events.map(cloneAuditEvent));
 		},
 		async listAuditLog(input, options) {
 			throwIfAborted(options?.signal);
-			const limit = input.limit ?? DEFAULT_AUDIT_LOG_LIMIT;
 			return auditLog
 				.filter((event) => {
 					throwIfAborted(options?.signal);
-					if (event.entityId !== input.entityId) {
+					if (!isSelected(event.scope, input.selector)) {
 						return false;
 					}
 					if (
@@ -256,36 +397,27 @@ export function createInMemoryStore(): MemoryStore {
 					}
 					if (
 						input.beforeCursor !== undefined &&
-						compareAuditPositions(event, input.beforeCursor) >= 0
+						comparePositions(event, input.beforeCursor) >= 0
 					) {
 						return false;
 					}
 					if (
 						input.afterCursor !== undefined &&
-						compareAuditPositions(event, input.afterCursor) <= 0
+						comparePositions(event, input.afterCursor) <= 0
 					) {
 						return false;
 					}
 					return true;
 				})
-				.sort((a, b) => {
-					return compareAuditPositions(b, a);
-				})
-				.slice(0, limit)
+				.sort((a, b) => comparePositions(b, a))
+				.slice(0, input.limit)
 				.map(cloneAuditEvent);
 		},
-		async getMemory(entityId, memoryId, options) {
-			throwIfAborted(options?.signal);
-			const memory = memories.get(memoryId);
-			return memory && memory.entityId === entityId
-				? cloneMemory(memory)
-				: null;
-		},
-		async loadConsolidationTargets(entityId, ids, options) {
+		async loadConsolidationTargets(visibility, ids, options) {
 			return ids.flatMap((id) => {
 				throwIfAborted(options?.signal);
 				const memory = memories.get(id);
-				if (!memory || memory.entityId !== entityId) {
+				if (!memory || !isVisible(memory.scope, visibility)) {
 					return [];
 				}
 				return [
@@ -305,7 +437,7 @@ export function createInMemoryStore(): MemoryStore {
 			const survivor = memories.get(input.survivorId);
 			if (
 				!survivor ||
-				survivor.entityId !== input.entityId ||
+				!isVisible(survivor.scope, input.visibility) ||
 				survivor.supersededBy !== null
 			) {
 				throw new MnemocyteError(
@@ -318,7 +450,7 @@ export function createInMemoryStore(): MemoryStore {
 			for (const id of input.supersededIds) {
 				throwIfAborted(options?.signal);
 				const memory = memories.get(id);
-				if (!memory || memory.entityId !== input.entityId) {
+				if (!memory || !isVisible(memory.scope, input.visibility)) {
 					continue;
 				}
 				targets.push(memory);
@@ -353,10 +485,10 @@ export function createInMemoryStore(): MemoryStore {
 					mergedSurvivorTags = [...mergedTags];
 				}
 			}
-			const auditEvents = input.auditEnabled
+			const auditEvents: AuditEvent[] = input.auditEnabled
 				? newlySuperseded.map((memory) => ({
 						id: createEventId(),
-						entityId: input.entityId,
+						scope: { ...input.visibility.scope },
 						description: "memory.superseded",
 						metadata: {
 							memoryId: memory.id,
@@ -375,49 +507,33 @@ export function createInMemoryStore(): MemoryStore {
 				survivor.tags = mergedSurvivorTags;
 				survivor.updatedAt = input.now;
 			}
-			if (input.auditEnabled) {
-				auditLog.push(...auditEvents);
-			}
+			auditLog.push(...auditEvents);
 			return { supersededIds: newlySuperseded.map((memory) => memory.id) };
 		},
-		async stats(input, now) {
-			const allMemories = Array.from(memories.values());
-			const selected = input?.entityId
-				? allMemories.filter((memory) => memory.entityId === input.entityId)
-				: allMemories;
-			const activeMemoryCount = selected.filter(
-				(memory) => !isExpired(memory, now) && memory.supersededBy === null,
-			).length;
-			const expiredMemoryCount = selected.filter((memory) =>
-				isExpired(memory, now),
-			).length;
-			const supersededMemoryCount = selected.filter(
-				(memory) => memory.supersededBy !== null,
-			).length;
-			if (input?.entityId) {
-				return {
-					entityId: input.entityId,
-					memoryCount: selected.length,
-					activeMemoryCount,
-					expiredMemoryCount,
-					supersededMemoryCount,
-				} satisfies EntityStats;
-			}
+		async stats(selector, now) {
+			const selected = Array.from(memories.values()).filter((memory) =>
+				isSelected(memory.scope, selector),
+			);
 			return {
-				entityCount: new Set(allMemories.map((memory) => memory.entityId)).size,
+				entityCount: new Set(
+					selected.map((memory) =>
+						JSON.stringify([memory.scope.namespace, memory.scope.entityId]),
+					),
+				).size,
 				memoryCount: selected.length,
-				activeMemoryCount,
-				expiredMemoryCount,
-				supersededMemoryCount,
-			} satisfies GlobalStats;
-		},
-		async close() {
-			memories.clear();
-			auditLog.length = 0;
+				activeMemoryCount: selected.filter(
+					(memory) => !isExpired(memory, now) && memory.supersededBy === null,
+				).length,
+				expiredMemoryCount: selected.filter((memory) => isExpired(memory, now))
+					.length,
+				supersededMemoryCount: selected.filter(
+					(memory) => memory.supersededBy !== null,
+				).length,
+			} satisfies MemoryStats;
 		},
 	};
 }
 
-export function createInMemoryClient(config: MnemocyteConfig): MnemocyteClient {
+export function createInMemoryClient(config: MemoryConfig): MemoryClient {
 	return createMemoryClient(config, createInMemoryStore());
 }

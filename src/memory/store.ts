@@ -1,56 +1,87 @@
 import { MnemocyteError } from "../errors.js";
 import type {
 	AuditEvent,
+	AuditLogCursor,
 	Embedder,
-	EntityStats,
-	FindDuplicatesInput,
-	GlobalStats,
 	ImportanceLevel,
-	ListAuditLogInput,
+	JsonObject,
 	Memory,
-	MemoryType,
+	MemoryKind,
+	MemoryRecordScope,
+	MemoryStats,
 	MigrateResult,
 	MnemocyteBackend,
 	PruneResult,
-	RecallInput,
 } from "../types.js";
 import type { StoredMemory } from "./records.js";
 
 /**
- * The namespace every memory is stored in until scopes reach the public API.
- * Migration 0003 assigns it to rows written before scopes existed.
+ * Where a memory lives. `agentId` and `sessionId` are null for memories shared
+ * by every agent or outside any session.
  */
-export const DEFAULT_NAMESPACE = "default";
+export type StoreScope = MemoryRecordScope;
 
 /**
- * Where a memory lives. `agentId` and `sessionId` are null for memories shared
- * by every agent or session. The public API passes only `entityId` today, so
- * the Postgres backend builds this with {@link entityScope}.
+ * What a read or a write by id can see: rows of the scope's namespace and
+ * entity whose agent and session match the scope's or are null (shared). A
+ * null field in the scope matches only null rows. `exactAgent` and
+ * `exactSession` drop the shared rows for that field.
  */
-export interface StoreScope {
+export interface StoreVisibility {
+	readonly scope: StoreScope;
+	readonly exactAgent: boolean;
+	readonly exactSession: boolean;
+}
+
+/**
+ * Rows selected by a bulk operation: every field that is set must match
+ * exactly, and a missing field matches any value. A null `namespace` selects
+ * every namespace (`allNamespaces: true`).
+ */
+export interface StoreSelector {
+	readonly namespace: string | null;
+	readonly entityId?: string;
+	readonly agentId?: string;
+	readonly sessionId?: string;
+}
+
+/** A selector for one entity, as `deleteScope` and audit listings take. */
+export interface StoreEntitySelector extends StoreSelector {
 	readonly namespace: string;
 	readonly entityId: string;
-	readonly agentId: string | null;
-	readonly sessionId: string | null;
 }
 
-export function entityScope(entityId: string): StoreScope {
-	return {
-		namespace: DEFAULT_NAMESPACE,
-		entityId,
-		agentId: null,
-		sessionId: null,
-	};
+export interface StoreMemoryFilter {
+	readonly visibility: StoreVisibility;
+	readonly kinds?: readonly MemoryKind[];
+	readonly tags?: readonly string[];
+	readonly before?: Date;
+	readonly after?: Date;
+	readonly includeSuperseded?: boolean;
+	readonly includeExpired?: boolean;
 }
 
-export interface StoreVectorSearchInput extends Omit<RecallInput, "minScore"> {
-	embedding: readonly number[];
-	limit: number;
-	minVectorScore?: number;
+export interface StoreVectorSearchInput extends StoreMemoryFilter {
+	readonly embedding: readonly number[];
+	readonly limit: number;
+	readonly minVectorScore?: number;
 }
 
-export interface StoreLexicalSearchInput extends RecallInput {
-	limit: number;
+export interface StoreLexicalSearchInput extends StoreMemoryFilter {
+	readonly query: string;
+	readonly limit: number;
+}
+
+/** Position of the last row of a `list` page. */
+export interface StoreListPosition {
+	readonly createdAt: Date;
+	readonly id: string;
+}
+
+export interface StoreListInput extends StoreMemoryFilter {
+	readonly limit: number;
+	/** Return rows strictly after this position in `(createdAt, id)` descending order. */
+	readonly position?: StoreListPosition;
 }
 
 export interface StoreVectorCandidate {
@@ -64,6 +95,39 @@ export interface StoreLexicalCandidate {
 	lexicalScore: number;
 }
 
+/** Fields an update replaces. A new `embedding` comes with its model. */
+export interface StoreMemoryPatch {
+	readonly content?: string;
+	readonly embedding?: readonly number[];
+	readonly embeddingModel?: string;
+	readonly embeddingDimensions?: number;
+	readonly key?: string | null;
+	readonly kind?: MemoryKind;
+	readonly importance?: ImportanceLevel;
+	readonly tags?: readonly string[];
+	readonly source?: string | null;
+	readonly metadata?: JsonObject;
+	readonly confidence?: number;
+	readonly expiresAt?: Date | null;
+}
+
+export interface StoreUpdateInput {
+	readonly visibility: StoreVisibility;
+	readonly id: string;
+	readonly patch: StoreMemoryPatch;
+	readonly now: Date;
+}
+
+export interface StoreDuplicateInput {
+	readonly visibility: StoreVisibility;
+	readonly threshold: number;
+	readonly limit: number;
+	readonly kinds?: readonly MemoryKind[];
+	readonly tags?: readonly string[];
+	readonly includeSuperseded?: boolean;
+	readonly includeExpired?: boolean;
+}
+
 export interface StoreDuplicatePair {
 	a: Memory;
 	b: Memory;
@@ -71,12 +135,22 @@ export interface StoreDuplicatePair {
 }
 
 export interface StorePruneEntityDeletion {
+	namespace: string;
 	entityId: string;
 	deletedCount: number;
 }
 
 export interface StorePruneResult extends PruneResult {
 	deletedByEntity: readonly StorePruneEntityDeletion[];
+}
+
+export interface StoreAuditLogInput {
+	readonly selector: StoreEntitySelector;
+	readonly limit: number;
+	readonly before?: Date;
+	readonly after?: Date;
+	readonly beforeCursor?: AuditLogCursor;
+	readonly afterCursor?: AuditLogCursor;
 }
 
 export interface StoreConsolidationTarget {
@@ -86,7 +160,7 @@ export interface StoreConsolidationTarget {
 }
 
 export interface StoreConsolidateInput {
-	entityId: string;
+	visibility: StoreVisibility;
 	survivorId: string;
 	supersededIds: readonly string[];
 	mergeTags: boolean;
@@ -108,25 +182,25 @@ export interface StoreMigrateInput {
 }
 
 export interface ValidatedPruneFilter {
-	readonly entityId?: string;
+	readonly selector: StoreSelector;
 	readonly expired?: true;
 	readonly superseded?: true;
 	readonly createdBefore?: Date;
 	readonly notAccessedSince?: Date;
-	readonly types?: readonly MemoryType[];
+	readonly kinds?: readonly MemoryKind[];
 	readonly tags?: readonly string[];
 	readonly maxImportance?: ImportanceLevel;
 	readonly dryRun: boolean;
 }
 
+/** Whether the filter has a selector besides its scope. */
 export function hasPruneSelector(filter: ValidatedPruneFilter): boolean {
 	return (
-		filter.entityId !== undefined ||
 		filter.expired === true ||
 		filter.superseded === true ||
 		filter.createdBefore !== undefined ||
 		filter.notAccessedSince !== undefined ||
-		(filter.types !== undefined && filter.types.length > 0) ||
+		(filter.kinds !== undefined && filter.kinds.length > 0) ||
 		(filter.tags !== undefined && filter.tags.length > 0) ||
 		filter.maxImportance !== undefined
 	);
@@ -137,7 +211,7 @@ export function assertPruneFilterHasSelector(
 ): void {
 	if (!hasPruneSelector(filter)) {
 		throw new MnemocyteError(
-			"prune requires at least one selector (entityId, expired, superseded, createdBefore, notAccessedSince, types, tags, or maxImportance).",
+			"prune requires at least one selector besides its scope (expired, superseded, createdBefore, notAccessedSince, kinds, tags, or maxImportance). Use deleteScope to delete a whole scope.",
 			"VALIDATION",
 		);
 	}
@@ -145,37 +219,23 @@ export function assertPruneFilterHasSelector(
 
 /**
  * Internal storage adapter boundary used by the shared client orchestration.
+ * Not exported from the package.
  *
- * This is intentionally not exported from the public package root in 0.3.x.
- * The public adapter surface is reserved for the later `drizzleStore(db)` line.
+ * Every method that reads or writes memories takes a scope: a
+ * {@link StoreVisibility} for reads and writes by id, a {@link StoreSelector}
+ * for bulk operations.
  *
- * Every method is unconditional. There is intentionally no capability-flag
- * surface, and adapters do not declare capabilities before shared orchestration
- * calls a method.
- *
- * Deleting a referenced consolidation survivor through `deleteMemory`,
- * `deleteMemoriesForEntity`, or a non-dry-run `prune` must reject with
- * `"CONFLICT"` before deleting anything. The dependency check and mutation must
- * be one atomic, non-interleavable operation; a check followed by a later write
- * with an interleaving gap does not satisfy the contract.
+ * Deleting a referenced consolidation survivor through `deleteMemory` or a
+ * non-dry-run `prune` must reject with `"CONFLICT"` before deleting anything.
+ * `deleteScope` rejects only when a dependent outside the selection remains.
+ * The dependency check and mutation must be one atomic operation.
  *
  * Unless a method documents a stronger boundary, cancellation support and its
- * mechanism are implementation-defined. Adapters may use cooperative checks,
- * active statement cancellation, or no mid-operation cancellation while still
- * honoring the method's documented postconditions.
+ * mechanism are implementation-defined.
  */
 export interface MemoryStore {
 	readonly backend: MnemocyteBackend;
 
-	/**
-	 * Completes the adapter's base-schema readiness hook.
-	 *
-	 * The built-in stores currently resolve without work and rely on explicit
-	 * schema management. An implementation may verify externally managed schema
-	 * state here, but this hook does not authorize hidden schema creation or
-	 * migration.
-	 */
-	ensureSchema(): Promise<void>;
 	/**
 	 * Applies the store's pending schema migrations. This is the only method
 	 * that changes schema, and it runs only when the caller asks for it through
@@ -184,134 +244,126 @@ export interface MemoryStore {
 	 */
 	migrate(input: StoreMigrateInput): Promise<MigrateResult>;
 	/**
-	 * Enforces the embedding compatibility check meaningful to this store's
-	 * persistence model before embedding-dependent work proceeds.
-	 *
-	 * The hook is unconditional and needs no capability flag. A store with no
-	 * persistent installation state may legitimately resolve without work. The
-	 * built-in Postgres store validates installation model and dimensions and may
-	 * reject with `"MIGRATION"` or `"CONFIG"`; the in-memory store is a no-op.
+	 * Rejects with `"MIGRATION"` or `"CONFIG"` when the embedder does not match
+	 * the installation. A store without persistent installation state resolves
+	 * without work.
 	 */
 	ensureEmbeddingCompatibility(embedder: Embedder): Promise<void>;
 
 	/**
-	 * Takes ownership of freshly prepared rows and returns exactly one detached
-	 * public record for every prepared input ID. Callers must not mutate or reuse
-	 * rows after passing them here.
+	 * Inserts fresh rows, or for a row with a `key` already used in its exact
+	 * scope, replaces that memory's content fields (keeping its id, creation
+	 * time, access counts and consolidation link). Returns one detached record
+	 * per input row: the inserted row, or the updated existing row with its
+	 * own id. Keys must be distinct within the call.
 	 *
-	 * The store has no return-order obligation. Shared orchestration treats order
-	 * as untrusted, rejects missing or duplicate results and any returned ID
-	 * outside the prepared set, then restores prepared-input order.
+	 * Order is untrusted: shared code matches results to inputs by id, or by
+	 * key for keyed rows.
 	 */
 	insertMemories(memories: readonly StoredMemory[]): Promise<Memory[]>;
 	/**
-	 * Returns up to `input.limit` detached candidates that satisfy the shared
-	 * recall filters and `minVectorScore`, ordered by decreasing vector
-	 * similarity. Every `vectorScore` is finite and clamped to `[0, 1]`.
-	 *
-	 * An implementation may scan or use an index. When an approximate index is
-	 * available, candidate inclusion, ranking, and performance are index- and
-	 * planner-dependent and are not guaranteed to match an exhaustive scan.
+	 * Up to `input.limit` candidates that pass the filter and
+	 * `minVectorScore`, by decreasing vector similarity. Every `vectorScore`
+	 * is finite and clamped to `[0, 1]`. With an approximate index, inclusion
+	 * and order may differ from an exhaustive scan.
 	 */
 	vectorSearch(input: StoreVectorSearchInput): Promise<StoreVectorCandidate[]>;
 	/**
-	 * Returns up to `input.limit` detached candidates that satisfy the shared
-	 * recall filters and have a positive implementation-defined lexical score,
-	 * ordered by decreasing score.
-	 *
-	 * Lexical parsing and relevance scoring are backend-defined. Implementations
-	 * may therefore differ in mechanism, returned candidates, and ranking, not
-	 * only in latency.
+	 * Up to `input.limit` candidates that pass the filter and have a positive,
+	 * backend-defined lexical score, by decreasing score.
 	 */
 	lexicalSearch(
 		input: StoreLexicalSearchInput,
 	): Promise<StoreLexicalCandidate[]>;
 	/**
+	 * Up to `input.limit` memories that pass the filter, newest first by
+	 * `(createdAt, id)`, after `input.position` when given.
+	 */
+	listMemories(
+		input: StoreListInput,
+		options?: StoreOperationOptions,
+	): Promise<Memory[]>;
+	/**
 	 * Increments `accessCount` and sets `lastAccessedAt` once for each
-	 * requested memory of the entity that still exists; IDs that no longer
-	 * match a row are skipped. Never changes `updatedAt`.
-	 *
-	 * The input IDs must be distinct. Duplicate-ID behavior is backend-specific,
-	 * and callers must not rely on any particular deduplication or increment
-	 * behavior when this precondition is violated.
+	 * requested memory that is still visible; others are skipped. Never changes
+	 * `updatedAt`. The ids must be distinct.
 	 */
 	markMemoriesAccessed(
-		entityId: string,
+		visibility: StoreVisibility,
 		memoryIds: readonly string[],
 	): Promise<void>;
 
+	/** The visible memory with this id, or `null`. */
+	getMemory(
+		visibility: StoreVisibility,
+		memoryId: string,
+		options?: StoreOperationOptions,
+	): Promise<Memory | null>;
+	/** The memory with this key in exactly this scope, or `null`. */
+	getMemoryByKey(
+		scope: StoreScope,
+		key: string,
+		options?: StoreOperationOptions,
+	): Promise<Memory | null>;
 	/**
-	 * Deletes the memory only when both entity and memory ID match, returning
-	 * `false` when they do not and `true` after deletion.
-	 *
-	 * If any memory references the target through `supersededBy`, rejects with
-	 * `"CONFLICT"` without deleting it. Dependency detection and deletion must be
-	 * atomic and non-interleavable.
+	 * Applies the patch to the visible memory with this id in one atomic write
+	 * and returns it, or `null` when no such memory exists. Sets `updatedAt`.
+	 * Rejects with `"CONFLICT"` when the new key is already used in the
+	 * memory's scope.
 	 */
-	deleteMemory(entityId: string, memoryId: string): Promise<boolean>;
+	updateMemory(input: StoreUpdateInput): Promise<Memory | null>;
 	/**
-	 * Deletes every memory for the entity and returns the number deleted.
-	 *
-	 * If any memory references a selected target through `supersededBy`, rejects
-	 * the entire operation with `"CONFLICT"` before deleting anything, including
-	 * when the dependent is itself selected. Dependency detection and the batch
-	 * deletion must be atomic and non-interleavable.
+	 * Deletes the visible memory with this id: `false` when there is none,
+	 * `"CONFLICT"` without deleting when another memory references it through
+	 * `supersededBy`.
 	 */
-	deleteMemoriesForEntity(entityId: string): Promise<number>;
+	deleteMemory(
+		visibility: StoreVisibility,
+		memoryId: string,
+		options?: StoreOperationOptions,
+	): Promise<boolean>;
+	/**
+	 * Deletes every selected memory and the selected audit events, atomically,
+	 * and returns the number of memories deleted. Rejects with `"CONFLICT"`
+	 * and deletes nothing when a memory outside the selection references a
+	 * selected one through `supersededBy`.
+	 */
+	deleteScope(
+		selector: StoreEntitySelector,
+		options?: StoreOperationOptions,
+	): Promise<number>;
 	prune(
 		input: ValidatedPruneFilter,
 		options?: StoreOperationOptions,
 	): Promise<StorePruneResult>;
 	/**
-	 * Compares qualifying memories pairwise and returns up to the requested limit
-	 * of unordered pairs meeting the similarity threshold, ordered by decreasing
-	 * similarity. Similarities are clamped to `[0, 1]`; pair orientation and
-	 * equal-score order are not guaranteed.
-	 *
-	 * This contract neither implies nor requires indexed nearest-neighbor pair
-	 * generation. A database planner may still use ordinary indexes while
-	 * filtering or executing a pairwise join.
+	 * Unordered pairs of visible memories meeting the similarity threshold, by
+	 * decreasing similarity, up to the limit. Similarities are clamped to
+	 * `[0, 1]`.
 	 */
 	findDuplicatePairs(
-		input: FindDuplicatesInput,
+		input: StoreDuplicateInput,
 		options?: StoreOperationOptions,
 	): Promise<StoreDuplicatePair[]>;
 
 	/**
-	 * Persists independent copies of audit events supplied by shared core.
-	 *
-	 * Ordinary audit writes are best-effort at the shared caller. Rejection does
-	 * not promise batch atomicity: failure behavior is implementation-defined,
-	 * and some stores may retain a partial batch after the promise rejects.
+	 * Persists copies of audit events. Best-effort at the caller; a rejection
+	 * may leave part of the batch written.
 	 */
 	addAuditEvents(events: readonly AuditEvent[]): Promise<void>;
 	/**
-	 * Returns detached events for the requested entity in strict descending
-	 * `(timestamp, id)` order, subject to the requested limit.
-	 *
-	 * Event IDs must be stable and timestamps comparable. Plain `before` and
-	 * `after` values are strict timestamp filters. Composite cursors use strict
-	 * tuple filtering on the same `(timestamp, id)` tuple used for ordering, so
-	 * equal-timestamp events can be paged without requiring a transaction.
-	 * Cancellation may be cooperative or active and is implementation-defined.
+	 * Selected events in strict descending `(timestamp, id)` order, up to the
+	 * limit. `before` / `after` are strict timestamp filters; the cursors are
+	 * strict tuple filters on `(timestamp, id)`.
 	 */
 	listAuditLog(
-		input: ListAuditLogInput,
+		input: StoreAuditLogInput,
 		options?: StoreOperationOptions,
 	): Promise<AuditEvent[]>;
 
-	/**
-	 * Returns a detached memory only when both entity and memory ID match;
-	 * otherwise returns `null`.
-	 */
-	getMemory(
-		entityId: string,
-		memoryId: string,
-		options?: StoreOperationOptions,
-	): Promise<Memory | null>;
 	/** Shared validation supplies distinct IDs before this preflight lookup. */
 	loadConsolidationTargets(
-		entityId: string,
+		visibility: StoreVisibility,
 		ids: readonly string[],
 		options?: StoreOperationOptions,
 	): Promise<StoreConsolidationTarget[]>;
@@ -328,23 +380,9 @@ export interface MemoryStore {
 	): Promise<StoreConsolidateResult>;
 
 	/**
-	 * Returns entity-scoped or global counts evaluated against the supplied
-	 * `now`. `memoryCount` includes every selected memory; active memories are
-	 * neither expired nor superseded. Expired and superseded counts are
-	 * independent and may overlap. Global `entityCount` counts distinct entities
-	 * across all stored memories, and an empty scope returns zero counts.
+	 * Counts of the selected memories evaluated against `now`. Active memories
+	 * are neither expired nor superseded; expired and superseded counts may
+	 * overlap. `entityCount` counts distinct `(namespace, entityId)` pairs.
 	 */
-	stats(
-		input: { entityId?: string } | undefined,
-		now: Date,
-	): Promise<EntityStats | GlobalStats>;
-	/**
-	 * Releases only resources and transient state owned by this store instance.
-	 *
-	 * The in-memory store destroys its owned memory and audit state. The built-in
-	 * Postgres store closes the connection handle it created while leaving
-	 * persisted rows intact. An adapter wrapping a caller-supplied connection must
-	 * not close that connection or any other resource it does not own.
-	 */
-	close(): Promise<void>;
+	stats(selector: StoreSelector, now: Date): Promise<MemoryStats>;
 }

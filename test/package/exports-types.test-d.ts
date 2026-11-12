@@ -1,36 +1,45 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type {
+	AddInput,
+	AddManyInput,
 	AuditConfig,
 	AuditEvent,
 	AuditLogCursor,
-	BuildContextInput,
 	ConsolidateInput,
 	ConsolidateResult,
 	ContextFormat,
+	ContextInput,
 	DuplicatePair,
 	Embedder,
-	ExperimentalMnemocyteClient,
+	ExperimentalMemoryClient,
 	FindDuplicatesInput,
 	JsonObject,
 	JsonValue,
 	ListAuditLogInput,
+	ListResult,
+	Memory,
+	MemoryClient,
+	MemoryConfig,
+	MemoryKind,
+	MemoryScope,
+	MemoryStats,
 	MigrateInput,
 	MigrateResult,
-	MnemocyteClient,
-	MnemocyteConfig,
 	MnemocyteErrorCode,
 	MnemocyteStoreConfig,
-	RecallInput,
-	RememberInput,
-	RememberManyInput,
+	NewMemory,
+	PruneInput,
 	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
 	RetrievalFusionConfig,
 	RetrievalScores,
+	ScopeSelector,
+	SearchInput,
 	TokenCounter,
+	UpdateInput,
 } from "mnemocyte";
-import { createMnemocyte, MnemocyteError, migrate } from "mnemocyte";
+import { createMemory, MnemocyteError, migrate } from "mnemocyte";
 import {
 	type OpenAIEmbedderOptions,
 	openaiEmbedder,
@@ -48,6 +57,18 @@ import {
 } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 
+const scope: MemoryScope = {
+	namespace: "app",
+	entityId: "entity",
+	agentId: "agent",
+	sessionId: "session",
+};
+const recordScope = {
+	namespace: "app",
+	entityId: "entity",
+	agentId: null,
+	sessionId: null,
+};
 const format: ContextFormat = "markdown";
 const fusion: RetrievalFusionConfig = { k: 60, lexical: 0.5 };
 const boosts: RetrievalBoosts = { recency: 0 };
@@ -58,12 +79,12 @@ const embedder: Embedder = {
 	dimensions: 1,
 	embed: async (texts) => texts.map(() => [1]),
 };
-const config: MnemocyteConfig = { embedder, retrieval };
+const config: MemoryConfig = { embedder, retrieval };
 declare const callerDatabase: PostgresJsDatabase<{
 	applicationTable: unknown;
 }>;
 const callerStore: MnemocyteStoreConfig = drizzleStore(callerDatabase);
-const callerStoreConfig: MnemocyteConfig = {
+const callerStoreConfig: MemoryConfig = {
 	embedder,
 	store: callerStore,
 };
@@ -71,7 +92,7 @@ declare const callerSql: Parameters<typeof postgresJs>[0];
 const executor: SqlExecutor = postgresJs(callerSql);
 const queryOptions: SqlQueryOptions = { signal: new AbortController().signal };
 const postgresOptions: PostgresStoreOptions = { client: executor };
-const postgresConfig: MnemocyteConfig = {
+const postgresConfig: MemoryConfig = {
 	embedder,
 	store: postgresStore(postgresOptions),
 };
@@ -81,23 +102,57 @@ const migrateInput: MigrateInput = {
 	signal: new AbortController().signal,
 };
 const migrated: Promise<MigrateResult> = migrate(migrateInput);
-const client: MnemocyteClient = createMnemocyte(config);
+const client: MemoryClient = createMemory(config);
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
 const conflictError = new MnemocyteError("conflict", conflictCode);
 const jsonValue: JsonValue = ["value", 1, true, null, { nested: "value" }];
 const jsonObject: JsonObject = { value: jsonValue };
-const remember: RememberInput = {
-	entityId: "entity",
+const kind: MemoryKind = "preference";
+const add: AddInput = {
+	scope,
+	key: "key",
 	content: "content",
+	kind,
 	metadata: jsonObject,
 };
-const rememberMany: RememberManyInput = {
-	inputs: [remember],
+const newMemory: NewMemory = { content: "content", key: "other" };
+const addMany: AddManyInput = {
+	scope,
+	memories: [newMemory],
 	signal: new AbortController().signal,
 };
-const recall: RecallInput = { entityId: "entity", query: "query" };
-const context: BuildContextInput = {
-	entityId: "entity",
+const search: SearchInput = {
+	scope,
+	query: "query",
+	kinds: [kind],
+	exactAgent: true,
+};
+const update: UpdateInput = {
+	scope,
+	id: "id",
+	key: null,
+	expiresAt: null,
+	source: null,
+};
+const selector: ScopeSelector = { namespace: "app" };
+const prune: PruneInput = { scope: selector, expired: true };
+const pruneAll: PruneInput = { allNamespaces: true, expired: true };
+const listed: Promise<ListResult> = client.list({ scope, cursor: "c" });
+const fetched: Promise<Memory | null> = client.get({ scope, key: "key" });
+const stats: Promise<MemoryStats> = client.stats({ allNamespaces: true });
+const erased: Promise<{ deletedCount: number }> = client.deleteScope({
+	scope: { namespace: "app", entityId: "entity" },
+});
+// @ts-expect-error The client holds no resources and has no close().
+void client.close;
+// @ts-expect-error prune needs a scope or allNamespaces.
+const unscopedPrune: PruneInput = { expired: true };
+// @ts-expect-error get takes an id or a key, not both.
+void client.get({ scope, id: "id", key: "key" });
+// @ts-expect-error A scope needs an entity.
+const entitylessScope: MemoryScope = { namespace: "app" };
+const context: ContextInput = {
+	scope,
 	query: "query",
 	format,
 	tokenCounter: counter,
@@ -119,15 +174,16 @@ const explanation: RetrievalExplanation = {
 };
 
 const findDuplicates: FindDuplicatesInput = {
-	entityId: "entity",
+	scope,
 	threshold: 0.95,
 };
 const duplicatePair: DuplicatePair = {
 	a: {
 		id: "mem_a",
-		entityId: "entity",
+		scope: recordScope,
+		key: null,
 		content: "a",
-		type: "fact",
+		kind: "fact",
 		importance: "normal",
 		tags: [],
 		source: null,
@@ -145,9 +201,10 @@ const duplicatePair: DuplicatePair = {
 	},
 	b: {
 		id: "mem_b",
-		entityId: "entity",
+		scope: recordScope,
+		key: null,
 		content: "b",
-		type: "fact",
+		kind: "fact",
 		importance: "normal",
 		tags: [],
 		source: null,
@@ -172,20 +229,20 @@ const auditCursor: AuditLogCursor = {
 	id: "evt_cursor",
 };
 const listAudit: ListAuditLogInput = {
-	entityId: "entity",
+	scope,
 	limit: 50,
 	beforeCursor: auditCursor,
 };
 const auditEvent: AuditEvent = {
 	id: "evt_x",
-	entityId: "entity",
+	scope: recordScope,
 	description: "memory.created",
 	metadata: {},
 	timestamp: new Date(),
 };
 
 const consolidate: ConsolidateInput = {
-	entityId: "entity",
+	scope,
 	survivorId: "mem_a",
 	supersededIds: ["mem_b"],
 };
@@ -194,7 +251,7 @@ const consolidateResult: ConsolidateResult = {
 	supersededCount: 1,
 	supersededIds: ["mem_b"],
 };
-const experimental: ExperimentalMnemocyteClient = client.experimental;
+const experimental: ExperimentalMemoryClient = client.experimental;
 const openaiOptions: OpenAIEmbedderOptions = {
 	model: "text-embedding-3-small",
 	dimensions: 1536,
@@ -214,11 +271,20 @@ void conflictCode;
 void conflictError;
 void jsonValue;
 void jsonObject;
-void remember;
-void rememberMany;
-void client.rememberMany(rememberMany);
-void client.rememberMany([remember]);
-void recall;
+void add;
+void addMany;
+void client.add(add);
+void client.addMany(addMany);
+void search;
+void update;
+void prune;
+void pruneAll;
+void listed;
+void fetched;
+void stats;
+void erased;
+void unscopedPrune;
+void entitylessScope;
 void context;
 void explanation;
 void findDuplicates;

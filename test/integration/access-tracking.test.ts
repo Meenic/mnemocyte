@@ -13,6 +13,7 @@ import {
 	verifyAccessTrackingSkipsDeletedRows,
 	verifyNotAccessedSinceUsesCreatedAt,
 } from "../fixtures/access-tracking.js";
+import { testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -127,12 +128,15 @@ describe("Postgres recall access tracking", () => {
 					},
 					createPostgresStore(postgresJs(sql)),
 				);
-				const memory = await client.remember({
-					entityId,
+				const memory = await client.add({
+					scope: testScope(entityId),
 					content: "ended right after recall",
 				});
 
-				await client.recall({ entityId, query: "ended right after recall" });
+				await client.search({
+					scope: testScope(entityId),
+					query: "ended right after recall",
+				});
 				await sql.end();
 
 				const [row] = await check<Array<{ accessCount: number }>>`

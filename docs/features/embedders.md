@@ -10,14 +10,15 @@ interface Embedder {
 }
 ```
 
-`createMnemocyte` checks that `embed` is a function, `model` is a non-empty
+`createMemory` checks that `embed` is a function, `model` is a non-empty
 string and `dimensions` a positive integer (`"CONFIG"`). Every call's output
 must have one vector per input, each of length `dimensions`, with finite
 components and at least one non-zero component; otherwise `"EMBEDDING"`.
 Queries and documents are embedded the same way: there is no query/document
 distinction yet.
 
-`rememberMany` embeds the whole batch in one call; there is no chunking.
+`addMany` embeds the whole batch in one call; there is no chunking. `update`
+calls the embedder only when the content changes.
 
 ## `openaiEmbedder`
 
@@ -59,15 +60,14 @@ stop promptly only if the embedder forwards the signal to `fetch`.
 ## Observability
 
 `observability.onEvent(event)` receives one `start` and one `success` or
-`error` event per public operation, and per access write of a tracked recall
+`error` event per public operation, and per access write of a tracked search
 (`"trackAccess"`), with `operation`, `backend`, `timestamp`,
-`durationMs`, and `entityId`, `memoryId`, `count` where they apply. Errors
+`durationMs`, and `namespace`, `entityId`, `memoryId`, `count` where they
+apply. Errors
 thrown by the hook are swallowed, but the hook is **awaited**, so a slow async
 hook delays every operation.
 
 ## Client lifecycle
 
-`close()` stops new operations (`"DB"`, "client is closed"), waits for running
-ones, then closes the store. It does not wait for access writes started by
-tracked recalls. Repeated calls share one promise; if closing the
-store fails, the client reopens so it can be retried.
+The client has no `close()`: it holds no connections or timers (see
+[scopes.md](./scopes.md#lifecycle)).

@@ -14,7 +14,7 @@ interface Embedder {
 ```
 
 - `model` is a non-empty string and `dimensions` a positive integer; anything
-  else throws `"CONFIG"` from `createMnemocyte`.
+  else throws `"CONFIG"` from `createMemory`.
 - `embed` returns one vector per input text, in input order. Each vector has
   exactly `dimensions` finite numbers, at least one of them non-zero.
   Anything else throws `"EMBEDDING"` before the vector is stored or compared.
@@ -63,7 +63,7 @@ The helper calls the API with `fetch`; there is no OpenAI SDK dependency, and
 ## Timeouts and retries
 
 ```ts
-const client = createMnemocyte({
+const memory = createMemory({
   embedder,
   provider: {
     timeoutMs: 5_000,
@@ -85,7 +85,7 @@ const client = createMnemocyte({
 The built-in rule retries HTTP 429, 500, 502, 503 and 504, network errors,
 and Mnemocyte errors other than `VALIDATION`, `CONFIG`, `CONFLICT` and
 `ABORTED`. Waits have no jitter, and `Retry-After` headers are ignored.
-Invalid options throw `"CONFIG"` from `createMnemocyte`.
+Invalid options throw `"CONFIG"` from `createMemory`.
 
 ## Cancellation
 
@@ -94,8 +94,8 @@ Methods that call the embedder or the database accept `signal`:
 ```ts
 const controller = new AbortController();
 
-await client.remember({
-  entityId: "user_123",
+await memory.add({
+  scope: { namespace: "my-app", entityId: "user_123" },
   content: "Prefers short answers.",
   signal: controller.signal,
 });
@@ -114,7 +114,7 @@ committed.
 ## Observability
 
 ```ts
-const client = createMnemocyte({
+const memory = createMemory({
   embedder,
   observability: {
     onEvent(event) {
@@ -125,8 +125,9 @@ const client = createMnemocyte({
 ```
 
 Each public operation emits one `start` event, then one `success` or `error`
-event; so does the access write of a tracked recall (`"trackAccess"`, see
-[recall](./api.md#recall)), with `operation`, `phase`, `backend`, `timestamp`, `durationMs`, and
-`entityId`, `memoryId`, `count` or `error` where they apply. Errors thrown by
+event; so does the access write of a tracked search (`"trackAccess"`, see
+[search](./api.md#search)), with `operation`, `phase`, `backend`, `timestamp`,
+`durationMs`, and `namespace`, `entityId`, `memoryId`, `count` or `error`
+where they apply. Errors thrown by
 `onEvent` are ignored, but an async `onEvent` is awaited, so a slow hook
 slows every operation.

@@ -10,7 +10,8 @@ import {
 	rankByScore,
 	toScoredMemory,
 } from "../../src/retrieval/scorer.js";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, testScope } from "../helpers.js";
+import { testStoreScope } from "../store-helpers.js";
 
 const DAY_MS = 86_400_000;
 
@@ -20,9 +21,10 @@ function memory(
 	const now = new Date();
 	return {
 		id: createUuidV7(),
-		entityId: "alice",
+		scope: testStoreScope("alice"),
+		key: null,
 		content: "content",
-		type: "fact",
+		kind: "fact",
 		importance: "normal",
 		tags: [],
 		source: null,
@@ -93,7 +95,7 @@ describe("toScoredMemory", () => {
 		});
 		const scored = toScoredMemory(
 			{ memory: memory(), ...candidate },
-			{ entityId: "alice", query: "q", explain: true },
+			{ scope: testScope("alice"), query: "q", explain: true },
 			config,
 		);
 		expect(scored.score).toBe(scored.scores.fused);
@@ -109,7 +111,7 @@ describe("toScoredMemory", () => {
 	test("scales the fused score by recency and importance", () => {
 		const fresh = toScoredMemory(
 			{ memory: memory({ importance: "critical" }), ...candidate },
-			{ entityId: "alice", query: "q" },
+			{ scope: testScope("alice"), query: "q" },
 			defaults,
 		);
 		const stale = toScoredMemory(
@@ -120,7 +122,7 @@ describe("toScoredMemory", () => {
 				}),
 				...candidate,
 			},
-			{ entityId: "alice", query: "q", explain: true },
+			{ scope: testScope("alice"), query: "q", explain: true },
 			defaults,
 		);
 		expect(fresh.score).toBeCloseTo(fresh.scores.fused, 9);
@@ -145,12 +147,12 @@ describe("toScoredMemory", () => {
 				vectorScore: 0.9,
 				lexicalScore: 0.1,
 			},
-			{ entityId: "alice", query: "q" },
+			{ scope: testScope("alice"), query: "q" },
 			defaults,
 		);
 		const newButWeak = toScoredMemory(
 			{ memory: memory({ importance: "critical" }), ...candidate },
-			{ entityId: "alice", query: "q" },
+			{ scope: testScope("alice"), query: "q" },
 			defaults,
 		);
 		expect(relevantButOld.score).toBeGreaterThan(newButWeak.score);
@@ -169,7 +171,7 @@ describe("compareScoredMemories", () => {
 					vectorScore: 1,
 					lexicalScore: null,
 				},
-				{ entityId: "alice", query: "q" },
+				{ scope: testScope("alice"), query: "q" },
 				createScoringConfig({ boosts: { recency: 0, importance: 0 } }),
 			);
 		const newer = scored({
@@ -214,33 +216,30 @@ describe("recall fusion", () => {
 			},
 			createInMemoryStore(),
 		);
-		try {
-			await client.rememberMany({
-				inputs: [
-					{ entityId: "alice", content: "cat photos" },
-					{ entityId: "alice", content: "cat videos" },
-					{ entityId: "alice", content: "kennel ledger" },
-				],
-			});
-			// The query embeds like "cat photos" and close to "cat videos", so
-			// the two-item vector list misses the ledger; only the lexical list
-			// finds it, and it ties "cat photos" for the top two places.
-			const results = await client.recall({
-				entityId: "alice",
-				query: "kennel",
-				limit: 2,
-			});
-			const ledger = expectDefined(
-				results.find((result) => result.content === "kennel ledger"),
-			);
-			expect(ledger.scores).toMatchObject({
-				vectorRank: null,
-				vector: null,
-				lexicalRank: 1,
-			});
-		} finally {
-			await client.close();
-		}
+		await client.addMany({
+			scope: testScope("alice"),
+			memories: [
+				{ content: "cat photos" },
+				{ content: "cat videos" },
+				{ content: "kennel ledger" },
+			],
+		});
+		// The query embeds like "cat photos" and close to "cat videos", so
+		// the two-item vector list misses the ledger; only the lexical list
+		// finds it, and it ties "cat photos" for the top two places.
+		const results = await client.search({
+			scope: testScope("alice"),
+			query: "kennel",
+			limit: 2,
+		});
+		const ledger = expectDefined(
+			results.find((result) => result.content === "kennel ledger"),
+		);
+		expect(ledger.scores).toMatchObject({
+			vectorRank: null,
+			vector: null,
+			lexicalRank: 1,
+		});
 	});
 
 	test("skips the search of a list whose weight is zero", async () => {
@@ -251,28 +250,22 @@ describe("recall fusion", () => {
 			{ embedder, retrieval: { fusion: { vector: 0 } } },
 			store,
 		);
-		try {
-			await client.rememberMany({
-				inputs: [
-					{ entityId: "alice", content: "cat facts" },
-					{ entityId: "alice", content: "dog facts" },
-				],
-			});
-			const results = await client.recall({
-				entityId: "alice",
-				query: "dog",
-			});
-			expect(vectorSearch).not.toHaveBeenCalled();
-			expect(lexicalSearch).toHaveBeenCalledTimes(1);
-			expect(results.map((result) => result.content)).toEqual(["dog facts"]);
-			expect(results[0]?.scores).toMatchObject({
-				vectorRank: null,
-				vector: null,
-				lexicalRank: 1,
-				fused: 1,
-			});
-		} finally {
-			await client.close();
-		}
+		await client.addMany({
+			scope: testScope("alice"),
+			memories: [{ content: "cat facts" }, { content: "dog facts" }],
+		});
+		const results = await client.search({
+			scope: testScope("alice"),
+			query: "dog",
+		});
+		expect(vectorSearch).not.toHaveBeenCalled();
+		expect(lexicalSearch).toHaveBeenCalledTimes(1);
+		expect(results.map((result) => result.content)).toEqual(["dog facts"]);
+		expect(results[0]?.scores).toMatchObject({
+			vectorRank: null,
+			vector: null,
+			lexicalRank: 1,
+			fused: 1,
+		});
 	});
 });

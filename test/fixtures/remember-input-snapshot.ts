@@ -1,10 +1,12 @@
 import type {
+	AddInput,
 	Embedder,
 	JsonObject,
-	MnemocyteClient,
-	RememberInput,
+	MemoryClient,
+	NewMemory,
 } from "mnemocyte";
 import { expect } from "vitest";
+import { testScope } from "../helpers.js";
 
 interface PendingEmbeddingCall {
 	release: () => void;
@@ -68,17 +70,17 @@ function nestedValue(metadata: JsonObject): JsonObject {
 }
 
 export async function verifyRememberInputSnapshots(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	nextEmbeddingCall: () => Promise<PendingEmbeddingCall>,
 	entityId: string,
 ): Promise<void> {
 	const singleMetadata = { nested: { value: "single-original" } };
 	const singleTags = ["single-original", "shared"];
 	const singleExpiresAt = new Date("2030-01-02T03:04:05.000Z");
-	const singleInput: RememberInput = {
-		entityId,
+	const singleInput: AddInput = {
+		scope: testScope(entityId),
 		content: "single original content",
-		type: "fact",
+		kind: "fact",
 		importance: "high",
 		tags: singleTags,
 		source: "single-original",
@@ -87,10 +89,10 @@ export async function verifyRememberInputSnapshots(
 		expiresAt: singleExpiresAt,
 	};
 
-	const pendingSingle = client.remember(singleInput);
+	const pendingSingle = client.add(singleInput);
 	const singleEmbedding = await nextEmbeddingCall();
 	singleInput.content = "single mutated content";
-	singleInput.type = "session";
+	singleInput.kind = "session";
 	singleInput.importance = "low";
 	singleInput.source = "single-mutated";
 	singleInput.confidence = 0.1;
@@ -101,9 +103,9 @@ export async function verifyRememberInputSnapshots(
 
 	const single = await pendingSingle;
 	expect(single).toMatchObject({
-		entityId,
+		scope: testScope(entityId),
 		content: "single original content",
-		type: "fact",
+		kind: "fact",
 		importance: "high",
 		tags: ["single-original", "shared"],
 		source: "single-original",
@@ -115,11 +117,10 @@ export async function verifyRememberInputSnapshots(
 	const batchMetadata = { nested: { value: "batch-original" } };
 	const batchTags = ["batch-original", "shared"];
 	const batchExpiresAt = new Date("2031-02-03T04:05:06.000Z");
-	const batchInputs: RememberInput[] = [
+	const batchInputs: NewMemory[] = [
 		{
-			entityId,
 			content: "batch original content",
-			type: "instruction",
+			kind: "instruction",
 			importance: "critical",
 			tags: batchTags,
 			source: "batch-original",
@@ -129,32 +130,32 @@ export async function verifyRememberInputSnapshots(
 		},
 	];
 
-	const pendingBatch = client.rememberMany({ inputs: batchInputs });
+	const pendingBatch = client.addMany({
+		scope: testScope(entityId),
+		memories: batchInputs,
+	});
 	const batchEmbedding = await nextEmbeddingCall();
 	const firstBatchInput = batchInputs[0];
 	if (!firstBatchInput) {
 		throw new Error("Expected first batch input.");
 	}
 	firstBatchInput.content = "batch mutated content";
-	firstBatchInput.type = "episode";
+	firstBatchInput.kind = "episode";
 	firstBatchInput.importance = "normal";
 	firstBatchInput.source = "batch-mutated";
 	firstBatchInput.confidence = 0.2;
 	batchTags[0] = "batch-mutated";
 	batchMetadata.nested.value = "batch-mutated";
 	batchExpiresAt.setUTCFullYear(2041);
-	batchInputs.push({
-		entityId,
-		content: "added after invocation",
-	});
+	batchInputs.push({ content: "added after invocation" });
 	batchEmbedding.release();
 
 	const batch = await pendingBatch;
 	expect(batch).toHaveLength(1);
 	expect(batch[0]).toMatchObject({
-		entityId,
+		scope: testScope(entityId),
 		content: "batch original content",
-		type: "instruction",
+		kind: "instruction",
 		importance: "critical",
 		tags: ["batch-original", "shared"],
 		source: "batch-original",

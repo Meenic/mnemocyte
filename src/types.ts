@@ -1,16 +1,16 @@
 /**
- * Discriminator describing what kind of memory a {@link Memory} represents.
+ * What kind of memory a {@link Memory} is.
  *
- * - `"fact"` — a stable, objective statement.
- * - `"preference"` — a user/entity preference that should bias future responses.
- * - `"instruction"` — a directive the agent should follow.
- * - `"backstory"` — long-lived background context about the entity.
- * - `"episode"` — a discrete past event.
- * - `"session"` — short-lived context tied to a single session.
+ * - `"fact"`: a stable, objective statement.
+ * - `"preference"`: a preference that should shape future responses.
+ * - `"instruction"`: a directive the agent should follow.
+ * - `"backstory"`: long-lived background about the entity.
+ * - `"episode"`: a discrete past event.
+ * - `"session"`: short-lived context tied to one session.
  *
- * @defaultValue `"fact"` when omitted on {@link RememberInput}.
+ * @defaultValue `"fact"` when omitted on {@link NewMemory}.
  */
-export type MemoryType =
+export type MemoryKind =
 	| "fact"
 	| "preference"
 	| "instruction"
@@ -19,19 +19,19 @@ export type MemoryType =
 	| "session";
 
 /**
- * Relative importance assigned to a memory. Influences retrieval ranking
- * via the `importance` score component.
+ * Relative importance of a memory. Gives a small ranking boost in
+ * {@link MemoryClient.search}.
  *
- * @defaultValue `"normal"` when omitted on {@link RememberInput}.
+ * @defaultValue `"normal"` when omitted on {@link NewMemory}.
  */
 export type ImportanceLevel = "low" | "normal" | "high" | "critical";
 
 /**
- * Output format produced by {@link MnemocyteClient.buildContext}.
+ * Output format of {@link MemoryClient.context}.
  *
- * - `"markdown"` — headings + bullet list (default; LLM-friendly).
- * - `"plain"` — newline-separated plain text.
- * - `"xml"` — structured tags, useful for models that parse XML reliably.
+ * - `"markdown"`: headings and fenced blocks (default).
+ * - `"plain"`: fenced plain-text blocks.
+ * - `"xml"`: escaped XML elements.
  *
  * @defaultValue `"markdown"`
  */
@@ -57,34 +57,86 @@ export interface JsonObject {
 }
 
 /**
- * Identifies which backend a {@link MnemocyteClient} is using.
+ * Where a memory lives. Every read and write names one.
  *
- * Selected automatically by {@link createMnemocyte} from the configured
- * {@link MnemocyteConfig.store}, with in-memory storage used when none is
- * supplied.
+ * - `namespace`: the tenant or application. Required.
+ * - `entityId`: who or what the memory is about (a user, a customer, a
+ *   repository). Required.
+ * - `agentId`: who holds the memory. Omitted means shared by every agent.
+ * - `sessionId`: short-lived context. Omitted means not tied to a session.
+ *
+ * Reads at a scope also see shared memories: searching at
+ * `{ namespace, entityId, agentId: "a" }` returns the memories agent `"a"`
+ * holds plus those with no agent. `exactAgent` / `exactSession` turn that off.
+ * A scope without `agentId` sees only memories with no agent.
+ */
+export interface MemoryScope {
+	/** Tenant or application. Non-empty. */
+	namespace: string;
+	/** Who or what the memory is about. Non-empty. */
+	entityId: string;
+	/** Agent that holds the memory; omit for memories shared by every agent. */
+	agentId?: string;
+	/** Session the memory belongs to; omit for memories outside any session. */
+	sessionId?: string;
+}
+
+/**
+ * Selects memories by scope for bulk operations
+ * ({@link MemoryClient.prune}, {@link MemoryClient.stats}). Fields that are
+ * set must match exactly; fields that are omitted match any value, so
+ * `{ namespace: "app" }` covers every entity, agent and session in `"app"`.
+ */
+export interface ScopeSelector {
+	/** Tenant or application. Non-empty. */
+	namespace: string;
+	/** Limit to one entity. */
+	entityId?: string;
+	/** Limit to memories this agent holds (not shared ones). */
+	agentId?: string;
+	/** Limit to memories of this session (not session-less ones). */
+	sessionId?: string;
+}
+
+/**
+ * The scope stored with a memory or audit event. `agentId` and `sessionId`
+ * are `null` for memories shared by every agent or outside any session.
+ */
+export interface MemoryRecordScope {
+	namespace: string;
+	entityId: string;
+	agentId: string | null;
+	sessionId: string | null;
+}
+
+/**
+ * Identifies which backend a {@link MemoryClient} is using: the configured
+ * {@link MemoryConfig.store}, or in-memory storage when none is supplied.
  */
 export type MnemocyteBackend = "in-memory" | "postgres";
 
 /**
- * The set of public {@link MnemocyteClient} methods that emit
- * {@link MnemocyteObservation} events through {@link ObservabilityConfig.onEvent},
- * plus `"trackAccess"`: the access-state write a tracked recall starts after
- * its results are ready (see {@link RetrievalConfig.trackAccess}).
+ * The {@link MemoryClient} methods that emit {@link MnemocyteObservation}
+ * events through {@link ObservabilityConfig.onEvent}, plus `"trackAccess"`:
+ * the access write a tracked search starts after its results are ready (see
+ * {@link RetrievalConfig.trackAccess}).
  */
 export type MnemocyteOperation =
-	| "remember"
-	| "rememberMany"
-	| "recall"
-	| "buildContext"
-	| "forget"
-	| "forgetAll"
+	| "add"
+	| "addMany"
+	| "search"
+	| "get"
+	| "list"
+	| "update"
+	| "delete"
+	| "deleteScope"
+	| "context"
 	| "prune"
 	| "findDuplicates"
 	| "listAuditLog"
 	| "consolidate"
 	| "stats"
-	| "trackAccess"
-	| "close";
+	| "trackAccess";
 
 /**
  * Lifecycle phase of a {@link MnemocyteObservation}.
@@ -95,7 +147,7 @@ export type MnemocyteOperation =
 export type MnemocyteObservationPhase = "start" | "success" | "error";
 
 /**
- * A single observability event emitted by a {@link MnemocyteClient}.
+ * A single observability event emitted by a {@link MemoryClient}.
  *
  * Delivered to {@link ObservabilityConfig.onEvent} for tracing, metrics,
  * and structured logging.
@@ -111,7 +163,9 @@ export interface MnemocyteObservation {
 	timestamp: Date;
 	/** Elapsed milliseconds since the `"start"` event. Present on `"success"` / `"error"`. */
 	durationMs?: number;
-	/** Entity ID associated with the operation, when applicable. */
+	/** Namespace of the operation's scope, when it has one. */
+	namespace?: string;
+	/** Entity of the operation's scope, when it has one. */
 	entityId?: string;
 	/** Memory ID associated with the operation, when applicable. */
 	memoryId?: string;
@@ -130,8 +184,8 @@ export interface MnemocyteObservation {
 export interface ObservabilityConfig {
 	/**
 	 * Called for every lifecycle event of every operation. Receives a single
-	 * {@link MnemocyteObservation}. May be sync or async; the operation will
-	 * not be delayed waiting for slow async hooks beyond the awaited dispatch.
+	 * {@link MnemocyteObservation}. May be sync or async; it is awaited, so a
+	 * slow async hook delays the operation.
 	 */
 	onEvent?: (event: MnemocyteObservation) => void | Promise<void>;
 }
@@ -140,9 +194,8 @@ export interface ObservabilityConfig {
  * Production-hardening knobs applied to outbound provider calls
  * (currently the {@link Embedder}). Mnemocyte applies a timeout, retries
  * on transient failures, and forwards `AbortSignal` cancellation to each
- * attempt. Every field is optional with conservative defaults; the
- * defaults disable retries and timeouts so existing setups are
- * unaffected unless they opt in.
+ * attempt. Every field is optional; the defaults disable retries and
+ * timeouts.
  */
 export interface ProviderResilienceConfig {
 	/**
@@ -182,7 +235,7 @@ export interface ProviderResilienceConfig {
 declare const mnemocyteStoreConfigBrand: unique symbol;
 
 /**
- * Opaque storage-adapter value accepted by {@link MnemocyteConfig.store}.
+ * Opaque storage-adapter value accepted by {@link MemoryConfig.store}.
  *
  * Obtain this value from a supported adapter factory such as `postgresStore()`
  * from `mnemocyte/postgres` or `drizzleStore()` from
@@ -233,9 +286,9 @@ export interface MigrateResult {
 }
 
 /**
- * Configuration passed to {@link createMnemocyte}.
+ * Configuration passed to {@link createMemory}.
  */
-export interface MnemocyteConfig {
+export interface MemoryConfig {
 	/**
 	 * Caller-supplied storage adapter. Use `postgresStore({ client })` from
 	 * `mnemocyte/postgres` with the database client you already own, or
@@ -245,11 +298,11 @@ export interface MnemocyteConfig {
 	store?: MnemocyteStoreConfig;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
-	/** Default values applied to {@link RecallInput} when properties are omitted. */
+	/** Default values applied to {@link SearchInput} when properties are omitted. */
 	defaults?: {
-		/** Default `limit` for {@link MnemocyteClient.recall}. */
+		/** Default `limit` for {@link MemoryClient.search}. */
 		limit?: number;
-		/** Default `minScore` cutoff for {@link MnemocyteClient.recall}. */
+		/** Default `minScore` cutoff for {@link MemoryClient.search}. */
 		minScore?: number;
 	};
 	/** Retrieval-ranking tuning. See {@link RetrievalConfig}. */
@@ -264,25 +317,20 @@ export interface MnemocyteConfig {
 	provider?: ProviderResilienceConfig;
 	/**
 	 * Audit-log configuration. When enabled, Mnemocyte records an
-	 * {@link AuditEvent} for every state-changing operation
-	 * (`remember`, `forget`, `forgetAll`, `prune`). Read with
-	 * {@link MnemocyteClient.listAuditLog}.
-	 *
-	 * @experimental Part of Phase 6 (consolidation tooling).
+	 * {@link AuditEvent} for every change to a memory. Read with
+	 * {@link MemoryClient.listAuditLog}.
 	 */
 	audit?: AuditConfig;
 }
 
 /**
- * Audit-log configuration. See {@link MnemocyteConfig.audit}.
- *
- * @experimental Part of Phase 6 (consolidation tooling).
+ * Audit-log configuration. See {@link MemoryConfig.audit}.
  */
 export interface AuditConfig {
 	/**
 	 * Master switch for audit logging. When `false` (default), Mnemocyte
-	 * neither writes nor relies on the audit log; existing log entries
-	 * remain readable via {@link MnemocyteClient.listAuditLog}.
+	 * writes no audit events; existing events stay readable through
+	 * {@link MemoryClient.listAuditLog}.
 	 *
 	 * @defaultValue `false`
 	 */
@@ -308,12 +356,9 @@ export interface Embedder {
 	 * input, in the same order, each of length {@link Embedder.dimensions} and
 	 * containing only finite numeric values.
 	 *
-	 * The optional `options.signal` is forwarded by Mnemocyte when the
-	 * caller passes a `signal` on a {@link RememberInput} /
-	 * {@link RememberManyInput} / {@link RecallInput} /
-	 * {@link BuildContextInput}, or when Mnemocyte's own provider timeout fires.
-	 * Implementations that integrate with `fetch` should forward the signal to
-	 * it so requests can be cancelled promptly.
+	 * `options.signal` is the caller's `signal` (or Mnemocyte's provider
+	 * timeout). Implementations that call `fetch` should forward it so
+	 * requests can be cancelled promptly.
 	 */
 	embed(
 		texts: readonly string[],
@@ -322,60 +367,62 @@ export interface Embedder {
 }
 
 /**
- * A persisted memory record as returned by the client.
- *
- * Memories are immutable from the caller's perspective; updates produce a
- * new memory and link the previous one via {@link Memory.supersededBy}.
+ * A stored memory as returned by the client. Returned records are detached
+ * copies.
  */
 export interface Memory {
 	/** Unique identifier: a UUIDv7 string. */
 	id: string;
-	/** Owning entity — typically a user, agent, or session ID. */
-	entityId: string;
+	/** Where the memory lives. */
+	scope: MemoryRecordScope;
+	/**
+	 * Caller-chosen key, unique within the memory's exact scope, or `null`.
+	 * Adding a memory with an existing key updates that memory.
+	 */
+	key: string | null;
 	/** Raw textual content of the memory. */
 	content: string;
-	/** Discriminator describing the kind of memory. */
-	type: MemoryType;
-	/** Relative importance assigned at write time. */
+	/** What kind of memory it is. */
+	kind: MemoryKind;
+	/** Relative importance. */
 	importance: ImportanceLevel;
-	/** Free-form tags used for filtering on {@link RecallInput.tags}. */
+	/** Free-form tags used for filtering. */
 	tags: string[];
 	/** Optional human-readable source attribution (e.g. `"chat:2024-04-12"`). */
 	source: string | null;
 	/** JSON-compatible metadata persisted by value alongside the memory. */
 	metadata: JsonObject;
-	/** Confidence in `[0, 1]`. Stored for callers; recall does not rank by it. */
+	/** Confidence in `[0, 1]`. Stored for callers; search does not rank by it. */
 	confidence: number;
-	/** {@link Embedder.model} value at write time. */
+	/** {@link Embedder.model} value at the last write of the content. */
 	embeddingModel: string;
-	/** {@link Embedder.dimensions} value at write time. */
+	/** {@link Embedder.dimensions} value at the last write of the content. */
 	embeddingDimensions: number;
 	/** ID of the memory that supersedes this one, or `null` if active. */
 	supersededBy: string | null;
 	/**
-	 * Wall-clock time when this memory was superseded, or `null` if it
-	 * has not been superseded. Set together with
+	 * When this memory was superseded, or `null`. Set together with
 	 * {@link Memory.supersededBy} by
-	 * {@link ExperimentalMnemocyteClient.consolidate}.
+	 * {@link ExperimentalMemoryClient.consolidate}.
 	 */
 	supersededAt: Date | null;
 	/** Optional expiry; expired memories are filtered out by default. */
 	expiresAt: Date | null;
 	/**
-	 * Last time a recall with access tracking returned this memory; `null`
+	 * Last time a search with access tracking returned this memory; `null`
 	 * if none has. See {@link RetrievalConfig.trackAccess}.
 	 */
 	lastAccessedAt: Date | null;
-	/** Number of recalls with access tracking that returned this memory. */
+	/** Number of searches with access tracking that returned this memory. */
 	accessCount: number;
-	/** Creation timestamp. */
+	/** Creation timestamp. Kept when a keyed add updates the memory. */
 	createdAt: Date;
-	/** Most recent write timestamp. Recalls never change it. */
+	/** Most recent write timestamp. Searches never change it. */
 	updatedAt: Date;
 }
 
 /**
- * Per-component values behind a recall result's
+ * Per-component values behind a search result's
  * {@link MemoryWithScore.score}. Ranks are 1-based positions in each
  * candidate list; a memory missing from a list has `null` for that list's
  * rank and score.
@@ -390,7 +437,7 @@ export interface RetrievalScores {
 	/**
 	 * Backend-defined lexical score (`ts_rank` on Postgres, the fraction of
 	 * query terms found on the in-memory store), or `null` when not in the
-	 * lexical list. Only comparable within one recall on one backend.
+	 * lexical list. Only comparable within one search on one backend.
 	 */
 	lexical: number | null;
 	/** Reciprocal rank fusion score in `[0, 1]`, before boosts. */
@@ -438,18 +485,18 @@ export interface RetrievalConfig {
 	/** Positive finite half-life (days) for the recency score. @defaultValue `90` */
 	recencyHalfLifeDays?: number;
 	/**
-	 * Multiplier applied to {@link RecallInput.limit} to determine how many
+	 * Multiplier applied to {@link SearchInput.limit} to determine how many
 	 * candidates each search fetches before fusion.
 	 * Must be an integer greater than or equal to 1. @defaultValue `3`
 	 */
 	candidateMultiplier?: number;
 	/**
-	 * Record access on recall: increment {@link Memory.accessCount} and set
+	 * Record access on search: increment {@link Memory.accessCount} and set
 	 * {@link Memory.lastAccessedAt} on the returned memories. The write starts
-	 * once the results are ready and recall does not wait for it, so the
-	 * returned records carry the values from before this recall. Failures are
+	 * once the results are ready and search does not wait for it, so the
+	 * returned records carry the values from before this search. Failures are
 	 * reported as `"trackAccess"` events to {@link ObservabilityConfig.onEvent}
-	 * and never fail the recall. {@link RecallInput.trackAccess} overrides it
+	 * and never fail the search. {@link SearchInput.trackAccess} overrides it
 	 * per call.
 	 *
 	 * @defaultValue `false`
@@ -459,7 +506,7 @@ export interface RetrievalConfig {
 
 /**
  * Scoring settings attached to each {@link MemoryWithScore} when
- * {@link RecallInput.explain} is `true`. Together with
+ * {@link SearchInput.explain} is `true`. Together with
  * {@link MemoryWithScore.scores} they reproduce the final score.
  */
 export interface RetrievalExplanation {
@@ -474,8 +521,8 @@ export interface RetrievalExplanation {
 }
 
 /**
- * A {@link Memory} returned by {@link MnemocyteClient.recall}, annotated
- * with retrieval scores.
+ * A {@link Memory} returned by {@link MemoryClient.search}, annotated with
+ * retrieval scores.
  */
 export interface MemoryWithScore extends Memory {
 	/** Final relevance score in `[0, 1]`: the fused score times the boost factor. Higher is better. */
@@ -483,23 +530,47 @@ export interface MemoryWithScore extends Memory {
 	/** Per-component scores that produced {@link MemoryWithScore.score}. */
 	scores: RetrievalScores;
 	/**
-	 * Full scoring breakdown when {@link RecallInput.explain} is `true`,
+	 * Full scoring breakdown when {@link SearchInput.explain} is `true`,
 	 * `null` otherwise.
 	 */
 	explanation: RetrievalExplanation | null;
 }
 
 /**
- * Input for {@link MnemocyteClient.remember} and
- * {@link MnemocyteClient.rememberMany}.
+ * Options for reads at a {@link MemoryScope}: by default a read also sees
+ * memories shared by every agent (no `agentId`) and outside any session (no
+ * `sessionId`).
  */
-export interface RememberInput {
-	/** Owning entity ID (e.g. user, agent, or session). */
-	entityId: string;
+export interface ScopedReadOptions {
+	/**
+	 * Only memories whose agent equals `scope.agentId`, without shared ones.
+	 * @defaultValue `false`
+	 */
+	exactAgent?: boolean;
+	/**
+	 * Only memories whose session equals `scope.sessionId`, without
+	 * session-less ones.
+	 * @defaultValue `false`
+	 */
+	exactSession?: boolean;
+}
+
+/**
+ * The fields of a memory to add. Omitted fields take their defaults; on a
+ * keyed add that updates an existing memory, they are reset to the defaults
+ * too.
+ */
+export interface NewMemory {
 	/** Raw textual content to store. Must be non-empty. */
 	content: string;
+	/**
+	 * Idempotency key, unique within the exact scope. Adding a memory with a
+	 * key that already exists in the scope replaces that memory's content and
+	 * fields, keeping its `id`, `createdAt` and access counts.
+	 */
+	key?: string;
 	/** Memory kind. @defaultValue `"fact"` */
-	type?: MemoryType;
+	kind?: MemoryKind;
 	/** Relative importance. @defaultValue `"normal"` */
 	importance?: ImportanceLevel;
 	/** Free-form tags used for later filtering. */
@@ -512,41 +583,41 @@ export interface RememberInput {
 	confidence?: number;
 	/** Optional expiry; expired memories are filtered out by default. */
 	expiresAt?: Date;
+}
+
+/** Input for {@link MemoryClient.add}. */
+export interface AddInput extends NewMemory {
+	/** Where the memory lives. */
+	scope: MemoryScope;
 	/**
-	 * Optional cancellation signal. Forwarded to the embedder; when
-	 * aborted, the operation throws a {@link MnemocyteError} with code
-	 * `"ABORTED"`.
+	 * Optional cancellation signal. Forwarded to the embedder; when aborted,
+	 * the operation throws a {@link MnemocyteError} with code `"ABORTED"`.
 	 */
 	signal?: AbortSignal;
 }
 
-/**
- * Batch-level input for {@link MnemocyteClient.rememberMany}.
- *
- * Cancellation belongs to the whole batch. Individual items accept every
- * {@link RememberInput} field except `signal`.
- */
-export interface RememberManyInput {
-	/** Memories to persist in order. */
-	inputs: readonly Omit<RememberInput, "signal">[];
-	/** Optional cancellation signal for the entire batch. */
+/** Input for {@link MemoryClient.addMany}. */
+export interface AddManyInput {
+	/** Where every memory of the batch lives. */
+	scope: MemoryScope;
+	/** Memories to add, in order. Keys must be distinct within the batch. */
+	memories: readonly NewMemory[];
+	/** Optional cancellation signal for the whole batch. */
 	signal?: AbortSignal;
 }
 
-/**
- * Input for {@link MnemocyteClient.recall}.
- */
-export interface RecallInput {
-	/** Owning entity ID to search within. */
-	entityId: string;
+/** Input for {@link MemoryClient.search}. */
+export interface SearchInput extends ScopedReadOptions {
+	/** Scope to search; see {@link MemoryScope} for shared memories. */
+	scope: MemoryScope;
 	/** Free-text query; embedded and matched against stored memories. */
 	query: string;
-	/** Maximum number of results. Falls back to {@link MnemocyteConfig.defaults}. */
+	/** Maximum number of results. Falls back to {@link MemoryConfig.defaults}. */
 	limit?: number;
 	/** Minimum final score required for a memory to be returned. */
 	minScore?: number;
-	/** Restrict results to these memory types. */
-	types?: MemoryType[];
+	/** Restrict results to these kinds. */
+	kinds?: MemoryKind[];
 	/** Require results to include all of these tags. */
 	tags?: string[];
 	/** Only include memories created strictly before this date. */
@@ -573,10 +644,104 @@ export interface RecallInput {
 }
 
 /**
- * Pluggable token counter used by {@link MnemocyteClient.buildContext} to
- * enforce {@link BuildContextInput.maxTokens}. Plug in your model's real
- * tokenizer (e.g. `tiktoken`) for accurate budgeting; a simple character-count
- * heuristic (approximately one token per four characters) is used when omitted.
+ * Input for {@link MemoryClient.get}: a memory by `id` (any memory visible at
+ * the scope) or by `key` (the exact scope only, where keys are unique).
+ */
+export type GetInput = ScopedReadOptions & {
+	scope: MemoryScope;
+	signal?: AbortSignal;
+} & ({ id: string; key?: never } | { key: string; id?: never });
+
+/** Input for {@link MemoryClient.list}. */
+export interface ListInput extends ScopedReadOptions {
+	/** Scope to list; see {@link MemoryScope} for shared memories. */
+	scope: MemoryScope;
+	/** Page size; positive integer. @defaultValue `50` */
+	limit?: number;
+	/** `nextCursor` from the previous page. Omit for the first page. */
+	cursor?: string;
+	/** Restrict to these kinds. */
+	kinds?: MemoryKind[];
+	/** Require memories to include all of these tags. */
+	tags?: string[];
+	/** Include superseded memories. @defaultValue `false` */
+	includeSuperseded?: boolean;
+	/** Include expired memories. @defaultValue `false` */
+	includeExpired?: boolean;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/** Result of {@link MemoryClient.list}. */
+export interface ListResult {
+	/** Memories newest first, by `createdAt` then `id`. */
+	memories: Memory[];
+	/**
+	 * Opaque cursor for the next page, or `null` when this page is the last.
+	 * Pass it back unchanged as {@link ListInput.cursor}.
+	 */
+	nextCursor: string | null;
+}
+
+/**
+ * Input for {@link MemoryClient.update}. Fields that are present replace the
+ * stored value; omitted fields stay as they are. At least one field must be
+ * present.
+ */
+export interface UpdateInput {
+	/** Scope the memory is visible at; see {@link MemoryScope}. */
+	scope: MemoryScope;
+	/** Id of the memory to update. */
+	id: string;
+	/** New content. The memory is re-embedded. */
+	content?: string;
+	/** New key, or `null` to remove it. Must be unique in the memory's scope. */
+	key?: string | null;
+	kind?: MemoryKind;
+	importance?: ImportanceLevel;
+	tags?: string[];
+	/** New source, or `null` to remove it. */
+	source?: string | null;
+	metadata?: JsonObject;
+	confidence?: number;
+	/** New expiry, or `null` to remove it. */
+	expiresAt?: Date | null;
+	/** Optional cancellation signal, forwarded to the embedder. */
+	signal?: AbortSignal;
+}
+
+/** Input for {@link MemoryClient.delete}. */
+export interface DeleteInput {
+	/** Scope the memory is visible at; see {@link MemoryScope}. */
+	scope: MemoryScope;
+	/** Id of the memory to delete. */
+	id: string;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/**
+ * Input for {@link MemoryClient.deleteScope}. Here an omitted `agentId` or
+ * `sessionId` matches any value: `{ namespace, entityId }` deletes everything
+ * about the entity across all agents and sessions.
+ */
+export interface DeleteScopeInput {
+	/** What to delete; omitted optional fields match any value. */
+	scope: MemoryScope;
+	/** Optional cancellation signal. */
+	signal?: AbortSignal;
+}
+
+/** Result of {@link MemoryClient.deleteScope}. */
+export interface DeleteScopeResult {
+	/** Number of memories deleted. */
+	deletedCount: number;
+}
+
+/**
+ * Pluggable token counter used by {@link MemoryClient.context} to enforce
+ * {@link ContextInput.maxTokens}. Plug in your model's tokenizer for exact
+ * budgets; the default estimates one token per four characters.
  */
 export interface TokenCounter {
 	/** Return the number of tokens in `text`. */
@@ -584,24 +749,24 @@ export interface TokenCounter {
 }
 
 /**
- * Input for {@link MnemocyteClient.buildContext}, which renders relevant
- * memories into a prompt-ready string.
+ * Input for {@link MemoryClient.context}, which renders relevant memories
+ * into a prompt-ready string.
  */
-export interface BuildContextInput {
-	/** Owning entity ID to search within. */
-	entityId: string;
-	/** Free-text query used to select relevant memories. */
+export interface ContextInput extends ScopedReadOptions {
+	/** Scope to search; see {@link MemoryScope} for shared memories. */
+	scope: MemoryScope;
+	/** Free-text query used to select relevant memories. It is not echoed. */
 	query: string;
 	/** Output format. @defaultValue `"markdown"` */
 	format?: ContextFormat;
-	/** Optional positive-integer token budget; omission uses the default path. */
+	/** Positive-integer token budget. @defaultValue `1200` */
 	maxTokens?: number;
 	/** Maximum number of memories to consider. */
 	limit?: number;
 	/** Minimum retrieval score required. */
 	minScore?: number;
-	/** Restrict to these memory types. */
-	types?: MemoryType[];
+	/** Restrict to these kinds. */
+	kinds?: MemoryKind[];
 	/** Require results to include all of these tags. */
 	tags?: string[];
 	/** Include superseded memories. @defaultValue `false` */
@@ -609,32 +774,24 @@ export interface BuildContextInput {
 	/** Include expired memories. @defaultValue `false` */
 	includeExpired?: boolean;
 	/**
-	 * Record access for the recalled memories. Overrides
+	 * Record access for the selected memories. Overrides
 	 * {@link RetrievalConfig.trackAccess}.
 	 */
 	trackAccess?: boolean;
-	/** Tokenizer used to enforce {@link BuildContextInput.maxTokens}. */
+	/** Tokenizer used to enforce {@link ContextInput.maxTokens}. */
 	tokenCounter?: TokenCounter;
 	/**
-	 * Optional cancellation signal. Forwarded to the underlying recall
-	 * call and embedder; when aborted, the operation throws a
-	 * {@link MnemocyteError} with code `"ABORTED"`.
+	 * Optional cancellation signal. Forwarded to the search and the embedder;
+	 * when aborted, the operation throws `"ABORTED"`.
 	 */
 	signal?: AbortSignal;
 }
 
 /**
- * Input for {@link MnemocyteClient.prune}. All fields are optional, but
- * at least one selector must be set; calling `prune({})` is rejected with
- * a `"VALIDATION"` {@link MnemocyteError} so memories cannot be deleted
- * accidentally. Runtime values are validated before storage access; malformed
- * dates, enums, arrays, booleans, and signals are rejected. `false` selector
- * flags and empty selector arrays do not count as effective selectors after
- * normalization. Specified filters are combined with AND semantics.
+ * Selectors shared by {@link PruneInput}. At least one must be effective;
+ * `false` flags and empty arrays do not count.
  */
-export interface PruneInput {
-	/** Restrict pruning to a single entity. */
-	entityId?: string;
+export interface PruneSelectors {
 	/** Match memories whose `expiresAt` is in the past. */
 	expired?: boolean;
 	/** Match memories that have been superseded (`supersededBy !== null`). */
@@ -644,26 +801,16 @@ export interface PruneInput {
 	/**
 	 * Match memories last accessed strictly before this date. A memory that
 	 * was never accessed counts from its `createdAt`, so one created after
-	 * the date is kept. Useful for evicting "cold" memories.
+	 * the date is kept.
 	 */
 	notAccessedSince?: Date;
-	/** Restrict pruning to these memory types. */
-	types?: MemoryType[];
-	/**
-	 * Require memories to include all of these tags. Empty array is
-	 * treated as no tag filter.
-	 */
+	/** Match memories of these kinds. */
+	kinds?: MemoryKind[];
+	/** Match memories that include all of these tags. */
 	tags?: string[];
-	/**
-	 * Match memories whose `importance` is at or below this level. For
-	 * example, `"normal"` prunes `"low"` and `"normal"` but never `"high"`
-	 * or `"critical"`. Useful for evicting low-value memories first.
-	 */
+	/** Match memories at or below this importance. */
 	maxImportance?: ImportanceLevel;
-	/**
-	 * If `true`, count what would be pruned without deleting anything.
-	 * @defaultValue `false`
-	 */
+	/** Count what would be pruned without deleting anything. @defaultValue `false` */
 	dryRun?: boolean;
 	/**
 	 * Optional cancellation signal. A pre-aborted signal prevents storage work.
@@ -674,7 +821,18 @@ export interface PruneInput {
 }
 
 /**
- * Result returned by {@link MnemocyteClient.prune}.
+ * Input for {@link MemoryClient.prune}: a {@link ScopeSelector}, or
+ * `allNamespaces: true` for the whole installation, plus at least one
+ * selector. Selectors are combined with AND.
+ */
+export type PruneInput = PruneSelectors &
+	(
+		| { scope: ScopeSelector; allNamespaces?: never }
+		| { allNamespaces: true; scope?: never }
+	);
+
+/**
+ * Result returned by {@link MemoryClient.prune}.
  */
 export interface PruneResult {
 	/** Number of memories that matched the prune filter. */
@@ -684,23 +842,17 @@ export interface PruneResult {
 	 * normal runs and `0` for `dryRun` runs.
 	 */
 	deletedCount: number;
-	/** `true` when {@link PruneInput.dryRun} was set. */
+	/** `true` when {@link PruneSelectors.dryRun} was set. */
 	dryRun: boolean;
 }
 
 /**
- * Input for {@link MnemocyteClient.findDuplicates}.
- *
- * Performs a pairwise cosine-similarity scan of stored memories for a
- * single entity and returns pairs whose similarity meets
- * {@link FindDuplicatesInput.threshold}. The scan is read-only — no
- * memories are modified or deleted.
- *
- * @experimental Part of Phase 6 (consolidation tooling). API may change.
+ * Input for {@link MemoryClient.findDuplicates}: a pairwise cosine-similarity
+ * scan of the memories visible at a scope. Read-only.
  */
-export interface FindDuplicatesInput {
-	/** Entity whose memories should be scanned for duplicates. */
-	entityId: string;
+export interface FindDuplicatesInput extends ScopedReadOptions {
+	/** Scope to scan; see {@link MemoryScope} for shared memories. */
+	scope: MemoryScope;
 	/**
 	 * Cosine-similarity cutoff in `[0, 1]`. Pairs whose similarity is at
 	 * or above this value are returned. @defaultValue `0.95`
@@ -711,8 +863,8 @@ export interface FindDuplicatesInput {
 	 * similarity. @defaultValue `100`
 	 */
 	limit?: number;
-	/** Restrict the scan to these memory types. */
-	types?: readonly MemoryType[];
+	/** Restrict the scan to these kinds. */
+	kinds?: readonly MemoryKind[];
 	/** Require both memories in the pair to include all of these tags. */
 	tags?: readonly string[];
 	/** Include superseded memories in the scan. @defaultValue `false` */
@@ -727,12 +879,8 @@ export interface FindDuplicatesInput {
 }
 
 /**
- * A pair of memories that are likely duplicates.
- *
- * The pair is unordered (i.e. `{a, b}` is the same logical result as
- * `{b, a}`); Mnemocyte returns each pair only once.
- *
- * @experimental Part of Phase 6 (consolidation tooling). Shape may change.
+ * A pair of memories that are likely duplicates. Unordered; each pair is
+ * returned once.
  */
 export interface DuplicatePair {
 	/** One of the two memories in the duplicate pair. */
@@ -744,19 +892,17 @@ export interface DuplicatePair {
 }
 
 /**
- * A single audit-log entry recording a state-changing operation.
- *
- * @experimental Part of Phase 6 (consolidation tooling).
+ * A single audit-log entry recording a change.
  */
 export interface AuditEvent {
 	/** Unique identifier: a UUIDv7 string. */
 	id: string;
-	/** Entity whose state was changed. */
-	entityId: string;
+	/** Scope of the change. */
+	scope: MemoryRecordScope;
 	/**
-	 * Stable, dotted slug describing the change. Examples:
-	 * `"memory.created"`, `"memory.deleted"`, `"memory.pruned"`,
-	 * `"entity.cleared"`.
+	 * Stable, dotted slug describing the change: `"memory.created"`,
+	 * `"memory.updated"`, `"memory.deleted"`, `"memory.pruned"` or
+	 * `"memory.superseded"`.
 	 */
 	description: string;
 	/** JSON-compatible structured details persisted by value with the change. */
@@ -767,8 +913,6 @@ export interface AuditEvent {
 
 /**
  * Stable composite position for deterministic audit-log pagination.
- *
- * @experimental Part of Phase 6 (consolidation tooling). Shape may change.
  */
 export interface AuditLogCursor {
 	/** Event timestamp at the page boundary. */
@@ -778,13 +922,13 @@ export interface AuditLogCursor {
 }
 
 /**
- * Input for {@link MnemocyteClient.listAuditLog}.
- *
- * @experimental Part of Phase 6 (consolidation tooling).
+ * Input for {@link MemoryClient.listAuditLog}. An omitted `agentId` or
+ * `sessionId` in `scope` matches any value, so `{ namespace, entityId }`
+ * lists every event about the entity.
  */
 export interface ListAuditLogInput {
-	/** Entity whose audit log should be returned. */
-	entityId: string;
+	/** Whose events to list; omitted optional fields match any value. */
+	scope: MemoryScope;
 	/**
 	 * Maximum number of entries to return, ordered newest first.
 	 * @defaultValue `50`
@@ -800,17 +944,9 @@ export interface ListAuditLogInput {
 	 * a complete pagination cursor: events sharing the timestamp are excluded.
 	 */
 	after?: Date;
-	/**
-	 * Return entries strictly older than this stable `(timestamp, id)` position.
-	 *
-	 * @experimental Prefer this over `before` for complete pagination.
-	 */
+	/** Return entries strictly older than this `(timestamp, id)` position. */
 	beforeCursor?: AuditLogCursor;
-	/**
-	 * Return entries strictly newer than this stable `(timestamp, id)` position.
-	 *
-	 * @experimental Prefer this over `after` for complete pagination.
-	 */
+	/** Return entries strictly newer than this `(timestamp, id)` position. */
 	afterCursor?: AuditLogCursor;
 	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
@@ -820,17 +956,13 @@ export interface ListAuditLogInput {
 }
 
 /**
- * Input for {@link ExperimentalMnemocyteClient.consolidate}.
- *
- * Marks each memory in {@link ConsolidateInput.supersededIds} as
- * superseded by {@link ConsolidateInput.survivorId}. Optionally
- * unions the losers' tags into the survivor.
- *
- * @experimental Part of Phase 6 (consolidation tooling).
+ * Input for {@link ExperimentalMemoryClient.consolidate}: mark each memory in
+ * `supersededIds` as superseded by `survivorId`, optionally merging their
+ * tags into the survivor.
  */
 export interface ConsolidateInput {
-	/** Entity that owns every memory referenced. */
-	entityId: string;
+	/** Scope every referenced memory is visible at; see {@link MemoryScope}. */
+	scope: MemoryScope;
 	/** Memory that should win the merge. Must not itself be superseded. */
 	survivorId: string;
 	/**
@@ -849,19 +981,15 @@ export interface ConsolidateInput {
 	 */
 	mergeTags?: boolean;
 	/**
-	 * Optional cancellation signal. Postgres checks it between transaction
-	 * steps and immediately before the transaction callback returns. A
-	 * statement already in flight may finish before the next check rolls the
-	 * transaction back. An abort after the final check, including while commit
-	 * is in flight, may still leave the consolidation committed.
+	 * Optional cancellation signal. On Postgres it cancels the running
+	 * statement; the consolidation is one statement, so a cancel before it
+	 * finishes writes nothing.
 	 */
 	signal?: AbortSignal;
 }
 
 /**
- * Result returned by {@link ExperimentalMnemocyteClient.consolidate}.
- *
- * @experimental Part of Phase 6 (consolidation tooling).
+ * Result returned by {@link ExperimentalMemoryClient.consolidate}.
  */
 export interface ConsolidateResult {
 	/** Echoes {@link ConsolidateInput.survivorId}. */
@@ -876,223 +1004,131 @@ export interface ConsolidateResult {
 }
 
 /**
- * Stats for a single entity, returned by
- * {@link MnemocyteClient.stats} when an `entityId` is provided.
+ * Input for {@link MemoryClient.stats}: a {@link ScopeSelector}, or
+ * `allNamespaces: true` for the whole installation.
  */
-export interface EntityStats {
-	/** The entity these stats describe. */
-	entityId: string;
-	/** Total number of memories ever stored for this entity. */
-	memoryCount: number;
-	/** Memories that are neither expired nor superseded. */
-	activeMemoryCount: number;
-	/** Memories whose `expiresAt` has passed. */
-	expiredMemoryCount: number;
-	/** Memories that have been superseded by a newer one. */
-	supersededMemoryCount: number;
-}
+export type StatsInput =
+	| { scope: ScopeSelector; allNamespaces?: never }
+	| { allNamespaces: true; scope?: never };
 
-/**
- * Stats aggregated across all entities, returned by
- * {@link MnemocyteClient.stats} when no `entityId` is provided.
- */
-export interface GlobalStats {
-	/** Number of distinct entities with at least one memory. */
+/** Counts returned by {@link MemoryClient.stats}. */
+export interface MemoryStats {
+	/** Number of distinct entities (per namespace) with at least one memory. */
 	entityCount: number;
-	/** Total number of memories across all entities. */
+	/** Number of memories selected. */
 	memoryCount: number;
 	/** Memories that are neither expired nor superseded. */
 	activeMemoryCount: number;
 	/** Memories whose `expiresAt` has passed. */
 	expiredMemoryCount: number;
-	/** Memories that have been superseded by a newer one. */
+	/** Memories that have been superseded. */
 	supersededMemoryCount: number;
 }
 
 /**
- * The Mnemocyte client. Returned by {@link createMnemocyte}.
+ * The memory client returned by {@link createMemory}. It holds no
+ * connections or timers, so it needs no shutdown call; the database client
+ * behind a store stays yours to end.
  *
  * Every method may throw {@link MnemocyteError}; use {@link isMnemocyteError}
  * to narrow caught values.
  */
-export interface MnemocyteClient {
+export interface MemoryClient {
 	/**
-	 * Persist a single memory and return the stored record.
+	 * Store one memory and return it. With a `key` that already exists in the
+	 * scope, the existing memory is updated in place instead.
 	 *
 	 * @throws {MnemocyteError} `"VALIDATION"` for invalid input, `"EMBEDDING"`
 	 * if the embedder fails, `"DB"` for storage failures.
 	 */
-	remember(input: RememberInput): Promise<Memory>;
+	add(input: AddInput): Promise<Memory>;
 	/**
-	 * Persist multiple memories in one round-trip. Returns the stored records
-	 * in the same order as `input.inputs`; `input.signal` cancels the batch.
+	 * Store several memories of one scope with one embedder call and one
+	 * statement. Returns them in input order.
 	 */
-	rememberMany(input: RememberManyInput): Promise<Memory[]>;
+	addMany(input: AddManyInput): Promise<Memory[]>;
 	/**
-	 * Positional compatibility overload retained during pre-v1. The first
-	 * item's `signal`, when present, acts as the batch signal.
-	 *
-	 * @deprecated Use `rememberMany({ inputs, signal })`.
+	 * Rank the memories visible at the scope against `query` with hybrid
+	 * vector and keyword search.
 	 */
-	rememberMany(inputs: readonly RememberInput[]): Promise<Memory[]>;
+	search(input: SearchInput): Promise<MemoryWithScore[]>;
+	/** Return one memory by id or key, or `null` when there is none. */
+	get(input: GetInput): Promise<Memory | null>;
+	/** Page through the memories visible at the scope, newest first. */
+	list(input: ListInput): Promise<ListResult>;
 	/**
-	 * Retrieve the most relevant memories for `input.query`, ranked by the
-	 * configured {@link RetrievalConfig}.
+	 * Change fields of one memory and return it. Content changes re-embed it.
+	 *
+	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
+	 * visible at the scope; `"CONFLICT"` if the new key is already used in
+	 * the memory's scope.
 	 */
-	recall(input: RecallInput): Promise<MemoryWithScore[]>;
+	update(input: UpdateInput): Promise<Memory>;
 	/**
-	 * Build a prompt-ready context string from the most relevant memories.
-	 * Respects {@link BuildContextInput.maxTokens} when supplied.
+	 * Delete one memory.
+	 *
+	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
+	 * visible at the scope; `"CONFLICT"` while another memory references it as
+	 * its consolidation survivor.
 	 */
-	buildContext(input: BuildContextInput): Promise<string>;
+	delete(input: DeleteInput): Promise<void>;
 	/**
-	 * Delete a specific memory belonging to `entityId`.
+	 * Delete every memory in a scope, and the scope's audit events, in one
+	 * statement. `{ namespace, entityId }` erases the entity across all agents
+	 * and sessions.
 	 *
-	 * @throws {MnemocyteError} `"NOT_FOUND"` if the memory does not exist
-	 * or does not belong to `entityId`.
-	 * @throws {MnemocyteError} `"CONFLICT"` if another memory still
-	 * references this memory as its consolidation survivor.
+	 * @throws {MnemocyteError} `"CONFLICT"` when a memory outside the scope
+	 * still references a memory inside it as its consolidation survivor.
 	 */
-	forget(input: { entityId: string; memoryId: string }): Promise<void>;
+	deleteScope(input: DeleteScopeInput): Promise<DeleteScopeResult>;
 	/**
-	 * Delete every memory belonging to `entityId`.
-	 *
-	 * @throws {MnemocyteError} `"CONFLICT"` if any selected memory is still
-	 * referenced as a consolidation survivor, including by another selected
-	 * memory.
+	 * Search and render the results as a prompt-ready string within a token
+	 * budget.
 	 */
-	forgetAll(input: { entityId: string }): Promise<void>;
+	context(input: ContextInput): Promise<string>;
 	/**
-	 * Bulk-delete memories matching the filters on {@link PruneInput}.
+	 * Bulk-delete memories that match a scope selector and at least one other
+	 * selector. Pass `dryRun: true` to count without deleting.
 	 *
-	 * At least one filter must be specified; an empty input throws a
-	 * `"VALIDATION"` {@link MnemocyteError} to avoid accidental full
-	 * deletion. Pass `dryRun: true` to count without deleting.
-	 *
-	 * @throws {MnemocyteError} `"CONFLICT"` when a non-dry-run prune selects
-	 * a memory that still has consolidation dependents. The prune deletes
-	 * nothing in that case.
-	 *
-	 * @example Evict expired or stale memories for an entity
-	 * ```ts
-	 * await client.prune({
-	 *   entityId: "user_123",
-	 *   expired: true,
-	 * });
-	 *
-	 * await client.prune({
-	 *   notAccessedSince: new Date(Date.now() - 30 * 24 * 3600 * 1000),
-	 *   maxImportance: "normal",
-	 * });
-	 * ```
+	 * @throws {MnemocyteError} `"VALIDATION"` without a scope (or
+	 * `allNamespaces: true`) or without a selector; `"CONFLICT"` when a
+	 * non-dry-run prune selects a memory that still has consolidation
+	 * dependents. The prune deletes nothing in that case.
 	 */
 	prune(input: PruneInput): Promise<PruneResult>;
 	/**
-	 * Scan an entity's memories for likely duplicates by pairwise cosine
-	 * similarity and return matching pairs, ordered by descending
-	 * similarity. Read-only — no memories are modified.
-	 *
-	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
-	 *
-	 * @example
-	 * ```ts
-	 * const pairs = await client.findDuplicates({
-	 *   entityId: "user_123",
-	 *   threshold: 0.95,
-	 *   limit: 50,
-	 * });
-	 * for (const { a, b, similarity } of pairs) {
-	 *   console.log(similarity, a.content, "<>", b.content);
-	 * }
-	 * ```
+	 * Return pairs of near-identical memories visible at the scope, most
+	 * similar first. Read-only.
 	 */
 	findDuplicates(input: FindDuplicatesInput): Promise<DuplicatePair[]>;
-	/**
-	 * Return audit-log entries for `entityId`, newest first.
-	 *
-	 * Entries are recorded automatically when
-	 * {@link MnemocyteConfig.audit}.`enabled` is `true`. Historic entries
-	 * remain readable even after toggling `enabled` back to `false`.
-	 *
-	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
-	 *
-	 * @example
-	 * ```ts
-	 * const log = await client.listAuditLog({
-	 *   entityId: "user_123",
-	 *   limit: 100,
-	 * });
-	 * for (const event of log) {
-	 *   console.log(event.timestamp, event.description, event.metadata);
-	 * }
-	 * ```
-	 */
+	/** Return audit-log events for a scope, newest first. */
 	listAuditLog(input: ListAuditLogInput): Promise<AuditEvent[]>;
+	/** Count memories for a scope selector or the whole installation. */
+	stats(input: StatsInput): Promise<MemoryStats>;
 	/**
-	 * Unstable, opt-in extension surface. Members may change or be
-	 * removed without a semver bump until they graduate to the main
-	 * client interface.
-	 *
-	 * @experimental Part of Phase 6 (consolidation tooling).
+	 * Unstable surface. Members may change or be removed in a minor release
+	 * until they graduate to the main client interface.
 	 */
-	experimental: ExperimentalMnemocyteClient;
-	/**
-	 * Return statistics. With an `entityId`, returns {@link EntityStats};
-	 * without one, returns {@link GlobalStats}.
-	 */
-	stats(input?: { entityId?: string }): Promise<EntityStats | GlobalStats>;
-	/**
-	 * Release any underlying resources (e.g. the Postgres connection pool).
-	 * New operations are rejected once closing starts. The returned promise
-	 * waits for operations that already started, then closes the store. Safe to
-	 * call multiple times; concurrent calls share the same close operation.
-	 * If closing the store fails, the client reopens so callers may retry.
-	 */
-	close(): Promise<void>;
+	experimental: ExperimentalMemoryClient;
 }
 
 /**
- * Extension surface for unstable Phase 6 operations. Reached via
- * {@link MnemocyteClient.experimental}.
+ * Unstable operations, reached through {@link MemoryClient.experimental}.
  *
- * @experimental Members may change or be removed without a semver bump.
+ * @experimental Members may change or be removed in a minor release.
  */
-export interface ExperimentalMnemocyteClient {
+export interface ExperimentalMemoryClient {
 	/**
-	 * Consolidate likely-duplicate memories into a single survivor by
-	 * marking the others as superseded. Optionally unions their tags
-	 * onto the survivor. Idempotent when every already-superseded loser
-	 * points to the requested survivor.
-	 *
-	 * Emits one `"memory.superseded"` audit event per newly superseded
-	 * memory when {@link MnemocyteConfig.audit}.`enabled` is `true`.
-	 * A survivor cannot later be deleted while any superseded memory still
-	 * references it; deletion attempts fail with `"CONFLICT"`.
-	 *
-	 * @experimental Part of Phase 6 (consolidation tooling). API may change.
+	 * Mark likely duplicates as superseded by one survivor, optionally merging
+	 * their tags into it. Idempotent for memories that already point to the
+	 * survivor. Emits one `"memory.superseded"` audit event per newly
+	 * superseded memory when audit is enabled.
 	 *
 	 * @throws {MnemocyteError} `"VALIDATION"` for empty or duplicate
-	 * `supersededIds`, a `survivorId` that also appears in `supersededIds`, or
-	 * a survivor that is itself already superseded.
-	 * @throws {MnemocyteError} `"NOT_FOUND"` if the survivor or any
-	 * memory in `supersededIds` does not belong to `entityId`.
-	 * @throws {MnemocyteError} `"CONFLICT"` if any memory in
-	 * `supersededIds` already points to a different survivor, or if the
-	 * survivor is deleted or becomes superseded between shared preflight and
-	 * the atomic store mutation. The whole call is rejected before any loser,
-	 * survivor tags, or audit events are changed.
-	 *
-	 * @example
-	 * ```ts
-	 * const pairs = await client.findDuplicates({ entityId: "user_123" });
-	 * for (const { a, b } of pairs) {
-	 *   await client.experimental.consolidate({
-	 *     entityId: "user_123",
-	 *     survivorId: a.id,
-	 *     supersededIds: [b.id],
-	 *   });
-	 * }
-	 * ```
+	 * `supersededIds`, a `survivorId` inside `supersededIds`, or a survivor
+	 * that is itself superseded; `"NOT_FOUND"` if a memory is not visible at
+	 * the scope; `"CONFLICT"` if a memory points to a different survivor or
+	 * the survivor changed before the write. Nothing is written on any error.
 	 */
 	consolidate(input: ConsolidateInput): Promise<ConsolidateResult>;
 }

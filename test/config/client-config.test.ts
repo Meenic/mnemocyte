@@ -1,6 +1,6 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
-	createMnemocyte,
+	createMemory,
 	isMnemocyteError,
 	type MnemocyteErrorCode,
 	type MnemocyteStoreConfig,
@@ -8,6 +8,7 @@ import {
 import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
+import { testScope } from "../helpers.js";
 
 const validEmbedder = {
 	model: "config-test",
@@ -42,13 +43,12 @@ function expectConfigError(action: () => unknown, code: MnemocyteErrorCode) {
 
 describe("client configuration", () => {
 	test("uses in-memory storage when no store is supplied", async () => {
-		const client = createMnemocyte({ embedder: validEmbedder });
-		const memory = await client.remember({
-			entityId: "config_in_memory",
+		const client = createMemory({ embedder: validEmbedder });
+		const memory = await client.add({
+			scope: testScope("config_in_memory"),
 			content: "No store configuration still uses in-memory storage.",
 		});
-		expect(memory.entityId).toBe("config_in_memory");
-		await client.close();
+		expect(memory.scope.entityId).toBe("config_in_memory");
 	});
 
 	test("uses a Postgres store without touching the caller's client on close", async () => {
@@ -62,18 +62,16 @@ describe("client configuration", () => {
 				return fn(executor);
 			},
 		};
-		const client = createMnemocyte({
+		const _client = createMemory({
 			store: postgresStore({ client: executor }),
 			embedder: validEmbedder,
 		});
-
-		await client.close();
 		expect(queryCount).toBe(0);
 	});
 
 	test("rejects a store that was not created by an adapter as CONFIG", async () => {
 		const client = () =>
-			createMnemocyte({
+			createMemory({
 				store: {} as MnemocyteStoreConfig,
 				embedder: validEmbedder,
 			});
@@ -90,7 +88,7 @@ describe("client configuration", () => {
 	test("classifies an empty embedder model as CONFIG", () => {
 		expectConfigError(
 			() =>
-				createMnemocyte({
+				createMemory({
 					embedder: { ...validEmbedder, model: " " },
 				}),
 			"CONFIG",
@@ -106,7 +104,7 @@ describe("client configuration", () => {
 	)("rejects retrieval.%s.%s=%s as CONFIG", (group, key, value) => {
 		expectConfigError(
 			() =>
-				createMnemocyte({
+				createMemory({
 					embedder: validEmbedder,
 					retrieval: { [group]: { [key]: value } },
 				}),
@@ -116,7 +114,7 @@ describe("client configuration", () => {
 
 	test("accepts zero for any single fusion weight, k or boost", () => {
 		for (const [group, key] of retrievalNumberFields) {
-			createMnemocyte({
+			createMemory({
 				embedder: validEmbedder,
 				retrieval: { [group]: { [key]: 0 } },
 			});
@@ -126,7 +124,7 @@ describe("client configuration", () => {
 	test("rejects zero weight on both fusion lists as CONFIG", () => {
 		expectConfigError(
 			() =>
-				createMnemocyte({
+				createMemory({
 					embedder: validEmbedder,
 					retrieval: { fusion: { vector: 0, lexical: 0 } },
 				}),
@@ -141,7 +139,7 @@ describe("client configuration", () => {
 	] as const)("rejects invalid %s=%s as CONFIG", (field, value) => {
 		expectConfigError(
 			() =>
-				createMnemocyte({
+				createMemory({
 					embedder: validEmbedder,
 					retrieval: { [field]: value },
 				}),
@@ -152,7 +150,7 @@ describe("client configuration", () => {
 	test.each(["yes", 1, null])("rejects trackAccess=%s as CONFIG", (value) => {
 		expectConfigError(
 			() =>
-				createMnemocyte({
+				createMemory({
 					embedder: validEmbedder,
 					retrieval: { trackAccess: value as unknown as boolean },
 				}),
@@ -165,7 +163,7 @@ describe("client configuration", () => {
 		(candidateMultiplier) => {
 			expectConfigError(
 				() =>
-					createMnemocyte({
+					createMemory({
 						embedder: validEmbedder,
 						retrieval: { candidateMultiplier },
 					}),

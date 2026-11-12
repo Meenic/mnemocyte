@@ -9,14 +9,18 @@ in-memory backend needs none of this.
   extension available, version 0.8.0 or later: search uses its iterative
   index scans and throws `"MIGRATION"` on older versions. CI tests Postgres
   17 and 18 with pgvector 0.8.7.
-- A client that can run statements together in one transaction:
-  postgres.js today. Each search runs its vector search after setting
+- A client that can run statements together in one transaction: postgres.js,
+  a node-postgres `Pool`, PGlite, a Drizzle instance over one of them, or
+  your own `SqlExecutor`. Each search runs its vector search after setting
   pgvector options for that transaction, and `addMany` writes its chunks in
   one transaction.
 - A database role that can create the extension (once) and the Mnemocyte
   tables in the `public` schema.
-- The `postgres` (postgres.js) package next to Mnemocyte. It is an optional
-  peer dependency; Mnemocyte itself has no runtime dependencies.
+- Your driver next to Mnemocyte: `postgres` 3.4.9 or later 3.x, `pg` 8.23.1+
+  or `@electric-sql/pglite` 0.5.16+ (with `@electric-sql/pglite-pgvector`),
+  and `drizzle-orm` 0.45.4+ if you use Drizzle. They are optional peer
+  dependencies; Mnemocyte itself has no runtime dependencies and imports
+  none of them.
 
 Mnemocyte never creates extensions, tables or indexes when a client is
 created. You create the schema with `migrate()`, or by applying the bundled
@@ -35,11 +39,11 @@ deploy step or at startup:
 
 ```ts
 import { migrate } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
-const store = postgresStore({ client: postgresJs(sql) });
+const store = postgresStore({ client: sql });
 
 const { applied, adopted } = await migrate({ store, dimensions: 1536 });
 ```
@@ -104,19 +108,17 @@ this way.
 
 ## Connect
 
-Create the postgres.js client yourself and wrap it with `postgresJs`:
+Pass the client your app already has. `postgresStore` recognises it by its
+shape, without importing any driver:
 
 ```ts
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!, { ssl: "require", max: 10 });
 
-const memory = createMemory({
-  store: postgresStore({ client: postgresJs(sql) }),
-  embedder,
-});
+const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
 
 // ... on shutdown, end your own client:
 await sql.end();
@@ -125,13 +127,87 @@ await sql.end();
 You own the client: TLS, pool size, timeouts and `prepare` are whatever you
 configure. The memory client holds no connections and has no `close()`.
 
+Checks run in this order, and the first match wins:
+
+1. **postgres.js:** a function with `unsafe` and `begin`.
+2. **Drizzle:** an object with `$client`; Mnemocyte uses that client.
+3. **PGlite:** an object with `query`, `exec` and `transaction`.
+4. **node-postgres `Pool`:** an object with `query`, `connect` and a
+   numeric `totalCount`.
+5. **`SqlExecutor`:** an object with `query` and `transaction` or `batch`
+   (see [below](#bring-another-driver)).
+
+Anything else throws `"CONFIG"` when `postgresStore` is called.
+
+### node-postgres
+
+```ts
+import pg from "pg";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const store = postgresStore({ client: pool });
+```
+
+Pass a `Pool`, not a `Client`: each transaction checks out one connection
+with `pool.connect()`, runs on it and releases it, because consecutive
+`pool.query` calls can land on different connections. A `pg.Client` throws
+`"CONFIG"`. Pools with the same API, such as `@neondatabase/serverless`'s
+`Pool`, are detected the same way.
+
+node-postgres cannot cancel a running query. An aborted `signal` stops the
+next statement; the one already sent runs to the end.
+
+### PGlite
+
+[PGlite](https://pglite.dev) runs Postgres inside your process. Load
+pgvector through its extension package, enable it, then migrate as usual:
+
+```ts
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite-pgvector";
+
+const db = await PGlite.create({ dataDir: "./memory-data", extensions: { vector } });
+await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+
+const store = postgresStore({ client: db });
+await migrate({ store, dimensions: 1536 });
+```
+
+PGlite 0.5 is Postgres 18 with pgvector 0.8.7. It runs one transaction at
+a time: while Mnemocyte holds one, your other PGlite queries wait. Like
+node-postgres, it cannot cancel a running query. A data folder can be open
+in one process only.
+
+### Drizzle
+
+Pass the Drizzle instance itself:
+
+```ts
+import { drizzle } from "drizzle-orm/node-postgres";
+
+const db = drizzle({ client: pool });
+const store = postgresStore({ client: db });
+```
+
+Mnemocyte runs its own SQL on `db.$client` and shares its pool. Supported:
+`drizzle-orm/postgres-js`, `drizzle-orm/node-postgres` with a `Pool`, and
+`drizzle-orm/pglite`; any other Drizzle driver throws `"CONFIG"`. Your
+Drizzle schema does not need to include Mnemocyte's tables, but the
+migrations must be applied. `drizzleStore(db)` from
+`mnemocyte/stores/drizzle` does the same and keeps working. TypeScript
+types that omit `$client` (such as an instance annotated as
+`PostgresJsDatabase`) are accepted by `drizzleStore`; for `postgresStore`,
+let the type be inferred from `drizzle()`.
+
+### Poolers and prepared statements
+
 Mnemocyte sends plain parameterized statements and never uses named prepared
 statements, so a transaction-mode pooler (PgBouncer, Supavisor) works without
 `prepare: false`.
 
 ### Bring another driver
 
-`postgresStore` takes any `SqlExecutor`, an interface exported from
+`postgresStore` also takes any `SqlExecutor`, an interface exported from
 `mnemocyte/postgres`:
 
 ```ts
@@ -156,31 +232,10 @@ the other two (`"CONFIG"` otherwise):
   as Neon's `sql.transaction([...])` over HTTP.
 
 When both exist, Mnemocyte uses `batch`. `migrate` needs `transaction`, so
-run it over a regular connection. `postgresJs` is the only adapter that
-ships today; Drizzle, PGlite and node-postgres adapters are planned.
-
-### Drizzle
-
-If your application already has a postgres.js-backed Drizzle instance, pass
-it through `mnemocyte/stores/drizzle`:
-
-```ts
-import { createMemory } from "mnemocyte";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-
-const sql = postgres(process.env.DATABASE_URL!);
-const db = drizzle(sql);
-
-const memory = createMemory({ store: drizzleStore(db), embedder });
-```
-
-`drizzleStore(db)` runs Mnemocyte's SQL on the postgres.js client behind `db`
-and shares its pool. Your Drizzle schema does not need to include Mnemocyte's
-tables, but the migrations must already be applied. Only
-`drizzle-orm/postgres-js` instances are supported; anything else throws
-`MnemocyteError` code `"CONFIG"` when `drizzleStore` is called.
+run it over a regular connection. Drivers are checked first, so an executor
+object must not also have PGlite's `exec` or a pool's `connect` and
+`totalCount`. `postgresJs(sql)` still wraps a postgres.js client as an
+executor, for code written before detection.
 
 ## Upgrade an existing installation
 

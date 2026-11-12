@@ -1,4 +1,10 @@
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type { PGlite } from "@electric-sql/pglite";
+import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
+import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
+import type {
+	drizzle as drizzlePostgresJs,
+	PostgresJsDatabase,
+} from "drizzle-orm/postgres-js";
 import type {
 	AddInput,
 	AddManyInput,
@@ -49,6 +55,11 @@ import {
 	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
 import {
+	type DrizzleClient,
+	type NodePostgresPool,
+	type PGliteClient,
+	type PostgresClient,
+	type PostgresJsClient,
 	type PostgresJsExecutor,
 	type PostgresStoreOptions,
 	postgresJs,
@@ -58,6 +69,8 @@ import {
 	type SqlStatement,
 } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
+import type { Client, Pool } from "pg";
+import type { Sql } from "postgres";
 
 const scope: MemoryScope = {
 	namespace: "app",
@@ -105,6 +118,50 @@ const batchOnlyExecutor: SqlExecutor = {
 	batch: async (input) => input.map(() => []),
 };
 const postgresOptions: PostgresStoreOptions = { client: executor };
+// Each driver's own client fits postgresStore without a wrapper.
+declare const postgresJsSql: Sql;
+declare const nodePostgresPool: Pool;
+declare const nodePostgresClient: Client;
+declare const pglite: PGlite;
+declare const drizzleOverPostgresJs: ReturnType<
+	typeof drizzlePostgresJs<Record<string, never>, Sql>
+>;
+declare const drizzleOverPool: ReturnType<
+	typeof drizzleNodePostgres<Record<string, never>, Pool>
+>;
+declare const drizzleOverPGlite: ReturnType<
+	typeof drizzlePGlite<Record<string, never>, PGlite>
+>;
+const postgresJsClient: PostgresJsClient = postgresJsSql;
+const nodePostgresPoolClient: NodePostgresPool = nodePostgresPool;
+const pgliteClient: PGliteClient = pglite;
+const drizzleClient: DrizzleClient = drizzleOverPool;
+const driverClients: PostgresClient[] = [
+	postgresJsSql,
+	nodePostgresPool,
+	pglite,
+	drizzleOverPostgresJs,
+	drizzleOverPool,
+	drizzleOverPGlite,
+	executor,
+	batchOnlyExecutor,
+];
+for (const driverClient of driverClients) {
+	postgresStore({ client: driverClient });
+}
+const drizzleStores: MnemocyteStoreConfig[] = [
+	drizzleStore(drizzleOverPostgresJs),
+	drizzleStore(drizzleOverPool),
+	drizzleStore(drizzleOverPGlite),
+];
+// A node-postgres Client type-checks (its query fits SqlExecutor's, whose
+// other methods are optional) and is rejected at runtime with "CONFIG".
+postgresStore({ client: nodePostgresClient });
+void postgresJsClient;
+void nodePostgresPoolClient;
+void pgliteClient;
+void drizzleClient;
+void drizzleStores;
 const postgresConfig: MemoryConfig = {
 	embedder,
 	store: postgresStore(postgresOptions),

@@ -11,8 +11,9 @@ updates the matching guide page in the same PR.
 Feature areas:
 
 - [features/postgres.md](./features/postgres.md): schema, migrations and
-  the `migrate()` runner, installation metadata, connections (`SqlExecutor`, `postgresStore`,
-  `drizzleStore(db)`).
+  the `migrate()` runner, installation metadata, connections (`SqlExecutor`,
+  client detection, the postgres.js, node-postgres and PGlite adapters,
+  `postgresStore`, `drizzleStore(db)`).
 - [features/scopes.md](./features/scopes.md): scopes and their matching
   rules, keyed `add`, `get`, `list` pagination, `update`, `deleteScope`, the
   client lifecycle.
@@ -46,7 +47,7 @@ src/
   index.ts              root entry: createMemory, migrate, errors, public types
   client.ts             createMemory: config checks, store (given | in-memory)
   migrate.ts            migrate(): validates input, calls the store's migrate
-  postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs
+  postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   types.ts              every public type
   errors.ts             MnemocyteError and its codes
   observability.ts      onEvent lifecycle (start / success / error)
@@ -65,10 +66,15 @@ src/
     records.ts          ids, tag normalization, cloning
   sql/
     executor.ts         SqlExecutor: query, optional transaction and batch
+    clients.ts          toSqlExecutor: client detection, PostgresClient types
     postgres-js.ts      postgresJs(sql): the postgres.js adapter
+    node-postgres.ts    the node-postgres Pool adapter
+    pglite.ts           the PGlite adapter
+    scoped.ts           transaction executor with savepoints (pg, PGlite)
   db/
     sql.ts              bind-parameter collector for building statements
     atomic.ts           runAtomically (batch or transaction), insert chunking
+    errors.ts           constraint name from either driver error shape
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
     migrations/         Postgres migration runner and bundled.ts (generated)
@@ -83,10 +89,12 @@ test/                   unit, package, integration, fixtures, benchmarks
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
 `src/index.ts`, `src/postgres.ts`, `src/embedders/*.ts` and
-`src/stores/*.ts`. The package has no runtime dependencies. `drizzle-orm` and
-`postgres` are optional peer dependencies that source files import for types
-only, so no built entry imports them (a package test checks this). Their
-versions are also dev dependencies for the tests.
+`src/stores/*.ts`. The package has no runtime dependencies. `postgres`, `pg`,
+`@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies at
+the versions the tests run; source files import at most their types
+(`postgres` and `drizzle-orm` only), so no built entry imports a driver (a
+package test checks this). They are also dev dependencies, with `@types/pg`
+and `@electric-sql/pglite-pgvector`.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
 Node 22.18 fully supports. `isolatedDeclarations` is on for `src/`, so every
@@ -141,9 +149,11 @@ Exports:
   `isMnemocyteError` and the public types.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
-  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions` and `PostgresJsExecutor`
-  types.
-- `mnemocyte/stores/drizzle`: `drizzleStore(db)`.
+  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
+  `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
+  client and result types), `PGliteClient` (with its transaction and result
+  types) and `DrizzleClient` types.
+- `mnemocyte/stores/drizzle`: `drizzleStore(db)` and `DrizzleClient`.
 
 `package.json` lists each subpath explicitly, with a `types` and a `default`
 condition; there are no wildcard subpaths, so a new entry needs its own
@@ -175,7 +185,8 @@ Vitest has three projects (`vitest.config.ts`):
 
 | Project | Files | Imports | Command |
 |---|---|---|---|
-| `unit` | `test/**/*.test.ts` except integration, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
+| `unit` | `test/**/*.test.ts` except integration, contract, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
+| `contract` | `test/contract/**/*.test.ts` | `src/` through aliases | `pnpm test:contract` |
 | `package` | `test/package/*.test.ts` | built `dist/` through self-reference | `pnpm test:exports` |
 | `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` |
 
@@ -185,8 +196,8 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, runs `pnpm test:types`, then runs `unit` and
-  `package`. This is what CI runs on every push. `pnpm test:exports` does the
+- `pnpm test` builds, runs `pnpm test:types`, then runs `unit`, `contract`
+  and `package`. This is what CI runs on every push. `pnpm test:exports` does the
   same for `package` alone.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
@@ -206,6 +217,19 @@ Vitest has three projects (`vitest.config.ts`):
 - Shared behavior is written once as a fixture in `test/fixtures/` and run
   against the in-memory backend in `unit` and against Postgres in
   `integration`.
+- The Postgres contract (`test/contract/suite.ts`,
+  `describeStoreContract`) runs the same checks through every driver:
+  migrate, transactions and savepoints, value round trips, chunked
+  `addMany`, search and context, the scoped-API fixtures, and cross-scope
+  isolation for search, id lookups, prune, duplicates, consolidation,
+  `deleteScope` and stats. The `contract` project runs it on PGlite, direct
+  and through Drizzle: an in-process Postgres 18 with pgvector 0.8.7, so no
+  service is needed and every Node job in CI runs it (about 5 s).
+  `test/integration/drivers.test.ts` runs it on real Postgres through
+  postgres.js, a node-postgres `Pool`, and Drizzle over each. Each run
+  migrates (adopting an existing schema), works in its own namespaces,
+  deletes them afterwards, and uses the integration files' embedding model
+  name so it can share their database.
 - The integration suite needs a **disposable** Postgres database with
   pgvector available and a role that can create tables in `public`. Each file
   applies the bundled migrations, ignoring "already exists" errors, and uses

@@ -10,6 +10,18 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **node-postgres, PGlite and Drizzle clients in `postgresStore`.**
+  `postgresStore({ client })` now takes the client your app already has: a
+  postgres.js `sql`, a node-postgres `Pool`, a PGlite instance (with
+  `@electric-sql/pglite-pgvector`), or a Drizzle instance over one of them,
+  recognised by shape without importing any driver. A hand-written
+  `SqlExecutor` still works; a `pg.Client` or anything else throws
+  `"CONFIG"`. `postgresJs(sql)` keeps working, and `drizzleStore(db)` now
+  also accepts `drizzle-orm/node-postgres` and `drizzle-orm/pglite`
+  instances. `pg` and `@electric-sql/pglite` are new optional peer
+  dependencies. node-postgres and PGlite cannot cancel a statement that is
+  already running; an aborted signal stops the next one.
+
 - **Scoped API: `createMemory`.** Every call names a scope:
   `{ namespace, entityId, agentId?, sessionId? }`. Reads see the scope plus
   memories shared by every agent or outside any session (`exactAgent` /

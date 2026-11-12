@@ -1,4 +1,5 @@
 import { assertSqlExecutor } from "../db/atomic.js";
+import { postgresConstraintName } from "../db/errors.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
 import { insertEvents, listEvents } from "../db/queries/events.js";
 import {
@@ -89,12 +90,7 @@ function hasPostgresErrorCode(error: unknown, code: string): boolean {
 }
 
 function hasPostgresConstraintName(error: unknown, name: string): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"constraint_name" in error &&
-		error.constraint_name === name
-	);
+	return postgresConstraintName(error) === name;
 }
 
 function getPostgresErrorCode(error: unknown): string | undefined {

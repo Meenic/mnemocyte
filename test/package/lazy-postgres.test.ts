@@ -55,12 +55,11 @@ describe("lazy Postgres package loading", () => {
 		);
 
 		expect(manifest.dependencies).toBeUndefined();
-		expect(Object.keys(manifest.peerDependencies).sort()).toEqual([
-			"drizzle-orm",
-			"postgres",
-		]);
-		expect(manifest.peerDependenciesMeta["drizzle-orm"].optional).toBe(true);
-		expect(manifest.peerDependenciesMeta.postgres.optional).toBe(true);
+		const peers = ["@electric-sql/pglite", "drizzle-orm", "pg", "postgres"];
+		expect(Object.keys(manifest.peerDependencies).sort()).toEqual(peers);
+		for (const peer of peers) {
+			expect(manifest.peerDependenciesMeta[peer].optional).toBe(true);
+		}
 	});
 
 	test.each(["dist/index.mjs", "dist/postgres.mjs", "dist/stores/drizzle.mjs"])(
@@ -69,7 +68,7 @@ describe("lazy Postgres package loading", () => {
 			const source = await readFile(resolve(entry), "utf8");
 
 			expect(source).not.toMatch(
-				/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres)["'];?\s*$/m,
+				/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?)["'];?\s*$/m,
 			);
 		},
 	);
@@ -105,16 +104,15 @@ describe("lazy Postgres package loading", () => {
 			]);
 			expect(packedFreshInstall).toEqual(sourceFreshInstall);
 
-			await Promise.all([
-				expectPathMissing(join(nodeModules, "drizzle-orm")),
-				expectPathMissing(join(nodeModules, "postgres")),
-				expectPathMissing(
-					join(nodeModules, "mnemocyte", "node_modules", "drizzle-orm"),
-				),
-				expectPathMissing(
-					join(nodeModules, "mnemocyte", "node_modules", "postgres"),
-				),
-			]);
+			const drivers = ["drizzle-orm", "postgres", "pg", "@electric-sql"];
+			await Promise.all(
+				drivers.flatMap((driver) => [
+					expectPathMissing(join(nodeModules, driver)),
+					expectPathMissing(
+						join(nodeModules, "mnemocyte", "node_modules", driver),
+					),
+				]),
+			);
 
 			const script = join(consumer, "in-memory.mjs");
 			await writeFile(

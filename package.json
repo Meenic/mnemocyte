@@ -37,8 +37,9 @@
 		"dev": "tsdown --watch",
 		"checktypes": "tsc --noEmit && tsc --noEmit --project tsconfig.test.json",
 		"test": "pnpm run test:ci",
-		"test:ci": "pnpm build && pnpm test:types && vitest run --project unit --project package",
+		"test:ci": "pnpm build && pnpm test:types && vitest run --project unit --project contract --project package",
 		"test:unit": "vitest run --project unit",
+		"test:contract": "vitest run --project contract",
 		"test:exports": "pnpm build && pnpm test:types && vitest run --project package",
 		"test:types": "tsc --noEmit -p test/package/tsconfig.json",
 		"test:observability": "vitest run --project unit test/observability/hooks.test.ts",
@@ -90,11 +91,19 @@
 		"node": ">=22.18"
 	},
 	"peerDependencies": {
+		"@electric-sql/pglite": "^0.5.16",
 		"drizzle-orm": "^0.45.4",
+		"pg": "^8.23.1",
 		"postgres": "^3.4.9"
 	},
 	"peerDependenciesMeta": {
+		"@electric-sql/pglite": {
+			"optional": true
+		},
 		"drizzle-orm": {
+			"optional": true
+		},
+		"pg": {
 			"optional": true
 		},
 		"postgres": {
@@ -102,12 +111,16 @@
 		}
 	},
 	"devDependencies": {
-		"drizzle-orm": "^0.45.4",
-		"postgres": "^3.4.9",
 		"@arethetypeswrong/cli": "0.18.5",
 		"@biomejs/biome": "2.6.3",
+		"@electric-sql/pglite": "^0.5.16",
+		"@electric-sql/pglite-pgvector": "^0.0.17",
 		"@types/node": "^22.20.5",
+		"@types/pg": "^8.23.1",
 		"drizzle-kit": "^0.31.11",
+		"drizzle-orm": "^0.45.4",
+		"pg": "^8.23.1",
+		"postgres": "^3.4.9",
 		"publint": "0.3.25",
 		"tsdown": "0.23.1",
 		"typescript": "^6.0.3",

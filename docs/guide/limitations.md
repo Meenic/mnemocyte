@@ -13,9 +13,15 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and `migrate` and
   the renderer refuse larger sizes. Half precision is close to lossless for cosine
   ranking but not bit-for-bit equal to the vectors you sent.
-- **postgres.js only.** `postgresJs` is the only `SqlExecutor` adapter, and
-  `drizzleStore` accepts only `drizzle-orm/postgres-js` instances. Planned:
-  Drizzle, PGlite and node-postgres adapters (`feat/postgres-drivers`).
+- **Four drivers are built in.** postgres.js, a node-postgres `Pool`,
+  PGlite, and Drizzle over one of them. A `pg.Client` and other Drizzle
+  drivers throw `"CONFIG"`; anything else needs a hand-written `SqlExecutor`
+  ([postgres.md](./postgres.md#bring-another-driver)). postgres.js 4 is not
+  supported yet: the peer range is 3.x. Planned: `chore/postgres-js-4`.
+- **node-postgres and PGlite cannot cancel a running query.** An aborted
+  `signal` stops the next statement and the call rejects with `"ABORTED"`,
+  but a statement already sent runs to the end. postgres.js cancels it on
+  the server.
 - **`migrate` needs interactive transactions and the `public` schema.** It
   runs each migration in a transaction, so HTTP drivers without one (Neon's
   HTTP driver) cannot run it; use a regular connection for migrating. The

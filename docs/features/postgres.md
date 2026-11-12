@@ -294,7 +294,8 @@ vectors.
 ## Connections
 
 Mnemocyte never creates or closes a database client. The application passes
-the client it already owns, wrapped as a `SqlExecutor`:
+the client it already owns to `postgresStore({ client })`, which turns it
+into a `SqlExecutor`:
 
 ```ts
 interface SqlExecutor {
@@ -321,11 +322,13 @@ interface SqlExecutor {
   are pipelined on the transaction's connection and the transaction costs
   `BEGIN`, one pipelined round trip and `COMMIT`. On abort it cancels every
   statement it sent and throws `"ABORTED"`; postgres.js rolls back.
-- `postgresStore({ client })` turns an executor into `MemoryConfig.store`.
-- `drizzleStore(db)` (`mnemocyte/stores/drizzle`) takes a
-  `drizzle-orm/postgres-js` instance and runs the same SQL on `db.$client`,
-  sharing its pool. Other Drizzle drivers are not supported. A value without a
-  postgres.js `$client` throws `"CONFIG"`.
+- `postgresStore({ client })` turns a client into `MemoryConfig.store`
+  through `toSqlExecutor` (`src/sql/clients.ts`); see
+  [client detection](#client-detection).
+- `drizzleStore(db)` (`mnemocyte/stores/drizzle`) is
+  `postgresStore({ client: db })` for a Drizzle instance; its parameter type
+  also accepts `PostgresJsDatabase`, which does not declare `$client`. A
+  value without `$client` throws `"CONFIG"`.
 - TLS, pool size, timeouts and `prepare` are whatever the caller configured.
   `unsafe` does not create named prepared statements, so transaction-mode
   poolers work as they are.
@@ -337,6 +340,67 @@ are one `WITH … DELETE`, and `consolidate` is one `WITH` query (see
 [maintenance.md](./maintenance.md#experimentalconsolidate)). Only `migrate()`
 needs `transaction`, because each step reads the tracking table and decides
 what to run from it; without one it throws `"CONFIG"`.
+
+### Client detection
+
+`toSqlExecutor` reads properties only and imports no driver, so the built
+entries stay free of driver imports (a package test checks this). Checks run
+in a fixed order and the first match wins (ARCHITECTURE decision 21):
+
+1. postgres.js: a function with `unsafe` and `begin` (or `savepoint`, a
+   transaction's `sql`) → `postgresJs`.
+2. Drizzle: an object with `$client`, which must match 1, 3 or 4. A
+   `pg.Client` there gets the error below; anything else gets `"CONFIG"`
+   naming the supported Drizzle drivers.
+3. PGlite (or `PGliteWorker`): an object with `query`, `exec` and
+   `transaction` → `pgliteExecutor`. It comes before the `SqlExecutor`
+   check because it has that shape too, but its `query` returns
+   `{ rows }`.
+4. node-postgres `Pool`: an object with `query`, `connect` and a numeric
+   `totalCount` → `nodePostgresExecutor`. pg-compatible pools (Neon's
+   serverless `Pool`) match.
+5. `SqlExecutor`: an object with `query` and `transaction` or `batch`,
+   returned unchanged. A function never matches, so Neon's HTTP `sql`
+   (which has `query` and an array-taking `transaction`) is rejected.
+
+An object with `query` and `connect` but no `totalCount` is a `pg.Client`
+and throws `"CONFIG"` asking for a `Pool`: a transaction must run on one
+connection, which only `pool.connect()` gives without taking over the
+caller's client. Everything else throws `"CONFIG"` listing the accepted
+clients.
+
+The public types are structural (`PostgresJsClient`, `NodePostgresPool`,
+`PGliteClient`, `DrizzleClient`, their union `PostgresClient`), so the
+`.d.mts` files name no driver package either. A `pg.Client` still
+type-checks, because its `query` fits `SqlExecutor`, whose other methods are
+optional; it fails at runtime.
+
+The adapters:
+
+- `nodePostgresExecutor` (`src/sql/node-postgres.ts`): `query` is
+  `pool.query(text, values).rows`. `transaction` checks out a client, runs
+  `BEGIN`, the callback and `COMMIT` on it, and `ROLLBACK` on failure; the
+  client is released in `finally`, with `release(true)` (destroy) when the
+  `ROLLBACK` itself failed. node-postgres warns that consecutive
+  `pool.query` calls may use different connections, so nothing in a
+  transaction goes through the pool. No `batch`: pg sends a client's
+  queries one at a time, so a transaction costs the same.
+- `pgliteExecutor` (`src/sql/pglite.ts`): `query` is `db.query(...).rows`
+  (one statement, extended protocol), `transaction` is `db.transaction`,
+  which holds PGlite's exclusive lock until it ends.
+- Both pass the callback a `createScopedExecutor` (`src/sql/scoped.ts`):
+  `query` on the transaction's connection, and a nested `transaction` that
+  runs `SAVEPOINT mnemocyte_savepoint_<depth>`, then `RELEASE` or
+  `ROLLBACK TO`. PGlite's `tx` has no `transaction` of its own.
+- Neither driver can cancel a running query (pg has no public cancel API,
+  PGlite none at all). Their executors check the signal before each
+  statement and throw `"ABORTED"`; a statement already sent runs to the
+  end.
+
+Driver errors carry the violated constraint as `constraint_name`
+(postgres.js) or `constraint` (node-postgres and PGlite, both built on
+`pg-protocol`); `postgresConstraintName` (`src/db/errors.ts`) reads either,
+for the key-collision and foreign-key `"CONFLICT"` mappings.
 
 ### Atomic statements
 
@@ -398,7 +462,9 @@ ids) use the same trick.
 `prune`, `findDuplicates`, `listAuditLog`, `consolidate` and its preflight
 lookups pass their signal to `SqlExecutor.query`, and the `addMany` insert
 passes it to `query`, `batch` or each statement of its transaction, and the postgres.js adapter
-sends `query.cancel()` when it aborts. postgres.js opens a second connection
+sends `query.cancel()` when it aborts. The node-postgres and PGlite adapters
+only check the signal before each statement (see
+[client detection](#client-detection)). postgres.js opens a second connection
 for the cancel request and documents that, in a race, it can cancel a
 different query on that backend; Mnemocyte accepts this and rejects the
 caller with `"ABORTED"` either way. Because `consolidate` is one statement, a

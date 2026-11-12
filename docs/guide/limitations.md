@@ -21,15 +21,20 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   HTTP driver) cannot run it; use a regular connection for migrating. The
   consolidation foreign key names `public.mnemocyte_memories`, so the tables
   must live in `public`.
-- **Recall needs interactive transactions and pgvector 0.8.** The vector
-  search sets pgvector's scan options for one transaction, so drivers without
-  interactive transactions cannot search, and pgvector before 0.8.0 throws
-  `"MIGRATION"`. Planned: a `batch` path for those drivers
-  (`fix/batch-writes`).
-- **Large batches fail on Postgres.** `addMany` sends one `INSERT`; past
-  about 2,900 memories it exceeds Postgres's 65,535 bind-parameter limit and
-  throws `"DB"`. The whole batch is also embedded in one embedder call. Split
-  large batches yourself. Planned: chunked writes (`fix/batch-writes`).
+- **Recall needs pgvector 0.8.** The vector search uses iterative index
+  scans; pgvector before 0.8.0 throws `"MIGRATION"`.
+- **`addMany` takes at most 1,000 memories.** Larger calls throw
+  `"VALIDATION"`; split them into several calls, each all or nothing. The
+  memories are written in one transaction, so a large call holds it while
+  every row and its HNSW index entry are written.
+- **Input sizes are capped.** Content and queries stop at 32,000
+  characters, metadata at 64 KiB, keys at 512 bytes and scope fields at 256
+  bytes, among others; see [input limits](./api.md#input-limits). The caps
+  are fixed.
+- **One HTTP request per batch.** A `SqlExecutor.batch` over an HTTP driver
+  sends a whole `addMany` in one request, so the driver's request limit
+  applies (64 MB on Neon). At 1,536 dimensions 1,000 memories take about
+  20 MB of vector text plus their content.
 
 ## Retrieval
 

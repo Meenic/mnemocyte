@@ -1,5 +1,10 @@
 import { MnemocyteError } from "../errors.js";
 import type { JsonObject, JsonValue } from "../types.js";
+import {
+	MAX_METADATA_BYTES,
+	MAX_METADATA_DEPTH,
+	utf8Length,
+} from "./limits.js";
 
 declare const ownedJsonObject: unique symbol;
 
@@ -20,6 +25,7 @@ function cloneJsonValue(
 	value: unknown,
 	path: string,
 	ancestors: Set<object>,
+	maxDepth: number,
 ): JsonValue {
 	if (
 		value === null ||
@@ -40,6 +46,14 @@ function cloneJsonValue(
 	if (ancestors.has(value)) {
 		throw invalidJsonValue(path);
 	}
+	// `ancestors` holds the containers above this one, so its size is the
+	// nesting depth of this value minus one.
+	if (ancestors.size >= maxDepth) {
+		throw new MnemocyteError(
+			`${path} must be nested at most ${maxDepth} levels deep.`,
+			"VALIDATION",
+		);
+	}
 
 	ancestors.add(value);
 	try {
@@ -54,7 +68,12 @@ function cloneJsonValue(
 				if (!Object.hasOwn(value, index)) {
 					throw invalidJsonValue(`${path}[${index}]`);
 				}
-				return cloneJsonValue(value[index], `${path}[${index}]`, ancestors);
+				return cloneJsonValue(
+					value[index],
+					`${path}[${index}]`,
+					ancestors,
+					maxDepth,
+				);
 			});
 		}
 
@@ -78,7 +97,7 @@ function cloneJsonValue(
 			}
 			entries.push([
 				key,
-				cloneJsonValue(descriptor.value, `${path}.${key}`, ancestors),
+				cloneJsonValue(descriptor.value, `${path}.${key}`, ancestors, maxDepth),
 			]);
 		}
 		return Object.fromEntries(entries);
@@ -96,11 +115,49 @@ export function cloneJsonObject(
 		if (value === null || typeof value !== "object" || Array.isArray(value)) {
 			throw invalidJsonValue(path);
 		}
-		return cloneJsonValue(value, path, new Set()) as OwnedJsonObject;
+		return cloneJsonValue(
+			value,
+			path,
+			new Set(),
+			Number.POSITIVE_INFINITY,
+		) as OwnedJsonObject;
 	} catch (error) {
 		if (error instanceof MnemocyteError) {
 			throw error;
 		}
 		throw invalidJsonValue(path, error);
 	}
+}
+
+/**
+ * Validate, cap and deep-clone caller metadata: at most
+ * {@link MAX_METADATA_DEPTH} levels deep (checked while cloning, so deep
+ * nesting fails before it can exhaust the stack) and at most
+ * {@link MAX_METADATA_BYTES} as UTF-8 JSON.
+ */
+export function snapshotMetadata(value: unknown): OwnedJsonObject {
+	let cloned: OwnedJsonObject;
+	try {
+		if (value === null || typeof value !== "object" || Array.isArray(value)) {
+			throw invalidJsonValue("metadata");
+		}
+		cloned = cloneJsonValue(
+			value,
+			"metadata",
+			new Set(),
+			MAX_METADATA_DEPTH,
+		) as OwnedJsonObject;
+	} catch (error) {
+		if (error instanceof MnemocyteError) {
+			throw error;
+		}
+		throw invalidJsonValue("metadata", error);
+	}
+	if (utf8Length(JSON.stringify(cloned)) > MAX_METADATA_BYTES) {
+		throw new MnemocyteError(
+			`metadata must be at most ${MAX_METADATA_BYTES} bytes as JSON.`,
+			"VALIDATION",
+		);
+	}
+	return cloned;
 }

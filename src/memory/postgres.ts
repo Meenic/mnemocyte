@@ -1,5 +1,6 @@
+import { assertSqlExecutor } from "../db/atomic.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
-import { insertEvent, listEvents } from "../db/queries/events.js";
+import { insertEvents, listEvents } from "../db/queries/events.js";
 import {
 	consolidateMemories,
 	countPruneMatches,
@@ -231,6 +232,7 @@ function compatibilityKey(embedder: Embedder): string {
 }
 
 export function createPostgresStore(client: SqlExecutor): MemoryStore {
+	assertSqlExecutor(client);
 	// Keyed by model and dimensions, not by store: one store value shared by
 	// clients with different embedders checks each embedder.
 	const compatibilityChecks = new Map<string, Promise<void>>();
@@ -356,12 +358,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			return runPostgresMigrations(client, input);
 		},
 		ensureEmbeddingCompatibility,
-		async insertMemories(memories) {
+		async insertMemories(memories, options) {
 			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
 				const rows = await insertMemoryRows(
 					client,
 					memories.map(toMemoryRow),
 					await getVectorType(),
+					options?.signal,
 				);
 				return rows.map(rowToMemory);
 			});
@@ -549,15 +553,16 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async addAuditEvents(events) {
 			return runPostgresOperation(async () => {
-				for (const event of events) {
-					await insertEvent(client, {
+				await insertEvents(
+					client,
+					events.map((event) => ({
 						id: event.id,
 						scope: event.scope,
 						description: event.description,
 						metadata: cloneJsonObject(event.metadata),
 						timestamp: event.timestamp,
-					});
-				}
+					})),
+				);
 			});
 		},
 		async listAuditLog(input, options) {

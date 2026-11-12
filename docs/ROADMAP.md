@@ -79,7 +79,7 @@ None.
   upserts), `search`, `get`, `list` (cursor), `update`, `delete`,
   `deleteScope`, `context`; prune requires a scope; no `close()`
   (ARCHITECTURE decision 19); upgrade note.
-- [ ] `fix/batch-writes`: chunked embedding and inserts in one transaction,
+- [x] `fix/batch-writes`: chunked embedding and inserts in one transaction,
   through an optional `SqlExecutor.batch` for drivers without interactive
   transactions;
   input size caps (`limit`, content, tags, metadata, `key`). Validating
@@ -127,6 +127,10 @@ None.
 - [ ] `feat/consolidate-stable`: graduate `consolidate`; survivor-aware
   deletes; kNN-based `findDuplicates`.
 - [ ] `fix/observability-non-blocking`: hooks no longer awaited.
+- [ ] `fix/audit-atomic`: audit events in the same statement or transaction
+  as the write they record, for every write path (`add`, `addMany`,
+  `update`, `delete`, `prune`, `consolidate`); today they are written
+  best-effort after the write and a failed audit write is swallowed.
 - [ ] `feat/audit-retention`: retention option and pruning guidance.
 - [ ] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.

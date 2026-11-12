@@ -36,6 +36,15 @@ behavioural changes documented in their entries.
   with `psql` or drizzle-kit is detected from its schema and adopted. The SQL
   files keep shipping in `migrations/`.
 
+- **`SqlExecutor.batch`.** An optional
+  `batch(statements, { signal })` runs statements in order in one
+  transaction, all or nothing, and returns each one's rows. `transaction` is
+  now optional too; an executor needs `query` plus at least one of the two
+  (`"CONFIG"` otherwise). Drivers without interactive transactions (Neon's
+  HTTP driver) can implement `batch` alone and still search and write;
+  `migrate` still needs `transaction`. `postgresJs` implements both and
+  pipelines a batch inside `sql.begin`, which saves a round trip per search.
+
 - **`SqlExecutor` and `mnemocyte/postgres`.** The Postgres backend now runs on
   a two-method `SqlExecutor` (`query` with an optional `AbortSignal`, and
   `transaction`). `postgresJs(sql)` wraps a postgres.js client and
@@ -48,6 +57,18 @@ behavioural changes documented in their entries.
   `"trackAccess"`, `namespace`, `entityId` and `count`.
 
 ### Changed
+
+- **`addMany` is chunked and all or nothing.** It embeds at most 100 texts
+  per embedder call, one call after another, then writes every memory in one
+  transaction in `INSERT`s of 250 rows; when any embedder call or insert
+  fails, nothing is stored. Audit events are written as multi-row `INSERT`s
+  instead of one statement per event.
+- **Breaking: input size caps.** These now throw `"VALIDATION"` before any
+  embedder or database call: `limit` above 1,000; `content` or a search
+  `query` above 32,000 characters; more than 64 tags or a tag above 128
+  characters; `metadata` above 64 KiB as JSON or nested deeper than 32
+  levels; a `key` above 512 bytes or a scope field above 256 bytes in UTF-8;
+  more than 1,000 memories in one `addMany`.
 
 - **Breaking: methods renamed and scoped.** `remember` → `add`,
   `rememberMany({ inputs })` → `addMany({ scope, memories })` (one scope per
@@ -187,7 +208,8 @@ behavioural changes documented in their entries.
   filter, or a small entity in a large table, could return fewer memories
   than exist, or none. Recall throws `"MIGRATION"` on pgvector before 0.8.0;
   upgrade the server package, then run `ALTER EXTENSION vector UPDATE`. Each
-  recall now needs a client with interactive transactions. The cosine
+  recall now needs a client with interactive transactions or
+  `SqlExecutor.batch`. The cosine
   distance is also computed once per row instead of three times.
 - **Scoped id lookups.** Loading embeddings for lexical-only candidates and
   updating access counts now filter by entity as well as id.

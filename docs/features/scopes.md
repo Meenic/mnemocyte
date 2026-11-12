@@ -80,7 +80,11 @@ RETURNING …
   `memory.updated`.
 
 The embedder runs before the statement, outside any transaction, as for every
-write.
+write. Scope fields are capped at 256 bytes and keys at 512 bytes in UTF-8
+(`memory/limits.ts`), so the scope + key btree entry (five text columns)
+stays well under the roughly one-third-of-a-page limit Postgres puts on an
+index entry; without the caps a long key failed with a `"DB"` error from the
+index.
 
 ## `get`
 

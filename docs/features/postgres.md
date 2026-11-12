@@ -241,8 +241,9 @@ An HNSW index scan collects `hnsw.ef_search` candidates (40 by default) and
 Postgres applies the `WHERE` filters to those afterwards. Without help, a
 selective filter (a `kinds` or `tags` filter, or one scope in a large table)
 could leave fewer rows than exist, or none. The search vector search
-(`vectorSearch` in `src/db/queries/memories.ts`) therefore runs in a
-transaction:
+(`vectorSearch` in `src/db/queries/memories.ts`) therefore sends two
+statements that run in one transaction (see
+[atomic statements](#atomic-statements)):
 
 ```sql
 SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
@@ -298,13 +299,28 @@ the client it already owns, wrapped as a `SqlExecutor`:
 ```ts
 interface SqlExecutor {
   query<Row>(sql: string, params: readonly unknown[], options?: { signal?: AbortSignal }): Promise<Row[]>;
-  transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+  transaction?<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+  batch?(statements: readonly SqlStatement[], options?: { signal?: AbortSignal }): Promise<Record<string, unknown>[][]>;
 }
 ```
 
-- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js client.
-  `query` is `sql.unsafe(text, params)` with `$1…` placeholders; `transaction`
-  is `sql.begin`, or `sql.savepoint` inside a transaction.
+- `query` is required, and so is one of `transaction` and `batch`;
+  `createPostgresStore` checks this with `assertSqlExecutor`
+  (`src/db/atomic.ts`) and throws `"CONFIG"`.
+- `batch` runs its statements in order in one transaction, all or nothing,
+  and returns one rows array per statement. It is the shape of a
+  non-interactive transaction: Neon's HTTP `sql.transaction([...])` and D1's
+  `batch()` take a list of statements and return a list of results. A
+  `set_config(…, true)` in one statement applies to the later ones.
+- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js client and
+  returns a `PostgresJsExecutor` with both optional methods. `query` is
+  `sql.unsafe(text, params)` with `$1…` placeholders; `transaction` is
+  `sql.begin`, or `sql.savepoint` inside a transaction; `batch` returns the
+  array of `unsafe` queries from the `sql.begin` (or `sql.savepoint`)
+  callback, which postgres.js awaits with `Promise.all`, so the statements
+  are pipelined on the transaction's connection and the transaction costs
+  `BEGIN`, one pipelined round trip and `COMMIT`. On abort it cancels every
+  statement it sent and throws `"ABORTED"`; postgres.js rolls back.
 - `postgresStore({ client })` turns an executor into `MemoryConfig.store`.
 - `drizzleStore(db)` (`mnemocyte/stores/drizzle`) takes a
   `drizzle-orm/postgres-js` instance and runs the same SQL on `db.$client`,
@@ -315,15 +331,43 @@ interface SqlExecutor {
   poolers work as they are.
 - The memory client has no `close()`; the caller ends its own client.
 
-Every write is one statement. The guarded deletes are one `WITH … DELETE`,
-and `consolidate` is one `WITH` query (see
-[maintenance.md](./maintenance.md#experimentalconsolidate)), so writes need
-no connection held across round trips, which is what stateless HTTP drivers
-(Neon's HTTP driver, D1) require. Two paths call `transaction`: `migrate()`
-and the search vector query, whose `set_config` must share a transaction
-with the query (see [Filtered vector search](#filtered-vector-search)). An
-optional `batch` for drivers without interactive transactions is planned
-with `fix/batch-writes`; until then those drivers cannot search.
+Writes need no connection held across round trips, which is what
+stateless HTTP drivers (Neon's HTTP driver, D1) require. The guarded deletes
+are one `WITH … DELETE`, and `consolidate` is one `WITH` query (see
+[maintenance.md](./maintenance.md#experimentalconsolidate)). Only `migrate()`
+needs `transaction`, because each step reads the tracking table and decides
+what to run from it; without one it throws `"CONFIG"`.
+
+### Atomic statements
+
+Two paths need several statements to commit together: the search vector
+query (its `set_config` must share a transaction with the query) and chunked
+inserts. Both go through `runAtomically` (`src/db/atomic.ts`):
+
+- One statement goes through `query`; a single statement is already atomic.
+- Otherwise `batch` when the executor has it, else a `transaction` that sends
+  the statements one at a time.
+- A `batch` that returns a different number of results than statements
+  throws `"DB"`.
+
+### Chunked inserts
+
+`insertMemories` splits rows into `INSERT … ON CONFLICT` statements of
+`INSERT_CHUNK_ROWS` (250) rows and runs them through `runAtomically`, so an
+`addMany` commits all its rows or none. Placeholders restart at `$1` in each
+statement.
+
+- A memory row binds 23 parameters. Postgres allows 65,535 per statement
+  (the Bind message counts them in an Int16), and postgres.js 3.4 rejects
+  65,534 or more (`MAX_PARAMETERS_EXCEEDED`), so one statement could hold
+  2,849 rows; before chunking, larger `addMany` calls failed with `"DB"`.
+- 250 rows keep one statement near 4 MB at 1,536 dimensions. A `batch` over
+  HTTP sends every statement in one request (64 MB on Neon), and `addMany`
+  takes at most 1,000 memories, so a full call stays near 20 MB of vectors.
+- Keys are distinct within a call, so two chunks never upsert the same row.
+- Audit events use the same chunking: `insertEvents` writes one multi-row
+  `INSERT` per 250 events (8 parameters each) instead of one statement per
+  event. Audit stays best-effort after the memory write commits.
 
 All queries are plain SQL strings built in `src/db/queries/`. Values are
 always parameters, never interpolated; the only interpolated value is the
@@ -352,7 +396,8 @@ ids) use the same trick.
 ## Cancellation
 
 `prune`, `findDuplicates`, `listAuditLog`, `consolidate` and its preflight
-lookups pass their signal to `SqlExecutor.query`, and the postgres.js adapter
+lookups pass their signal to `SqlExecutor.query`, and the `addMany` insert
+passes it to `query`, `batch` or each statement of its transaction, and the postgres.js adapter
 sends `query.cancel()` when it aborts. postgres.js opens a second connection
 for the cancel request and documents that, in a race, it can cancel a
 different query on that backend; Mnemocyte accepts this and rejects the
@@ -368,5 +413,3 @@ Each one is a roadmap item in Phase 1 unless noted.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
   after an error and can leave a partial schema; `migrate()` then refuses to
   adopt it. The guide shows the flags.
-- `addMany` sends one `INSERT`; past about 2,900 rows it exceeds the
-  65,535 bind-parameter limit.

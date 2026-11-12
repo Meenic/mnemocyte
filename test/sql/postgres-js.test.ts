@@ -23,6 +23,18 @@ function pendingQuery(
 	return pending;
 }
 
+/**
+ * Like postgres.js's `begin` and `savepoint`: an array returned by the
+ * callback is awaited with `Promise.all` (pipelined queries).
+ */
+async function runScope(
+	fn: (tx: unknown) => unknown,
+	scoped: unknown,
+): Promise<unknown> {
+	const result = fn(scoped);
+	return Array.isArray(result) ? Promise.all(result) : result;
+}
+
 function createFakeClient(options: {
 	unsafe: (sql: string, params: unknown[]) => FakePending;
 }) {
@@ -32,16 +44,14 @@ function createFakeClient(options: {
 			calls.push({ sql, params });
 			return options.unsafe(sql, params);
 		}),
-		savepoint: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-			fn(scoped),
-		),
+		savepoint: vi.fn((fn: (tx: unknown) => unknown) => runScope(fn, scoped)),
 	};
 	const client = {
 		unsafe: vi.fn((sql: string, params: unknown[]) => {
 			calls.push({ sql, params });
 			return options.unsafe(sql, params);
 		}),
-		begin: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(scoped)),
+		begin: vi.fn((fn: (tx: unknown) => unknown) => runScope(fn, scoped)),
 	};
 	return { client: client as unknown as Sql, raw: client, scoped, calls };
 }
@@ -169,5 +179,106 @@ describe("postgresJs executor", () => {
 				throw failure;
 			}),
 		).rejects.toBe(failure);
+	});
+
+	test("batch pipelines every statement inside one begin and returns rows per statement", async () => {
+		const fake = createFakeClient({
+			unsafe: (sql) => pendingQuery(Promise.resolve([{ sql }])),
+		});
+
+		const results = await postgresJs(fake.client).batch([
+			{ sql: "SELECT set_config('a', $1, true)", params: ["1"] },
+			{ sql: "SELECT 2", params: [] },
+		]);
+
+		expect(results).toEqual([
+			[{ sql: "SELECT set_config('a', $1, true)" }],
+			[{ sql: "SELECT 2" }],
+		]);
+		expect(fake.raw.begin).toHaveBeenCalledOnce();
+		expect(fake.raw.unsafe).not.toHaveBeenCalled();
+		expect(fake.calls).toEqual([
+			{ sql: "SELECT set_config('a', $1, true)", params: ["1"] },
+			{ sql: "SELECT 2", params: [] },
+		]);
+	});
+
+	test("batch inside a transaction uses a savepoint", async () => {
+		const fake = createFakeClient({
+			unsafe: () => pendingQuery(Promise.resolve([])),
+		});
+
+		await postgresJs(fake.client).transaction(async (tx) => {
+			await tx.batch([
+				{ sql: "SELECT 1", params: [] },
+				{ sql: "SELECT 2", params: [] },
+			]);
+		});
+
+		expect(fake.raw.begin).toHaveBeenCalledOnce();
+		expect(fake.scoped.savepoint).toHaveBeenCalledOnce();
+	});
+
+	test("batch rejects with the failing statement's error", async () => {
+		const failure = Object.assign(new Error("duplicate"), { code: "23505" });
+		const fake = createFakeClient({
+			unsafe: (sql) =>
+				pendingQuery(
+					sql === "SELECT 2" ? Promise.reject(failure) : Promise.resolve([]),
+				),
+		});
+
+		await expect(
+			postgresJs(fake.client).batch([
+				{ sql: "SELECT 1", params: [] },
+				{ sql: "SELECT 2", params: [] },
+			]),
+		).rejects.toBe(failure);
+	});
+
+	test("batch cancels its statements when the signal aborts", async () => {
+		const controller = new AbortController();
+		const rejects: Array<(reason: unknown) => void> = [];
+		const cancel = vi.fn(() => {
+			for (const reject of rejects) {
+				reject(new Error("canceling statement due to user request"));
+			}
+		});
+		const fake = createFakeClient({
+			unsafe: () =>
+				pendingQuery(
+					new Promise<unknown[]>((_resolve, reject) => {
+						rejects.push(reject);
+					}),
+					cancel,
+				),
+		});
+
+		const result = postgresJs(fake.client).batch(
+			[
+				{ sql: "SELECT pg_sleep(60)", params: [] },
+				{ sql: "SELECT 2", params: [] },
+			],
+			{ signal: controller.signal },
+		);
+		await vi.waitFor(() => expect(rejects).toHaveLength(2));
+		controller.abort();
+
+		await expectMnemocyteError(result, "ABORTED");
+		expect(cancel).toHaveBeenCalledTimes(2);
+	});
+
+	test("batch does not begin when the signal is already aborted", async () => {
+		const fake = createFakeClient({
+			unsafe: () => pendingQuery(Promise.resolve([])),
+		});
+
+		await expectMnemocyteError(
+			postgresJs(fake.client).batch([{ sql: "SELECT 1", params: [] }], {
+				signal: AbortSignal.abort(),
+			}),
+			"ABORTED",
+		);
+		expect(fake.raw.begin).not.toHaveBeenCalled();
 	});
 });

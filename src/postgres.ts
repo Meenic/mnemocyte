@@ -3,8 +3,12 @@ import { createMnemocyteStoreConfig } from "./memory/store-config.js";
 import type { SqlExecutor } from "./sql/executor.js";
 import type { MnemocyteStoreConfig } from "./types.js";
 
-export type { SqlExecutor, SqlQueryOptions } from "./sql/executor.js";
-export { postgresJs } from "./sql/postgres-js.js";
+export type {
+	SqlExecutor,
+	SqlQueryOptions,
+	SqlStatement,
+} from "./sql/executor.js";
+export { type PostgresJsExecutor, postgresJs } from "./sql/postgres-js.js";
 
 /** Options for {@link postgresStore}. */
 export interface PostgresStoreOptions {

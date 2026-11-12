@@ -259,8 +259,14 @@ export interface MemoryStore {
 	 *
 	 * Order is untrusted: shared code matches results to inputs by id, or by
 	 * key for keyed rows.
+	 *
+	 * All or nothing: when any row fails, none is written. A backend may
+	 * split the rows into several statements, but they commit together.
 	 */
-	insertMemories(memories: readonly StoredMemory[]): Promise<Memory[]>;
+	insertMemories(
+		memories: readonly StoredMemory[],
+		options?: StoreOperationOptions,
+	): Promise<Memory[]>;
 	/**
 	 * Up to `input.limit` candidates that pass the filter and
 	 * `minVectorScore`, by decreasing vector similarity. Every `vectorScore`

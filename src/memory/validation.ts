@@ -19,6 +19,15 @@ import type {
 } from "../types.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
+	MAX_CONTENT_LENGTH,
+	MAX_KEY_BYTES,
+	MAX_LIMIT,
+	MAX_SCOPE_FIELD_BYTES,
+	MAX_TAG_LENGTH,
+	MAX_TAGS,
+	utf8Length,
+} from "./limits.js";
+import {
 	assertPruneFilterHasSelector,
 	type StoreEntitySelector,
 	type StoreScope,
@@ -133,9 +142,55 @@ export function assertOptionalSignal(signal: AbortSignal | undefined): void {
 }
 
 export function assertLimit(value: number): void {
-	if (!Number.isInteger(value) || value < 1) {
-		throw new MnemocyteError("limit must be a positive integer.", "VALIDATION");
+	if (!Number.isInteger(value) || value < 1 || value > MAX_LIMIT) {
+		throw new MnemocyteError(
+			`limit must be an integer from 1 to ${MAX_LIMIT}.`,
+			"VALIDATION",
+		);
 	}
+}
+
+/** A non-empty string of at most {@link MAX_CONTENT_LENGTH} characters. */
+export function assertContent(
+	value: unknown,
+	field: string,
+): asserts value is string {
+	assertNonEmptyString(value, field);
+	if (value.length > MAX_CONTENT_LENGTH) {
+		throw new MnemocyteError(
+			`${field} must be at most ${MAX_CONTENT_LENGTH} characters.`,
+			"VALIDATION",
+		);
+	}
+}
+
+function assertMaxBytes(value: string, field: string, max: number): void {
+	// Each UTF-16 code unit takes at most 3 UTF-8 bytes, so short strings
+	// skip the encoding.
+	if (value.length * 3 > max && utf8Length(value) > max) {
+		throw new MnemocyteError(
+			`${field} must be at most ${max} bytes in UTF-8.`,
+			"VALIDATION",
+		);
+	}
+}
+
+/** A non-empty key of at most {@link MAX_KEY_BYTES} UTF-8 bytes. */
+export function assertKey(
+	value: unknown,
+	field = "key",
+): asserts value is string {
+	assertNonEmptyString(value, field);
+	assertMaxBytes(value, field, MAX_KEY_BYTES);
+}
+
+/** A non-empty scope field of at most {@link MAX_SCOPE_FIELD_BYTES} bytes. */
+function assertScopeField(
+	value: unknown,
+	field: string,
+): asserts value is string {
+	assertNonEmptyString(value, field);
+	assertMaxBytes(value, field, MAX_SCOPE_FIELD_BYTES);
 }
 
 export function assertMinScore(value: number): void {
@@ -285,7 +340,7 @@ function optionalScopeField(value: unknown, field: string): string | null {
 	if (value === undefined) {
 		return null;
 	}
-	assertNonEmptyString(value, field);
+	assertScopeField(value, field);
 	return value;
 }
 
@@ -296,8 +351,8 @@ function optionalScopeField(value: unknown, field: string): string | null {
 export function validateScope(value: unknown, field = "scope"): StoreScope {
 	assertObject(value, field);
 	const scope = value as Record<string, unknown>;
-	assertNonEmptyString(scope.namespace, `${field}.namespace`);
-	assertNonEmptyString(scope.entityId, `${field}.entityId`);
+	assertScopeField(scope.namespace, `${field}.namespace`);
+	assertScopeField(scope.entityId, `${field}.entityId`);
 	return {
 		namespace: scope.namespace,
 		entityId: scope.entityId,
@@ -338,9 +393,9 @@ function selectorFromScope(
 ): StoreSelector {
 	assertObject(value, field);
 	const scope = value as Record<string, unknown>;
-	assertNonEmptyString(scope.namespace, `${field}.namespace`);
+	assertScopeField(scope.namespace, `${field}.namespace`);
 	if (requireEntity || scope.entityId !== undefined) {
-		assertNonEmptyString(scope.entityId, `${field}.entityId`);
+		assertScopeField(scope.entityId, `${field}.entityId`);
 	}
 	const agentId = optionalScopeField(scope.agentId, `${field}.agentId`);
 	const sessionId = optionalScopeField(scope.sessionId, `${field}.sessionId`);
@@ -394,10 +449,22 @@ function assertTags(value: unknown, field = "tags"): void {
 	if (!Array.isArray(value)) {
 		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
 	}
+	if (value.length > MAX_TAGS) {
+		throw new MnemocyteError(
+			`${field} must contain at most ${MAX_TAGS} tags.`,
+			"VALIDATION",
+		);
+	}
 	for (const tag of value as readonly unknown[]) {
 		if (typeof tag !== "string") {
 			throw new MnemocyteError(
 				`${field} must contain only strings.`,
+				"VALIDATION",
+			);
+		}
+		if (tag.length > MAX_TAG_LENGTH) {
+			throw new MnemocyteError(
+				`${field} must contain tags of at most ${MAX_TAG_LENGTH} characters.`,
 				"VALIDATION",
 			);
 		}
@@ -419,9 +486,9 @@ function assertConfidence(value: unknown): void {
 }
 
 export function validateNewMemory(input: PreparedNewMemory): void {
-	assertNonEmptyString(input.content, "content");
+	assertContent(input.content, "content");
 	if (input.key !== undefined) {
-		assertNonEmptyString(input.key, "key");
+		assertKey(input.key);
 	}
 	if (input.kind !== undefined) {
 		assertMemoryKind(input.kind, "kind");
@@ -479,7 +546,7 @@ function validateMemoryFilterFields(input: {
 
 export function validateSearchInput(input: SearchInput): StoreVisibility {
 	const visibility = validateVisibility(input);
-	assertNonEmptyString(input.query, "query");
+	assertContent(input.query, "query");
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
 	}
@@ -584,10 +651,10 @@ export interface PreparedUpdateFields {
 
 export function validateUpdateFields(input: PreparedUpdateFields): void {
 	if (input.content !== undefined) {
-		assertNonEmptyString(input.content, "content");
+		assertContent(input.content, "content");
 	}
 	if (input.key !== undefined && input.key !== null) {
-		assertNonEmptyString(input.key, "key");
+		assertKey(input.key);
 	}
 	if (input.kind !== undefined) {
 		assertMemoryKind(input.kind, "kind");

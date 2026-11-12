@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../errors.js";
-import { withResilience } from "../resilience.js";
+import { throwIfAborted, withResilience } from "../resilience.js";
 import type { Embedder, ProviderResilienceConfig } from "../types.js";
 
 function validateEmbedding(
@@ -65,6 +65,19 @@ export async function embedOne(
 	return embedding;
 }
 
+/**
+ * Texts per embedder call. Providers cap a request by input count and by
+ * total tokens (OpenAI: 2,048 inputs and 300,000 tokens), so large batches go
+ * out in several calls.
+ */
+export const EMBED_CHUNK_SIZE = 100;
+
+/**
+ * Embed `texts` in calls of at most {@link EMBED_CHUNK_SIZE}, one after
+ * another, so a large batch neither exceeds a provider's request limits nor
+ * runs many requests at once against its rate limit. Each call gets its own
+ * timeout and retries; the first failure stops the rest.
+ */
 export async function embedMany(
 	embedder: Embedder,
 	texts: readonly string[],
@@ -73,9 +86,28 @@ export async function embedMany(
 		resilience?: ProviderResilienceConfig;
 	} = {},
 ): Promise<number[][]> {
-	if (texts.length === 0) {
-		return [];
+	const embeddings: number[][] = [];
+	for (let start = 0; start < texts.length; start += EMBED_CHUNK_SIZE) {
+		throwIfAborted(options.signal);
+		embeddings.push(
+			...(await embedChunk(
+				embedder,
+				texts.slice(start, start + EMBED_CHUNK_SIZE),
+				options,
+			)),
+		);
 	}
+	return embeddings;
+}
+
+async function embedChunk(
+	embedder: Embedder,
+	texts: readonly string[],
+	options: {
+		signal?: AbortSignal;
+		resilience?: ProviderResilienceConfig;
+	},
+): Promise<number[][]> {
 	let embeddings: number[][];
 	try {
 		embeddings = await withResilience(
@@ -99,9 +131,9 @@ export async function embedMany(
 		}
 		throw new MnemocyteError("Failed to embed texts.", "EMBEDDING", error);
 	}
-	if (embeddings.length !== texts.length) {
+	if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
 		throw new MnemocyteError(
-			`Embedder returned ${embeddings.length} embeddings for ${texts.length} texts.`,
+			`Embedder returned ${Array.isArray(embeddings) ? embeddings.length : "no"} embeddings for ${texts.length} texts.`,
 			"EMBEDDING",
 		);
 	}

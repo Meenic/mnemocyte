@@ -1,7 +1,7 @@
-import { MnemocyteError } from "../../errors.js";
 import type { StoreEntitySelector, StoreScope } from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
 import type { AuditLogCursor, JsonObject } from "../../types.js";
+import { chunk, INSERT_CHUNK_ROWS, runAtomically } from "../atomic.js";
 import {
 	EVENT_COLUMNS,
 	type EventRow,
@@ -28,34 +28,41 @@ export interface NewEventRow {
 	timestamp: Date;
 }
 
-export async function insertEvent(
+/**
+ * Insert audit events with one multi-row `INSERT` per
+ * {@link INSERT_CHUNK_ROWS} events, all or nothing.
+ */
+export async function insertEvents(
 	db: SqlExecutor,
-	row: NewEventRow,
-): Promise<EventRow> {
-	const params = createSqlParams();
-	const result = await db.query<RawEventRow>(
-		`INSERT INTO mnemocyte_events (
-			id, namespace, entity_id, agent_id, session_id, description, metadata,
-			timestamp
-		)
-		VALUES (
-			${params.uuid(row.id)},
-			${params.add(row.scope.namespace)},
-			${params.add(row.scope.entityId)},
-			${params.add(row.scope.agentId)}::text,
-			${params.add(row.scope.sessionId)}::text,
-			${params.add(row.description)},
-			${params.json(row.metadata)},
-			${params.timestamp(row.timestamp)}
-		)
-		RETURNING ${EVENT_COLUMNS}`,
-		params.values,
-	);
-	const inserted = result[0];
-	if (!inserted) {
-		throw new MnemocyteError("Event insert returned no rows.", "DB");
+	rows: readonly NewEventRow[],
+): Promise<void> {
+	if (rows.length === 0) {
+		return;
 	}
-	return toEventRow(inserted);
+	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part) => {
+		const params = createSqlParams();
+		const tuples = part.map(
+			(row) => `(
+				${params.uuid(row.id)},
+				${params.add(row.scope.namespace)},
+				${params.add(row.scope.entityId)},
+				${params.add(row.scope.agentId)}::text,
+				${params.add(row.scope.sessionId)}::text,
+				${params.add(row.description)},
+				${params.json(row.metadata)},
+				${params.timestamp(row.timestamp)}
+			)`,
+		);
+		return {
+			sql: `INSERT INTO mnemocyte_events (
+				id, namespace, entity_id, agent_id, session_id, description, metadata,
+				timestamp
+			)
+			VALUES ${tuples.join(",\n")}`,
+			params: params.values,
+		};
+	});
+	await runAtomically(db, statements);
 }
 
 export async function listEvents(

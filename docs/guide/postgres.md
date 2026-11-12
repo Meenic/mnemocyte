@@ -9,8 +9,10 @@ in-memory backend needs none of this.
   extension available, version 0.8.0 or later: search uses its iterative
   index scans and throws `"MIGRATION"` on older versions. CI tests Postgres
   17 and 18 with pgvector 0.8.7.
-- A client with interactive transactions (postgres.js today): each search
-  runs its vector search in a short transaction.
+- A client that can run statements together in one transaction:
+  postgres.js today. Each search runs its vector search after setting
+  pgvector options for that transaction, and `addMany` writes its chunks in
+  one transaction.
 - A database role that can create the extension (once) and the Mnemocyte
   tables in the `public` schema.
 - The `postgres` (postgres.js) package next to Mnemocyte. It is an optional
@@ -129,17 +131,32 @@ statements, so a transaction-mode pooler (PgBouncer, Supavisor) works without
 
 ### Bring another driver
 
-`postgresStore` takes any `SqlExecutor`, a two-method interface exported from
+`postgresStore` takes any `SqlExecutor`, an interface exported from
 `mnemocyte/postgres`:
 
 ```ts
 interface SqlExecutor {
   query<Row>(sql: string, params: readonly unknown[], options?: { signal?: AbortSignal }): Promise<Row[]>;
-  transaction<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+  transaction?<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+  batch?(
+    statements: readonly { sql: string; params: readonly unknown[] }[],
+    options?: { signal?: AbortSignal },
+  ): Promise<Record<string, unknown>[][]>;
 }
 ```
 
-Statements use `$1…` placeholders. `postgresJs` is the only adapter that
+Statements use `$1…` placeholders. Implement `query` and at least one of
+the other two (`"CONFIG"` otherwise):
+
+- `transaction(fn)` runs `fn` in an interactive transaction, or a savepoint
+  when already inside one.
+- `batch(statements)` runs the statements in order in one transaction, all
+  or nothing, and returns each one's rows in order. A driver without
+  interactive transactions maps it to its non-interactive transaction, such
+  as Neon's `sql.transaction([...])` over HTTP.
+
+When both exist, Mnemocyte uses `batch`. `migrate` needs `transaction`, so
+run it over a regular connection. `postgresJs` is the only adapter that
 ships today; Drizzle, PGlite and node-postgres adapters are planned.
 
 ### Drizzle

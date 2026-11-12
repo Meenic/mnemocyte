@@ -49,11 +49,13 @@ import {
 	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
 import {
+	type PostgresJsExecutor,
 	type PostgresStoreOptions,
 	postgresJs,
 	postgresStore,
 	type SqlExecutor,
 	type SqlQueryOptions,
+	type SqlStatement,
 } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 
@@ -91,6 +93,17 @@ const callerStoreConfig: MemoryConfig = {
 declare const callerSql: Parameters<typeof postgresJs>[0];
 const executor: SqlExecutor = postgresJs(callerSql);
 const queryOptions: SqlQueryOptions = { signal: new AbortController().signal };
+const postgresJsExecutor: PostgresJsExecutor = postgresJs(callerSql);
+const statements: SqlStatement[] = [{ sql: "SELECT $1", params: [1] }];
+const batched: Promise<Record<string, unknown>[][]> = postgresJsExecutor.batch(
+	statements,
+	queryOptions,
+);
+// An executor may implement batch without transaction (stateless drivers).
+const batchOnlyExecutor: SqlExecutor = {
+	query: async () => [],
+	batch: async (input) => input.map(() => []),
+};
 const postgresOptions: PostgresStoreOptions = { client: executor };
 const postgresConfig: MemoryConfig = {
 	embedder,
@@ -298,3 +311,5 @@ void experimental;
 void MnemocyteError;
 void openai;
 void directOpenai;
+void batched;
+void batchOnlyExecutor;

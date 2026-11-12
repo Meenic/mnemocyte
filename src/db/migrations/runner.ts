@@ -335,18 +335,26 @@ async function migrateStep(
 
 /**
  * Apply pending migrations, one transaction per migration. Requires an
- * executor with interactive transactions.
+ * executor with interactive transactions: each step reads the tracking table
+ * and decides what to run from it, which a `batch` cannot express.
  */
 export async function runPostgresMigrations(
 	db: SqlExecutor,
 	input: RunMigrationsInput,
 ): Promise<MigrateResult> {
+	const transaction = db.transaction?.bind(db);
+	if (transaction === undefined) {
+		throw new MnemocyteError(
+			"migrate needs an executor with interactive transactions (SqlExecutor.transaction). Run it over a regular connection, not a stateless HTTP driver.",
+			"CONFIG",
+		);
+	}
 	const result: MigrateResult = { applied: [], adopted: [] };
 	for (;;) {
 		throwIfAborted(input.signal);
 		let step: MigrationStep;
 		try {
-			step = await db.transaction((tx) => migrateStep(tx, input));
+			step = await transaction((tx) => migrateStep(tx, input));
 		} catch (error) {
 			if (error instanceof MnemocyteError) {
 				throw error;

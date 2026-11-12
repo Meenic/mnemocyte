@@ -77,7 +77,8 @@ const scope = {
 };
 ```
 
-Each field is a non-empty string; anything else throws `"VALIDATION"`.
+Each field is a non-empty string of at most 256 bytes in UTF-8; anything
+else throws `"VALIDATION"`.
 
 **Writes** (`add`, `addMany`) store the memory in exactly that scope. Leaving
 out `agentId` makes the memory shared by every agent; leaving out
@@ -130,6 +131,25 @@ cyclic objects throw `"VALIDATION"`. Tags, metadata and dates are copied when
 you call a method, and returned records are copies, so later mutations on
 either side change nothing.
 
+## Input limits
+
+Inputs past these sizes throw `"VALIDATION"` before the embedder or the
+database is called, on every backend:
+
+| Input | Limit |
+|---|---|
+| `content`, search and context `query` | 32,000 characters (`string.length`) |
+| `key` | 512 bytes in UTF-8 |
+| each scope field | 256 bytes in UTF-8 |
+| `tags` (on a memory or in a filter) | 64 tags of at most 128 characters |
+| `metadata` | 64 KiB as JSON (UTF-8), nested at most 32 levels |
+| `limit` (`search`, `context`, `list`, `findDuplicates`, `listAuditLog`) | 1 to 1,000 |
+| `addMany` | 1,000 memories per call |
+
+32,000 characters is about 8,000 tokens, the input limit of common embedding
+models. The key and scope limits keep the scope + key index entry within what
+a Postgres btree index accepts.
+
 ## `add` and `addMany`
 
 ```ts
@@ -151,10 +171,11 @@ const added = await memory.addMany({
 });
 ```
 
-Input is validated before the embedder is called. `addMany` stores every
-memory in one scope, embeds the whole batch in one embedder call, writes it
-in one statement and returns the records in input order. Its `signal` covers
-the whole batch.
+Input is validated before the embedder is called. `addMany` stores up to
+1,000 memories in one scope and returns the records in input order. It calls
+the embedder with at most 100 texts at a time, one call after another, then
+writes every memory in one transaction: when an embedder call or a write
+fails, nothing is stored. Its `signal` covers the whole batch.
 
 **Keys.** With a `key` that already exists in the exact scope, `add` updates
 that memory instead of inserting one: content, kind, importance, tags,
@@ -187,7 +208,7 @@ const results = await memory.search({
 
 | Option | Default | Meaning |
 |---|---|---|
-| `limit` | `defaults.limit` or 10 | Maximum results; positive integer. |
+| `limit` | `defaults.limit` or 10 | Maximum results; 1 to 1,000. |
 | `minScore` | `defaults.minScore` or 0 | Drop results below this score; `[0, 1]`. |
 | `kinds` | all | Only these kinds. |
 | `tags` | none | Memories must have every listed tag. |

@@ -116,7 +116,8 @@ export function createInMemoryStore(): MemoryStore {
 			return { applied: [], adopted: [] };
 		},
 		async ensureEmbeddingCompatibility() {},
-		async insertMemories(rows) {
+		async insertMemories(rows, options) {
+			throwIfAborted(options?.signal);
 			const results: Memory[] = [];
 			for (const row of rows) {
 				const existing =

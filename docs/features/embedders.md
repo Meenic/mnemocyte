@@ -17,8 +17,18 @@ components and at least one non-zero component; otherwise `"EMBEDDING"`.
 Queries and documents are embedded the same way: there is no query/document
 distinction yet.
 
-`addMany` embeds the whole batch in one call; there is no chunking. `update`
-calls the embedder only when the content changes.
+`addMany` calls the embedder with at most `EMBED_CHUNK_SIZE` (100) texts at
+a time (`embedMany` in `memory/embeddings.ts`), one call after another so a
+large batch does not run many requests against the provider's rate limit at
+once. Providers cap a request by input count and total tokens (OpenAI: 2,048
+inputs and 300,000 tokens); 100 texts of the 32,000-character content cap can
+still pass 300,000 tokens, so very long contents may need smaller batches
+once `maxBatch` lands (`feat/embedder-purpose`). Each call gets its own
+timeout and retries, the signal is checked between calls, and the first
+failure stops the rest. Every call finishes before the store opens its
+transaction, so no transaction is held across an embedder call, and a failed
+call stores nothing. `update` calls the embedder only when the content
+changes.
 
 ## `openaiEmbedder`
 

@@ -42,7 +42,8 @@ import {
 	DEFAULT_MIN_SCORE,
 } from "./defaults.js";
 import { embedMany, embedOne } from "./embeddings.js";
-import { cloneJsonObject } from "./json.js";
+import { snapshotMetadata } from "./json.js";
+import { MAX_ADD_MANY } from "./limits.js";
 import {
 	cloneMemory,
 	createEventId,
@@ -62,6 +63,7 @@ import type {
 } from "./store.js";
 import {
 	assertDistinctKeys,
+	assertKey,
 	assertLimit,
 	assertMinScore,
 	assertNonEmptyString,
@@ -134,7 +136,7 @@ function snapshotNewMemory(input: NewMemory): PreparedNewMemory {
 			? {}
 			: { tags: Array.isArray(input.tags) ? [...input.tags] : input.tags }),
 		...(input.source === undefined ? {} : { source: input.source }),
-		metadata: cloneJsonObject(input.metadata ?? {}),
+		metadata: snapshotMetadata(input.metadata ?? {}),
 		...(input.confidence === undefined ? {} : { confidence: input.confidence }),
 		...(input.expiresAt === undefined
 			? {}
@@ -168,7 +170,7 @@ function snapshotUpdateFields(input: UpdateInput): PreparedUpdateFields {
 		fields.source = input.source;
 	}
 	if (input.metadata !== undefined) {
-		fields.metadata = cloneJsonObject(input.metadata);
+		fields.metadata = snapshotMetadata(input.metadata);
 	}
 	if (input.confidence !== undefined) {
 		fields.confidence = input.confidence;
@@ -477,6 +479,12 @@ export function createMemoryClient(
 				if (!Array.isArray(input.memories)) {
 					throw new MnemocyteError("memories must be an array.", "VALIDATION");
 				}
+				if (input.memories.length > MAX_ADD_MANY) {
+					throw new MnemocyteError(
+						`memories must contain at most ${MAX_ADD_MANY} items; split larger batches into several addMany calls.`,
+						"VALIDATION",
+					);
+				}
 				return {
 					scope,
 					memories: input.memories.map(snapshotNewMemory),
@@ -508,9 +516,12 @@ export function createMemoryClient(
 						now,
 					),
 				);
+				// Every chunk was embedded above, outside any transaction; the
+				// store writes all rows in one transaction, so a failure writes
+				// none of them.
 				const outcomes = matchInsertResults(
 					stored,
-					await store.insertMemories(stored),
+					await store.insertMemories(stored, storeOptions(signal)),
 				);
 				await recordAudit(outcomes.map(writeAuditEvent));
 				return outcomes.map((outcome) => outcome.memory);
@@ -641,7 +652,7 @@ export function createMemoryClient(
 							storeOptions(input.signal),
 						);
 					}
-					assertNonEmptyString(input.key, "key");
+					assertKey(input.key);
 					return store.getMemoryByKey(
 						visibility.scope,
 						input.key,

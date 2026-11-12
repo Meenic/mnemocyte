@@ -4,8 +4,9 @@ import type {
 	StoreSelector,
 	StoreVisibility,
 } from "../../memory/store.js";
-import type { SqlExecutor } from "../../sql/executor.js";
+import type { SqlExecutor, SqlStatement } from "../../sql/executor.js";
 import type { ImportanceLevel, JsonObject, MemoryKind } from "../../types.js";
+import { chunk, INSERT_CHUNK_ROWS, runAtomically } from "../atomic.js";
 import {
 	extractPrefixedMemoryRow,
 	type MemoryRow,
@@ -241,23 +242,43 @@ const UPSERT_REPLACED_COLUMNS = [
 ] as const;
 
 /**
- * Insert rows in one statement. A keyed row whose key already exists in its
- * exact scope updates that row instead: the conflict target names the partial
+ * Insert rows, in chunks of {@link INSERT_CHUNK_ROWS} per statement, all or
+ * nothing: the chunks run through {@link runAtomically}, so they commit
+ * together or not at all. A keyed row whose key already exists in its exact
+ * scope updates that row instead: the conflict target names the partial
  * unique index's columns and its predicate (`WHERE key IS NOT NULL`), which
  * Postgres needs to infer a partial index as the arbiter. The update keeps
  * `id`, `created_at`, the access counts and the consolidation link, and takes
  * everything else from the new row. `ON CONFLICT DO UPDATE` guarantees an
  * insert or an update for each row even under concurrency. One statement
- * cannot update the same row twice, so callers pass distinct keys.
+ * cannot update the same row twice, so callers pass distinct keys; distinct
+ * keys also keep two chunks from touching the same row.
  */
 export async function insertMemories(
 	db: SqlExecutor,
 	rows: readonly NewMemoryRow[],
 	vectorType: VectorType,
+	signal?: AbortSignal,
 ): Promise<MemoryRow[]> {
 	if (rows.length === 0) {
 		return [];
 	}
+	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part) =>
+		insertMemoriesStatement(part, vectorType),
+	);
+	const results = await runAtomically(
+		db,
+		statements,
+		signal ? { signal } : undefined,
+	);
+	// Each statement returns RawMemoryRow objects (RETURNING MEMORY_COLUMNS).
+	return results.flat().map((row) => toMemoryRow(row as RawMemoryRow));
+}
+
+function insertMemoriesStatement(
+	rows: readonly NewMemoryRow[],
+	vectorType: VectorType,
+): SqlStatement {
 	const params = createSqlParams();
 	const tuples = rows.map(
 		(row) => `(
@@ -289,8 +310,8 @@ export async function insertMemories(
 	const replaced = UPSERT_REPLACED_COLUMNS.map(
 		(name) => `${name} = EXCLUDED.${name}`,
 	).join(", ");
-	const result = await db.query<RawMemoryRow>(
-		`INSERT INTO mnemocyte_memories (
+	return {
+		sql: `INSERT INTO mnemocyte_memories (
 			id, namespace, entity_id, agent_id, session_id, key, content, kind,
 			importance, tags, source, metadata, confidence, embedding,
 			embedding_model, embedding_dimensions, superseded_by, superseded_at,
@@ -301,9 +322,8 @@ export async function insertMemories(
 			WHERE key IS NOT NULL
 			DO UPDATE SET ${replaced}
 		RETURNING ${MEMORY_COLUMNS}`,
-		params.values,
-	);
-	return result.map(toMemoryRow);
+		params: params.values,
+	};
 }
 
 export async function getMemoryById(
@@ -1013,8 +1033,9 @@ export function hnswEfSearch(limit: number): number {
  * The nearest `limit` rows that pass the recall filters, by cosine distance.
  *
  * The HNSW index returns its `ef_search` nearest rows before the filters run,
- * so a selective filter could leave fewer rows than exist. The query runs in a
- * transaction that first sets, for that transaction only,
+ * so a selective filter could leave fewer rows than exist. The query runs
+ * after a statement that sets, for its transaction only
+ * ({@link runAtomically}: one `batch`, or a `transaction`),
  * `hnsw.iterative_scan = strict_order` (pgvector 0.8+: keep scanning the
  * index, in exact distance order, until `limit` rows pass or
  * `hnsw.max_scan_tuples` is reached) and `hnsw.ef_search` from
@@ -1038,17 +1059,18 @@ export async function vectorSearch(
 			AND embedding IS NOT NULL
 		ORDER BY "vectorDistance"
 		LIMIT ${params.add(input.limit)}`;
-	const rows = await db.transaction(async (tx) => {
-		await tx.query(
-			`SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+	const [, found = []] = await runAtomically(db, [
+		{
+			sql: `SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
 				set_config('hnsw.ef_search', $1, true)`,
-			[String(hnswEfSearch(input.limit))],
-		);
-		return tx.query<RawMemoryRow & { vectorDistance: number | string }>(
-			text,
-			params.values,
-		);
-	});
+			params: [String(hnswEfSearch(input.limit))],
+		},
+		{ sql: text, params: params.values },
+	]);
+	// The query selects MEMORY_COLUMNS and the distance.
+	const rows = found as unknown as Array<
+		RawMemoryRow & { vectorDistance: number | string }
+	>;
 	return rows.map((row) => ({
 		...toMemoryRow(row),
 		// Drivers may return float8 as a number or as text.

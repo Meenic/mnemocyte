@@ -34,8 +34,9 @@ application
 ```
 
 **Driver.** The user passes the client they already own; Mnemocyte never
-creates or closes it. The two-method `SqlExecutor` and the postgres.js adapter
-have landed (see [features/postgres.md](./features/postgres.md)).
+creates or closes it. `SqlExecutor` (`query`, plus `transaction` and/or
+`batch`) and the postgres.js adapter have landed (see
+[features/postgres.md](./features/postgres.md)).
 
 Still to come: `postgresStore(client)` takes the driver's client itself and
 picks the adapter by its shape (decision 21): a postgres.js `sql` function
@@ -101,12 +102,17 @@ const context = await userMemory.context({ query: userMessage });
 
 ## Write path
 
-1. Validate and snapshot input (size caps on content, tags, metadata).
-2. Embed outside any transaction, as documents, chunked to the embedder's
-   `maxBatch`.
-3. Insert in one transaction per batch, chunked under the driver's
-   bind-parameter limit.
-4. Audit events for the batch in the same transaction when audit is on.
+Size caps, chunked embedding outside any transaction and chunked inserts in
+one transaction have landed (see
+[features/postgres.md](./features/postgres.md#chunked-inserts) and
+[features/embedders.md](./features/embedders.md)). Still to come:
+
+- Embedding chunks follow the embedder's `maxBatch` and pass
+  `purpose: "document"` (`feat/embedder-purpose`); today the chunk size is a
+  fixed 100.
+- Audit events in the same transaction (or statement) as the write they
+  record, when audit is on. Today they are written best-effort after the
+  write commits, for every write path (`fix/audit-atomic`).
 
 ## Recall
 
@@ -279,7 +285,7 @@ Dated 2026-10-26 unless noted.
 3. **1.0 covers:** core, Postgres with the four drivers, `migrate()`, the
    OpenAI-compatible and AI SDK embedders, and AI SDK memory tools. The semver
    promise covers the user-facing API; `MemoryStore` stays internal.
-4. **Database access:** our own two-method `SqlExecutor`, not Kysely.
+4. **Database access:** our own small `SqlExecutor`, not Kysely.
 5. **Drizzle:** an optional driver adapter, not a runtime dependency.
 6. **Scope:** `namespace` + `entityId` + optional `agentId` and `sessionId`
    as indexed columns (see 17).
@@ -311,7 +317,12 @@ Dated 2026-10-26 unless noted.
     included; chunked inserts in `fix/batch-writes` are the first that need
     `batch`. (2026-11-12) The recall vector search is a read that needs two
     statements in one transaction (`set_config`, then the query); it uses
-    `transaction` until `batch` exists, then moves to it.
+    `transaction` until `batch` exists, then moves to it. (2026-11-12,
+    landed) `batch(statements)` runs statements in order in one transaction
+    and returns one rows array per statement; `transaction` became
+    optional, an executor needs at least one of the two, and stores prefer
+    `batch`. `addMany` is all or nothing: every embedder call finishes
+    first, then all insert chunks commit together.
 
 17. **`agentId`** (2026-10-27): a nullable column next to `entityId`, added
     in the first scope migration (`0003`). `entityId` is who a memory is

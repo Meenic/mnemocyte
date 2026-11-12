@@ -57,16 +57,18 @@ src/
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     validation.ts       runtime input and config validation
+    limits.ts           input size caps (content, tags, metadata, key, limit)
     json.ts             JSON metadata validation and deep clone
     embeddings.ts       embedder calls and output validation
     filters.ts          in-memory visibility, selector and filter predicates
     cursor.ts           opaque list cursors
     records.ts          ids, tag normalization, cloning
   sql/
-    executor.ts         SqlExecutor: query + transaction
+    executor.ts         SqlExecutor: query, optional transaction and batch
     postgres-js.ts      postgresJs(sql): the postgres.js adapter
   db/
     sql.ts              bind-parameter collector for building statements
+    atomic.ts           runAtomically (batch or transaction), insert chunking
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
     migrations/         Postgres migration runner and bundled.ts (generated)
@@ -105,6 +107,16 @@ plugin in `tsdown.config.ts` strips that comment.
 - Validation runs before any embedder or storage call. Invalid input throws
   `MnemocyteError` with code `"VALIDATION"`; invalid configuration throws
   `"CONFIG"` synchronously from `createMemory`.
+- Input sizes are capped in `memory/limits.ts`, the same on every backend:
+  `limit` 1–1,000, `content` and `query` 32,000 characters, 64 tags of 128
+  characters, metadata 64 KiB as UTF-8 JSON and 32 levels deep (checked
+  while cloning, so deep nesting cannot exhaust the stack), `key` 512 and
+  each scope field 256 UTF-8 bytes, `addMany` 1,000 memories. The user guide
+  lists them in `docs/guide/api.md#input-limits`.
+- Write paths embed first, outside any transaction, then write. A write that
+  needs several statements goes through `runAtomically` (`db/atomic.ts`),
+  never through a hand-rolled transaction, so drivers with only
+  `SqlExecutor.batch` run it too.
 - Caller-owned values (tags, metadata, dates) are snapshotted when a method is
   called. Returned records are detached copies.
 - Metadata is JSON value data (`JsonObject`). Anything else is rejected.
@@ -129,7 +141,8 @@ Exports:
   `isMnemocyteError` and the public types.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
-  `SqlExecutor` type.
+  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions` and `PostgresJsExecutor`
+  types.
 - `mnemocyte/stores/drizzle`: `drizzleStore(db)`.
 
 `package.json` lists each subpath explicitly, with a `types` and a `default`

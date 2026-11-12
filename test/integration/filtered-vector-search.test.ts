@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createMemory, type Embedder, migrate } from "mnemocyte";
 import {
+	type PostgresJsExecutor,
 	postgresJs,
 	postgresStore,
 	type SqlExecutor,
@@ -32,9 +33,12 @@ interface RecordedQuery {
 	params: readonly unknown[];
 }
 
-/** Delegates to `inner` and records the recall vector query. */
+/**
+ * Delegates to `inner` and records the recall vector query, whether it
+ * arrives through `query` or as a statement of a `batch`.
+ */
 function recordVectorQueries(
-	inner: SqlExecutor,
+	inner: PostgresJsExecutor,
 	recorded: RecordedQuery[],
 ): SqlExecutor {
 	return {
@@ -46,6 +50,14 @@ function recordVectorQueries(
 		},
 		transaction(fn) {
 			return inner.transaction((tx) => fn(recordVectorQueries(tx, recorded)));
+		},
+		batch(statements, options) {
+			for (const { sql: text, params } of statements) {
+				if (text.includes('"vectorDistance"')) {
+					recorded.push({ text, params });
+				}
+			}
+			return inner.batch(statements, options);
 		},
 	};
 }

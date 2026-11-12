@@ -1,10 +1,10 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, test } from "vitest";
 import { verifyMetadataTraversalCounts } from "../fixtures/metadata-traversals.js";
 
 describe("metadata traversal ownership", () => {
 	test("validates once at ingress and clones once at public egress", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "metadata-traversal-test",
 				dimensions: 1,
@@ -15,10 +15,6 @@ describe("metadata traversal ownership", () => {
 			audit: { enabled: true },
 		});
 
-		try {
-			await verifyMetadataTraversalCounts(client, "traversal_in_memory");
-		} finally {
-			await client.close();
-		}
+		await verifyMetadataTraversalCounts(client, "traversal_in_memory");
 	});
 });

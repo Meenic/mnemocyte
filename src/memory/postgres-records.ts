@@ -1,13 +1,26 @@
-import type { MemoryRow } from "../db/rows.js";
-import type { ImportanceLevel, Memory, MemoryType } from "../types.js";
+import type { EventRow, MemoryRow } from "../db/rows.js";
+import type {
+	AuditEvent,
+	ImportanceLevel,
+	Memory,
+	MemoryKind,
+} from "../types.js";
 import { cloneJsonObject } from "./json.js";
 
 export function rowToMemory(row: MemoryRow): Memory {
 	return {
 		id: row.id,
-		entityId: row.entityId,
+		scope: {
+			namespace: row.namespace,
+			entityId: row.entityId,
+			agentId: row.agentId,
+			sessionId: row.sessionId,
+		},
+		key: row.key,
 		content: row.content,
-		type: row.type as MemoryType,
+		// `kind` and `importance` are plain text columns; only validated values
+		// are written to them.
+		kind: row.kind as MemoryKind,
 		importance: row.importance as ImportanceLevel,
 		tags: row.tags,
 		source: row.source,
@@ -22,5 +35,20 @@ export function rowToMemory(row: MemoryRow): Memory {
 		accessCount: row.accessCount,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
+	};
+}
+
+export function rowToAuditEvent(row: EventRow): AuditEvent {
+	return {
+		id: row.id,
+		scope: {
+			namespace: row.namespace,
+			entityId: row.entityId,
+			agentId: row.agentId,
+			sessionId: row.sessionId,
+		},
+		description: row.description,
+		metadata: cloneJsonObject(row.metadata),
+		timestamp: row.timestamp,
 	};
 }

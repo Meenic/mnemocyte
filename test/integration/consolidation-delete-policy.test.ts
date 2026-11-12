@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
@@ -57,7 +57,7 @@ async function runPostgresPolicyScenario(url: string) {
 	await applyMigration(admin, "0002_add_embedding_model.sql", ["42701"]);
 	await applyMigration(admin, "0003_schema_v2.sql", ["42701"]);
 
-	const client = createMnemocyte({
+	const client = createMemory({
 		store: postgresStore({ client: postgresJs(storeSql) }),
 		embedder: {
 			model: "mnemocyte-integration-test",
@@ -74,7 +74,6 @@ async function runPostgresPolicyScenario(url: string) {
 		await exerciseConsolidationTargetPolicy(client, entityPrefix);
 		await exerciseConsolidationDuplicateIdPolicy({ client, entityPrefix });
 	} finally {
-		await client.close();
 		await admin`
 			DELETE FROM mnemocyte_memories
 			WHERE entity_id LIKE ${`${entityPrefix}%`}

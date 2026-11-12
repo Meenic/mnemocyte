@@ -1,6 +1,6 @@
-import type { AuditEvent, AuditLogCursor, MnemocyteClient } from "mnemocyte";
+import type { AuditEvent, AuditLogCursor, MemoryClient } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, testScope } from "../helpers.js";
 
 function toCursor(event: AuditEvent): AuditLogCursor {
 	return { timestamp: event.timestamp, id: event.id };
@@ -18,32 +18,36 @@ function compareNewestFirst(a: AuditEvent, b: AuditEvent): number {
 }
 
 export async function verifyAuditCursorPagination(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ): Promise<void> {
-	const memories = await client.rememberMany({
-		inputs: [
-			{ entityId, content: "survivor" },
-			{ entityId, content: "loser one" },
-			{ entityId, content: "loser two" },
-			{ entityId, content: "loser three" },
+	const memories = await client.addMany({
+		scope: testScope(entityId),
+		memories: [
+			{ content: "survivor" },
+			{ content: "loser one" },
+			{ content: "loser two" },
+			{ content: "loser three" },
 		],
 	});
 	const survivor = expectDefined(memories[0]);
 	const losers = memories.slice(1);
 	await new Promise((resolve) => setTimeout(resolve, 5));
 	await client.experimental.consolidate({
-		entityId,
+		scope: testScope(entityId),
 		survivorId: survivor.id,
 		supersededIds: losers.map((memory) => memory.id),
 	});
 
-	const firstPage = await client.listAuditLog({ entityId, limit: 1 });
+	const firstPage = await client.listAuditLog({
+		scope: testScope(entityId),
+		limit: 1,
+	});
 	const first = expectDefined(firstPage[0]);
 	expect(first.description).toBe("memory.superseded");
 
 	const secondPage = await client.listAuditLog({
-		entityId,
+		scope: testScope(entityId),
 		limit: 1,
 		beforeCursor: toCursor(first),
 	});
@@ -51,7 +55,7 @@ export async function verifyAuditCursorPagination(
 	expect(second.description).toBe("memory.superseded");
 
 	const thirdPage = await client.listAuditLog({
-		entityId,
+		scope: testScope(entityId),
 		limit: 1,
 		beforeCursor: toCursor(second),
 	});
@@ -62,7 +66,7 @@ export async function verifyAuditCursorPagination(
 	expect(third.timestamp).toEqual(first.timestamp);
 
 	const timestampFiltered = await client.listAuditLog({
-		entityId,
+		scope: testScope(entityId),
 		limit: 100,
 		before: first.timestamp,
 	});
@@ -73,7 +77,7 @@ export async function verifyAuditCursorPagination(
 	).toEqual([]);
 
 	const newerThanThird = await client.listAuditLog({
-		entityId,
+		scope: testScope(entityId),
 		limit: 2,
 		afterCursor: toCursor(third),
 	});
@@ -83,16 +87,22 @@ export async function verifyAuditCursorPagination(
 	]);
 
 	await new Promise((resolve) => setTimeout(resolve, 5));
-	await client.remember({ entityId, content: "newest mixed-timestamp event" });
+	await client.add({
+		scope: testScope(entityId),
+		content: "newest mixed-timestamp event",
+	});
 
-	const allEvents = await client.listAuditLog({ entityId, limit: 100 });
+	const allEvents = await client.listAuditLog({
+		scope: testScope(entityId),
+		limit: 100,
+	});
 	expect(allEvents).toEqual([...allEvents].sort(compareNewestFirst));
 
 	const pagedEvents: AuditEvent[] = [];
 	let beforeCursor: AuditLogCursor | undefined;
 	for (;;) {
 		const page = await client.listAuditLog({
-			entityId,
+			scope: testScope(entityId),
 			limit: 2,
 			...(beforeCursor === undefined ? {} : { beforeCursor }),
 		});

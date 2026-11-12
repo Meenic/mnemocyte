@@ -6,10 +6,10 @@ in-memory backend needs none of this.
 ## Requirements
 
 - Postgres with the [pgvector](https://github.com/pgvector/pgvector)
-  extension available, version 0.8.0 or later: recall uses its iterative
+  extension available, version 0.8.0 or later: search uses its iterative
   index scans and throws `"MIGRATION"` on older versions. CI tests Postgres
   17 and 18 with pgvector 0.8.7.
-- A client with interactive transactions (postgres.js today): each recall
+- A client with interactive transactions (postgres.js today): each search
   runs its vector search in a short transaction.
 - A database role that can create the extension (once) and the Mnemocyte
   tables in the `public` schema.
@@ -105,27 +105,23 @@ this way.
 Create the postgres.js client yourself and wrap it with `postgresJs`:
 
 ```ts
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!, { ssl: "require", max: 10 });
 
-const client = createMnemocyte({
+const memory = createMemory({
   store: postgresStore({ client: postgresJs(sql) }),
   embedder,
 });
 
-try {
-  // ...
-} finally {
-  await client.close(); // does not end sql
-  await sql.end();
-}
+// ... on shutdown, end your own client:
+await sql.end();
 ```
 
 You own the client: TLS, pool size, timeouts and `prepare` are whatever you
-configure, and `client.close()` never ends it.
+configure. The memory client holds no connections and has no `close()`.
 
 Mnemocyte sends plain parameterized statements and never uses named prepared
 statements, so a transaction-mode pooler (PgBouncer, Supavisor) works without
@@ -152,7 +148,7 @@ If your application already has a postgres.js-backed Drizzle instance, pass
 it through `mnemocyte/stores/drizzle`:
 
 ```ts
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -160,7 +156,7 @@ import postgres from "postgres";
 const sql = postgres(process.env.DATABASE_URL!);
 const db = drizzle(sql);
 
-const client = createMnemocyte({ store: drizzleStore(db), embedder });
+const memory = createMemory({ store: drizzleStore(db), embedder });
 ```
 
 `drizzleStore(db)` runs Mnemocyte's SQL on the postgres.js client behind `db`
@@ -219,8 +215,8 @@ an existing table is a migration you plan and run yourself.
 - **Scope columns.** Memories and audit events gain `namespace`, `agent_id`
   and `session_id`; existing rows get the namespace `default` and no agent or
   session. Memories also gain `key` (unique per scope when set), and `type` is
-  renamed to `kind`. The public API is unchanged in this release: it reads
-  and writes the `default` namespace.
+  renamed to `kind`. From 0.6 every call names its scope; pass
+  `namespace: "default"` to reach memories written before it.
 - **Full text is precomputed.** `content_tsv` is a stored generated column
   (`to_tsvector('english', content)`) with a GIN index, so keyword search no
   longer parses every row on each query.
@@ -228,8 +224,8 @@ an existing table is a migration you plan and run yourself.
 ## One embedding model per installation
 
 The `mnemocyte_meta` table records the embedding model and dimensions for the
-whole database. Before `remember`, `rememberMany`, `recall`, `buildContext`
-and `findDuplicates`, Mnemocyte checks the configured embedder against it,
+whole database. Before `add`, `addMany`, `search`, `context`,
+`findDuplicates` and an `update` that changes content, Mnemocyte checks the configured embedder against it,
 before calling the embedder:
 
 - A different `dimensions` throws `"CONFIG"`.
@@ -238,8 +234,9 @@ before calling the embedder:
 - If stored rows hold more than one model, the model stays unrecorded and
   these calls throw `"MIGRATION"`.
 
-`forget`, `forgetAll`, `prune`, `listAuditLog` and `stats` skip the check, so
-cleanup works on a mismatched installation.
+`get`, `list`, `delete`, `deleteScope`, `prune`, `listAuditLog`, `stats` and
+updates that leave the content alone skip the check, so cleanup works on a
+mismatched installation.
 
 ### Repair mixed models
 
@@ -274,9 +271,9 @@ The schema creates:
 
 HNSW (hierarchical navigable small world) is an approximate nearest-neighbor
 index: fast, but it can miss close matches, it uses memory to build and it
-adds cost to every write. Filters such as `entityId`, `types` and `tags` are
-applied after the index scan, so very selective filters can return fewer
-results than exist (see [limitations](./limitations.md)).
+adds cost to every write. The scope and filters such as `kinds` and `tags`
+are applied after the index scan; pgvector's iterative scan keeps reading
+the index until enough rows pass (see [limitations](./limitations.md)).
 
 There is no tag index. Benchmark against representative data before adding
 indexes of your own. IVFFlat can suit large, steady-state tables, but needs

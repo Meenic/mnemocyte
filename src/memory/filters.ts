@@ -1,6 +1,13 @@
-import type { FindDuplicatesInput, Memory, RecallInput } from "../types.js";
+import type { Memory, MemoryRecordScope } from "../types.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
-import type { ValidatedPruneFilter } from "./store.js";
+import type {
+	StoreDuplicateInput,
+	StoreMemoryFilter,
+	StoreScope,
+	StoreSelector,
+	StoreVisibility,
+	ValidatedPruneFilter,
+} from "./store.js";
 
 export function isExpired(memory: Memory, now: Date): boolean {
 	return (
@@ -8,19 +15,72 @@ export function isExpired(memory: Memory, now: Date): boolean {
 	);
 }
 
+function matchesOptionalField(
+	value: string | null,
+	wanted: string | null,
+	exact: boolean,
+): boolean {
+	if (wanted === null) {
+		return value === null;
+	}
+	return value === wanted || (!exact && value === null);
+}
+
+/** Whether a row is visible at a scope; see {@link StoreVisibility}. */
+export function isVisible(
+	scope: MemoryRecordScope,
+	visibility: StoreVisibility,
+): boolean {
+	const wanted = visibility.scope;
+	return (
+		scope.namespace === wanted.namespace &&
+		scope.entityId === wanted.entityId &&
+		matchesOptionalField(
+			scope.agentId,
+			wanted.agentId,
+			visibility.exactAgent,
+		) &&
+		matchesOptionalField(
+			scope.sessionId,
+			wanted.sessionId,
+			visibility.exactSession,
+		)
+	);
+}
+
+/** Whether two scopes are the same exact scope (where keys are unique). */
+export function isSameScope(a: StoreScope, b: StoreScope): boolean {
+	return (
+		a.namespace === b.namespace &&
+		a.entityId === b.entityId &&
+		a.agentId === b.agentId &&
+		a.sessionId === b.sessionId
+	);
+}
+
+/** Whether a row is selected; see {@link StoreSelector}. */
+export function isSelected(
+	scope: MemoryRecordScope,
+	selector: StoreSelector,
+): boolean {
+	return (
+		(selector.namespace === null || scope.namespace === selector.namespace) &&
+		(selector.entityId === undefined || scope.entityId === selector.entityId) &&
+		(selector.agentId === undefined || scope.agentId === selector.agentId) &&
+		(selector.sessionId === undefined || scope.sessionId === selector.sessionId)
+	);
+}
+
 /**
  * Test whether `memory` matches a validated prune filter. All specified
  * selectors are AND-combined; unspecified selectors do not restrict.
- *
- * `now` is supplied by the caller so callers can share a consistent
- * timestamp across a batch.
  */
 export function matchesPruneFilter(
 	memory: Memory,
 	input: ValidatedPruneFilter,
 	now: Date,
 ): boolean {
-	if (input.entityId !== undefined && memory.entityId !== input.entityId) {
+	if (!isSelected(memory.scope, input.selector)) {
 		return false;
 	}
 	if (input.expired === true && !isExpired(memory, now)) {
@@ -41,7 +101,7 @@ export function matchesPruneFilter(
 			return false;
 		}
 	}
-	if (input.types !== undefined && !input.types.includes(memory.type)) {
+	if (input.kinds !== undefined && !input.kinds.includes(memory.kind)) {
 		return false;
 	}
 	if (
@@ -61,42 +121,24 @@ export function matchesPruneFilter(
 }
 
 /**
- * Return `true` when a memory should participate in a duplicate scan,
- * given the filters on `input` and a shared `now` timestamp.
+ * Whether a memory takes part in a duplicate scan, given the filters on
+ * `input` and a shared `now`.
  */
 export function matchesDuplicateFilter(
 	memory: Memory,
-	input: FindDuplicatesInput,
+	input: StoreDuplicateInput,
 	now: Date,
 ): boolean {
-	if (memory.entityId !== input.entityId) {
-		return false;
-	}
-	if (input.includeSuperseded !== true && memory.supersededBy !== null) {
-		return false;
-	}
-	if (input.includeExpired !== true && isExpired(memory, now)) {
-		return false;
-	}
-	if (input.types !== undefined && !input.types.includes(memory.type)) {
-		return false;
-	}
-	if (
-		input.tags !== undefined &&
-		input.tags.length > 0 &&
-		!input.tags.every((tag) => memory.tags.includes(tag))
-	) {
-		return false;
-	}
-	return true;
+	return matchesMemoryFilter(memory, input, now);
 }
 
-export function matchesRecallFilter(
+/** The shared search and list filters. */
+export function matchesMemoryFilter(
 	memory: Memory,
-	input: RecallInput,
+	input: StoreMemoryFilter,
 	now: Date,
 ): boolean {
-	if (memory.entityId !== input.entityId) {
+	if (!isVisible(memory.scope, input.visibility)) {
 		return false;
 	}
 	if (!input.includeSuperseded && memory.supersededBy !== null) {
@@ -105,7 +147,11 @@ export function matchesRecallFilter(
 	if (!input.includeExpired && isExpired(memory, now)) {
 		return false;
 	}
-	if (input.types && !input.types.includes(memory.type)) {
+	if (
+		input.kinds &&
+		input.kinds.length > 0 &&
+		!input.kinds.includes(memory.kind)
+	) {
 		return false;
 	}
 	if (input.tags && !input.tags.every((tag) => memory.tags.includes(tag))) {

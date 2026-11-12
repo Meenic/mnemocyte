@@ -5,6 +5,7 @@ import {
 	createPostgresStore,
 } from "../../src/memory/postgres.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
+import { testVisibility } from "../store-helpers.js";
 
 interface RecordedQuery {
 	sql: string;
@@ -40,10 +41,9 @@ function createRecordingExecutor(pgvectorVersion: string | null): {
 }
 
 const searchInput = {
-	entityId: "alice",
-	query: "tea",
+	visibility: testVisibility("alice"),
 	embedding: [1, 0, 0],
-	types: ["preference" as const],
+	kinds: ["preference" as const],
 };
 
 describe("hnswEfSearch", () => {

@@ -1,12 +1,12 @@
 import {
-	createMnemocyte,
+	createMemory,
 	isMnemocyteError,
 	MnemocyteError,
 	type ProviderResilienceConfig,
 } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import { defaultShouldRetry } from "../../src/resilience.js";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 describe("resilience", () => {
 	test("does not retry typed relationship conflicts", () => {
@@ -46,7 +46,7 @@ describe("resilience", () => {
 		for (const [label, provider] of invalidConfigs) {
 			let embedCalls = 0;
 			try {
-				createMnemocyte({
+				createMemory({
 					embedder: {
 						model: "invalid-provider-config",
 						dimensions: 1,
@@ -70,7 +70,7 @@ describe("resilience", () => {
 		}
 
 		let zeroCalls = 0;
-		const zeroClient = createMnemocyte({
+		const zeroClient = createMemory({
 			embedder: {
 				model: "zero-provider-config",
 				dimensions: 1,
@@ -87,18 +87,14 @@ describe("resilience", () => {
 				shouldRetry: () => false,
 			},
 		});
-		try {
-			await zeroClient.remember({
-				entityId: "zero_provider_config",
-				content: "valid zero boundaries",
-			});
-			expect(zeroCalls).toBe(1);
-		} finally {
-			await zeroClient.close();
-		}
+		await zeroClient.add({
+			scope: testScope("zero_provider_config"),
+			content: "valid zero boundaries",
+		});
+		expect(zeroCalls).toBe(1);
 
 		let normalizedDelayCalls = 0;
-		const normalizedDelayClient = createMnemocyte({
+		const normalizedDelayClient = createMemory({
 			embedder: {
 				model: "normalized-delay-config",
 				dimensions: 1,
@@ -117,15 +113,11 @@ describe("resilience", () => {
 				maxDelayMs: 1,
 			},
 		});
-		try {
-			await normalizedDelayClient.remember({
-				entityId: "normalized_delay_config",
-				content: "max delay below base remains supported",
-			});
-			expect(normalizedDelayCalls).toBe(2);
-		} finally {
-			await normalizedDelayClient.close();
-		}
+		await normalizedDelayClient.add({
+			scope: testScope("normalized_delay_config"),
+			content: "max delay below base remains supported",
+		});
+		expect(normalizedDelayCalls).toBe(2);
 	});
 
 	test("handles retries, timeouts, aborts, and retry filters", async () => {
@@ -174,26 +166,22 @@ describe("resilience", () => {
 		// 1. Retry succeeds after transient failures.
 		{
 			const counter = createCountingEmbedder({ failures: 2 });
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: counter.embedder,
 				provider: { retries: 3, baseDelayMs: 1, maxDelayMs: 2 },
 			});
-			try {
-				const memory = await client.remember({
-					entityId: "retry_success",
-					content: "remember after transient failures",
-				});
-				expect(typeof memory.id).toBe("string");
-				expect(counter.calls).toBe(3);
-			} finally {
-				await client.close();
-			}
+			const memory = await client.add({
+				scope: testScope("retry_success"),
+				content: "remember after transient failures",
+			});
+			expect(typeof memory.id).toBe("string");
+			expect(counter.calls).toBe(3);
 		}
 
 		// 2. Numeric provider status codes trigger the default retry heuristic.
 		{
 			let calls = 0;
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: {
 					model: "status-retry-test",
 					dimensions: 2,
@@ -207,65 +195,53 @@ describe("resilience", () => {
 				},
 				provider: { retries: 1, baseDelayMs: 1, maxDelayMs: 1 },
 			});
-			try {
-				const memory = await client.remember({
-					entityId: "status_retry",
-					content: "remember after provider status failure",
-				});
-				expect(typeof memory.id).toBe("string");
-				expect(calls).toBe(2);
-			} finally {
-				await client.close();
-			}
+			const memory = await client.add({
+				scope: testScope("status_retry"),
+				content: "remember after provider status failure",
+			});
+			expect(typeof memory.id).toBe("string");
+			expect(calls).toBe(2);
 		}
 
 		// 3. Retry exhausted surfaces an EMBEDDING error wrapping the underlying cause.
 		{
 			const counter = createCountingEmbedder({ failures: 5 });
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: counter.embedder,
 				provider: { retries: 2, baseDelayMs: 1, maxDelayMs: 2 },
 			});
-			try {
-				const error = await expectMnemocyteError(
-					client.remember({
-						entityId: "retry_exhausted",
-						content: "always failing",
-					}),
-					"EMBEDDING",
-				);
-				expect(error.cause).toBeInstanceOf(Error);
-				expect(counter.calls).toBe(3);
-			} finally {
-				await client.close();
-			}
+			const error = await expectMnemocyteError(
+				client.add({
+					scope: testScope("retry_exhausted"),
+					content: "always failing",
+				}),
+				"EMBEDDING",
+			);
+			expect(error.cause).toBeInstanceOf(Error);
+			expect(counter.calls).toBe(3);
 		}
 
 		// 4. Timeout throws TIMEOUT.
 		{
 			const counter = createCountingEmbedder({ delayMs: 80 });
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: counter.embedder,
 				provider: { timeoutMs: 10, retries: 0 },
 			});
-			try {
-				await expectMnemocyteError(
-					client.remember({
-						entityId: "timeout",
-						content: "slow embedder",
-					}),
-					"TIMEOUT",
-				);
-			} finally {
-				await client.close();
-			}
+			await expectMnemocyteError(
+				client.add({
+					scope: testScope("timeout"),
+					content: "slow embedder",
+				}),
+				"TIMEOUT",
+			);
 		}
 
 		// 5. Timeout aborts the per-attempt provider signal.
 		{
 			let calls = 0;
 			let sawAbort = false;
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: {
 					model: "timeout-abort-test",
 					dimensions: 2,
@@ -287,50 +263,42 @@ describe("resilience", () => {
 				},
 				provider: { timeoutMs: 10, retries: 0 },
 			});
-			try {
-				await expectMnemocyteError(
-					client.remember({
-						entityId: "timeout_signal",
-						content: "slow embedder",
-					}),
-					"TIMEOUT",
-				);
-				expect(calls).toBe(1);
-				expect(sawAbort).toBe(true);
-			} finally {
-				await client.close();
-			}
+			await expectMnemocyteError(
+				client.add({
+					scope: testScope("timeout_signal"),
+					content: "slow embedder",
+				}),
+				"TIMEOUT",
+			);
+			expect(calls).toBe(1);
+			expect(sawAbort).toBe(true);
 		}
 
 		// 6. AbortSignal cancels the operation with ABORTED and disables retry.
 		{
 			const counter = createCountingEmbedder({ delayMs: 80 });
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: counter.embedder,
 				provider: { retries: 3, baseDelayMs: 1, maxDelayMs: 2 },
 			});
 			const controller = new AbortController();
 			setTimeout(() => controller.abort(), 10);
-			try {
-				await expectMnemocyteError(
-					client.remember({
-						entityId: "aborted",
-						content: "slow embedder",
-						signal: controller.signal,
-					}),
-					"ABORTED",
-				);
-				expect(counter.calls).toBe(1);
-			} finally {
-				await client.close();
-			}
+			await expectMnemocyteError(
+				client.add({
+					scope: testScope("aborted"),
+					content: "slow embedder",
+					signal: controller.signal,
+				}),
+				"ABORTED",
+			);
+			expect(counter.calls).toBe(1);
 		}
 
 		// 7. Custom shouldRetry can opt out of retrying.
 		{
 			const counter = createCountingEmbedder({ failures: 5 });
 			let predicateCalls = 0;
-			const client = createMnemocyte({
+			const client = createMemory({
 				embedder: counter.embedder,
 				provider: {
 					retries: 3,
@@ -342,39 +310,31 @@ describe("resilience", () => {
 					},
 				},
 			});
-			try {
-				await expect(
-					client.remember({
-						entityId: "no_retry",
-						content: "fail fast",
-					}),
-				).rejects.toThrow();
-				expect(counter.calls).toBe(1);
-				expect(predicateCalls).toBe(1);
-			} finally {
-				await client.close();
-			}
+			await expect(
+				client.add({
+					scope: testScope("no_retry"),
+					content: "fail fast",
+				}),
+			).rejects.toThrow();
+			expect(counter.calls).toBe(1);
+			expect(predicateCalls).toBe(1);
 		}
 
 		// 8. Already-aborted signal short-circuits before calling the embedder.
 		{
 			const counter = createCountingEmbedder();
-			const client = createMnemocyte({ embedder: counter.embedder });
+			const client = createMemory({ embedder: counter.embedder });
 			const controller = new AbortController();
 			controller.abort();
-			try {
-				await expectMnemocyteError(
-					client.recall({
-						entityId: "pre_aborted",
-						query: "anything",
-						signal: controller.signal,
-					}),
-					"ABORTED",
-				);
-				expect(counter.calls).toBe(0);
-			} finally {
-				await client.close();
-			}
+			await expectMnemocyteError(
+				client.search({
+					scope: testScope("pre_aborted"),
+					query: "anything",
+					signal: controller.signal,
+				}),
+				"ABORTED",
+			);
+			expect(counter.calls).toBe(0);
 		}
 	});
 });

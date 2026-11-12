@@ -1,4 +1,4 @@
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, test } from "vitest";
 import {
 	createGatedEmbedder,
@@ -8,16 +8,12 @@ import {
 describe("remember input snapshots", () => {
 	test("owns mutable single and batch inputs before awaiting", async () => {
 		const gate = createGatedEmbedder("remember-input-snapshot", 2);
-		const client = createMnemocyte({ embedder: gate.embedder });
+		const client = createMemory({ embedder: gate.embedder });
 
-		try {
-			await verifyRememberInputSnapshots(
-				client,
-				gate.nextCall,
-				"snapshot_in_memory",
-			);
-		} finally {
-			await client.close();
-		}
+		await verifyRememberInputSnapshots(
+			client,
+			gate.nextCall,
+			"snapshot_in_memory",
+		);
 	});
 });

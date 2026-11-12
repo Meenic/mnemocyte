@@ -21,33 +21,34 @@ can load it with `require()`.
 ## Quickstart
 
 ```ts
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 
-const client = createMnemocyte({
+const memory = createMemory({
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 
-await client.remember({
-  entityId: "user_123",
+const scope = { namespace: "my-app", entityId: "user_123" };
+
+await memory.add({
+  scope,
   content: "Prefers short, direct answers.",
-  type: "preference",
+  kind: "preference",
 });
 
-const memories = await client.recall({
-  entityId: "user_123",
-  query: "How should I respond?",
-});
+const results = await memory.search({ scope, query: "How should I respond?" });
 
-const context = await client.buildContext({
-  entityId: "user_123",
+const context = await memory.context({
+  scope,
   query: "How should I respond?",
   maxTokens: 500,
 });
 ```
 
-`openaiEmbedder` reads `OPENAI_API_KEY`. Without a `store`, memories live in
-process memory, which suits tests and prototypes.
+Every call names a scope: a `namespace` (your tenant or app) and an
+`entityId` (who the memory is about), plus an optional `agentId` and
+`sessionId`. `openaiEmbedder` reads `OPENAI_API_KEY`. Without a `store`,
+memories live in process memory, which suits tests and prototypes.
 
 ## Postgres
 
@@ -65,7 +66,7 @@ Pass your own postgres.js client, and create or upgrade the schema with
 `migrate`:
 
 ```ts
-import { createMnemocyte, migrate } from "mnemocyte";
+import { createMemory, migrate } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
@@ -74,7 +75,7 @@ const store = postgresStore({ client: postgresJs(sql) });
 
 await migrate({ store, dimensions: 1536 });
 
-const client = createMnemocyte({ store, embedder });
+const memory = createMemory({ store, embedder });
 ```
 
 `dimensions` must match your embedder and is fixed when the schema is
@@ -86,17 +87,22 @@ connection details are in the
 ## API at a glance
 
 - `migrate`: create or upgrade the Postgres schema.
-- `remember`, `rememberMany`: store memories for an entity.
-- `recall`: rank an entity's memories against a query.
-- `buildContext`: render recalled memories as Markdown, plain text or XML
-  within a token budget.
-- `forget`, `forgetAll`: delete one memory or all of an entity's memories.
-- `prune`: delete memories by expiry, age, access, type, tags or importance.
+- `add`, `addMany`: store memories; a `key` makes the add update in place.
+- `search`: rank a scope's memories against a query.
+- `get`, `list`: read one memory by id or key, or page through a scope.
+- `update`, `delete`: change or delete one memory.
+- `deleteScope`: erase everything about an entity, or one agent or session.
+- `context`: render search results as Markdown, plain text or XML within a
+  token budget.
+- `prune`: delete memories in a scope by expiry, age, access, kind, tags or
+  importance.
 - `findDuplicates`: list pairs of near-identical memories.
 - `experimental.consolidate`: mark duplicates as replaced by one memory.
 - `listAuditLog`: read the optional audit log.
-- `stats`: count memories per entity or installation.
-- `close`: stop the client.
+- `stats`: count memories in a scope or the whole installation.
+
+The client holds no connections, so there is nothing to close; your database
+client stays yours.
 
 Errors are `MnemocyteError` with a stable `code`. Every option is in the
 [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md).

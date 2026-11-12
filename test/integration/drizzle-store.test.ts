@@ -4,11 +4,12 @@ import { resolve } from "node:path";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as drizzleSql } from "drizzle-orm/sql";
-import { createMnemocyte, type MnemocyteClient } from "mnemocyte";
+import { createMemory, type MemoryClient } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
+import { testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -62,17 +63,17 @@ const embedder = {
 };
 
 async function exerciseRepresentativePath(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ) {
-	const remembered = await client.remember({
-		entityId,
+	const remembered = await client.add({
+		scope: testScope(entityId),
 		content: "Caller-owned Drizzle storage behaves like URL storage.",
-		type: "fact",
+		kind: "fact",
 		tags: ["drizzle", "ownership"],
 	});
-	const recalled = await client.recall({
-		entityId,
+	const recalled = await client.search({
+		scope: testScope(entityId),
 		query: "Drizzle ownership",
 		limit: 5,
 		minScore: 0,
@@ -81,12 +82,12 @@ async function exerciseRepresentativePath(
 	return {
 		remembered: {
 			content: remembered.content,
-			type: remembered.type,
+			type: remembered.kind,
 			tags: remembered.tags,
 		},
 		recalled: recalled.map((memory) => ({
 			content: memory.content,
-			type: memory.type,
+			type: memory.kind,
 			tags: memory.tags,
 		})),
 	};
@@ -102,11 +103,11 @@ describe("drizzleStore integration", () => {
 			const callerDb = drizzle(callerSql, { schema: callerSchema });
 			const callerEntityId = `drizzle_store_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			const postgresEntityId = `${callerEntityId}_postgres`;
-			const callerClient = createMnemocyte({
+			const callerClient = createMemory({
 				store: drizzleStore(callerDb),
 				embedder,
 			});
-			const postgresClient = createMnemocyte({
+			const postgresClient = createMemory({
 				store: postgresStore({ client: postgresJs(callerSql) }),
 				embedder,
 			});
@@ -123,26 +124,20 @@ describe("drizzleStore integration", () => {
 					postgresEntityId,
 				);
 				expect(callerResult).toEqual(postgresResult);
-
-				await callerClient.close();
 				callerClosed = true;
 
 				const probe = await callerDb.execute(
 					drizzleSql`select 1 as caller_connection_is_open`,
 				);
 				expect(probe).toHaveLength(1);
-
-				await postgresClient.close();
 				postgresClosed = true;
 				expect(
 					await callerDb.execute(drizzleSql`select 1 as still_open`),
 				).toHaveLength(1);
 			} finally {
 				if (!callerClosed) {
-					await callerClient.close();
 				}
 				if (!postgresClosed) {
-					await postgresClient.close();
 				}
 				await callerSql`DELETE FROM mnemocyte_memories WHERE entity_id IN (${callerEntityId}, ${postgresEntityId})`;
 				await callerSql.end();

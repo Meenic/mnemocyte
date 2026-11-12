@@ -1,4 +1,4 @@
-import type { MnemocyteConfig } from "mnemocyte";
+import type { MemoryConfig } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import { createMemoryClient } from "../../src/memory/client-core.js";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
@@ -7,7 +7,7 @@ import { exerciseConsolidationDuplicateIdPolicy } from "../fixtures/consolidatio
 
 describe("consolidation duplicate loser IDs", () => {
 	test("rejects before store access and preserves one transition in memory", async () => {
-		const config: MnemocyteConfig = {
+		const config: MemoryConfig = {
 			embedder: {
 				model: "consolidation-duplicate-ids",
 				dimensions: 2,
@@ -33,19 +33,15 @@ describe("consolidation duplicate loser IDs", () => {
 		};
 		const client = createMemoryClient(config, store);
 
-		try {
-			await exerciseConsolidationDuplicateIdPolicy({
-				client,
-				entityPrefix: `memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-				afterDuplicateRejection() {
-					expect(targetLoadCount).toBe(0);
-					expect(mutationCount).toBe(0);
-				},
-			});
-			expect(targetLoadCount).toBe(2);
-			expect(mutationCount).toBe(1);
-		} finally {
-			await client.close();
-		}
+		await exerciseConsolidationDuplicateIdPolicy({
+			client,
+			entityPrefix: `memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+			afterDuplicateRejection() {
+				expect(targetLoadCount).toBe(0);
+				expect(mutationCount).toBe(0);
+			},
+		});
+		expect(targetLoadCount).toBe(2);
+		expect(mutationCount).toBe(1);
 	});
 });

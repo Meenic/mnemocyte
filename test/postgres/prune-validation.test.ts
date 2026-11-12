@@ -17,7 +17,10 @@ describe("Postgres prune validation", () => {
 		};
 		const store = createPostgresStore(executor);
 
-		await expectMnemocyteError(store.prune({ dryRun: false }), "VALIDATION");
+		await expectMnemocyteError(
+			store.prune({ selector: { namespace: "test" }, dryRun: false }),
+			"VALIDATION",
+		);
 		expect(queryCount).toBe(0);
 	});
 });

@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
@@ -179,7 +179,7 @@ async function runCancellationScenario(databaseUrl: string) {
 	await admin`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 	await admin`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 
-	const client = createMnemocyte({
+	const client = createMemory({
 		store: postgresStore({ client: postgresJs(storeSql) }),
 		embedder: {
 			model: "mnemocyte-integration-test",
@@ -192,11 +192,12 @@ async function runCancellationScenario(databaseUrl: string) {
 	});
 
 	try {
-		const [survivor, loser, pruneTarget] = await client.rememberMany({
-			inputs: [
-				{ entityId, content: "survivor" },
-				{ entityId, content: "loser" },
-				{ entityId, content: "prune target", tags: ["prune-target"] },
+		const [survivor, loser, pruneTarget] = await client.addMany({
+			scope: testScope(entityId),
+			memories: [
+				{ content: "survivor" },
+				{ content: "loser" },
+				{ content: "prune target", tags: ["prune-target"] },
 			],
 		});
 		if (!survivor || !loser || !pruneTarget) {
@@ -206,27 +207,35 @@ async function runCancellationScenario(databaseUrl: string) {
 		const preAborted = new AbortController();
 		preAborted.abort("cancel before Postgres work");
 		await expectMnemocyteError(
-			client.prune({ entityId, signal: preAborted.signal }),
+			client.prune({ scope: testScope(entityId), signal: preAborted.signal }),
 			"ABORTED",
 		);
 		await expectMnemocyteError(
-			client.findDuplicates({ entityId, signal: preAborted.signal }),
+			client.findDuplicates({
+				scope: testScope(entityId),
+				signal: preAborted.signal,
+			}),
 			"ABORTED",
 		);
 		await expectMnemocyteError(
-			client.listAuditLog({ entityId, signal: preAborted.signal }),
+			client.listAuditLog({
+				scope: testScope(entityId),
+				signal: preAborted.signal,
+			}),
 			"ABORTED",
 		);
 		await expectMnemocyteError(
 			client.experimental.consolidate({
-				entityId,
+				scope: testScope(entityId),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
 				signal: preAborted.signal,
 			}),
 			"ABORTED",
 		);
-		await expect(client.stats({ entityId })).resolves.toMatchObject({
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({
 			memoryCount: 3,
 			supersededMemoryCount: 0,
 		});
@@ -236,7 +245,7 @@ async function runCancellationScenario(databaseUrl: string) {
 		try {
 			const controller = new AbortController();
 			const pending = client.prune({
-				entityId,
+				scope: testScope(entityId),
 				tags: ["prune-target"],
 				signal: controller.signal,
 			});
@@ -248,7 +257,9 @@ async function runCancellationScenario(databaseUrl: string) {
 			pruneLock.release();
 			await pruneLock.done;
 		}
-		await expect(client.stats({ entityId })).resolves.toMatchObject({
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({
 			memoryCount: 3,
 		});
 
@@ -259,7 +270,7 @@ async function runCancellationScenario(databaseUrl: string) {
 		try {
 			const controller = new AbortController();
 			const pending = client.experimental.consolidate({
-				entityId,
+				scope: testScope(entityId),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
 				signal: controller.signal,
@@ -272,12 +283,13 @@ async function runCancellationScenario(databaseUrl: string) {
 			consolidateLock.release();
 			await consolidateLock.done;
 		}
-		await expect(client.stats({ entityId })).resolves.toMatchObject({
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({
 			memoryCount: 3,
 			supersededMemoryCount: 0,
 		});
 	} finally {
-		await client.close();
 		await admin`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 		await admin`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 		await Promise.all([

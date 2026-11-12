@@ -7,7 +7,7 @@ import {
 } from "../../src/memory/in-memory.js";
 import type { MemoryStore } from "../../src/memory/store.js";
 import { verifyStoreInsertContract } from "../fixtures/store-insert-contract.js";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const config = {
 	embedder: {
@@ -35,31 +35,21 @@ function createClientWithInsertTransform(
 describe("MemoryStore insert contract", () => {
 	test("preserves input order through the in-memory adapter", async () => {
 		const client = createInMemoryClient(config);
-		try {
-			await verifyStoreInsertContract(client, "store_contract_in_memory");
-		} finally {
-			await client.close();
-		}
+		await verifyStoreInsertContract(client, "store_contract_in_memory");
 	});
 
 	test("normalizes complete reversed store results to input order", async () => {
 		const client = createClientWithInsertTransform((inserted) =>
 			inserted.toReversed(),
 		);
-		try {
-			const remembered = await client.rememberMany({
-				inputs: [
-					{ entityId: "reverse", content: "first" },
-					{ entityId: "reverse", content: "second" },
-				],
-			});
-			expect(remembered.map((memory) => memory.content)).toEqual([
-				"first",
-				"second",
-			]);
-		} finally {
-			await client.close();
-		}
+		const remembered = await client.addMany({
+			scope: testScope("reverse"),
+			memories: [{ content: "first" }, { content: "second" }],
+		});
+		expect(remembered.map((memory) => memory.content)).toEqual([
+			"first",
+			"second",
+		]);
 	});
 
 	test.each([
@@ -83,18 +73,12 @@ describe("MemoryStore insert contract", () => {
 		},
 	])("rejects $name returned IDs with DB", async ({ transform }) => {
 		const client = createClientWithInsertTransform(transform);
-		try {
-			await expectMnemocyteError(
-				client.rememberMany({
-					inputs: [
-						{ entityId: "malformed", content: "first" },
-						{ entityId: "malformed", content: "second" },
-					],
-				}),
-				"DB",
-			);
-		} finally {
-			await client.close();
-		}
+		await expectMnemocyteError(
+			client.addMany({
+				scope: testScope("malformed"),
+				memories: [{ content: "first" }, { content: "second" }],
+			}),
+			"DB",
+		);
 	});
 });

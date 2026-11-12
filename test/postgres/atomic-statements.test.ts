@@ -3,6 +3,7 @@ import { createPostgresStore } from "../../src/memory/postgres.js";
 import { createUuidV7 } from "../../src/memory/records.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { testVisibility } from "../store-helpers.js";
 
 interface RecordedQuery {
 	sql: string;
@@ -47,7 +48,7 @@ describe("Postgres single-statement writes", () => {
 
 		const result = await store.consolidate(
 			{
-				entityId: "alice",
+				visibility: testVisibility("alice"),
 				survivorId,
 				supersededIds: [loserId],
 				mergeTags: true,
@@ -65,7 +66,7 @@ describe("Postgres single-statement writes", () => {
 		expect(query?.sql).toContain("INSERT INTO mnemocyte_events");
 		expect(query?.sql).toContain("tags_updated AS");
 		expect(query?.sql).toContain("namespace = $");
-		expect(query?.params).toContain("default");
+		expect(query?.params).toContain("test");
 		expect(query?.params).toContain("alice");
 	});
 
@@ -77,7 +78,7 @@ describe("Postgres single-statement writes", () => {
 
 		await expectMnemocyteError(
 			store.consolidate({
-				entityId: "alice",
+				visibility: testVisibility("alice"),
 				survivorId: createUuidV7(),
 				supersededIds: [createUuidV7()],
 				mergeTags: false,
@@ -93,8 +94,13 @@ describe("Postgres single-statement writes", () => {
 		const store = createPostgresStore(executor);
 		const id = createUuidV7();
 
-		await store.markMemoriesAccessed("alice", [id, "mem_legacy"]);
-		expect(await store.deleteMemory("alice", "mem_legacy")).toBe(false);
+		await store.markMemoriesAccessed(testVisibility("alice"), [
+			id,
+			"mem_legacy",
+		]);
+		expect(
+			await store.deleteMemory(testVisibility("alice"), "mem_legacy"),
+		).toBe(false);
 
 		expect(queries).toHaveLength(1);
 		for (const query of queries) {
@@ -108,7 +114,10 @@ describe("Postgres single-statement writes", () => {
 		const { executor, queries } = createRecordingExecutor([]);
 		const store = createPostgresStore(executor);
 
-		await store.markMemoriesAccessed("alice", [createUuidV7(), createUuidV7()]);
+		await store.markMemoriesAccessed(testVisibility("alice"), [
+			createUuidV7(),
+			createUuidV7(),
+		]);
 
 		expect(queries).toHaveLength(1);
 		const sql = expectDefined(queries[0]).sql;

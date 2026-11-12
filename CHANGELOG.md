@@ -10,6 +10,23 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **Scoped API: `createMemory`.** Every call names a scope:
+  `{ namespace, entityId, agentId?, sessionId? }`. Reads see the scope plus
+  memories shared by every agent or outside any session (`exactAgent` /
+  `exactSession` turn that off); bulk operations select, with an omitted
+  agent or session matching any. Records and audit events carry their
+  `scope`. See the [upgrade table](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md#upgrading-from-05).
+- **Keyed `add`.** A `key` that already exists in the exact scope updates
+  that memory in place (one `INSERT … ON CONFLICT … DO UPDATE` on Postgres),
+  keeping its id, creation time and access counts. Audited as
+  `memory.updated`.
+- **`get`, `list`, `update`, `deleteScope`.** `get` reads one memory by id
+  or key. `list` pages newest first with an opaque cursor. `update` changes
+  fields of one memory and re-embeds only new content; a key collision
+  throws `"CONFLICT"`. `deleteScope` erases an entity (or one agent or
+  session) and its audit events in one statement, even after a
+  consolidation.
+
 - **`migrate({ store, dimensions })`.** Creates or upgrades the Postgres
   schema from the root `mnemocyte` import. Each migration runs in its own
   transaction behind a transaction-level advisory lock, so app instances
@@ -22,15 +39,39 @@ behavioural changes documented in their entries.
 - **`SqlExecutor` and `mnemocyte/postgres`.** The Postgres backend now runs on
   a two-method `SqlExecutor` (`query` with an optional `AbortSignal`, and
   `transaction`). `postgresJs(sql)` wraps a postgres.js client and
-  `postgresStore({ client })` passes it to `createMnemocyte({ store })`.
+  `postgresStore({ client })` passes it to `createMemory({ store })`.
 
 - **`trackAccess` and the `"trackAccess"` event.** `retrieval.trackAccess`
-  turns access tracking on for a client and `trackAccess` on `recall` or
-  `buildContext` overrides it per call. Each access write emits its own
+  turns access tracking on for a client and `trackAccess` on `search` or
+  `context` overrides it per call. Each access write emits its own
   `start` and `success` or `error` events to `onEvent`, with operation
-  `"trackAccess"`, `entityId` and `count`.
+  `"trackAccess"`, `namespace`, `entityId` and `count`.
 
 ### Changed
+
+- **Breaking: methods renamed and scoped.** `remember` → `add`,
+  `rememberMany({ inputs })` → `addMany({ scope, memories })` (one scope per
+  batch), `recall` → `search`, `buildContext` → `context`, `forget` →
+  `delete({ scope, id })`, `forgetAll` → `deleteScope`; `findDuplicates`,
+  `listAuditLog`, `stats` and `experimental.consolidate` take `scope`
+  instead of `entityId`. Memories written before 0.6 are in namespace
+  `"default"`. Types follow: `MnemocyteClient` → `MemoryClient`,
+  `MnemocyteConfig` → `MemoryConfig`, `RememberInput` → `AddInput`,
+  `RecallInput` → `SearchInput`, `BuildContextInput` → `ContextInput`.
+- **Breaking: `type` is now `kind`.** The field, the `types` filter and
+  `MemoryType` are `kind`, `kinds` and `MemoryKind`.
+- **Breaking: `prune` requires a scope.** Pass `scope` (at least a
+  `namespace`) or `allNamespaces: true`, plus a selector besides the scope;
+  `prune({ kinds: ["fact"] })` no longer deletes across every entity.
+- **Breaking: `stats` returns one type.** `stats({ scope })` or
+  `stats({ allNamespaces: true })` return `MemoryStats` with `entityCount`;
+  `EntityStats` and `GlobalStats` are gone.
+- **Breaking: `context` does not echo the query.** The Markdown and plain
+  formats lose their query line and the XML its `query` attribute; the
+  metadata line says `kind=` instead of `type=`.
+- **Search validates every filter.** `tags`, `before`, `after`, `explain`
+  and the scope throw `"VALIDATION"` when malformed instead of being passed
+  through.
 
 - **Breaking: no runtime dependencies.** `drizzle-orm` and `postgres` moved
   from `dependencies` to optional `peerDependencies`. Mnemocyte now writes its
@@ -78,7 +119,7 @@ behavioural changes documented in their entries.
 
   ```ts
   // keep counting access on every recall
-  createMnemocyte({ embedder, store, retrieval: { trackAccess: true } });
+  createMemory({ embedder, store, retrieval: { trackAccess: true } });
   ```
 - **`prune({ notAccessedSince })` counts never-accessed memories from
   `createdAt`.** Before, a memory that had never been recalled always
@@ -87,6 +128,13 @@ behavioural changes documented in their entries.
   memories than before.
 
 ### Removed
+
+- **Breaking: `close()`.** The client holds no connections or timers, so
+  there is nothing to close; end your own database client. The `"close"`
+  observability operation and the `"DB"` "client is closed" error are gone.
+- **Breaking: `createMnemocyte`, the positional `rememberMany(inputs)` and
+  the `entity.cleared` audit event.** `deleteScope` deletes the scope's audit
+  events instead of recording one.
 
 - **Breaking: `databaseUrl`.** Create the client yourself and pass it in.
 
@@ -101,11 +149,11 @@ behavioural changes documented in their entries.
   import { postgresJs, postgresStore } from "mnemocyte/postgres";
 
   const sql = postgres(process.env.DATABASE_URL!);
-  const client = createMnemocyte({
+  const memory = createMemory({
     store: postgresStore({ client: postgresJs(sql) }),
     embedder,
   });
-  // client.close() no longer ends the pool: call `await sql.end()` yourself.
+  // end the pool yourself on shutdown: `await sql.end()`.
   ```
 
 - **Breaking: Postgres schema v2 (`0003_schema_v2.sql`).** Existing

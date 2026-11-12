@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
@@ -51,7 +51,7 @@ describe("Postgres audit cursor pagination", () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityId = `audit_cursor_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -66,7 +66,6 @@ describe("Postgres audit cursor pagination", () => {
 			try {
 				await verifyAuditCursorPagination(client, entityId);
 			} finally {
-				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 				await sql.end();

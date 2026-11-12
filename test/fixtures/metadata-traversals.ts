@@ -1,10 +1,6 @@
-import type {
-	AuditEvent,
-	JsonObject,
-	Memory,
-	MnemocyteClient,
-} from "mnemocyte";
+import type { AuditEvent, JsonObject, Memory, MemoryClient } from "mnemocyte";
 import { expect, vi } from "vitest";
+import { testScope } from "../helpers.js";
 
 const PROBE_KEY = "__mnemocyteMetadataTraversalProbe";
 
@@ -35,7 +31,7 @@ async function countTraversals(
 					counts.probes.set(probe, (counts.probes.get(probe) ?? 0) + 1);
 				} else if (
 					typeof candidate.memoryId === "string" &&
-					typeof candidate.type === "string" &&
+					typeof candidate.kind === "string" &&
 					typeof candidate.importance === "string"
 				) {
 					counts.audit += 1;
@@ -60,19 +56,19 @@ function metadata(probe: string): JsonObject {
 }
 
 export async function verifyMetadataTraversalCounts(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityPrefix: string,
 ): Promise<void> {
 	const singleEntity = `${entityPrefix}_single`;
 	let singleMemory: Memory | undefined;
 	let singleLog: AuditEvent[] | undefined;
 	const single = await countTraversals(async () => {
-		singleMemory = await client.remember({
-			entityId: singleEntity,
+		singleMemory = await client.add({
+			scope: testScope(singleEntity),
 			content: "single traversal",
 			metadata: metadata("single"),
 		});
-		singleLog = await client.listAuditLog({ entityId: singleEntity });
+		singleLog = await client.listAuditLog({ scope: testScope(singleEntity) });
 	});
 	expect(single.probes.get("single")).toBe(2);
 	expect(single.audit).toBe(2);
@@ -87,33 +83,34 @@ export async function verifyMetadataTraversalCounts(
 	if (singleLog[0]) {
 		singleLog[0].metadata.memoryId = "mutated-public-event";
 	}
-	const recalled = await client.recall({
-		entityId: singleEntity,
+	const recalled = await client.search({
+		scope: testScope(singleEntity),
 		query: "single traversal",
 	});
 	expect(recalled[0]?.metadata[PROBE_KEY]).toBe("single");
-	const rereadLog = await client.listAuditLog({ entityId: singleEntity });
+	const rereadLog = await client.listAuditLog({
+		scope: testScope(singleEntity),
+	});
 	expect(rereadLog[0]?.metadata.memoryId).toBe(singleMemory.id);
 
 	const batchEntity = `${entityPrefix}_batch`;
 	let batchMemories: Memory[] | undefined;
 	let batchLog: AuditEvent[] | undefined;
 	const batch = await countTraversals(async () => {
-		batchMemories = await client.rememberMany({
-			inputs: [
+		batchMemories = await client.addMany({
+			scope: testScope(batchEntity),
+			memories: [
 				{
-					entityId: batchEntity,
 					content: "batch traversal one",
 					metadata: metadata("batch-one"),
 				},
 				{
-					entityId: batchEntity,
 					content: "batch traversal two",
 					metadata: metadata("batch-two"),
 				},
 			],
 		});
-		batchLog = await client.listAuditLog({ entityId: batchEntity });
+		batchLog = await client.listAuditLog({ scope: testScope(batchEntity) });
 	});
 	expect(batch.probes.get("batch-one")).toBe(2);
 	expect(batch.probes.get("batch-two")).toBe(2);

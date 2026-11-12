@@ -1,14 +1,14 @@
-import { createMnemocyte, type RememberInput } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
-describe("rememberMany cancellation", () => {
+describe("addMany cancellation", () => {
 	test("cancels the entire batch through its explicit signal", async () => {
 		let markProviderStarted: (() => void) | undefined;
 		const providerStarted = new Promise<void>((resolve) => {
 			markProviderStarted = resolve;
 		});
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "batch-cancellation-test",
 				dimensions: 1,
@@ -33,29 +33,25 @@ describe("rememberMany cancellation", () => {
 		});
 		const controller = new AbortController();
 
-		try {
-			const pending = client.rememberMany({
-				inputs: [
-					{ entityId: "alice", content: "first" },
-					{ entityId: "alice", content: "second" },
-				],
-				signal: controller.signal,
-			});
-			await providerStarted;
-			controller.abort();
+		const pending = client.addMany({
+			scope: testScope("alice"),
+			memories: [{ content: "first" }, { content: "second" }],
+			signal: controller.signal,
+		});
+		await providerStarted;
+		controller.abort();
 
-			await expectMnemocyteError(pending, "ABORTED");
-			await expect(client.stats({ entityId: "alice" })).resolves.toMatchObject({
-				memoryCount: 0,
-			});
-		} finally {
-			await client.close();
-		}
+		await expectMnemocyteError(pending, "ABORTED");
+		await expect(
+			client.stats({ scope: testScope("alice") }),
+		).resolves.toMatchObject({
+			memoryCount: 0,
+		});
 	});
 
-	test("uses the batch signal instead of signals carried by item values", async () => {
+	test("forwards the batch signal to the embedder", async () => {
 		let providerSignal: AbortSignal | undefined;
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "batch-signal-ownership-test",
 				dimensions: 1,
@@ -65,24 +61,14 @@ describe("rememberMany cancellation", () => {
 				},
 			},
 		});
-		const itemController = new AbortController();
-		itemController.abort();
-		const item: RememberInput = {
-			entityId: "alice",
-			content: "item with a legacy signal",
-			signal: itemController.signal,
-		};
 		const batchController = new AbortController();
 
-		try {
-			const memories = await client.rememberMany({
-				inputs: [item],
-				signal: batchController.signal,
-			});
-			expect(memories).toHaveLength(1);
-			expect(providerSignal?.aborted).toBe(false);
-		} finally {
-			await client.close();
-		}
+		const memories = await client.addMany({
+			scope: testScope("alice"),
+			memories: [{ content: "item" }],
+			signal: batchController.signal,
+		});
+		expect(memories).toHaveLength(1);
+		expect(providerSignal?.aborted).toBe(false);
 	});
 });

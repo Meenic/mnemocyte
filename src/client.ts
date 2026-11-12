@@ -1,26 +1,23 @@
 import { createMemoryClient } from "./memory/client-core.js";
-import { createInMemoryClient } from "./memory/in-memory.js";
+import { createInMemoryStore } from "./memory/in-memory.js";
 import { unwrapMnemocyteStoreConfig } from "./memory/store-config.js";
 import {
 	assertEmbedder,
 	validateProviderResilienceConfig,
 	validateRetrievalConfig,
 } from "./memory/validation.js";
-import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
+import type { MemoryClient, MemoryConfig } from "./types.js";
 
 /**
- * Create a Mnemocyte client.
+ * Create a memory client.
  *
- * When {@link MnemocyteConfig.store} is provided, that adapter is used. When it
- * is omitted, an in-memory client is returned for tests, demos, and
- * short-lived processes.
+ * With {@link MemoryConfig.store}, memories live in that store's database;
+ * without it, in process memory, for tests and prototypes. The client holds
+ * no connections or timers and needs no shutdown call: the database client
+ * behind a store stays owned by the caller.
  *
- * Call {@link MnemocyteClient.close} when finished. Database clients behind a
- * supplied store stay owned by the caller: closing the Mnemocyte client never
- * ends them.
- *
- * @param config - Client configuration. {@link MnemocyteConfig.embedder} is required.
- * @returns A {@link MnemocyteClient} instance.
+ * @param config - Client configuration. {@link MemoryConfig.embedder} is required.
+ * @returns A {@link MemoryClient}.
  * @throws {MnemocyteError} With code `"CONFIG"` if `embedder`, retrieval
  * tuning, provider resilience, or `store` is malformed.
  *
@@ -30,18 +27,19 @@ import type { MnemocyteClient, MnemocyteConfig } from "./types.js";
  * import { postgresJs, postgresStore } from "mnemocyte/postgres";
  *
  * const sql = postgres(process.env.DATABASE_URL);
- * const client = createMnemocyte({
+ * const memory = createMemory({
  *   store: postgresStore({ client: postgresJs(sql) }),
- *   embedder, // embedder.dimensions must match mnemocyte_meta
+ *   embedder, // embedder.dimensions must match the installation
  * });
  * ```
  */
-export function createMnemocyte(config: MnemocyteConfig): MnemocyteClient {
+export function createMemory(config: MemoryConfig): MemoryClient {
 	assertEmbedder(config.embedder);
 	validateRetrievalConfig(config.retrieval);
 	validateProviderResilienceConfig(config.provider);
-	if (config.store !== undefined) {
-		return createMemoryClient(config, unwrapMnemocyteStoreConfig(config.store));
-	}
-	return createInMemoryClient(config);
+	const store =
+		config.store === undefined
+			? createInMemoryStore()
+			: unwrapMnemocyteStoreConfig(config.store);
+	return createMemoryClient(config, store);
 }

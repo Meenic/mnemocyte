@@ -1,6 +1,6 @@
-import { createMnemocyte, type JsonObject, type JsonValue } from "mnemocyte";
+import { createMemory, type JsonObject, type JsonValue } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 function profile(metadata: JsonObject): JsonObject {
 	const value = metadata.profile;
@@ -12,7 +12,7 @@ function profile(metadata: JsonObject): JsonObject {
 
 describe("metadata value semantics", () => {
 	test("deep-clones JSON metadata at write and read boundaries", async () => {
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "metadata-test",
 				dimensions: 2,
@@ -26,36 +26,32 @@ describe("metadata value semantics", () => {
 			preferences: ["concise", { format: "markdown" }],
 		};
 
-		try {
-			const pending = client.remember({
-				entityId: "alice",
-				content: "Prefers concise answers.",
-				metadata,
-			});
-			profile(metadata).tier = "free";
-			const remembered = await pending;
-			profile(remembered.metadata).tier = "trial";
+		const pending = client.add({
+			scope: testScope("alice"),
+			content: "Prefers concise answers.",
+			metadata,
+		});
+		profile(metadata).tier = "free";
+		const remembered = await pending;
+		profile(remembered.metadata).tier = "trial";
 
-			const firstRecall = await client.recall({
-				entityId: "alice",
-				query: "concise answers",
-			});
-			expect(profile(firstRecall[0]?.metadata ?? {}).tier).toBe("gold");
+		const firstRecall = await client.search({
+			scope: testScope("alice"),
+			query: "concise answers",
+		});
+		expect(profile(firstRecall[0]?.metadata ?? {}).tier).toBe("gold");
 
-			profile(firstRecall[0]?.metadata ?? {}).tier = "mutated";
-			const secondRecall = await client.recall({
-				entityId: "alice",
-				query: "concise answers",
-			});
-			expect(profile(secondRecall[0]?.metadata ?? {}).tier).toBe("gold");
-		} finally {
-			await client.close();
-		}
+		profile(firstRecall[0]?.metadata ?? {}).tier = "mutated";
+		const secondRecall = await client.search({
+			scope: testScope("alice"),
+			query: "concise answers",
+		});
+		expect(profile(secondRecall[0]?.metadata ?? {}).tier).toBe("gold");
 	});
 
 	test("rejects unsupported and cyclic metadata before embedding", async () => {
 		let embedCalls = 0;
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "metadata-validation-test",
 				dimensions: 1,
@@ -77,21 +73,17 @@ describe("metadata value semantics", () => {
 			cyclic,
 		];
 
-		try {
-			for (const metadata of unsupported) {
-				await expectMnemocyteError(
-					client.remember({
-						entityId: "alice",
-						content: "Invalid metadata",
-						metadata: metadata as JsonObject,
-					}),
-					"VALIDATION",
-				);
-			}
-			expect(embedCalls).toBe(0);
-		} finally {
-			await client.close();
+		for (const metadata of unsupported) {
+			await expectMnemocyteError(
+				client.add({
+					scope: testScope("alice"),
+					content: "Invalid metadata",
+					metadata: metadata as JsonObject,
+				}),
+				"VALIDATION",
+			);
 		}
+		expect(embedCalls).toBe(0);
 	});
 
 	test("accepts the complete JsonValue domain", async () => {
@@ -102,7 +94,7 @@ describe("metadata value semantics", () => {
 			null: null,
 			array: ["value", 2, false, null, { nested: "value" }],
 		};
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "json-value-test",
 				dimensions: 1,
@@ -112,15 +104,11 @@ describe("metadata value semantics", () => {
 			},
 		});
 
-		try {
-			const memory = await client.remember({
-				entityId: "alice",
-				content: "Valid metadata",
-				metadata: value as JsonObject,
-			});
-			expect(memory.metadata).toEqual(value);
-		} finally {
-			await client.close();
-		}
+		const memory = await client.add({
+			scope: testScope("alice"),
+			content: "Valid metadata",
+			metadata: value as JsonObject,
+		});
+		expect(memory.metadata).toEqual(value);
 	});
 });

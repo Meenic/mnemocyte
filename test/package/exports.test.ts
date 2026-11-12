@@ -1,13 +1,14 @@
-import { createMnemocyte, MnemocyteError, migrate } from "mnemocyte";
+import { createMemory, MnemocyteError, migrate } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
+import { testScope } from "../helpers.js";
 
 describe("package exports", () => {
 	test("exposes the built package runtime API", async () => {
-		expect(typeof createMnemocyte).toBe("function");
+		expect(typeof createMemory).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
 		expect(typeof migrate).toBe("function");
 		expect(typeof drizzleStore).toBe("function");
@@ -16,7 +17,7 @@ describe("package exports", () => {
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 
-		const client = createMnemocyte({
+		const client = createMemory({
 			embedder: {
 				model: "exports-smoke",
 				dimensions: 2,
@@ -26,13 +27,12 @@ describe("package exports", () => {
 			},
 		});
 
-		const memory = await client.remember({
-			entityId: "exports_smoke",
+		const memory = await client.add({
+			scope: testScope("exports_smoke"),
 			content: "Package self-reference import works.",
 		});
-		expect(memory.entityId).toBe("exports_smoke");
-		expect(typeof client.buildContext).toBe("function");
-
-		await client.close();
+		expect(memory.scope.entityId).toBe("exports_smoke");
+		expect(typeof client.context).toBe("function");
+		expect("close" in client).toBe(false);
 	});
 });

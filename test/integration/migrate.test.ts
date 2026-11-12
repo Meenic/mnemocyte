@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte, type Embedder, migrate } from "mnemocyte";
+import { createMemory, type Embedder, migrate } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -88,10 +88,13 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 		expect(await trackedVersions()).toEqual([0, 1, 2, 3]);
 		expect(await embeddingType()).toBe("vector(768)");
 
-		const client = createMnemocyte({ store, embedder: fakeEmbedder(768) });
-		await client.remember({ entityId: "migrate_768", content: "Likes tea." });
-		const recalled = await client.recall({
-			entityId: "migrate_768",
+		const client = createMemory({ store, embedder: fakeEmbedder(768) });
+		await client.add({
+			scope: testScope("migrate_768"),
+			content: "Likes tea.",
+		});
+		const recalled = await client.search({
+			scope: testScope("migrate_768"),
 			query: "tea",
 		});
 		expect(recalled.map((memory) => memory.content)).toEqual(["Likes tea."]);

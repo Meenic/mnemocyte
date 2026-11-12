@@ -1,0 +1,191 @@
+# Scopes, keys and the client surface
+
+How the scoped client is built: scope matching, keyed upserts, `get`,
+`list`, `update`, `deleteScope` and the client lifecycle. The user-facing
+rules are in [guide/api.md](../guide/api.md#scopes).
+
+## Scope
+
+A memory belongs to a scope (`MemoryScope` in `src/types.ts`):
+
+```ts
+interface MemoryScope {
+  namespace: string;   // tenant or app; required
+  entityId: string;    // who or what the memory is about; required
+  agentId?: string;    // who holds it; omitted = shared by every agent
+  sessionId?: string;  // short-lived context; omitted = outside any session
+}
+```
+
+`entityId` is who a memory is about and `agentId` who holds it (ARCHITECTURE
+decision 17). `validateScope` (`memory/validation.ts`) checks each field is a
+non-empty string and returns a detached `StoreScope` with `null` for an
+omitted agent or session. Records carry that `scope` (`MemoryRecordScope`).
+
+Two matching rules, both in `memory/filters.ts` (in-memory) and
+`db/queries/memories.ts` (Postgres):
+
+- **Visibility** (`StoreVisibility`, `visibilityConditions`): reads and writes
+  by id match the namespace and entity, and for each optional field the
+  scope's value or null (shared). A null field in the scope matches only null
+  rows. `exactAgent` / `exactSession` drop the null alternative. Used by
+  `search`, `get` by id, `list`, `context`, `findDuplicates`, `update`,
+  `delete`, `consolidate` and the access write.
+- **Selection** (`StoreSelector`, `selectorConditions`): bulk operations match
+  each field that is set exactly and ignore the rest; a null namespace is
+  `allNamespaces: true`. Used by `deleteScope`, `prune`, `stats` and
+  `listAuditLog`. Selecting `{ namespace, entityId }` therefore reaches every
+  agent and session, which an erasure needs.
+
+Keys are unique per *exact* scope, so `get` by key and the upsert match with
+null fields as `IS NULL`, never shared.
+
+On Postgres every visibility query is `namespace = $ AND entity_id = $ AND
+(agent_id = $ OR agent_id IS NULL) AND …`; the scope btree
+`(namespace, entity_id, agent_id, session_id)` serves it (an `OR` on the third
+column becomes a bitmap or a filter on the entity's rows).
+
+## Keyed `add`
+
+`createStoredMemory` copies `key` into the prepared row. The Postgres insert
+is one statement:
+
+```sql
+INSERT INTO mnemocyte_memories (…) VALUES (…), (…)
+ON CONFLICT (namespace, entity_id, agent_id, session_id, key)
+  WHERE key IS NOT NULL
+  DO UPDATE SET content = EXCLUDED.content, …, updated_at = EXCLUDED.updated_at
+RETURNING …
+```
+
+- The conflict target repeats the partial index's predicate
+  (`WHERE key IS NOT NULL`); Postgres infers a partial unique index as the
+  arbiter only when the statement's predicate implies the index's. The index
+  is `NULLS NOT DISTINCT`, so two rows with a null `agent_id` and the same key
+  collide.
+- `ON CONFLICT DO UPDATE` guarantees an insert or an update for each row even
+  under concurrency, so parallel adds with one key end in one row. The
+  integration test runs five at once.
+- One statement may not update the same row twice (a cardinality violation),
+  so `assertDistinctKeys` rejects a repeated key in one `addMany` with
+  `"VALIDATION"` before the embedder runs.
+- The update replaces content, kind, importance, tags, source, metadata,
+  confidence, embedding and model, expiry and `updated_at`; it keeps `id`,
+  `created_at`, the access counts and `superseded_by`.
+- `RETURNING` does not say whether a row was inserted or updated.
+  `matchInsertResults` (`memory/client-core.ts`) maps each returned row back to
+  its input by id (inserted rows keep the prepared id) or by key (updated rows
+  carry the existing id), rejects unknown or missing rows, and reports
+  `created`, which picks the audit event: `memory.created` or
+  `memory.updated`.
+
+The embedder runs before the statement, outside any transaction, as for every
+write.
+
+## `get`
+
+By id: the visible row with that id, or `null` (non-UUID ids return `null`
+without a query). By key: the exact scope only. Exactly one of the two.
+
+## `list`
+
+Keyset pagination, newest first by `(created_at, id)`:
+
+```sql
+SELECT … FROM mnemocyte_memories
+WHERE <visibility and filters>
+  AND (date_trunc('milliseconds', created_at), id) < ($cursorTime, $cursorId)
+ORDER BY date_trunc('milliseconds', created_at) DESC, mnemocyte_memories.id DESC
+LIMIT $limit + 1
+```
+
+- The client asks for one extra row to know whether a next page exists, so
+  an exact last page ends with `nextCursor: null`.
+- The cursor (`memory/cursor.ts`) is base64url of
+  `[createdAt ISO string, id]`, opaque to callers. Decoding rejects anything
+  that is not two strings with a valid date and a UUID (`"VALIDATION"`).
+- `created_at` is truncated to milliseconds because the cursor carries a JS
+  `Date`. Rows written by the column default `now()` (for example by a
+  migration or a manual insert) carry microseconds, and comparing them with a
+  millisecond cursor would skip rows in the same millisecond. The integration
+  test sets sub-millisecond times and pages one row at a time.
+- `id` breaks ties within a millisecond, so the order is total and a cursor
+  stays valid while rows are added or deleted. The `ORDER BY` names the
+  table's `id`, because the select list's `id::text AS id` would otherwise
+  sort by the text.
+- Ids converted from 0.x text ids are md5 hashes, not time-ordered, which is
+  why the order uses `created_at` first rather than the UUIDv7 id alone.
+
+No index serves the order. Measured with `EXPLAIN (ANALYZE, BUFFERS)` on
+Postgres 18 / pgvector 0.8.7, 130,000 memories (1,000 entities of 100 and one
+of 30,000):
+
+| Page | Plan | Time |
+|---|---|---|
+| 100-memory entity, first page | scope index scan, quicksort | 0.8 ms, 102 buffers |
+| 30,000-memory entity, first page | bitmap scan on the scope index, top-N heapsort | 9.0 ms, 914 buffers |
+| 30,000-memory entity, page at row 15,000 | same, half the rows filtered by the cursor | 8.3 ms, 846 buffers |
+
+A `(namespace, entity_id, agent_id, session_id, created_at, id)` index would
+turn the large-entity pages into index scans, but every write would pay for
+it, and listing is an administrative read. Not worth it until a benchmark
+shows otherwise.
+
+## `update`
+
+`validateUpdateFields` requires at least one field. A `content` change checks
+embedding compatibility and embeds the new text first; the patch then goes
+to the store as one `UPDATE … WHERE <visibility> AND id = $ RETURNING …`, so
+the content and its embedding always change together. Tags are normalized as
+on `add`. A new key that collides fails with SQLSTATE `23505` on
+`mnemocyte_memories_scope_key_idx`, mapped to `"CONFLICT"`; the in-memory
+store checks the same before writing. No visible row: `null`, then
+`"NOT_FOUND"`. The audit event `memory.updated` lists the changed field
+names.
+
+## `deleteScope`
+
+One statement on Postgres, the guarded delete (see
+[maintenance.md](./maintenance.md#deleting)) with two differences:
+
+- The dependents check counts only memories *outside* the selection, so a
+  survivor and its superseded memories are deleted together. The
+  `superseded_by` foreign key is `NO ACTION`, checked at the end of the
+  statement, when neither row exists.
+- A data-modifying CTE deletes the selected audit events in the same
+  statement, guarded by the same check, so the memories and their events go
+  together or not at all.
+
+It records no audit event: one would bring the erased entity id back.
+
+## Lifecycle
+
+The client has no `close()` (ARCHITECTURE decision 19). Since the
+`SqlExecutor` change the caller owns the database client and Mnemocyte holds
+no connections or timers, so there is nothing to release; the in-memory
+store is garbage-collected with the client. `MemoryStore.close` and the
+client's open/closing/closed state machine are gone with it.
+
+Access writes from tracked searches start before `search` resolves (see
+[retrieval.md](./retrieval.md#access-tracking)), so a caller that ends its
+database client right after a search still gets the write.
+
+## Observability
+
+Every operation's events carry the `namespace` and `entityId` of its scope,
+read from the raw input so a malformed call still reports them. Operations
+are `add`, `addMany`, `search`, `get`, `list`, `update`, `delete`,
+`deleteScope`, `context`, `prune`, `findDuplicates`, `listAuditLog`,
+`consolidate`, `stats` and `trackAccess`.
+
+## Tests
+
+`test/fixtures/scoped-api.ts` runs on both backends
+(`test/memory/scoped-api.test.ts`, `test/integration/scoped-api.test.ts`):
+visibility and selection across agents, sessions, entities and namespaces;
+keyed adds, including mixed batches and five concurrent adds with one key;
+the created/updated audit events; list paging, filters, deletes between
+pages and malformed cursors; updates with and without re-embedding and key
+collisions; `get` and scope validation on every method. The Postgres file
+adds microsecond `created_at` paging and the audit-event deletion of
+`deleteScope`.

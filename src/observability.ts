@@ -1,11 +1,12 @@
 import type {
+	MemoryConfig,
 	MnemocyteBackend,
-	MnemocyteConfig,
 	MnemocyteObservation,
 	MnemocyteOperation,
 } from "./types.js";
 
-interface ObservationMetadata {
+export interface ObservationMetadata {
+	namespace?: string;
 	entityId?: string;
 	memoryId?: string;
 	count?: number;
@@ -17,6 +18,9 @@ function withMetadata(
 ): MnemocyteObservation {
 	return {
 		...event,
+		...(metadata.namespace === undefined
+			? {}
+			: { namespace: metadata.namespace }),
 		...(metadata.entityId === undefined ? {} : { entityId: metadata.entityId }),
 		...(metadata.memoryId === undefined ? {} : { memoryId: metadata.memoryId }),
 		...(metadata.count === undefined ? {} : { count: metadata.count }),
@@ -24,7 +28,7 @@ function withMetadata(
 }
 
 async function emitObservation(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	event: MnemocyteObservation,
 ): Promise<void> {
 	try {
@@ -35,7 +39,7 @@ async function emitObservation(
 }
 
 async function observeFromStartedAt<T>(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	backend: MnemocyteBackend,
 	operation: MnemocyteOperation,
 	metadata: ObservationMetadata,
@@ -91,7 +95,7 @@ async function observeFromStartedAt<T>(
 }
 
 export function observe<T>(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	backend: MnemocyteBackend,
 	operation: MnemocyteOperation,
 	metadata: ObservationMetadata,
@@ -110,7 +114,7 @@ export function observe<T>(
 }
 
 export function observePrepared<Prepared, Result>(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	backend: MnemocyteBackend,
 	operation: MnemocyteOperation,
 	metadata: ObservationMetadata,

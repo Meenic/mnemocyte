@@ -1,6 +1,11 @@
-import type { StoreScope } from "../../memory/store.js";
+import type {
+	StoreListPosition,
+	StoreScope,
+	StoreSelector,
+	StoreVisibility,
+} from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
-import type { ImportanceLevel, MemoryType } from "../../types.js";
+import type { ImportanceLevel, JsonObject, MemoryKind } from "../../types.js";
 import {
 	extractPrefixedMemoryRow,
 	type MemoryRow,
@@ -13,8 +18,8 @@ import { createSqlParams, type SqlParams } from "../sql.js";
 import { formatVector } from "../vector.js";
 
 export interface MemoryFilter {
-	scope: StoreScope;
-	types?: readonly MemoryType[];
+	visibility: StoreVisibility;
+	kinds?: readonly MemoryKind[];
 	tags?: readonly string[];
 	before?: Date;
 	after?: Date;
@@ -44,7 +49,11 @@ export interface GuardedDeleteResult {
 	matchedCount: number;
 	deletedCount: number;
 	hasDependents: boolean;
-	deletedByEntity: Array<{ entityId: string; deletedCount: number }>;
+	deletedByEntity: Array<{
+		namespace: string;
+		entityId: string;
+		deletedCount: number;
+	}>;
 }
 
 export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
@@ -59,8 +68,9 @@ export type LexicalSearchRow = MemoryRow & { lexicalScore: number };
 export interface NewMemoryRow {
 	id: string;
 	scope: StoreScope;
+	key: string | null;
 	content: string;
-	type: string;
+	kind: string;
 	importance: string;
 	tags: string[];
 	source: string | null;
@@ -91,39 +101,70 @@ function column(table: string | undefined, name: string): string {
 }
 
 /**
- * Rows visible at `scope`: the namespace and entity match, and each optional
- * field either matches or is null (shared). A null field in the scope matches
- * only shared rows.
+ * Rows visible at a scope: the namespace and entity match, and each optional
+ * field either matches or, unless the read is exact for that field, is null
+ * (shared). A null field in the scope matches only null rows.
  */
-function scopeConditions(
+function visibilityConditions(
 	params: SqlParams,
-	scope: StoreScope,
+	visibility: StoreVisibility,
 	table?: string,
 ): string {
+	const { scope } = visibility;
 	const clauses = [
 		`${column(table, "namespace")} = ${params.add(scope.namespace)}`,
 		`${column(table, "entity_id")} = ${params.add(scope.entityId)}`,
 	];
-	for (const [name, value] of [
-		["agent_id", scope.agentId],
-		["session_id", scope.sessionId],
+	for (const [name, value, exact] of [
+		["agent_id", scope.agentId, visibility.exactAgent],
+		["session_id", scope.sessionId, visibility.exactSession],
 	] as const) {
 		const qualified = column(table, name);
-		clauses.push(
-			value === null
-				? `${qualified} IS NULL`
-				: `(${qualified} = ${params.add(value)} OR ${qualified} IS NULL)`,
-		);
+		if (value === null) {
+			clauses.push(`${qualified} IS NULL`);
+		} else if (exact) {
+			clauses.push(`${qualified} = ${params.add(value)}`);
+		} else {
+			clauses.push(
+				`(${qualified} = ${params.add(value)} OR ${qualified} IS NULL)`,
+			);
+		}
 	}
 	return clauses.join(" AND ");
 }
 
 /**
- * Every row about the entity, across agents and sessions. Used by deletes, so
- * erasing an entity never leaves agent- or session-held rows behind.
+ * Rows a bulk operation selects: each field that is set matches exactly, a
+ * missing field matches anything, and a null namespace matches every
+ * namespace. Shared by memories and audit events, which have the same scope
+ * columns. Returns `TRUE` when nothing restricts.
  */
-function entityConditions(params: SqlParams, scope: StoreScope): string {
-	return `namespace = ${params.add(scope.namespace)} AND entity_id = ${params.add(scope.entityId)}`;
+export function selectorConditions(
+	params: SqlParams,
+	selector: StoreSelector,
+	table?: string,
+): string {
+	const clauses: string[] = [];
+	for (const [name, value] of [
+		["namespace", selector.namespace],
+		["entity_id", selector.entityId],
+		["agent_id", selector.agentId],
+		["session_id", selector.sessionId],
+	] as const) {
+		if (value !== undefined && value !== null) {
+			clauses.push(`${column(table, name)} = ${params.add(value)}`);
+		}
+	}
+	return clauses.length === 0 ? "TRUE" : clauses.join(" AND ");
+}
+
+/** The exact scope, where keys are unique: null fields match null rows. */
+function exactScopeConditions(params: SqlParams, scope: StoreScope): string {
+	return visibilityConditions(params, {
+		scope,
+		exactAgent: true,
+		exactSession: true,
+	});
 }
 
 /**
@@ -131,15 +172,15 @@ function entityConditions(params: SqlParams, scope: StoreScope): string {
  * an alias.
  */
 function recallFilters(params: SqlParams, input: MemoryFilter): string {
-	const clauses: string[] = [scopeConditions(params, input.scope)];
+	const clauses: string[] = [visibilityConditions(params, input.visibility)];
 	if (!input.includeSuperseded) {
 		clauses.push("superseded_by IS NULL");
 	}
 	if (!input.includeExpired) {
 		clauses.push("(expires_at IS NULL OR expires_at > now())");
 	}
-	if (input.types && input.types.length > 0) {
-		clauses.push(`kind IN (${params.list(input.types)})`);
+	if (input.kinds && input.kinds.length > 0) {
+		clauses.push(`kind IN (${params.list(input.kinds)})`);
 	}
 	if (input.tags && input.tags.length > 0) {
 		clauses.push(`tags @> ${params.textArray(input.tags)}`);
@@ -177,6 +218,38 @@ function emptyMemoryStatsCounts(): MemoryStatsCounts {
 	};
 }
 
+/**
+ * The unique index on scope + key: an `add` with a key that exists in the
+ * exact scope updates that row (`ON CONFLICT … DO UPDATE`).
+ */
+const SCOPE_KEY_INDEX = "mnemocyte_memories_scope_key_idx";
+
+/** Columns a keyed `add` replaces on an existing row. */
+const UPSERT_REPLACED_COLUMNS = [
+	"content",
+	"kind",
+	"importance",
+	"tags",
+	"source",
+	"metadata",
+	"confidence",
+	"embedding",
+	"embedding_model",
+	"embedding_dimensions",
+	"expires_at",
+	"updated_at",
+] as const;
+
+/**
+ * Insert rows in one statement. A keyed row whose key already exists in its
+ * exact scope updates that row instead: the conflict target names the partial
+ * unique index's columns and its predicate (`WHERE key IS NOT NULL`), which
+ * Postgres needs to infer a partial index as the arbiter. The update keeps
+ * `id`, `created_at`, the access counts and the consolidation link, and takes
+ * everything else from the new row. `ON CONFLICT DO UPDATE` guarantees an
+ * insert or an update for each row even under concurrency. One statement
+ * cannot update the same row twice, so callers pass distinct keys.
+ */
 export async function insertMemories(
 	db: SqlExecutor,
 	rows: readonly NewMemoryRow[],
@@ -193,8 +266,9 @@ export async function insertMemories(
 			${params.add(row.scope.entityId)},
 			${params.add(row.scope.agentId)}::text,
 			${params.add(row.scope.sessionId)}::text,
+			${params.add(row.key)}::text,
 			${params.add(row.content)},
-			${params.add(row.type)},
+			${params.add(row.kind)},
 			${params.add(row.importance)},
 			${params.textArrayValue(row.tags)},
 			${params.add(row.source)}::text,
@@ -212,14 +286,20 @@ export async function insertMemories(
 			${params.timestamp(row.updatedAt)}
 		)`,
 	);
+	const replaced = UPSERT_REPLACED_COLUMNS.map(
+		(name) => `${name} = EXCLUDED.${name}`,
+	).join(", ");
 	const result = await db.query<RawMemoryRow>(
 		`INSERT INTO mnemocyte_memories (
-			id, namespace, entity_id, agent_id, session_id, content, kind,
+			id, namespace, entity_id, agent_id, session_id, key, content, kind,
 			importance, tags, source, metadata, confidence, embedding,
 			embedding_model, embedding_dimensions, superseded_by, superseded_at,
 			expires_at, last_accessed_at, access_count, created_at, updated_at
 		)
 		VALUES ${tuples.join(",\n")}
+		ON CONFLICT (namespace, entity_id, agent_id, session_id, key)
+			WHERE key IS NOT NULL
+			DO UPDATE SET ${replaced}
 		RETURNING ${MEMORY_COLUMNS}`,
 		params.values,
 	);
@@ -228,7 +308,7 @@ export async function insertMemories(
 
 export async function getMemoryById(
 	db: SqlExecutor,
-	scope: StoreScope,
+	visibility: StoreVisibility,
 	memoryId: string,
 	signal?: AbortSignal,
 ): Promise<MemoryRow | null> {
@@ -236,7 +316,7 @@ export async function getMemoryById(
 	const rows = await db.query<RawMemoryRow>(
 		`SELECT ${MEMORY_COLUMNS}
 		FROM mnemocyte_memories
-		WHERE ${scopeConditions(params, scope)} AND id = ${params.uuid(memoryId)}
+		WHERE ${visibilityConditions(params, visibility)} AND id = ${params.uuid(memoryId)}
 		LIMIT 1`,
 		params.values,
 		signal ? { signal } : undefined,
@@ -245,33 +325,178 @@ export async function getMemoryById(
 	return row ? toMemoryRow(row) : null;
 }
 
-export async function getEntityMemoryStatsCounts(
+export async function getMemoryByKey(
 	db: SqlExecutor,
 	scope: StoreScope,
-	now: Date,
-): Promise<MemoryStatsCounts> {
+	key: string,
+	signal?: AbortSignal,
+): Promise<MemoryRow | null> {
 	const params = createSqlParams();
-	const columns = memoryStatsCountColumns(params, now);
-	const rows = await db.query<MemoryStatsCounts>(
-		`SELECT ${columns}
+	const rows = await db.query<RawMemoryRow>(
+		`SELECT ${MEMORY_COLUMNS}
 		FROM mnemocyte_memories
-		WHERE ${entityConditions(params, scope)}`,
+		WHERE ${exactScopeConditions(params, scope)} AND key = ${params.add(key)}
+		LIMIT 1`,
 		params.values,
+		signal ? { signal } : undefined,
 	);
-	return rows[0] ?? emptyMemoryStatsCounts();
+	const row = rows[0];
+	return row ? toMemoryRow(row) : null;
 }
 
-export async function getGlobalMemoryStatsCounts(
+export interface ListMemoriesInput extends MemoryFilter {
+	limit: number;
+	position?: StoreListPosition;
+}
+
+/** `created_at` at the cursor's precision; see {@link listMemories}. */
+const LIST_CREATED_AT =
+	"date_trunc('milliseconds', mnemocyte_memories.created_at)";
+
+/**
+ * One page of memories, newest first, keyed on `(created_at, id)` with
+ * `created_at` truncated to milliseconds, the precision of the cursor: rows
+ * written with the column default `now()` carry microseconds, and comparing
+ * those with a millisecond cursor could skip rows. The `ORDER BY` names the
+ * table's `id`, because the select list's `id::text AS id` would otherwise
+ * sort by the text.
+ */
+export async function listMemories(
 	db: SqlExecutor,
-	namespace: string,
+	input: ListMemoriesInput,
+	signal?: AbortSignal,
+): Promise<MemoryRow[]> {
+	const params = createSqlParams();
+	const clauses = [recallFilters(params, input)];
+	if (input.position) {
+		clauses.push(
+			`(${LIST_CREATED_AT}, mnemocyte_memories.id) < (${params.timestamp(input.position.createdAt)}, ${params.uuid(input.position.id)})`,
+		);
+	}
+	const rows = await db.query<RawMemoryRow>(
+		`SELECT ${MEMORY_COLUMNS}
+		FROM mnemocyte_memories
+		WHERE ${clauses.join("\n\t\t\tAND ")}
+		ORDER BY ${LIST_CREATED_AT} DESC, mnemocyte_memories.id DESC
+		LIMIT ${params.add(input.limit)}`,
+		params.values,
+		signal ? { signal } : undefined,
+	);
+	return rows.map(toMemoryRow);
+}
+
+export interface UpdateMemoryInput {
+	visibility: StoreVisibility;
+	id: string;
+	now: Date;
+	vectorType: VectorType;
+	content?: string;
+	embedding?: readonly number[];
+	embeddingModel?: string;
+	embeddingDimensions?: number;
+	key?: string | null;
+	kind?: string;
+	importance?: string;
+	tags?: readonly string[];
+	source?: string | null;
+	metadata?: JsonObject;
+	confidence?: number;
+	expiresAt?: Date | null;
+}
+
+/** Whether a driver error is a key collision on the scope + key index. */
+export function isScopeKeyViolation(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "23505" &&
+		"constraint_name" in error &&
+		error.constraint_name === SCOPE_KEY_INDEX
+	);
+}
+
+/**
+ * Update one visible memory in one statement and return it, or `null` when
+ * no visible row has the id. A new key that collides in the row's scope
+ * fails with a unique violation on {@link SCOPE_KEY_INDEX}.
+ */
+export async function updateMemory(
+	db: SqlExecutor,
+	input: UpdateMemoryInput,
+): Promise<MemoryRow | null> {
+	const params = createSqlParams();
+	const assignments: string[] = [];
+	const set = (name: string, value: string) => {
+		assignments.push(`${name} = ${value}`);
+	};
+	if (input.content !== undefined) {
+		set("content", params.add(input.content));
+	}
+	if (input.embedding !== undefined) {
+		set(
+			"embedding",
+			`${params.add(formatVector(input.embedding))}::${input.vectorType}`,
+		);
+	}
+	if (input.embeddingModel !== undefined) {
+		set("embedding_model", params.add(input.embeddingModel));
+	}
+	if (input.embeddingDimensions !== undefined) {
+		set(
+			"embedding_dimensions",
+			`${params.add(input.embeddingDimensions)}::int`,
+		);
+	}
+	if (input.key !== undefined) {
+		set("key", `${params.add(input.key)}::text`);
+	}
+	if (input.kind !== undefined) {
+		set("kind", params.add(input.kind));
+	}
+	if (input.importance !== undefined) {
+		set("importance", params.add(input.importance));
+	}
+	if (input.tags !== undefined) {
+		set("tags", params.textArrayValue(input.tags));
+	}
+	if (input.source !== undefined) {
+		set("source", `${params.add(input.source)}::text`);
+	}
+	if (input.metadata !== undefined) {
+		set("metadata", params.json(input.metadata));
+	}
+	if (input.confidence !== undefined) {
+		set("confidence", `${params.add(input.confidence)}::real`);
+	}
+	if (input.expiresAt !== undefined) {
+		set("expires_at", nullableTimestamp(params, input.expiresAt));
+	}
+	set("updated_at", params.timestamp(input.now));
+	const rows = await db.query<RawMemoryRow>(
+		`UPDATE mnemocyte_memories
+		SET ${assignments.join(", ")}
+		WHERE ${visibilityConditions(params, input.visibility)}
+			AND id = ${params.uuid(input.id)}
+		RETURNING ${MEMORY_COLUMNS}`,
+		params.values,
+	);
+	const row = rows[0];
+	return row ? toMemoryRow(row) : null;
+}
+
+export async function getMemoryStatsCounts(
+	db: SqlExecutor,
+	selector: StoreSelector,
 	now: Date,
 ): Promise<GlobalMemoryStatsCounts> {
 	const params = createSqlParams();
+	const conditions = selectorConditions(params, selector);
 	const columns = memoryStatsCountColumns(params, now);
 	const rows = await db.query<GlobalMemoryStatsCounts>(
-		`SELECT count(DISTINCT entity_id)::int AS "entityCount", ${columns}
+		`SELECT count(DISTINCT (namespace, entity_id))::int AS "entityCount", ${columns}
 		FROM mnemocyte_memories
-		WHERE namespace = ${params.add(namespace)}`,
+		WHERE ${conditions}`,
 		params.values,
 	);
 	return rows[0] ?? { entityCount: 0, ...emptyMemoryStatsCounts() };
@@ -279,44 +504,53 @@ export async function getGlobalMemoryStatsCounts(
 
 export async function deleteMemory(
 	db: SqlExecutor,
-	scope: StoreScope,
+	visibility: StoreVisibility,
 	memoryId: string,
+	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
 	const params = createSqlParams();
-	const conditions = `${entityConditions(params, scope)} AND id = ${params.uuid(memoryId)}`;
-	return deleteMemoriesWithDependentGuard(db, conditions, params);
+	const conditions = `${visibilityConditions(params, visibility)} AND id = ${params.uuid(memoryId)}`;
+	return deleteMemoriesWithDependentGuard(db, conditions, params, {
+		allowSelectedDependents: false,
+		...(signal ? { signal } : {}),
+	});
 }
 
-export async function deleteMemoriesForEntity(
+/**
+ * Delete the selected memories and audit events in one statement. A
+ * consolidation link between two selected memories does not block it: both
+ * rows go in the same statement, and the `NO ACTION` foreign key is checked
+ * at the end of the statement, when neither exists.
+ */
+export async function deleteScope(
 	db: SqlExecutor,
-	scope: StoreScope,
+	selector: StoreSelector,
+	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
 	const params = createSqlParams();
-	return deleteMemoriesWithDependentGuard(
-		db,
-		entityConditions(params, scope),
-		params,
-	);
+	const conditions = selectorConditions(params, selector);
+	const eventConditions = selectorConditions(params, selector);
+	return deleteMemoriesWithDependentGuard(db, conditions, params, {
+		allowSelectedDependents: true,
+		eventConditions,
+		...(signal ? { signal } : {}),
+	});
 }
 
 export interface PruneFilter {
-	namespace: string;
-	entityId?: string;
+	selector: StoreSelector;
 	expired?: boolean;
 	superseded?: boolean;
 	createdBefore?: Date;
 	notAccessedSince?: Date;
-	types?: readonly MemoryType[];
+	kinds?: readonly MemoryKind[];
 	tags?: readonly string[];
 	maxImportanceLevels?: readonly ImportanceLevel[];
 }
 
-/** The `WHERE` conditions of a prune. Always limited to one namespace. */
+/** The `WHERE` conditions of a prune. */
 function pruneConditions(params: SqlParams, filter: PruneFilter): string {
-	const clauses: string[] = [`namespace = ${params.add(filter.namespace)}`];
-	if (filter.entityId !== undefined) {
-		clauses.push(`entity_id = ${params.add(filter.entityId)}`);
-	}
+	const clauses: string[] = [selectorConditions(params, filter.selector)];
 	if (filter.expired) {
 		clauses.push("(expires_at IS NOT NULL AND expires_at <= now())");
 	}
@@ -331,8 +565,8 @@ function pruneConditions(params: SqlParams, filter: PruneFilter): string {
 			`COALESCE(last_accessed_at, created_at) < ${params.timestamp(filter.notAccessedSince)}`,
 		);
 	}
-	if (filter.types && filter.types.length > 0) {
-		clauses.push(`kind IN (${params.list(filter.types)})`);
+	if (filter.kinds && filter.kinds.length > 0) {
+		clauses.push(`kind IN (${params.list(filter.kinds)})`);
 	}
 	if (filter.tags && filter.tags.length > 0) {
 		clauses.push(`tags @> ${params.textArray(filter.tags)}`);
@@ -367,24 +601,57 @@ export async function pruneMemories(
 ): Promise<GuardedDeleteResult> {
 	const params = createSqlParams();
 	const conditions = pruneConditions(params, filter);
-	return deleteMemoriesWithDependentGuard(db, conditions, params, signal);
+	return deleteMemoriesWithDependentGuard(db, conditions, params, {
+		allowSelectedDependents: false,
+		...(signal ? { signal } : {}),
+	});
 }
 
+interface DependentGuardOptions {
+	/**
+	 * `false`: any memory that points at a candidate blocks the delete.
+	 * `true`: only one outside the candidates does.
+	 */
+	allowSelectedDependents: boolean;
+	/** Audit events to delete in the same statement, when set. */
+	eventConditions?: string;
+	signal?: AbortSignal;
+}
+
+/**
+ * Delete the rows matching `conditions` unless a consolidation dependent
+ * blocks it, as one statement: the check and the delete see the same
+ * snapshot, and the `superseded_by` foreign key is the backstop for rows
+ * written concurrently.
+ */
 async function deleteMemoriesWithDependentGuard(
 	db: SqlExecutor,
 	conditions: string,
 	params: SqlParams,
-	signal?: AbortSignal,
+	options: DependentGuardOptions,
 ): Promise<GuardedDeleteResult> {
+	const outsideOnly = options.allowSelectedDependents
+		? "\n\t\t\tWHERE dependent.id NOT IN (SELECT id FROM candidates)"
+		: "";
+	const deleteEvents =
+		options.eventConditions === undefined
+			? ""
+			: `,
+		deleted_events AS (
+			DELETE FROM mnemocyte_events
+			WHERE ${options.eventConditions}
+				AND NOT EXISTS (SELECT 1 FROM dependents)
+		)`;
 	const rows = await db.query<{
 		matchedCount: number | string;
 		deletedCount: number | string;
 		hasDependents: boolean;
+		namespace: string | null;
 		entityId: string | null;
 		entityDeletedCount: number | string | null;
 	}>(
 		`WITH candidates AS MATERIALIZED (
-			SELECT id, entity_id
+			SELECT id, namespace, entity_id
 			FROM mnemocyte_memories
 			WHERE ${conditions}
 		),
@@ -392,19 +659,19 @@ async function deleteMemoriesWithDependentGuard(
 			SELECT 1
 			FROM mnemocyte_memories AS dependent
 			INNER JOIN candidates AS target
-				ON dependent.superseded_by = target.id
+				ON dependent.superseded_by = target.id${outsideOnly}
 			LIMIT 1
 		),
 		deleted AS (
 			DELETE FROM mnemocyte_memories
 			WHERE id IN (SELECT id FROM candidates)
 				AND NOT EXISTS (SELECT 1 FROM dependents)
-			RETURNING id, entity_id
-		),
+			RETURNING id, namespace, entity_id
+		)${deleteEvents},
 		deleted_counts AS (
-			SELECT entity_id, count(*)::int AS deleted_count
+			SELECT namespace, entity_id, count(*)::int AS deleted_count
 			FROM deleted
-			GROUP BY entity_id
+			GROUP BY namespace, entity_id
 		),
 		summary AS (
 			SELECT
@@ -416,13 +683,14 @@ async function deleteMemoriesWithDependentGuard(
 			summary.matched_count AS "matchedCount",
 			summary.deleted_count AS "deletedCount",
 			summary.has_dependents AS "hasDependents",
+			deleted_counts.namespace AS "namespace",
 			deleted_counts.entity_id AS "entityId",
 			deleted_counts.deleted_count AS "entityDeletedCount"
 		FROM summary
 		LEFT JOIN deleted_counts ON true
-		ORDER BY deleted_counts.entity_id`,
+		ORDER BY deleted_counts.namespace, deleted_counts.entity_id`,
 		params.values,
-		signal ? { signal } : undefined,
+		options.signal ? { signal: options.signal } : undefined,
 	);
 	const row = rows[0];
 	return {
@@ -430,10 +698,11 @@ async function deleteMemoriesWithDependentGuard(
 		deletedCount: Number(row?.deletedCount ?? 0),
 		hasDependents: row?.hasDependents === true,
 		deletedByEntity: rows.flatMap((detail) =>
-			detail.entityId === null
+			detail.entityId === null || detail.namespace === null
 				? []
 				: [
 						{
+							namespace: detail.namespace,
 							entityId: detail.entityId,
 							deletedCount: Number(detail.entityDeletedCount ?? 0),
 						},
@@ -443,10 +712,10 @@ async function deleteMemoriesWithDependentGuard(
 }
 
 export interface DuplicateSearchInput {
-	scope: StoreScope;
+	visibility: StoreVisibility;
 	threshold: number;
 	limit: number;
-	types?: readonly string[];
+	kinds?: readonly string[];
 	tags?: readonly string[];
 	includeSuperseded?: boolean;
 	includeExpired?: boolean;
@@ -459,8 +728,8 @@ export async function findDuplicatePairs(
 ): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
 	const params = createSqlParams();
 	const clauses: string[] = [
-		scopeConditions(params, input.scope, "a"),
-		scopeConditions(params, input.scope, "b"),
+		visibilityConditions(params, input.visibility, "a"),
+		visibilityConditions(params, input.visibility, "b"),
 	];
 	if (!input.includeSuperseded) {
 		clauses.push("a.superseded_by IS NULL AND b.superseded_by IS NULL");
@@ -470,9 +739,9 @@ export async function findDuplicatePairs(
 			"(a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())",
 		);
 	}
-	if (input.types && input.types.length > 0) {
-		const types = params.list(input.types);
-		clauses.push(`a.kind IN (${types}) AND b.kind IN (${types})`);
+	if (input.kinds && input.kinds.length > 0) {
+		const kinds = params.list(input.kinds);
+		clauses.push(`a.kind IN (${kinds}) AND b.kind IN (${kinds})`);
 	}
 	if (input.tags && input.tags.length > 0) {
 		const tags = params.textArray(input.tags);
@@ -506,7 +775,7 @@ export async function findDuplicatePairs(
 
 export async function loadConsolidationTargets(
 	db: SqlExecutor,
-	scope: StoreScope,
+	visibility: StoreVisibility,
 	ids: readonly string[],
 	signal?: AbortSignal,
 ): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
@@ -517,7 +786,7 @@ export async function loadConsolidationTargets(
 	return db.query(
 		`SELECT id::text AS id, tags, superseded_by::text AS "supersededBy"
 		FROM mnemocyte_memories
-		WHERE ${scopeConditions(params, scope)}
+		WHERE ${visibilityConditions(params, visibility)}
 			AND id IN (${params.uuidList(ids)})`,
 		params.values,
 		signal ? { signal } : undefined,
@@ -525,7 +794,7 @@ export async function loadConsolidationTargets(
 }
 
 export interface ConsolidateMemoriesInput {
-	scope: StoreScope;
+	visibility: StoreVisibility;
 	survivorId: string;
 	supersededIds: readonly string[];
 	mergeTags: boolean;
@@ -560,7 +829,7 @@ export async function consolidateMemories(
 ): Promise<ConsolidateMemoriesResult> {
 	const params = createSqlParams();
 	const requested = params.jsonArrayRows(input.supersededIds);
-	const scope = scopeConditions(params, input.scope);
+	const scope = visibilityConditions(params, input.visibility);
 	const survivorId = params.uuid(input.survivorId);
 	const now = params.timestamp(input.now);
 	const ctes = [
@@ -649,10 +918,10 @@ export async function consolidateMemories(
 				)
 				SELECT
 					event_ids.id,
-					${params.add(input.scope.namespace)},
-					${params.add(input.scope.entityId)},
-					${params.add(input.scope.agentId)}::text,
-					${params.add(input.scope.sessionId)}::text,
+					${params.add(input.visibility.scope.namespace)},
+					${params.add(input.visibility.scope.entityId)},
+					${params.add(input.visibility.scope.agentId)}::text,
+					${params.add(input.visibility.scope.sessionId)}::text,
 					'memory.superseded',
 					jsonb_build_object(
 						'memoryId', numbered.id::text,
@@ -701,7 +970,7 @@ export async function consolidateMemories(
  */
 export async function markMemoriesAccessed(
 	db: SqlExecutor,
-	scope: StoreScope,
+	visibility: StoreVisibility,
 	memoryIds: readonly string[],
 ): Promise<void> {
 	if (memoryIds.length === 0) {
@@ -712,7 +981,7 @@ export async function markMemoriesAccessed(
 		`WITH target AS (
 			SELECT id
 			FROM mnemocyte_memories
-			WHERE ${scopeConditions(params, scope)}
+			WHERE ${visibilityConditions(params, visibility)}
 				AND id IN (${params.uuidList(memoryIds)})
 			ORDER BY id
 			FOR UPDATE

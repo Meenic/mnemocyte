@@ -120,9 +120,9 @@ describe("lazy Postgres package loading", () => {
 			await writeFile(
 				script,
 				`
-						import { createMnemocyte } from "mnemocyte";
+						import { createMemory } from "mnemocyte";
 
-						const client = createMnemocyte({
+						const client = createMemory({
 							embedder: {
 								model: "packed-in-memory",
 								dimensions: 2,
@@ -131,19 +131,18 @@ describe("lazy Postgres package loading", () => {
 								},
 							},
 						});
-						const memory = await client.remember({
-							entityId: "packed-consumer",
+						const memory = await client.add({
+							scope: { namespace: "packed", entityId: "packed-consumer" },
 							content: "Database packages are absent.",
 						});
-						const recalled = await client.recall({
-							entityId: "packed-consumer",
+						const recalled = await client.search({
+							scope: { namespace: "packed", entityId: "packed-consumer" },
 							query: "absent database packages",
 							minScore: 0,
 						});
-						if (memory.entityId !== "packed-consumer" || recalled.length !== 1) {
+						if (memory.scope.entityId !== "packed-consumer" || recalled.length !== 1) {
 							throw new Error("Packed in-memory client returned unexpected data.");
 						}
-						await client.close();
 						process.stdout.write("packed-in-memory-ok");
 					`,
 				"utf8",

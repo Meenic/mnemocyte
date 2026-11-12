@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
 import { applySchemaV2Migration } from "./schema-v2.js";
 
 const envPath = resolve(".env");
@@ -104,7 +104,7 @@ describe("Postgres vector correctness", () => {
 			);
 
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -121,9 +121,9 @@ describe("Postgres vector correctness", () => {
 			});
 
 			try {
-				const memories = await client.rememberMany({
-					inputs: components.map((_component, index) => ({
-						entityId,
+				const memories = await client.addMany({
+					scope: testScope(entityId),
+					memories: components.map((_component, index) => ({
 						content: `component-${index}`,
 					})),
 				});
@@ -156,7 +156,6 @@ describe("Postgres vector correctness", () => {
 				}
 				expect(storedById.get(memories[0]?.id ?? "")).not.toBe(0);
 			} finally {
-				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 				await sql.end();
@@ -171,7 +170,7 @@ describe("Postgres vector correctness", () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityId = `zero_norm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -190,7 +189,7 @@ describe("Postgres vector correctness", () => {
 
 			try {
 				await expectMnemocyteError(
-					client.remember({ entityId, content: "zero stored" }),
+					client.add({ scope: testScope(entityId), content: "zero stored" }),
 					"EMBEDDING",
 				);
 				const zeroRows = await sql<Array<{ count: number }>>`
@@ -200,21 +199,19 @@ describe("Postgres vector correctness", () => {
 				`;
 				expect(zeroRows[0]?.count).toBe(0);
 
-				await client.rememberMany({
-					inputs: [
-						{ entityId, content: "alpha" },
-						{ entityId, content: "beta" },
-					],
+				await client.addMany({
+					scope: testScope(entityId),
+					memories: [{ content: "alpha" }, { content: "beta" }],
 				});
 				const pairs = await client.findDuplicates({
-					entityId,
+					scope: testScope(entityId),
 					threshold: 0.99,
 				});
 				expect(pairs).toHaveLength(1);
 				expect(pairs[0]?.similarity).toBeGreaterThanOrEqual(0.99);
 
-				const recalled = await client.recall({
-					entityId,
+				const recalled = await client.search({
+					scope: testScope(entityId),
 					query: "gamma",
 					limit: 2,
 				});
@@ -262,7 +259,7 @@ describe("Postgres vector correctness", () => {
 				`;
 
 				await expectMnemocyteError(
-					client.recall({ entityId, query: "zero query" }),
+					client.search({ scope: testScope(entityId), query: "zero query" }),
 					"EMBEDDING",
 				);
 				const afterZeroQuery = await sql<Array<{ accessCount: number }>>`
@@ -273,7 +270,6 @@ describe("Postgres vector correctness", () => {
 				`;
 				expect(afterZeroQuery).toEqual(beforeZeroQuery);
 			} finally {
-				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 				await sql.end();
@@ -295,7 +291,7 @@ describe("Postgres vector correctness", () => {
 				["query", 1],
 			]);
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -321,11 +317,11 @@ describe("Postgres vector correctness", () => {
 					"slightly-negative",
 					"opposite",
 				]) {
-					await client.remember({ entityId, content });
+					await client.add({ scope: testScope(entityId), content });
 				}
 
-				const all = await client.recall({
-					entityId,
+				const all = await client.search({
+					scope: testScope(entityId),
 					query: "query",
 					limit: 4,
 				});
@@ -350,8 +346,8 @@ describe("Postgres vector correctness", () => {
 				const threshold =
 					(expectDefined(first).score + expectDefined(second).score) / 2;
 
-				const finalScoreFiltered = await client.recall({
-					entityId,
+				const finalScoreFiltered = await client.search({
+					scope: testScope(entityId),
 					query: "query",
 					limit: 4,
 					minScore: threshold,
@@ -360,7 +356,6 @@ describe("Postgres vector correctness", () => {
 					"positive",
 				]);
 			} finally {
-				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 				await sql.end();

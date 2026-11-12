@@ -1,13 +1,13 @@
-import type { MemoryWithScore, MnemocyteClient } from "mnemocyte";
+import type { MemoryClient, MemoryWithScore } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
 
 async function listEntityMemories(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	entityId: string,
 ): Promise<MemoryWithScore[]> {
-	return client.recall({
-		entityId,
+	return client.search({
+		scope: testScope(entityId),
 		query: "duplicate consolidation ids",
 		limit: 20,
 		minScore: 0,
@@ -15,23 +15,24 @@ async function listEntityMemories(
 	});
 }
 
-async function listSupersededEvents(client: MnemocyteClient, entityId: string) {
-	return (await client.listAuditLog({ entityId, limit: 20 })).filter(
-		(event) => event.description === "memory.superseded",
-	);
+async function listSupersededEvents(client: MemoryClient, entityId: string) {
+	return (
+		await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
+	).filter((event) => event.description === "memory.superseded");
 }
 
 export async function exerciseConsolidationDuplicateIdPolicy(params: {
-	client: MnemocyteClient;
+	client: MemoryClient;
 	entityPrefix: string;
 	afterDuplicateRejection?: () => void | Promise<void>;
 }): Promise<void> {
 	const { client, entityPrefix, afterDuplicateRejection } = params;
 	const entityId = `${entityPrefix}_duplicate_ids`;
-	const [survivor, loser] = await client.rememberMany({
-		inputs: [
-			{ entityId, content: "survivor", tags: ["base"] },
-			{ entityId, content: "loser", tags: ["loser"] },
+	const [survivor, loser] = await client.addMany({
+		scope: testScope(entityId),
+		memories: [
+			{ content: "survivor", tags: ["base"] },
+			{ content: "loser", tags: ["loser"] },
 		],
 	});
 	const definedSurvivor = expectDefined(survivor);
@@ -39,7 +40,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 
 	await expectMnemocyteError(
 		client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id, definedLoser.id],
 		}),
@@ -62,7 +63,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 
 	await expect(
 		client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
 		}),
@@ -73,7 +74,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 	});
 	await expect(
 		client.experimental.consolidate({
-			entityId,
+			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
 		}),

@@ -3,19 +3,22 @@ import { insertEvent, listEvents } from "../db/queries/events.js";
 import {
 	consolidateMemories,
 	countPruneMatches,
-	deleteMemoriesForEntity as deleteMemoriesForEntityQuery,
 	deleteMemory as deleteMemoryQuery,
+	deleteScope as deleteScopeQuery,
 	findDuplicatePairs as findDuplicatePairsQuery,
-	getEntityMemoryStatsCounts,
-	getGlobalMemoryStatsCounts,
 	getMemoryById,
+	getMemoryByKey as getMemoryByKeyQuery,
+	getMemoryStatsCounts,
 	insertMemories as insertMemoryRows,
+	isScopeKeyViolation,
 	lexicalSearch as lexicalSearchQuery,
+	listMemories as listMemoriesQuery,
 	loadConsolidationTargets,
 	markMemoriesAccessed,
 	type NewMemoryRow,
 	type PruneFilter,
 	pruneMemories,
+	updateMemory as updateMemoryQuery,
 	vectorSearch as vectorSearchQuery,
 } from "../db/queries/memories.js";
 import {
@@ -25,35 +28,25 @@ import {
 	getStoredEmbeddingModels,
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
-import type { EventRow, VectorType } from "../db/rows.js";
+import type { VectorType } from "../db/rows.js";
 import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
 import type { SqlExecutor } from "../sql/executor.js";
 import type {
-	AuditEvent,
 	Embedder,
-	EntityStats,
-	GlobalStats,
 	ImportanceLevel,
-	MnemocyteClient,
-	MnemocyteConfig,
+	MemoryClient,
+	MemoryConfig,
 } from "../types.js";
 import { createMemoryClient } from "./client-core.js";
-import {
-	DEFAULT_AUDIT_LOG_LIMIT,
-	DEFAULT_DUPLICATE_LIMIT,
-	DEFAULT_DUPLICATE_THRESHOLD,
-	IMPORTANCE_RANK,
-} from "./defaults.js";
+import { IMPORTANCE_RANK } from "./defaults.js";
 import { memoryHasDependentsError } from "./deletion.js";
 import { cloneJsonObject } from "./json.js";
-import { rowToMemory } from "./postgres-records.js";
+import { rowToAuditEvent, rowToMemory } from "./postgres-records.js";
 import { createEventId, isUuid, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
-	DEFAULT_NAMESPACE,
-	entityScope,
 	type MemoryStore,
 	type StoreConsolidateInput,
 	type StoreConsolidateResult,
@@ -76,16 +69,6 @@ const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
 const CONSOLIDATION_SURVIVOR_FOREIGN_KEY =
 	"mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk";
 const VECTOR_TYPES: ReadonlySet<string> = new Set(["vector", "halfvec"]);
-
-function rowToAuditEvent(row: EventRow): AuditEvent {
-	return {
-		id: row.id,
-		entityId: row.entityId,
-		description: row.description,
-		metadata: cloneJsonObject(row.metadata),
-		timestamp: row.timestamp,
-	};
-}
 
 function importanceCeilingLevels(
 	max: ImportanceLevel,
@@ -167,10 +150,7 @@ async function runPostgresDeleteOperation<T>(
 }
 
 function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
-	const filter: PruneFilter = { namespace: DEFAULT_NAMESPACE };
-	if (input.entityId !== undefined) {
-		filter.entityId = input.entityId;
-	}
+	const filter: PruneFilter = { selector: input.selector };
 	if (input.expired === true) {
 		filter.expired = true;
 	}
@@ -183,8 +163,8 @@ function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
 	if (input.notAccessedSince !== undefined) {
 		filter.notAccessedSince = input.notAccessedSince;
 	}
-	if (input.types !== undefined && input.types.length > 0) {
-		filter.types = input.types;
+	if (input.kinds !== undefined && input.kinds.length > 0) {
+		filter.kinds = input.kinds;
 	}
 	if (input.tags !== undefined && input.tags.length > 0) {
 		filter.tags = input.tags;
@@ -196,10 +176,8 @@ function toPruneFilter(input: ValidatedPruneFilter): PruneFilter {
 }
 
 function toMemoryRow(memory: StoredMemory): NewMemoryRow {
-	const { entityId, ...rest } = memory;
 	return {
-		...rest,
-		scope: entityScope(entityId),
+		...memory,
 		tags: [...memory.tags],
 		embedding: [...memory.embedding],
 	};
@@ -374,7 +352,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 
 	return {
 		backend: "postgres",
-		async ensureSchema() {},
 		migrate(input) {
 			return runPostgresMigrations(client, input);
 		},
@@ -391,14 +368,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			return runPostgresOperation(async () => {
-				const { entityId, minVectorScore = 0, ...filters } = input;
+				const { minVectorScore = 0, ...filters } = input;
 				const [vectorType] = await Promise.all([
 					getVectorType(),
 					ensurePgvectorVersion(),
 				]);
 				const rows = await vectorSearchQuery(client, {
 					...filters,
-					scope: entityScope(entityId),
 					vectorType,
 				});
 				// Rows come in increasing distance, so the scores decrease and the
@@ -417,11 +393,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {
 			return runPostgresOperation(async () => {
-				const { entityId, ...filters } = input;
-				const rows = await lexicalSearchQuery(client, {
-					...filters,
-					scope: entityScope(entityId),
-				});
+				const rows = await lexicalSearchQuery(client, input);
 				return rows.map(
 					(row) =>
 						({
@@ -431,24 +403,82 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				);
 			});
 		},
-		async markMemoriesAccessed(entityId, memoryIds) {
+		async listMemories(input, options) {
+			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
+				const rows = await listMemoriesQuery(client, input, options?.signal);
+				return rows.map(rowToMemory);
+			});
+		},
+		async markMemoriesAccessed(visibility, memoryIds) {
 			return runPostgresOperation(() =>
-				markMemoriesAccessed(
-					client,
-					entityScope(entityId),
-					uuidsOnly(memoryIds),
-				),
+				markMemoriesAccessed(client, visibility, uuidsOnly(memoryIds)),
 			);
 		},
-		async deleteMemory(entityId, memoryId) {
+		async getMemory(visibility, memoryId, options) {
+			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
+				if (!isUuid(memoryId)) {
+					return null;
+				}
+				const row = await getMemoryById(
+					client,
+					visibility,
+					memoryId,
+					options?.signal,
+				);
+				return row ? rowToMemory(row) : null;
+			});
+		},
+		async getMemoryByKey(scope, key, options) {
+			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
+				const row = await getMemoryByKeyQuery(
+					client,
+					scope,
+					key,
+					options?.signal,
+				);
+				return row ? rowToMemory(row) : null;
+			});
+		},
+		async updateMemory(input) {
+			try {
+				if (!isUuid(input.id)) {
+					return null;
+				}
+				const { patch } = input;
+				const row = await updateMemoryQuery(client, {
+					visibility: input.visibility,
+					id: input.id,
+					now: input.now,
+					vectorType:
+						patch.embedding === undefined ? "vector" : await getVectorType(),
+					...patch,
+				});
+				return row ? rowToMemory(row) : null;
+			} catch (error) {
+				if (isScopeKeyViolation(error)) {
+					throw new MnemocyteError(
+						"Another memory in this scope already uses that key.",
+						"CONFLICT",
+						error,
+					);
+				}
+				throw normalizePostgresError(error);
+			}
+		},
+		async deleteMemory(visibility, memoryId, options) {
 			return runPostgresDeleteOperation(async () => {
+				throwIfAborted(options?.signal);
 				if (!isUuid(memoryId)) {
 					return false;
 				}
 				const result = await deleteMemoryQuery(
 					client,
-					entityScope(entityId),
+					visibility,
 					memoryId,
+					options?.signal,
 				);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
@@ -456,11 +486,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				return result.deletedCount > 0;
 			});
 		},
-		async deleteMemoriesForEntity(entityId) {
+		async deleteScope(selector, options) {
 			return runPostgresDeleteOperation(async () => {
-				const result = await deleteMemoriesForEntityQuery(
+				throwIfAborted(options?.signal);
+				const result = await deleteScopeQuery(
 					client,
-					entityScope(entityId),
+					selector,
+					options?.signal,
 				);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
@@ -502,19 +534,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			return runPostgresOperation(async () => {
 				const rows = await findDuplicatePairsQuery(
 					client,
-					{
-						scope: entityScope(input.entityId),
-						threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
-						limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
-						...(input.types === undefined ? {} : { types: input.types }),
-						...(input.tags === undefined ? {} : { tags: input.tags }),
-						...(input.includeSuperseded === undefined
-							? {}
-							: { includeSuperseded: input.includeSuperseded }),
-						...(input.includeExpired === undefined
-							? {}
-							: { includeExpired: input.includeExpired }),
-					},
+					input,
 					options?.signal,
 				);
 				return rows.map(
@@ -532,7 +552,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				for (const event of events) {
 					await insertEvent(client, {
 						id: event.id,
-						scope: entityScope(event.entityId),
+						scope: event.scope,
 						description: event.description,
 						metadata: cloneJsonObject(event.metadata),
 						timestamp: event.timestamp,
@@ -550,46 +570,16 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 						);
 					}
 				}
-				const rows = await listEvents(
-					client,
-					{
-						scope: entityScope(input.entityId),
-						limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
-						...(input.before === undefined ? {} : { before: input.before }),
-						...(input.after === undefined ? {} : { after: input.after }),
-						...(input.beforeCursor === undefined
-							? {}
-							: { beforeCursor: input.beforeCursor }),
-						...(input.afterCursor === undefined
-							? {}
-							: { afterCursor: input.afterCursor }),
-					},
-					options?.signal,
-				);
+				const rows = await listEvents(client, input, options?.signal);
 				return rows.map(rowToAuditEvent);
 			});
 		},
-		async getMemory(entityId, memoryId, options) {
-			return runPostgresOperation(async () => {
-				throwIfAborted(options?.signal);
-				if (!isUuid(memoryId)) {
-					return null;
-				}
-				const row = await getMemoryById(
-					client,
-					entityScope(entityId),
-					memoryId,
-					options?.signal,
-				);
-				return row ? rowToMemory(row) : null;
-			});
-		},
-		async loadConsolidationTargets(entityId, ids, options) {
+		async loadConsolidationTargets(visibility, ids, options) {
 			return runPostgresOperation(async () => {
 				throwIfAborted(options?.signal);
 				return loadConsolidationTargets(
 					client,
-					entityScope(entityId),
+					visibility,
 					uuidsOnly(ids),
 					options?.signal,
 				);
@@ -605,7 +595,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				const result = await consolidateMemories(
 					client,
 					{
-						scope: entityScope(input.entityId),
+						visibility: input.visibility,
 						survivorId: input.survivorId,
 						supersededIds,
 						mergeTags: input.mergeTags,
@@ -631,34 +621,17 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				return { supersededIds: result.supersededIds };
 			});
 		},
-		async stats(input, now) {
-			return runPostgresOperation(async () => {
-				if (input?.entityId) {
-					const counts = await getEntityMemoryStatsCounts(
-						client,
-						entityScope(input.entityId),
-						now,
-					);
-					return {
-						entityId: input.entityId,
-						...counts,
-					} satisfies EntityStats;
-				}
-				return (await getGlobalMemoryStatsCounts(
-					client,
-					DEFAULT_NAMESPACE,
-					now,
-				)) satisfies GlobalStats;
-			});
+		async stats(selector, now) {
+			return runPostgresOperation(() =>
+				getMemoryStatsCounts(client, selector, now),
+			);
 		},
-		// The caller owns the database client, so there is nothing to release.
-		async close() {},
 	};
 }
 
 export function createPostgresClient(
-	config: MnemocyteConfig,
+	config: MemoryConfig,
 	client: SqlExecutor,
-): MnemocyteClient {
+): MemoryClient {
 	return createMemoryClient(config, createPostgresStore(client));
 }

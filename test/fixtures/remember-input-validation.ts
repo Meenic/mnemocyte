@@ -1,22 +1,22 @@
 import type {
+	AddInput,
 	Embedder,
 	ImportanceLevel,
-	MemoryType,
-	MnemocyteClient,
+	MemoryClient,
+	MemoryKind,
 	PruneInput,
-	RememberInput,
 } from "mnemocyte";
 import { expect } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
-const MEMORY_TYPES = [
+const MEMORY_KINDS = [
 	"fact",
 	"preference",
 	"instruction",
 	"backstory",
 	"episode",
 	"session",
-] as const satisfies readonly MemoryType[];
+] as const satisfies readonly MemoryKind[];
 
 const IMPORTANCE_LEVELS = [
 	"low",
@@ -55,21 +55,29 @@ function invalidRememberInput(
 	entityId: string,
 	field: string,
 	value: unknown,
-): RememberInput {
+): AddInput {
 	return {
-		entityId,
+		scope: testScope(entityId),
 		content: `invalid ${field}`,
 		[field]: value,
-	} as unknown as RememberInput;
+	} as unknown as AddInput;
 }
 
 export async function verifyRememberInputValidation(
-	client: MnemocyteClient,
+	client: MemoryClient,
 	getEmbedCalls: () => number,
 	entityId: string,
 ): Promise<void> {
 	const invalidInputs = [
-		invalidRememberInput(entityId, "type", "bogus"),
+		invalidRememberInput(entityId, "kind", "bogus"),
+		invalidRememberInput(entityId, "key", ""),
+		invalidRememberInput(entityId, "key", 1),
+		invalidRememberInput(entityId, "scope", { namespace: "test" }),
+		invalidRememberInput(entityId, "scope", {
+			namespace: "test",
+			entityId,
+			agentId: "",
+		}),
 		invalidRememberInput(entityId, "importance", "bogus"),
 		invalidRememberInput(entityId, "tags", "not-an-array"),
 		invalidRememberInput(entityId, "tags", ["valid", 1]),
@@ -80,33 +88,38 @@ export async function verifyRememberInputValidation(
 	];
 
 	for (const input of invalidInputs) {
-		await expectMnemocyteError(client.remember(input), "VALIDATION");
+		await expectMnemocyteError(client.add(input), "VALIDATION");
 		expect(getEmbedCalls()).toBe(0);
-		await expect(client.stats({ entityId })).resolves.toMatchObject({
+		await expect(
+			client.stats({ scope: testScope(entityId) }),
+		).resolves.toMatchObject({
 			memoryCount: 0,
 		});
 	}
 
 	await expectMnemocyteError(
-		client.rememberMany({
-			inputs: [
-				{ entityId, content: "valid batch item" },
+		client.addMany({
+			scope: testScope(entityId),
+			memories: [
+				{ content: "valid batch item" },
 				invalidRememberInput(entityId, "importance", "bogus"),
 			],
 		}),
 		"VALIDATION",
 	);
 	expect(getEmbedCalls()).toBe(0);
-	await expect(client.stats({ entityId })).resolves.toMatchObject({
+	await expect(
+		client.stats({ scope: testScope(entityId) }),
+	).resolves.toMatchObject({
 		memoryCount: 0,
 	});
 
 	const expiresAt = new Date("2035-06-07T08:09:10.000Z");
-	const remembered = await client.rememberMany({
-		inputs: MEMORY_TYPES.map((type, index) => ({
-			entityId,
-			content: `accepted ${type}`,
-			type,
+	const remembered = await client.addMany({
+		scope: testScope(entityId),
+		memories: MEMORY_KINDS.map((kind, index) => ({
+			content: `accepted ${kind}`,
+			kind,
 			importance:
 				IMPORTANCE_LEVELS[index % IMPORTANCE_LEVELS.length] ?? "normal",
 			tags: [" accepted ", "", "accepted"],
@@ -114,9 +127,9 @@ export async function verifyRememberInputValidation(
 			expiresAt,
 		})),
 	});
-	expect(remembered).toHaveLength(MEMORY_TYPES.length);
-	expect(new Set(remembered.map((memory) => memory.type))).toEqual(
-		new Set(MEMORY_TYPES),
+	expect(remembered).toHaveLength(MEMORY_KINDS.length);
+	expect(new Set(remembered.map((memory) => memory.kind))).toEqual(
+		new Set(MEMORY_KINDS),
 	);
 	expect(new Set(remembered.map((memory) => memory.importance))).toEqual(
 		new Set(IMPORTANCE_LEVELS),
@@ -127,14 +140,14 @@ export async function verifyRememberInputValidation(
 		expect(memory.expiresAt?.toISOString()).toBe(expiresAt.toISOString());
 	}
 
-	const recalled = await client.recall({
-		entityId,
+	const recalled = await client.search({
+		scope: testScope(entityId),
 		query: "accepted",
-		types: [...MEMORY_TYPES],
-		limit: MEMORY_TYPES.length,
+		kinds: [...MEMORY_KINDS],
+		limit: MEMORY_KINDS.length,
 		minScore: 0,
 	});
-	expect(recalled).toHaveLength(MEMORY_TYPES.length);
+	expect(recalled).toHaveLength(MEMORY_KINDS.length);
 	for (const memory of recalled) {
 		expect(Number.isFinite(memory.score)).toBe(true);
 		expect(Number.isFinite(memory.scores.importance)).toBe(true);
@@ -142,10 +155,10 @@ export async function verifyRememberInputValidation(
 
 	const callsBeforeInvalidRecall = getEmbedCalls();
 	await expectMnemocyteError(
-		client.recall({
-			entityId,
+		client.search({
+			scope: testScope(entityId),
 			query: "invalid filter",
-			types: ["bogus"] as unknown as MemoryType[],
+			kinds: ["bogus"] as unknown as MemoryKind[],
 		}),
 		"VALIDATION",
 	);
@@ -153,15 +166,15 @@ export async function verifyRememberInputValidation(
 
 	await expectMnemocyteError(
 		client.findDuplicates({
-			entityId,
-			types: ["bogus"] as unknown as MemoryType[],
+			scope: testScope(entityId),
+			kinds: ["bogus"] as unknown as MemoryKind[],
 		}),
 		"VALIDATION",
 	);
 	await expectMnemocyteError(
 		client.prune({
-			entityId,
-			types: ["bogus"],
+			scope: testScope(entityId),
+			kinds: ["bogus"],
 			dryRun: true,
 		} as unknown as PruneInput),
 		"VALIDATION",

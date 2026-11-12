@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -95,56 +95,48 @@ describe("Postgres embedding-model compatibility", () => {
 				`;
 
 				const matchingCalls: string[] = [];
-				const matchingClient = createMnemocyte({
+				const matchingClient = createMemory({
 					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, matchingCalls),
 				});
-				try {
-					await matchingClient.remember({
-						entityId,
-						content: "written-by-installation-model",
-					});
-					const recalled = await matchingClient.recall({
-						entityId,
-						query: "matching-query",
-					});
-					expect(recalled.map((memory) => memory.embeddingModel)).toEqual([
-						installationModel,
-					]);
-				} finally {
-					await matchingClient.close();
-				}
+				await matchingClient.add({
+					scope: testScope(entityId),
+					content: "written-by-installation-model",
+				});
+				const recalled = await matchingClient.search({
+					scope: testScope(entityId),
+					query: "matching-query",
+				});
+				expect(recalled.map((memory) => memory.embeddingModel)).toEqual([
+					installationModel,
+				]);
 				expect(matchingCalls).toEqual([
 					"written-by-installation-model",
 					"matching-query",
 				]);
 
 				const incompatibleCalls: string[] = [];
-				const incompatibleClient = createMnemocyte({
+				const incompatibleClient = createMemory({
 					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(incompatibleModel, incompatibleCalls),
 				});
-				try {
-					await expectMnemocyteError(
-						incompatibleClient.recall({
-							entityId,
-							query: "must-not-be-embedded",
-						}),
-						"CONFIG",
-					);
-					await expectMnemocyteError(
-						incompatibleClient.findDuplicates({ entityId }),
-						"CONFIG",
-					);
-					await expect(
-						incompatibleClient.stats({ entityId }),
-					).resolves.toMatchObject({
-						entityId,
-						memoryCount: 1,
-					});
-				} finally {
-					await incompatibleClient.close();
-				}
+				await expectMnemocyteError(
+					incompatibleClient.search({
+						scope: testScope(entityId),
+						query: "must-not-be-embedded",
+					}),
+					"CONFIG",
+				);
+				await expectMnemocyteError(
+					incompatibleClient.findDuplicates({ scope: testScope(entityId) }),
+					"CONFIG",
+				);
+				await expect(
+					incompatibleClient.stats({ scope: testScope(entityId) }),
+				).resolves.toMatchObject({
+					entityCount: 1,
+					memoryCount: 1,
+				});
 				expect(incompatibleCalls).toEqual([]);
 
 				await sql`
@@ -153,17 +145,16 @@ describe("Postgres embedding-model compatibility", () => {
 					WHERE key = 'installation'
 				`;
 				const repairCalls: string[] = [];
-				const repairClient = createMnemocyte({
+				const repairClient = createMemory({
 					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, repairCalls),
 				});
-				try {
-					await expect(
-						repairClient.recall({ entityId, query: "repair-query" }),
-					).resolves.toHaveLength(1);
-				} finally {
-					await repairClient.close();
-				}
+				await expect(
+					repairClient.search({
+						scope: testScope(entityId),
+						query: "repair-query",
+					}),
+				).resolves.toHaveLength(1);
 				const repairedMeta = await sql<
 					Array<{ embeddingModel: string | null }>
 				>`
@@ -199,19 +190,15 @@ describe("Postgres embedding-model compatibility", () => {
 					SET embedding_model = NULL
 					WHERE key = 'installation'
 				`;
-				const mixedClient = createMnemocyte({
+				const mixedClient = createMemory({
 					store: postgresStore({ client: postgresJs(sql) }),
 					embedder: createEmbedder(installationModel, []),
 				});
-				try {
-					const error = await expectMnemocyteError(
-						mixedClient.findDuplicates({ entityId }),
-						"MIGRATION",
-					);
-					expect(error.message).toContain("multiple");
-				} finally {
-					await mixedClient.close();
-				}
+				const error = await expectMnemocyteError(
+					mixedClient.findDuplicates({ scope: testScope(entityId) }),
+					"MIGRATION",
+				);
+				expect(error.message).toContain("multiple");
 				const mixedMeta = await sql<Array<{ embeddingModel: string | null }>>`
 					SELECT embedding_model AS "embeddingModel"
 					FROM mnemocyte_meta

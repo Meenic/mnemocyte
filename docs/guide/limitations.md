@@ -23,10 +23,10 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   must live in `public`.
 - **Recall needs interactive transactions and pgvector 0.8.** The vector
   search sets pgvector's scan options for one transaction, so drivers without
-  interactive transactions cannot recall, and pgvector before 0.8.0 throws
+  interactive transactions cannot search, and pgvector before 0.8.0 throws
   `"MIGRATION"`. Planned: a `batch` path for those drivers
   (`fix/batch-writes`).
-- **Large batches fail on Postgres.** `rememberMany` sends one `INSERT`; past
+- **Large batches fail on Postgres.** `addMany` sends one `INSERT`; past
   about 2,900 memories it exceeds Postgres's 65,535 bind-parameter limit and
   throws `"DB"`. The whole batch is also embedded in one embedder call. Split
   large batches yourself. Planned: chunked writes (`fix/batch-writes`).
@@ -42,7 +42,7 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   up to pgvector's `hnsw.max_scan_tuples` (20,000 by default). A filter that
   matches fewer memories than requested on a large entity scans that many
   rows, and memories beyond that limit are not returned.
-- **Access writes can be lost.** With `trackAccess` on, recall does not wait
+- **Access writes can be lost.** With `trackAccess` on, search does not wait
   for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so
   `accessCount` can undercount.
@@ -52,17 +52,21 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 
 ## Deleting
 
-- **`prune` without `entityId` covers every entity.** `prune({ types: ["fact"]
-  })` deletes every fact in the installation. Planned: prune requires a scope
-  (`feat/scoped-api`).
-- **Consolidation blocks deletes.** After a consolidation, `forget`,
-  `forgetAll` and `prune` throw `"CONFLICT"` for the survivor until the
-  superseded memories are deleted first (`prune({ entityId, superseded: true
-  })`). Planned: survivor-aware deletes (`feat/consolidate-stable`).
+- **Consolidation blocks deletes.** After a consolidation, `delete` and
+  `prune` throw `"CONFLICT"` for the survivor until the superseded memories
+  are deleted first (`prune({ scope, superseded: true })`). `deleteScope`
+  is not blocked when the survivor and its dependents are deleted together.
+  Planned: survivor-aware deletes (`feat/consolidate-stable`).
+- **Reads cannot span agents.** A read at an entity scope without `agentId`
+  sees only shared memories, never those an agent holds; there is no way to
+  list every agent's memories of an entity in one call. `stats`,
+  `listAuditLog` and `deleteScope` do cover all agents.
+- **Moving a memory between scopes takes two calls.** `update` cannot change
+  the scope; delete the memory and add it in the new scope.
 - **Duplicate search compares every pair.** `findDuplicates` cost grows with
-  the square of an entity's memory count. Planned: nearest-neighbor based
+  the square of the scope's memory count. Planned: nearest-neighbor based
   search (`feat/consolidate-stable`).
-- **The audit log grows forever.** Mnemocyte never deletes audit events.
+- **The audit log grows forever.** Only `deleteScope` deletes audit events.
   Planned: a retention option (`feat/audit-retention`).
 
 ## Providers

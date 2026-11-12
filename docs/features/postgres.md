@@ -45,7 +45,7 @@ the PR that added `0003`:
   per row as before. The stored column is most of the gain; the GIN cuts
   buffer reads from about 3,000 to 880 for large entities. On a 100-memory
   entity the planner uses the scope index alone (0.2 ms).
-- No `(namespace, entity_id, kind)` index: with one, a `types` filter saves
+- No `(namespace, entity_id, kind)` index: with one, a `kinds` filter saves
   under 1 ms (0.26 → 0.19 ms per entity, 4.6 → 3.9 ms on the large one), and
   the HNSW path does not use it at all. Not worth another index on every
   write.
@@ -55,8 +55,7 @@ the PR that added `0003`:
   force a sort on the text.
 
 `kind` and `importance` are plain `text` with no `CHECK` constraint; the
-library validates them before writing. Queries select `kind AS "type"`
-because the public field is still `type`.
+library validates them before writing.
 
 ## Ids
 
@@ -69,24 +68,20 @@ does. Postgres has `uuidv7()` only from version 18, and CI also runs 17.
 Every statement casts id parameters with `$n::uuid` and selects ids with
 `::text`, so drivers that type string parameters as `text` work and every
 driver returns ids as strings. An id that is not a canonical UUID cannot
-match a row: `forget` reports `NOT_FOUND`, lookups skip it without a query,
+match a row: `delete` and `update` report `NOT_FOUND`, `get` returns `null`,
+lookups skip it without a query,
 and an audit cursor with such an id throws `"VALIDATION"`.
 
 ## Scope
 
-Rows carry `namespace`, `entity_id`, `agent_id` and `session_id`. The public
-API still takes only `entityId`, so the store builds a `StoreScope` with
-`entityScope(entityId)`: namespace `"default"`, no agent, no session.
-Queries in `db/queries/` take that scope:
-
-- Reads and id lookups (`recall`, embeddings, access updates, `getMemory`,
-  consolidation, duplicates) match the namespace and entity, and for each
-  optional field either the given value or null (shared). A null field
-  matches only shared rows.
-- Deletes by entity and `stats` match the namespace and entity across all
-  agents and sessions, so erasing an entity leaves nothing behind.
-- `prune` and global `stats` always stay inside one namespace.
-- Audit events are listed by namespace and entity.
+Rows carry `namespace`, `entity_id`, `agent_id` and `session_id`, and
+memories an optional `key`. Every query in `db/queries/` takes a scope:
+`visibilityConditions` for reads and writes by id (the scope plus shared
+rows), `selectorConditions` for `deleteScope`, `prune`, `stats` and audit
+listings (set fields match exactly, omitted ones match anything). The rules,
+the keyed `INSERT … ON CONFLICT`, `list` pagination and `update` are in
+[scopes.md](./scopes.md). Rows written before 0.6 are in namespace
+`"default"` with no agent or session.
 
 ## Migrations
 
@@ -217,8 +212,9 @@ contains no SQL: it reaches the runner only through a store from
 
 ## Installation metadata
 
-`mnemocyte_meta` is the source of truth for the vector space. Before `remember`,
-`rememberMany`, `recall`, `buildContext` and `findDuplicates`, the store reads
+`mnemocyte_meta` is the source of truth for the vector space. Before `add`,
+`addMany`, `search`, `context`, `findDuplicates` and an `update` that changes
+content, the store reads
 it and:
 
 - rejects with `"MIGRATION"` when the table, a column or the row is missing,
@@ -234,16 +230,17 @@ A successful check is cached per store and per `(dimensions, model)`, so one
 store value shared by clients with different embedders checks each of them.
 A failed check is not cached. `vector_type` is cached with it and decides the
 cast on every vector parameter (`$n::vector` or `$n::halfvec`); it is checked
-against the two allowed values before it is put into SQL. `forget`,
-`forgetAll`, `prune`, `listAuditLog` and `stats` skip the check, so cleanup
+against the two allowed values before it is put into SQL. `get`,
+`list`, `delete`, `deleteScope`, `prune`, `listAuditLog`, `stats` and
+updates that leave the content alone skip the check, so cleanup
 works on an incompatible installation.
 
 ## Filtered vector search
 
 An HNSW index scan collects `hnsw.ef_search` candidates (40 by default) and
 Postgres applies the `WHERE` filters to those afterwards. Without help, a
-selective filter (a `types` or `tags` filter, or one entity in a large table)
-could leave fewer rows than exist, or none. The recall vector search
+selective filter (a `kinds` or `tags` filter, or one scope in a large table)
+could leave fewer rows than exist, or none. The search vector search
 (`vectorSearch` in `src/db/queries/memories.ts`) therefore runs in a
 transaction:
 
@@ -265,7 +262,7 @@ LIMIT $n;
   `hnsw.max_scan_tuples` (20,000 by default) tuples were visited. Mnemocyte
   leaves `max_scan_tuples` and `scan_mem_multiplier` at the server's values.
   `relaxed_order` would need a materialized CTE to re-sort and gains little
-  at recall's small limits.
+  at search's small limits.
 - `ef_search` is `max(40, limit)`, capped at pgvector's maximum of 1,000, so
   one HNSW pass can fill the request.
 - The distance is computed once per row. `ORDER BY` names the selected
@@ -308,7 +305,7 @@ interface SqlExecutor {
 - `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js client.
   `query` is `sql.unsafe(text, params)` with `$1…` placeholders; `transaction`
   is `sql.begin`, or `sql.savepoint` inside a transaction.
-- `postgresStore({ client })` turns an executor into `MnemocyteConfig.store`.
+- `postgresStore({ client })` turns an executor into `MemoryConfig.store`.
 - `drizzleStore(db)` (`mnemocyte/stores/drizzle`) takes a
   `drizzle-orm/postgres-js` instance and runs the same SQL on `db.$client`,
   sharing its pool. Other Drizzle drivers are not supported. A value without a
@@ -316,17 +313,17 @@ interface SqlExecutor {
 - TLS, pool size, timeouts and `prepare` are whatever the caller configured.
   `unsafe` does not create named prepared statements, so transaction-mode
   poolers work as they are.
-- `client.close()` releases nothing; the caller ends its own client.
+- The memory client has no `close()`; the caller ends its own client.
 
 Every write is one statement. The guarded deletes are one `WITH … DELETE`,
 and `consolidate` is one `WITH` query (see
 [maintenance.md](./maintenance.md#experimentalconsolidate)), so writes need
 no connection held across round trips, which is what stateless HTTP drivers
 (Neon's HTTP driver, D1) require. Two paths call `transaction`: `migrate()`
-and the recall vector search, whose `set_config` must share a transaction
+and the search vector query, whose `set_config` must share a transaction
 with the query (see [Filtered vector search](#filtered-vector-search)). An
 optional `batch` for drivers without interactive transactions is planned
-with `fix/batch-writes`; until then those drivers cannot recall.
+with `fix/batch-writes`; until then those drivers cannot search.
 
 All queries are plain SQL strings built in `src/db/queries/`. Values are
 always parameters, never interpolated; the only interpolated value is the
@@ -371,7 +368,5 @@ Each one is a roadmap item in Phase 1 unless noted.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
   after an error and can leave a partial schema; `migrate()` then refuses to
   adopt it. The guide shows the flags.
-- `rememberMany` sends one `INSERT`; past about 2,900 rows it exceeds the
+- `addMany` sends one `INSERT`; past about 2,900 rows it exceeds the
   65,535 bind-parameter limit.
-- Scopes exist in the schema but not in the public API: everything is in the
-  `default` namespace with no agent or session until `feat/scoped-api`.

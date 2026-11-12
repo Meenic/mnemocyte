@@ -1,10 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-	createMnemocyte,
-	type MnemocyteClient,
-	type RememberInput,
-} from "mnemocyte";
+import { createMemory, type MemoryClient, type NewMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
@@ -12,7 +8,7 @@ import {
 	retrievalConfig,
 	testEmbedder,
 } from "../fixtures/retrieval-quality.js";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, testScope } from "../helpers.js";
 
 const IN_MEMORY_SIZES = [200, 1_000, 5_000];
 const POSTGRES_SIZES = [200, 1_000];
@@ -26,7 +22,7 @@ const contents = [
 const queries = ["typescript concise answers", "postgres pgvector database"];
 
 interface SeededClient {
-	client: MnemocyteClient;
+	client: MemoryClient;
 	entityId: string;
 	memoryCount: number;
 }
@@ -39,32 +35,34 @@ function createEntityId(backend: string, memoryCount: number) {
 	return `retrieval_bench_${backend}_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-function createInputs(entityId: string, count: number): RememberInput[] {
+function createInputs(count: number): NewMemory[] {
 	return Array.from({ length: count }, (_, index) => ({
-		entityId,
 		content: cycle(contents, index),
-		type: index % 2 === 0 ? "preference" : "fact",
+		kind: index % 2 === 0 ? "preference" : "fact",
 		importance: index % 5 === 0 ? "high" : "normal",
 		confidence: 0.8 + (index % 3) * 0.05,
 	}));
 }
 
-// Seeding happens before any bench is registered, so only recall is timed.
+// Seeding happens before any bench is registered, so only search is timed.
 async function seed({ client, entityId, memoryCount }: SeededClient) {
-	await client.rememberMany(createInputs(entityId, memoryCount));
-	const results = await client.recall({
-		entityId,
+	await client.addMany({
+		scope: testScope(entityId),
+		memories: createInputs(memoryCount),
+	});
+	const results = await client.search({
+		scope: testScope(entityId),
 		query: cycle(queries, 0),
 		limit: 5,
 	});
 	expect(results.length).toBeGreaterThan(0);
 }
 
-function recallTask({ client, entityId }: SeededClient) {
+function searchTask({ client, entityId }: SeededClient) {
 	let index = 0;
 	return async () => {
-		await client.recall({
-			entityId,
+		await client.search({
+			scope: testScope(entityId),
 			query: cycle(queries, index),
 			limit: 5,
 		});
@@ -133,14 +131,14 @@ async function deleteEntity(
 const databaseUrl = process.env.DATABASE_URL;
 
 describe("retrieval benchmarks", () => {
-	test("in-memory recall by store size", { timeout: 120_000 }, async ({
+	test("in-memory search by store size", { timeout: 120_000 }, async ({
 		bench,
 	}) => {
 		const seeded: SeededClient[] = [];
 		try {
 			for (const memoryCount of IN_MEMORY_SIZES) {
 				const entry = {
-					client: createMnemocyte({
+					client: createMemory({
 						embedder: testEmbedder,
 						retrieval: retrievalConfig,
 					}),
@@ -154,18 +152,18 @@ describe("retrieval benchmarks", () => {
 			await bench.compare(
 				...seeded.map((entry) =>
 					bench(
-						`in-memory recall over ${entry.memoryCount} memories`,
-						recallTask(entry),
+						`in-memory search over ${entry.memoryCount} memories`,
+						searchTask(entry),
 					),
 				),
 			);
 		} finally {
-			await Promise.all(seeded.map(({ client }) => client.close()));
+			seeded.length = 0;
 		}
 	});
 
 	test.skipIf(!databaseUrl)(
-		"Postgres recall by store size",
+		"Postgres search by store size",
 		{ timeout: 300_000 },
 		async ({ bench }) => {
 			const url = expectDefined(databaseUrl);
@@ -176,7 +174,7 @@ describe("retrieval benchmarks", () => {
 				await ensureMigrations(sql);
 				for (const memoryCount of POSTGRES_SIZES) {
 					const entry = {
-						client: createMnemocyte({
+						client: createMemory({
 							store: postgresStore({ client: postgresJs(storeSql) }),
 							embedder: postgresEmbedder,
 							retrieval: retrievalConfig,
@@ -192,13 +190,12 @@ describe("retrieval benchmarks", () => {
 				await bench.compare(
 					...seeded.map((entry) =>
 						bench(
-							`Postgres recall over ${entry.memoryCount} memories`,
-							recallTask(entry),
+							`Postgres search over ${entry.memoryCount} memories`,
+							searchTask(entry),
 						),
 					),
 				);
 			} finally {
-				await Promise.all(seeded.map(({ client }) => client.close()));
 				for (const { entityId } of seeded) {
 					await deleteEntity(sql, entityId);
 				}

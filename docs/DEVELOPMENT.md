@@ -13,9 +13,12 @@ Feature areas:
 - [features/postgres.md](./features/postgres.md): schema, migrations and
   the `migrate()` runner, installation metadata, connections (`SqlExecutor`, `postgresStore`,
   `drizzleStore(db)`).
-- [features/retrieval.md](./features/retrieval.md): recall, scoring, access
-  tracking, `buildContext`.
-- [features/maintenance.md](./features/maintenance.md): forget, prune,
+- [features/scopes.md](./features/scopes.md): scopes and their matching
+  rules, keyed `add`, `get`, `list` pagination, `update`, `deleteScope`, the
+  client lifecycle.
+- [features/retrieval.md](./features/retrieval.md): search, scoring, access
+  tracking, `context`.
+- [features/maintenance.md](./features/maintenance.md): delete, prune,
   duplicates, consolidation, audit log, stats.
 - [features/embedders.md](./features/embedders.md): the `Embedder` contract,
   the OpenAI helper, retries, timeouts, cancellation, observability.
@@ -40,8 +43,8 @@ or from a consuming project.
 
 ```txt
 src/
-  index.ts              root entry: createMnemocyte, migrate, errors, public types
-  client.ts             backend selection (store | in-memory)
+  index.ts              root entry: createMemory, migrate, errors, public types
+  client.ts             createMemory: config checks, store (given | in-memory)
   migrate.ts            migrate(): validates input, calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs
   types.ts              every public type
@@ -50,13 +53,14 @@ src/
   resilience.ts         provider timeout, retry, abort
   memory/
     client-core.ts      shared orchestration for every client method
-    store.ts            the internal MemoryStore contract (19 methods)
+    store.ts            the internal MemoryStore contract, scopes and selectors
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     validation.ts       runtime input and config validation
     json.ts             JSON metadata validation and deep clone
     embeddings.ts       embedder calls and output validation
-    filters.ts          in-memory filter predicates
+    filters.ts          in-memory visibility, selector and filter predicates
+    cursor.ts           opaque list cursors
     records.ts          ids, tag normalization, cloning
   sql/
     executor.ts         SqlExecutor: query + transaction
@@ -67,7 +71,7 @@ src/
     queries/            memories, events, meta SQL on a SqlExecutor
     migrations/         Postgres migration runner and bundled.ts (generated)
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
-  context/              buildContext, formatters, token budget
+  context/              context(): formatters, token budget
   embedders/            openaiEmbedder (fetch only)
   stores/drizzle.ts     drizzleStore(db)
 migrations/             SQL migrations, template, renderer, Drizzle journal
@@ -100,12 +104,16 @@ plugin in `tsdown.config.ts` strips that comment.
   fixtures in `test/fixtures/`.
 - Validation runs before any embedder or storage call. Invalid input throws
   `MnemocyteError` with code `"VALIDATION"`; invalid configuration throws
-  `"CONFIG"` synchronously from `createMnemocyte`.
+  `"CONFIG"` synchronously from `createMemory`.
 - Caller-owned values (tags, metadata, dates) are snapshotted when a method is
   called. Returned records are detached copies.
 - Metadata is JSON value data (`JsonObject`). Anything else is rejected.
 - Store results are not trusted: shared code rejects missing, duplicate or
-  unknown ids from `insertMemories` and restores input order.
+  unknown rows from `insertMemories` (matching by id, or by key for keyed
+  upserts) and restores input order.
+- Every store method that touches memories takes a scope: a visibility for
+  reads and writes by id, a selector for bulk operations (see
+  [features/scopes.md](./features/scopes.md)).
 - Vectors are written with the shortest round-trip number format
   (`db/vector.ts`). Fixed decimal precision would turn small components into
   zero.
@@ -117,7 +125,7 @@ plugin in `tsdown.config.ts` strips that comment.
 
 Exports:
 
-- `mnemocyte`: `createMnemocyte`, `migrate`, `MnemocyteError`,
+- `mnemocyte`: `createMemory`, `migrate`, `MnemocyteError`,
   `isMnemocyteError` and the public types.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
@@ -131,9 +139,10 @@ since Node 22.12, `require()` loads synchronous ES modules and returns their
 namespace. It throws `ERR_REQUIRE_ASYNC_MODULE` if any module in the graph
 uses top-level `await`, so `dist/` must not.
 
-Client methods: `remember`, `rememberMany`, `recall`, `buildContext`,
-`forget`, `forgetAll`, `prune`, `findDuplicates`, `listAuditLog`, `stats`,
-`experimental.consolidate` and `close`.
+Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
+`delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
+`listAuditLog`, `stats` and `experimental.consolidate`. There is no
+`close()`.
 
 Design rules for the public surface:
 
@@ -142,9 +151,10 @@ Design rules for the public surface:
   code, never the message.
 - Every long-running method accepts `signal: AbortSignal`.
 - New or unproven behavior goes under `experimental` first.
+- Every method that reads or writes memories takes a `scope`; a global
+  operation needs `allNamespaces: true`.
 - Breaking changes ship in a new minor (0.x) with a `CHANGELOG.md` entry and
-  an upgrade note. Deprecated overloads (today: positional
-  `rememberMany(inputs)`) are removed the same way.
+  an upgrade note (the 0.5 → 0.6 table is in `docs/guide/api.md`).
 
 ## Testing
 
@@ -194,13 +204,13 @@ Vitest has three projects (`vitest.config.ts`):
   `<name> (bench)` variant of each project for `vitest bench`; it matches
   files by `benchmark.include` (`test/benchmarks/**/*.bench.ts`) instead of
   the project's `include`. Each size is seeded before timing, then
-  `bench.compare` samples one `recall` per iteration with tinybench and
+  `bench.compare` samples one `search` per iteration with tinybench and
   prints mean and percentile latencies per size. Postgres sizes run only when
   `DATABASE_URL` is set. It is not part of CI.
 - Benchmarking `dist/` avoids most of the export getters Vite's module runner
   adds to `src/` cross-module calls. One call between tsdown's shared chunks
   still goes through a getter, so Vitest prints a getter warning; the
-  overhead is small next to a recall.
+  overhead is small next to a search.
 
 ## Releasing
 

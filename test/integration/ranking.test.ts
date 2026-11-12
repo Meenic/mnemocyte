@@ -2,14 +2,14 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-	createMnemocyte,
-	type MnemocyteClient,
+	createMemory,
+	type MemoryClient,
 	type RetrievalConfig,
 } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { expectDefined } from "../helpers.js";
+import { expectDefined, testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -97,11 +97,11 @@ describe("Postgres hybrid ranking", () => {
 
 	async function withClient(
 		retrieval: RetrievalConfig | undefined,
-		run: (client: MnemocyteClient, entityId: string) => Promise<void>,
+		run: (client: MemoryClient, entityId: string) => Promise<void>,
 	) {
 		const entityId = `ranking_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 		entityIds.push(entityId);
-		const client = createMnemocyte({
+		const client = createMemory({
 			store: postgresStore({ client: postgresJs(sql) }),
 			embedder: {
 				model: "mnemocyte-integration-test",
@@ -110,24 +110,24 @@ describe("Postgres hybrid ranking", () => {
 			},
 			...(retrieval ? { retrieval } : {}),
 		});
-		try {
-			await run(client, entityId);
-		} finally {
-			await client.close();
-		}
+		await run(client, entityId);
 	}
 
 	test.skipIf(!databaseUrl)(
 		"ranks a full-text match above a substring coincidence",
 		async () => {
 			await withClient(undefined, async (client, entityId) => {
-				await client.rememberMany({
-					inputs: [
-						{ entityId, content: "Read the redeployment notes." },
-						{ entityId, content: "We deploy on Fridays." },
+				await client.addMany({
+					scope: testScope(entityId),
+					memories: [
+						{ content: "Read the redeployment notes." },
+						{ content: "We deploy on Fridays." },
 					],
 				});
-				const results = await client.recall({ entityId, query: "deploy" });
+				const results = await client.search({
+					scope: testScope(entityId),
+					query: "deploy",
+				});
 
 				expect(results.map((memory) => memory.content)).toEqual([
 					"We deploy on Fridays.",
@@ -147,18 +147,18 @@ describe("Postgres hybrid ranking", () => {
 		"ranks a memory found by both searches above single-list hits",
 		async () => {
 			await withClient(undefined, async (client, entityId) => {
-				await client.rememberMany({
-					inputs: [
-						{ entityId, content: "Billing notices go out weekly." },
+				await client.addMany({
+					scope: testScope(entityId),
+					memories: [
+						{ content: "Billing notices go out weekly." },
 						{
-							entityId,
 							content: "Invoice reminder template lives in the wiki.",
 						},
-						{ entityId, content: "Send the invoice reminder on Monday." },
+						{ content: "Send the invoice reminder on Monday." },
 					],
 				});
-				const results = await client.recall({
-					entityId,
+				const results = await client.search({
+					scope: testScope(entityId),
 					query: "invoice reminder",
 					limit: 1,
 				});
@@ -176,15 +176,16 @@ describe("Postgres hybrid ranking", () => {
 		"fuses lexical-only candidates without loading their embeddings",
 		async () => {
 			await withClient({ candidateMultiplier: 1 }, async (client, entityId) => {
-				await client.rememberMany({
-					inputs: [
-						{ entityId, content: "Alpha notes." },
-						{ entityId, content: "Beta notes." },
-						{ entityId, content: "Quarterly kennel ledger." },
+				await client.addMany({
+					scope: testScope(entityId),
+					memories: [
+						{ content: "Alpha notes." },
+						{ content: "Beta notes." },
+						{ content: "Quarterly kennel ledger." },
 					],
 				});
-				const results = await client.recall({
-					entityId,
+				const results = await client.search({
+					scope: testScope(entityId),
 					query: "kennel",
 					limit: 2,
 					explain: true,
@@ -216,20 +217,19 @@ describe("Postgres hybrid ranking", () => {
 		"boosts higher importance and newer memories among equal matches",
 		async () => {
 			await withClient(undefined, async (client, entityId) => {
-				const [low, critical, older, newer] = await client.rememberMany({
-					inputs: [
+				const [low, critical, older, newer] = await client.addMany({
+					scope: testScope(entityId),
+					memories: [
 						{
-							entityId,
 							content: "Team standup is at nine.",
 							importance: "low",
 						},
 						{
-							entityId,
 							content: "Team standup is at nine.",
 							importance: "critical",
 						},
-						{ entityId, content: "Team standup is at nine." },
-						{ entityId, content: "Team standup is at nine." },
+						{ content: "Team standup is at nine." },
+						{ content: "Team standup is at nine." },
 					],
 				});
 				await sql`
@@ -237,7 +237,10 @@ describe("Postgres hybrid ranking", () => {
 					SET created_at = now() - interval '365 days'
 					WHERE entity_id = ${entityId} AND id = ${expectDefined(older).id}::uuid
 				`;
-				const results = await client.recall({ entityId, query: "standup" });
+				const results = await client.search({
+					scope: testScope(entityId),
+					query: "standup",
+				});
 				const scoreOf = (id: string | undefined) =>
 					expectDefined(results.find((memory) => memory.id === id)).score;
 

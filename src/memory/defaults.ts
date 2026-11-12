@@ -1,12 +1,8 @@
-import type {
-	FindDuplicatesInput,
-	ImportanceLevel,
-	MemoryType,
-} from "../types.js";
+import type { ImportanceLevel, MemoryKind } from "../types.js";
 
 export const DEFAULT_LIMIT = 10;
 export const DEFAULT_MIN_SCORE = 0;
-export const DEFAULT_TYPE: MemoryType = "fact";
+export const DEFAULT_KIND: MemoryKind = "fact";
 export const DEFAULT_IMPORTANCE: ImportanceLevel = "normal";
 
 /**
@@ -21,9 +17,11 @@ export const IMPORTANCE_RANK: Record<ImportanceLevel, number> = {
 	critical: 3,
 };
 
-/** Default cosine-similarity threshold for {@link FindDuplicatesInput}. */
+/** Default cosine-similarity threshold for `findDuplicates`. */
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.95;
 /** Default cap on the number of duplicate pairs returned. */
 export const DEFAULT_DUPLICATE_LIMIT = 100;
 /** Default cap on audit-log entries returned per `listAuditLog`. */
 export const DEFAULT_AUDIT_LOG_LIMIT = 50;
+/** Default page size of `list`. */
+export const DEFAULT_LIST_LIMIT = 50;

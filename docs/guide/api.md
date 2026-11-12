@@ -3,14 +3,15 @@
 Every client method, its options and the rules it enforces. Each method takes
 one object parameter, and every method that can run long accepts
 `signal: AbortSignal`. Failures are `MnemocyteError` with a stable `code`
-(see [errors](#errors)).
+(see [errors](#errors)). Upgrading from 0.5? See
+[upgrading from 0.5](#upgrading-from-05).
 
-## `createMnemocyte`
+## `createMemory`
 
 ```ts
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 
-const client = createMnemocyte({
+const memory = createMemory({
   embedder,                          // required, see embedders.md
   store,                             // optional; in-memory when omitted
   defaults: { limit: 10, minScore: 0 },
@@ -24,6 +25,10 @@ const client = createMnemocyte({
 Configuration is validated synchronously; invalid values throw `"CONFIG"`.
 Without `store` the client keeps memories in process memory, which suits
 tests and prototypes. For persistent storage see [postgres.md](./postgres.md).
+
+The client holds no connections or timers, so there is no `close()`: with
+Postgres, the database client you passed in is yours to end, and the
+in-memory store is garbage-collected with the client.
 
 ## `migrate`
 
@@ -59,15 +64,53 @@ each other and apply every migration once. See
 - An abort cancels the running statement and rolls back the current
   migration.
 
+## Scopes
+
+Every read and write names a scope:
+
+```ts
+const scope = {
+  namespace: "my-app",   // tenant or app; required
+  entityId: "user_123",  // who or what the memory is about; required
+  agentId: "support",    // who holds it; optional
+  sessionId: "chat_42",  // short-lived context; optional
+};
+```
+
+Each field is a non-empty string; anything else throws `"VALIDATION"`.
+
+**Writes** (`add`, `addMany`) store the memory in exactly that scope. Leaving
+out `agentId` makes the memory shared by every agent; leaving out
+`sessionId` keeps it outside any session.
+
+**Reads** (`search`, `get`, `list`, `context`, `findDuplicates`) and changes
+by id (`update`, `delete`, `experimental.consolidate`) see the scope plus
+shared memories:
+
+| Scope of the call | Sees memories with |
+|---|---|
+| `{ namespace, entityId }` | no agent and no session |
+| `+ agentId: "a"` | agent `a` or no agent; no session |
+| `+ agentId: "a", sessionId: "s"` | agent `a` or none, and session `s` or none |
+
+`exactAgent: true` drops the memories with no agent, and `exactSession: true`
+those with no session. Another entity, another namespace or another agent is
+never visible.
+
+**Bulk operations** (`deleteScope`, `prune`, `stats`, `listAuditLog`) select
+instead: a field that is set must match exactly, and an omitted `agentId` or
+`sessionId` matches any value. So `deleteScope({ scope: { namespace,
+entityId } })` erases the entity across every agent and session.
+
 ## Memories
 
-A memory belongs to one `entityId` (a user, agent, session or anything else
-you choose) and has:
+A memory has:
 
 | Field | Type | Default |
 |---|---|---|
 | `content` | non-empty string | required |
-| `type` | `"fact"`, `"preference"`, `"instruction"`, `"backstory"`, `"episode"`, `"session"` | `"fact"` |
+| `key` | non-empty string, unique within the exact scope | `null` |
+| `kind` | `"fact"`, `"preference"`, `"instruction"`, `"backstory"`, `"episode"`, `"session"` | `"fact"` |
 | `importance` | `"low"`, `"normal"`, `"high"`, `"critical"` | `"normal"` |
 | `tags` | `string[]` | `[]` |
 | `source` | string | `null` |
@@ -75,9 +118,11 @@ you choose) and has:
 | `confidence` | number in `[0, 1]` | `1` |
 | `expiresAt` | `Date` | none |
 
-Stored records also carry `id`, `createdAt`, `updatedAt`, `accessCount`,
-`lastAccessedAt`, `supersededBy`, `supersededAt`, `embeddingModel` and
-`embeddingDimensions`.
+Stored records also carry `id`, `scope` (`{ namespace, entityId, agentId,
+sessionId }`, with `null` for an omitted agent or session), `createdAt`,
+`updatedAt`, `accessCount`, `lastAccessedAt`, `supersededBy`,
+`supersededAt`, `embeddingModel` and `embeddingDimensions`. Ids are UUIDv7
+strings.
 
 `metadata` must be JSON data (`JsonObject` / `JsonValue` are exported).
 `undefined`, functions, bigints, non-finite numbers, class instances and
@@ -85,38 +130,55 @@ cyclic objects throw `"VALIDATION"`. Tags, metadata and dates are copied when
 you call a method, and returned records are copies, so later mutations on
 either side change nothing.
 
-## `remember` and `rememberMany`
+## `add` and `addMany`
 
 ```ts
-const memory = await client.remember({
-  entityId: "user_123",
+const preference = await memory.add({
+  scope,
   content: "Likes concise answers.",
-  type: "preference",
+  kind: "preference",
   importance: "high",
   tags: ["communication"],
 });
 
-const memories = await client.rememberMany({
-  inputs: [
-    { entityId: "user_123", content: "Likes concise answers." },
-    { entityId: "user_123", content: "Uses TypeScript." },
+const added = await memory.addMany({
+  scope,
+  memories: [
+    { content: "Likes concise answers." },
+    { key: "language", content: "Writes TypeScript." },
   ],
   signal,
 });
 ```
 
-Input is validated before the embedder is called. `rememberMany` embeds the
-whole batch in one embedder call, writes it in one statement and returns the
-records in input order. Its `signal` covers the whole batch.
+Input is validated before the embedder is called. `addMany` stores every
+memory in one scope, embeds the whole batch in one embedder call, writes it
+in one statement and returns the records in input order. Its `signal` covers
+the whole batch.
 
-The positional form `rememberMany(inputs)` is deprecated and will be removed
-before 1.0.
-
-## `recall`
+**Keys.** With a `key` that already exists in the exact scope, `add` updates
+that memory instead of inserting one: content, kind, importance, tags,
+source, metadata, confidence, expiry and the embedding are replaced (omitted
+fields go back to their defaults), and `id`, `createdAt`, the access counts
+and any consolidation link are kept. Use it to store facts that change, such
+as a user's timezone, without duplicates:
 
 ```ts
-const results = await client.recall({
-  entityId: "user_123",
+await memory.add({ scope, key: "timezone", content: "Timezone is Europe/Berlin." });
+await memory.add({ scope, key: "timezone", content: "Timezone is Asia/Tokyo." });
+// one memory, same id, new content
+```
+
+Keys are unique per exact scope: the same key under another agent, session
+or entity is a different memory. Concurrent adds with one key end in one
+memory. A key may appear only once per `addMany` call (`"VALIDATION"`). With
+audit enabled, an add that updated a memory is recorded as `memory.updated`.
+
+## `search`
+
+```ts
+const results = await memory.search({
+  scope,
   query: "How should I respond?",
   limit: 5,
   explain: true,
@@ -127,77 +189,137 @@ const results = await client.recall({
 |---|---|---|
 | `limit` | `defaults.limit` or 10 | Maximum results; positive integer. |
 | `minScore` | `defaults.minScore` or 0 | Drop results below this score; `[0, 1]`. |
-| `types` | all | Only these memory types. |
+| `kinds` | all | Only these kinds. |
 | `tags` | none | Memories must have every listed tag. |
 | `before`, `after` | none | Filter on `createdAt`. |
 | `includeSuperseded` | `false` | Include memories replaced by consolidation. |
 | `includeExpired` | `false` | Include memories past `expiresAt`. |
+| `exactAgent`, `exactSession` | `false` | Leave out shared memories; see [scopes](#scopes). |
 | `explain` | `false` | Attach a score breakdown to each result. |
 | `trackAccess` | `retrieval.trackAccess` or `false` | Record access for this call's results. |
 
-Recall runs a vector search and a lexical (keyword) search, fuses the two
+Search runs a vector search and a lexical (keyword) search, fuses the two
 rankings and applies small recency and importance boosts (see
 [retrieval tuning](#retrieval-tuning)). Each result carries `score` (0 to 1)
 and `scores`, plus `explanation` when `explain` is set.
 
 With access tracking on (`retrieval.trackAccess: true`, or `trackAccess` on
-the call), recall increments `accessCount` and sets `lastAccessedAt` on the
-returned memories. The write starts as recall returns and recall does not wait
-for it, so the returned records show the values from before this recall.
-If it fails, recall still succeeds and `onEvent` receives a `"trackAccess"`
-error event. Memories deleted in the meantime are skipped. `updatedAt` never
-changes on recall, and access counts do not affect ranking. With tracking
-off, `accessCount` stays 0 and `lastAccessedAt` stays null.
+the call), search increments `accessCount` and sets `lastAccessedAt` on the
+returned memories. The write starts as search returns and search does not
+wait for it, so the returned records show the values from before this
+search. If it fails, search still succeeds and `onEvent` receives a
+`"trackAccess"` error event. Memories deleted in the meantime are skipped.
+`updatedAt` never changes on search, and access counts do not affect ranking.
+With tracking off, `accessCount` stays 0 and `lastAccessedAt` stays null.
 
-## `buildContext`
+## `get`
 
 ```ts
-const context = await client.buildContext({
-  entityId: "user_123",
+const byId = await memory.get({ scope, id: preference.id });
+const byKey = await memory.get({ scope, key: "timezone" });
+```
+
+Returns the memory or `null`. By `id`, any memory visible at the scope is
+found; by `key`, only the exact scope is searched, because that is where keys
+are unique. Pass exactly one of `id` and `key` (`"VALIDATION"` otherwise).
+
+## `list`
+
+```ts
+let cursor: string | undefined;
+do {
+  const page = await memory.list({ scope, limit: 50, cursor });
+  for (const item of page.memories) {
+    // ...
+  }
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+Pages through the memories visible at the scope, newest first by
+`createdAt`, then `id`. `limit` defaults to 50. `nextCursor` is an opaque
+string, `null` on the last page; pass it back unchanged. A cursor stays
+valid while memories are added or deleted, and a malformed one throws
+`"VALIDATION"`. `list` accepts `kinds`, `tags`, `includeSuperseded`,
+`includeExpired`, `exactAgent` and `exactSession`, and calls no embedder.
+
+## `update`
+
+```ts
+await memory.update({
+  scope,
+  id: preference.id,
+  content: "Likes concise answers with code samples.",
+  tags: ["communication", "code"],
+  expiresAt: null,
+});
+```
+
+Changes the fields you pass and leaves the others. At least one field is
+required. `content` re-embeds the memory; other fields do not call the
+embedder. `key`, `source` and `expiresAt` accept `null` to clear them. The
+scope cannot change: delete the memory and add it in the new scope.
+
+- `"NOT_FOUND"` when no memory with that id is visible at the scope.
+- `"CONFLICT"` when the new `key` is already used in the memory's scope.
+
+The write is one statement, so a concurrent update or delete cannot leave a
+half-applied change.
+
+## `context`
+
+```ts
+const context = await memory.context({
+  scope,
   query: "User communication preferences",
   format: "markdown",
   maxTokens: 500,
 });
 ```
 
-Runs a recall and renders the results as a string to put in a prompt. It
-accepts recall's `limit`, `minScore`, `types`, `tags`, `includeSuperseded`,
-`includeExpired` and `trackAccess`, plus:
+Runs a search and renders the results as a string to put in a prompt. It
+accepts search's `limit`, `minScore`, `kinds`, `tags`, `includeSuperseded`,
+`includeExpired`, `exactAgent`, `exactSession` and `trackAccess`, plus:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content
   cannot break out of its block: Markdown and plain text use a fence longer
-  than any run in the content, and XML escapes it.
+  than any run in the content, and XML escapes it. The query is not echoed
+  into the output; it is already in your prompt.
 - `maxTokens`: positive integer, default 1200. The result always fits; when
   memories are left out, a line says how many. If nothing fits, the result is
   part of that line or an empty string.
 - `tokenCounter`: `{ count(text): number }`. The default estimates one token
   per four characters; pass your model's tokenizer for exact budgets.
 
-## `forget` and `forgetAll`
+## `delete` and `deleteScope`
 
 ```ts
-await client.forget({ entityId: "user_123", memoryId: memory.id });
-await client.forgetAll({ entityId: "user_123" });
+await memory.delete({ scope, id: preference.id });
+
+const { deletedCount } = await memory.deleteScope({
+  scope: { namespace: "my-app", entityId: "user_123" },
+});
 ```
 
-`forget` throws `"NOT_FOUND"` when the memory does not exist or belongs to
-another entity. Memory and audit event ids are UUIDv7 strings.
+`delete` removes one memory visible at the scope and throws `"NOT_FOUND"`
+when there is none. It throws `"CONFLICT"` and deletes nothing while another
+memory's `supersededBy` points at it; delete the superseded memories first.
 
-Both throw `"CONFLICT"` and delete nothing while another memory's
-`supersededBy` points at a memory they would delete, even when `forgetAll`
-would delete that other memory too. After a consolidation, delete the
-superseded memories first:
-
-```ts
-await client.prune({ entityId: "user_123", superseded: true });
-await client.forgetAll({ entityId: "user_123" });
-```
+`deleteScope` deletes every memory the scope selects, and the audit events
+recorded for it, in one statement. An omitted `agentId` or `sessionId`
+matches any value, so `{ namespace, entityId }` erases the entity across all
+agents and sessions, which is what an erasure request needs; add `agentId` or
+`sessionId` to clear only that agent's or session's memories (shared ones
+stay). Consolidation links between deleted memories do not block it. It
+throws `"CONFLICT"` and deletes nothing when a memory outside the selection
+still points at one inside it. No audit event is recorded for the erasure;
+log it yourself if you need a record.
 
 ## `prune`
 
 ```ts
-const preview = await client.prune({
-  entityId: "user_123",
+const preview = await memory.prune({
+  scope: { namespace: "my-app", entityId: "user_123" },
   notAccessedSince: new Date(Date.now() - 30 * 24 * 3600 * 1000),
   maxImportance: "normal",
   dryRun: true,
@@ -205,52 +327,54 @@ const preview = await client.prune({
 // { matchedCount, deletedCount, dryRun }
 ```
 
-Selectors are combined with AND:
+`prune` needs a scope selector or `allNamespaces: true`, not both:
+
+- `scope: { namespace }` covers every entity in the namespace;
+  `entityId`, `agentId` and `sessionId` narrow it, each matching exactly.
+- `allNamespaces: true` covers the whole installation.
+
+Then at least one of these selectors, combined with AND:
 
 | Selector | Matches |
 |---|---|
-| `entityId` | One entity. **Omit it and the prune covers every entity.** |
 | `expired: true` | Past `expiresAt`. |
 | `superseded: true` | Replaced by consolidation. |
 | `createdBefore` | Created before the date. |
 | `notAccessedSince` | Last accessed before the date; never-accessed memories count from `createdAt`. |
-| `types` | Any of these types. |
+| `kinds` | Any of these kinds. |
 | `tags` | Every listed tag. |
 | `maxImportance` | At or below this importance. |
 
-At least one selector is required; `false` flags and empty arrays do not
-count. Input without one throws `"VALIDATION"` and deletes nothing.
-`dryRun: true` only counts.
+`false` flags and empty arrays do not count. Input without a scope or without
+a selector throws `"VALIDATION"` and deletes nothing; to delete a whole
+scope, use `deleteScope`. `dryRun: true` only counts.
 
 A prune that would delete a consolidation survivor throws `"CONFLICT"` and
 deletes nothing, including the other matches. A dry run reports such rows
-without failing.
+without failing. With audit enabled, each affected entity gets one
+`memory.pruned` event.
 
 ## `findDuplicates`
 
 ```ts
-const pairs = await client.findDuplicates({
-  entityId: "user_123",
-  threshold: 0.95,
-  limit: 50,
-});
+const pairs = await memory.findDuplicates({ scope, threshold: 0.95, limit: 50 });
 for (const { a, b, similarity } of pairs) {
   // ...
 }
 ```
 
-Returns pairs of one entity's memories whose cosine similarity is at least
-`threshold` (default 0.95), most similar first, up to `limit` (default 100).
-It accepts `types`, `tags`, `includeSuperseded` and `includeExpired`, and
-modifies nothing. It compares every pair, so cost grows with the square of
-the entity's memory count; the in-memory backend slows down noticeably past a
-few thousand memories per entity.
+Returns pairs of memories visible at the scope whose cosine similarity is at
+least `threshold` (default 0.95), most similar first, up to `limit` (default
+100). It accepts `kinds`, `tags`, `includeSuperseded`, `includeExpired`,
+`exactAgent` and `exactSession`, and modifies nothing. It compares every
+pair, so cost grows with the square of the scope's memory count; the
+in-memory backend slows down noticeably past a few thousand memories.
 
 ## `experimental.consolidate`
 
 ```ts
-const result = await client.experimental.consolidate({
-  entityId: "user_123",
+const result = await memory.experimental.consolidate({
+  scope,
   survivorId: survivor.id,
   supersededIds: [duplicate.id],
   mergeTags: true,
@@ -260,18 +384,18 @@ const result = await client.experimental.consolidate({
 
 Marks each memory in `supersededIds` as replaced by the survivor and, by
 default, adds their tags to the survivor. Superseded memories are left out of
-recall, context and duplicate search unless `includeSuperseded` is set.
+search, list, context and duplicate search unless `includeSuperseded` is set.
 
 - `supersededIds` must be non-empty and distinct, and must not contain the
   survivor (`"VALIDATION"`). The survivor must not itself be superseded
-  (`"VALIDATION"`). Every id must belong to the entity (`"NOT_FOUND"`).
+  (`"VALIDATION"`). Every id must be visible at the scope (`"NOT_FOUND"`).
 - Repeating a call is a no-op for memories that already point to this
   survivor. A memory that points to a different survivor makes the whole call
   throw `"CONFLICT"`.
 - The call is all-or-nothing: on any conflict no memory, tag or audit event
   changes. Concurrent calls are safe.
-- While a memory points to the survivor, the survivor cannot be deleted (see
-  [`forget`](#forget-and-forgetall)).
+- While a memory points to the survivor, `delete` and `prune` cannot delete
+  the survivor (see [`delete`](#delete-and-deletescope)).
 
 Anything under `experimental` may change in a minor release.
 
@@ -280,60 +404,57 @@ Anything under `experimental` may change in a minor release.
 Enable the audit log in the config:
 
 ```ts
-const client = createMnemocyte({ embedder, audit: { enabled: true } });
+const memory = createMemory({ embedder, audit: { enabled: true } });
 ```
 
-Mnemocyte then records `memory.created`, `memory.deleted`, `entity.cleared`,
-`memory.pruned` (one per affected entity) and `memory.superseded`.
+Mnemocyte then records `memory.created`, `memory.updated`, `memory.deleted`,
+`memory.pruned` (one per affected entity) and `memory.superseded`. Each event
+carries the `scope` it belongs to.
 
 ```ts
-const page = await client.listAuditLog({ entityId: "user_123", limit: 100 });
+const entity = { namespace: "my-app", entityId: "user_123" };
+const page = await memory.listAuditLog({ scope: entity, limit: 100 });
 
 const last = page.at(-1);
 const next = last
-  ? await client.listAuditLog({
-      entityId: "user_123",
+  ? await memory.listAuditLog({
+      scope: entity,
       limit: 100,
       beforeCursor: { timestamp: last.timestamp, id: last.id },
     })
   : [];
 ```
 
-Events come newest first; `limit` defaults to 50. Page with `beforeCursor` /
-`afterCursor`, which include events that share a timestamp. `before` and
-`after` are strict timestamp filters and skip every event at the boundary
-timestamp, so they can lose events when used for paging.
+The scope selects like a bulk operation: `{ namespace, entityId }` lists the
+whole entity, and `agentId` or `sessionId` narrow it. Events come newest
+first; `limit` defaults to 50. Page with `beforeCursor` / `afterCursor`,
+which include events that share a timestamp. `before` and `after` are strict
+timestamp filters and skip every event at the boundary timestamp, so they can
+lose events when used for paging.
 
 Audit writes are best-effort: a failed audit write does not fail the
 operation. Consolidation is the exception; its events commit or roll back
-with it. Events are never deleted by Mnemocyte.
+with it. Events are deleted only by `deleteScope`.
 
 ## `stats`
 
 ```ts
-const stats = await client.stats({ entityId: "user_123" });
-// { entityId, memoryCount, activeMemoryCount, expiredMemoryCount, supersededMemoryCount }
-
-const global = await client.stats();
+const entity = await memory.stats({
+  scope: { namespace: "my-app", entityId: "user_123" },
+});
+const app = await memory.stats({ scope: { namespace: "my-app" } });
+const all = await memory.stats({ allNamespaces: true });
 // { entityCount, memoryCount, activeMemoryCount, expiredMemoryCount, supersededMemoryCount }
 ```
 
-Active means neither expired nor superseded. The return type is
-`EntityStats | GlobalStats`; check for `entityId` or `entityCount` to narrow
-it.
-
-## `close`
-
-`await client.close()` rejects new operations, waits for running ones, then
-closes the store. It never closes a database client you passed in, and it
-does not wait for access writes from tracked recalls. Calling it twice is
-safe. You only need it for a clean shutdown: with Postgres it closes nothing,
-and with the in-memory store it clears the stored memories.
+Counts the memories a scope selector (or `allNamespaces: true`) selects, with
+the same matching as `prune`. Active means neither expired nor superseded.
+`entityCount` counts distinct entities per namespace.
 
 ## Retrieval tuning
 
 ```ts
-const client = createMnemocyte({
+const memory = createMemory({
   embedder,
   retrieval: {
     fusion: { k: 60, vector: 1, lexical: 1 },
@@ -359,8 +480,8 @@ raw scores, so keyword and vector scores never have to share a scale.
   close matches but never lift a poor match. Set to 0 to turn one off.
 - `candidateMultiplier`: each search fetches `limit × candidateMultiplier`
   memories before fusion.
-- `trackAccess`: record `accessCount` and `lastAccessedAt` on recall (see
-  [recall](#recall)). `trackAccess` on a call overrides it.
+- `trackAccess`: record `accessCount` and `lastAccessedAt` on search (see
+  [search](#search)). `trackAccess` on a call overrides it.
 
 `score` is between 0 and 1: 1 means first in both searches with full boosts;
 a memory found by only one search scores at most 0.5. `confidence` and
@@ -386,7 +507,7 @@ driver or provider error when there is one.
 import { isMnemocyteError } from "mnemocyte";
 
 try {
-  await client.recall({ entityId: "user_123", query });
+  await memory.search({ scope, query });
 } catch (error) {
   if (isMnemocyteError(error) && error.code === "TIMEOUT") {
     // retry later
@@ -398,11 +519,36 @@ try {
 | Code | Thrown when |
 |---|---|
 | `CONFIG` | Invalid client configuration, or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
-| `VALIDATION` | Invalid method input. Nothing was embedded or stored. |
+| `VALIDATION` | Invalid method input, including a missing or malformed scope. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
 | `ABORTED` | The caller's `AbortSignal` fired. |
-| `NOT_FOUND` | A referenced memory does not exist for that entity. |
-| `CONFLICT` | A delete or consolidation conflicts with a consolidation link. |
+| `NOT_FOUND` | A referenced memory is not visible at the scope. |
+| `CONFLICT` | A delete or consolidation conflicts with a consolidation link, or an update's key is already used. |
 | `MIGRATION` | Mnemocyte tables or columns are missing, the installation holds mixed models, or `migrate` could not apply a migration. |
-| `DB` | Any other database failure, or a call on a closed client. |
+| `DB` | Any other database failure. |
+
+## Upgrading from 0.5
+
+0.6 replaces the entity-only client with the scoped one in a single breaking
+change. Memories written by 0.5 are in namespace `"default"` with no agent or
+session, so pass `namespace: "default"` to keep reading them.
+
+| 0.5 | 0.6 |
+|---|---|
+| `createMnemocyte(config)` | `createMemory(config)` |
+| `MnemocyteClient`, `MnemocyteConfig` | `MemoryClient`, `MemoryConfig` |
+| `remember({ entityId, … })` | `add({ scope, … })` |
+| `rememberMany({ inputs })` / `rememberMany(inputs)` | `addMany({ scope, memories })`, one scope per call |
+| `recall({ entityId, … })` | `search({ scope, … })` |
+| `buildContext({ entityId, … })` | `context({ scope, … })`; the query is no longer echoed |
+| `forget({ entityId, memoryId })` | `delete({ scope, id })` |
+| `forgetAll({ entityId })` | `deleteScope({ scope })`; also deletes the scope's audit events |
+| `prune({ entityId?, … })` | `prune({ scope, … })` or `prune({ allNamespaces: true, … })`, plus a selector besides the scope |
+| `findDuplicates`, `listAuditLog`, `experimental.consolidate` with `entityId` | the same methods with `scope` |
+| `stats({ entityId })` / `stats()` | `stats({ scope })` / `stats({ allNamespaces: true })`, one `MemoryStats` type |
+| `type`, `types`, `MemoryType` | `kind`, `kinds`, `MemoryKind` |
+| `memory.entityId`, `event.entityId` | `memory.scope.entityId`, `event.scope.entityId` |
+| `close()` | removed; end your own database client |
+| `"entity.cleared"` audit event | none; `deleteScope` deletes the audit events |
+| observability operations `remember`, `recall`, `buildContext`, `forget`, `forgetAll`, `close` | `add`, `search`, `context`, `delete`, `deleteScope`; no `close` |

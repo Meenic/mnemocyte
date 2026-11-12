@@ -1,10 +1,10 @@
-import { createMnemocyte, type ListAuditLogInput } from "mnemocyte";
+import { createMemory, type ListAuditLogInput } from "mnemocyte";
 import { describe, test } from "vitest";
 import { verifyAuditCursorPagination } from "../fixtures/audit-cursor.js";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectMnemocyteError, testScope } from "../helpers.js";
 
 function createClient() {
-	return createMnemocyte({
+	return createMemory({
 		embedder: {
 			model: "audit-cursor-test",
 			dimensions: 1,
@@ -20,36 +20,28 @@ describe("audit cursor pagination", () => {
 	test("does not skip equal-timestamp in-memory events", async () => {
 		const client = createClient();
 
-		try {
-			await verifyAuditCursorPagination(client, "audit_cursor_in_memory");
-		} finally {
-			await client.close();
-		}
+		await verifyAuditCursorPagination(client, "audit_cursor_in_memory");
 	});
 
 	test("rejects malformed composite cursors", async () => {
 		const client = createClient();
 		const malformed: unknown[] = [
-			{ entityId: "alice", beforeCursor: null },
+			{ scope: testScope("alice"), beforeCursor: null },
 			{
-				entityId: "alice",
+				scope: testScope("alice"),
 				beforeCursor: { timestamp: new Date("invalid"), id: "evt_x" },
 			},
 			{
-				entityId: "alice",
+				scope: testScope("alice"),
 				afterCursor: { timestamp: new Date(), id: " " },
 			},
 		];
 
-		try {
-			for (const input of malformed) {
-				await expectMnemocyteError(
-					client.listAuditLog(input as ListAuditLogInput),
-					"VALIDATION",
-				);
-			}
-		} finally {
-			await client.close();
+		for (const input of malformed) {
+			await expectMnemocyteError(
+				client.listAuditLog(input as ListAuditLogInput),
+				"VALIDATION",
+			);
 		}
 	});
 });

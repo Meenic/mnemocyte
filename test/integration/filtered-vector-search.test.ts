@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createMnemocyte, type Embedder, migrate } from "mnemocyte";
+import { createMemory, type Embedder, migrate } from "mnemocyte";
 import {
 	postgresJs,
 	postgresStore,
@@ -8,6 +8,7 @@ import {
 } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -20,7 +21,7 @@ const HNSW_INDEX = "mnemocyte_memories_embedding_hnsw_idx";
 
 // 400 facts sit next to the query vector and 5 preferences sit further away,
 // so pgvector's default 40-row HNSW candidate list holds only facts and a
-// `types: ["preference"]` filter used to leave nothing.
+// `kinds: ["preference"]` filter used to leave nothing.
 const NEAR_COUNT = 400;
 const FAR_COUNT = 5;
 
@@ -88,20 +89,19 @@ function embedder(dimensions: number): Embedder {
 }
 
 async function seed(
-	client: ReturnType<typeof createMnemocyte>,
+	client: ReturnType<typeof createMemory>,
 	entityId: string,
 ): Promise<void> {
-	await client.rememberMany({
-		inputs: [
+	await client.addMany({
+		scope: testScope(entityId),
+		memories: [
 			...Array.from({ length: NEAR_COUNT }, (_, index) => ({
-				entityId,
 				content: `near-${index}`,
-				type: "fact" as const,
+				kind: "fact" as const,
 			})),
 			...Array.from({ length: FAR_COUNT }, (_, index) => ({
-				entityId,
 				content: `far-${index}`,
-				type: "preference" as const,
+				kind: "preference" as const,
 			})),
 		],
 	});
@@ -157,7 +157,7 @@ async function runWithSettings<Row extends object>(
 async function checkFilteredRecall(tx: Sql, dimensions: number): Promise<void> {
 	const entityId = `filtered_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 	const recorded: RecordedQuery[] = [];
-	const client = createMnemocyte({
+	const client = createMemory({
 		store: postgresStore({
 			client: recordVectorQueries(postgresJs(tx), recorded),
 		}),
@@ -165,10 +165,10 @@ async function checkFilteredRecall(tx: Sql, dimensions: number): Promise<void> {
 	});
 	await seed(client, entityId);
 
-	const recalled = await client.recall({
-		entityId,
+	const recalled = await client.search({
+		scope: testScope(entityId),
 		query: "query",
-		types: ["preference"],
+		kinds: ["preference"],
 		limit: FAR_COUNT,
 		minScore: 0,
 	});

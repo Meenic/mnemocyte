@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createMnemocyte } from "mnemocyte";
+import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
@@ -46,12 +46,12 @@ function createEmbedding(seed: string): number[] {
 
 describe("Postgres MemoryStore insert contract", () => {
 	test.skipIf(!databaseUrl)(
-		"preserves rememberMany input order and cardinality",
+		"preserves addMany input order and cardinality",
 		async () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const entityId = `store_contract_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			await applyMigrations(sql);
-			const client = createMnemocyte({
+			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
 				embedder: {
 					model: "mnemocyte-integration-test",
@@ -65,7 +65,6 @@ describe("Postgres MemoryStore insert contract", () => {
 			try {
 				await verifyStoreInsertContract(client, entityId);
 			} finally {
-				await client.close();
 				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
 				await sql.end();
 			}

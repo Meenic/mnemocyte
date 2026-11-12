@@ -273,6 +273,12 @@ behavioural changes documented in their entries.
 
 ### Documentation
 
+- **Getting started guide.**
+  [docs/guide/getting-started.md](docs/guide/getting-started.md) goes from
+  an empty folder to a first `context()` call: a local Postgres in Docker,
+  `.env`, a `memory.ts` for postgres.js, `pg`, Drizzle or PGlite, a
+  `migrate.ts` script, and a bound scope. It also covers Ollama as the
+  embedder and the in-memory backend for prototypes. The README links it.
 - **Shorter README.** The README now covers install, a quickstart, Postgres
   setup, an API list and embedders. The full reference moved to
   `docs/guide/`: [API](docs/guide/api.md), [Postgres](docs/guide/postgres.md),

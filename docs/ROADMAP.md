@@ -85,10 +85,31 @@ None.
   input size caps (`limit`, content, tags, metadata, `key`). Validating
   every search filter and consolidate's `supersededIds` type landed with
   `feat/scoped-api`.
-- [ ] `feat/postgres-drivers`: Drizzle, PGlite and node-postgres adapters;
-  shared contract suite on PGlite and real Postgres, including cross-scope
-  isolation for search, prune, duplicates and consolidation, which no
-  Postgres test covers today.
+- [ ] `feat/postgres-drivers`: `postgresStore(client)` takes a postgres.js,
+  node-postgres (`pg` Pool), Drizzle or PGlite client directly, detected by
+  shape (decision 21); a hand-written `SqlExecutor` still works, and
+  `postgresJs()` and `drizzleStore()` keep working. Shared contract suite on
+  PGlite and real Postgres, including cross-scope isolation for search,
+  prune, duplicates and consolidation, which no Postgres test covers today.
+- [ ] `feat/migrate-setup`: `migrate({ memory })` reads the store and
+  `dimensions` from the client (`{ store, dimensions }` stays; a
+  `dimensions` that differs from the embedder's is a `"CONFIG"` error).
+  Opt-in `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector`
+  before the first migration; off by default, because managed databases and
+  restricted roles cannot create extensions. `dryRun: true` returns the
+  `applied` and `adopted` lists the call would produce and changes nothing.
+- [ ] `feat/bound-scope`: `createMemory({ namespace })` sets a default
+  namespace that a call's scope may override, and `memory.for(scope)` returns
+  a client bound to that scope whose methods take no `scope` field. Global
+  operations (`allNamespaces`) stay on the unbound client. Starts under
+  `experimental` if the shape is not settled.
+- [ ] `docs/getting-started`: `docs/guide/getting-started.md` from an empty
+  folder to a first `context()` call: install, `.env`, a `memory.ts` with
+  postgres.js, `pg`, Drizzle and PGlite variants, `npx mnemocyte migrate`
+  (or `migrate({ memory })` until `feat/cli` lands), and a bound scope.
+  Includes a one-line Docker command on the CI image
+  (`pgvector/pgvector:0.8.7-pg18`) and the in-memory backend for prototypes.
+  `README.md` links it.
 
 ## Phase 2: embedders and AI SDK (0.7)
 
@@ -109,6 +130,14 @@ None.
 - [ ] `feat/audit-retention`: retention option and pruning guidance.
 - [ ] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
+- [ ] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
+  `lib/`, `src/`, `src/lib/` or `--config`) for its store and embedder.
+  `migrate` asks before enabling pgvector (`--yes` for CI) and supports
+  `--dry-run`; `check` reports the pgvector version, applied migrations and
+  dimensions and exits non-zero on a problem; `sql` prints the fresh-install
+  schema without a database (replaces running `render-initial.mjs` by path).
+  Without a memory file, `--dimensions` and `DATABASE_URL` with the installed
+  `postgres` peer. No new dependencies.
 
 ## Phase 4: 1.0
 
@@ -128,4 +157,7 @@ adapter, kNN duplicates, audit retention.
 - Public `MemoryStore` contract and a monorepo split
   (`@mnemocyte/postgres`, …).
 - `@mnemocyte/mcp`.
+- Drizzle schema export (`mnemocyte generate --adapter drizzle`) so Drizzle
+  users manage the tables with `drizzle-kit`.
+- A `schemaName` option to keep the tables outside `public`.
 - OpenTelemetry integration on the observability hooks.

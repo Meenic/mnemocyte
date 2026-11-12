@@ -37,11 +37,17 @@ application
 creates or closes it. The two-method `SqlExecutor` and the postgres.js adapter
 have landed (see [features/postgres.md](./features/postgres.md)).
 
-Adapters still to come: `nodePg(pool)`, `drizzle(db)` (unwraps the underlying
-client), `pglite(db)`, later `libsql(client)`. Each is a few dozen lines and
-peer-depends on its driver. We write our own interface instead of
-using Kysely: it is two methods, adds no dependency, and a query builder does
-not help with vector or full-text SQL, which is where dialects differ.
+Still to come: `postgresStore(client)` takes the driver's client itself and
+picks the adapter by its shape (decision 21): a postgres.js `sql` function
+(`unsafe`, `begin`), a `pg` Pool (`query`, `connect`; each transaction checks
+out a client with `connect()` and releases it, because node-postgres warns
+against `pool.query` inside a transaction), a Drizzle instance (`$client`,
+then the same checks) or PGlite (`exec`, `transaction`). A hand-written
+`SqlExecutor` still works for anything else; libSQL later gets its own
+store. Each adapter is a few dozen lines and imports nothing from its
+driver. We write our own interface instead of using Kysely: it is two
+methods, adds no dependency, and a query builder does not help with vector
+or full-text SQL, which is where dialects differ.
 
 **Backend (`MemoryStore`).** Owns its dialect's SQL, its migrations and a
 capability declaration. The contract shrinks from 18 methods to about ten:
@@ -72,6 +78,26 @@ This has landed: scopes (`namespace`, `entityId`, optional `agentId` and
 `sessionId`), keyed upserts, `get`, `list`, `update` and `deleteScope` are
 described in [features/scopes.md](./features/scopes.md). Field names carry
 over from 0.5 except `type`, now `kind`.
+
+Still to come, bound scopes. Repeating `{ namespace, entityId }` on every
+call is noise and lets a call drift to the wrong user:
+
+```ts
+const memory = createMemory({ namespace: "my-app", store, embedder });
+const userMemory = memory.for({ entityId: user.id });
+
+await userMemory.add({ content: "Prefers short, direct answers." });
+const context = await userMemory.context({ query: userMessage });
+```
+
+- `namespace` on `createMemory` is a default; a scope that names its own
+  namespace wins, so multi-tenant apps keep per-call namespaces.
+- `memory.for(scope)` returns a client with the same methods, minus the
+  `scope` field. `deleteScope()` on it erases the bound scope; `prune` and
+  `stats` select within it. Operations that need `allNamespaces` exist only
+  on the unbound client, so a bound client cannot reach past its scope.
+- Methods keep a single object parameter. Positional forms such as
+  `add("text")` are rejected: they make later options a breaking change.
 
 ## Write path
 
@@ -142,13 +168,14 @@ the `cause`.
 
 1. `aiSdkEmbedder(model)`: any AI SDK embedding model as an `Embedder`,
    through `embedMany`.
-2. `memoryTools({ memory, scope })`: `searchMemories`, `saveMemory`,
-   `forgetMemory` built with `tool()`. The scope is bound on the server when
-   the tools are created; the model never supplies `entityId`, so a prompt
-   injection cannot reach another user's memories.
-3. `memoryMiddleware({ memory, scope })`: a language model middleware for
-   `wrapLanguageModel` whose `transformParams` adds `context()` output to the
-   prompt. Saving after a response is an opt-in hook the app controls; the
+2. `memoryTools({ memory })`: `searchMemories`, `saveMemory`,
+   `forgetMemory` built with `tool()`, from a bound client
+   (`memory.for(scope)`). The scope is bound on the server when the tools are
+   created; the model never supplies `entityId`, so a prompt injection cannot
+   reach another user's memories.
+3. `memoryMiddleware({ memory })`: from a bound client, a language model
+   middleware for `wrapLanguageModel` whose `transformParams` adds
+   `context()` output to the prompt. Saving after a response is an opt-in hook the app controls; the
    library makes no hidden LLM calls.
 
 Hosted alternatives (mem0's provider, Supermemory's tools) do the same jobs
@@ -173,6 +200,63 @@ Where hybrid results will differ between backends even with RRF:
 
 Shared contract tests therefore assert that expected memories appear in the
 top k, never an exact order.
+
+## Setup
+
+Setup stays explicit (see decision 20): nothing is created when a client is
+built, and every step that touches the schema is a call or command the user
+runs.
+
+The target flow is three steps: install, export `memory` from a
+`memory.ts`, run `npx mnemocyte migrate`. No `migrate` call sits in app code.
+
+- **`migrate` options.** `migrate({ memory })` takes the client, which
+  already holds the store and the embedder, so `dimensions` is written once.
+  `{ store, dimensions }` stays for callers without a client at deploy time;
+  a `dimensions` that differs from the embedder's is a `"CONFIG"` error.
+  `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector`
+  before the first migration, so a role that may create extensions needs no
+  `psql` step. It is off by default: managed databases and restricted roles
+  often cannot create extensions, and the error should then name the step
+  rather than happen implicitly. `dryRun: true` inspects the database as a
+  real run would and returns the `applied` and `adopted` lists without
+  changing anything, the extension included, for checking a deploy step.
+- **CLI.** A `mnemocyte` bin. It loads the app's own `memory.ts` from the
+  project root, `lib/`, `src/` or `src/lib/` (or `--config <path>`) and
+  uses its exported `memory`, so the CLI and the app share one client and
+  one embedder. Node 22.18, the minimum, strips TypeScript types by default,
+  so the file loads with `import()`; a `module.register` resolve hook adds
+  the extensionless relative imports and tsconfig `paths` that type
+  stripping does not resolve, without a loader dependency.
+  - `migrate` applies what is missing. When pgvector is not enabled it asks
+    before running `createExtension`, and on No prints the
+    `CREATE EXTENSION` line for an admin; `--yes` answers for CI and
+    `--dry-run` maps to `dryRun`.
+  - `check` reports the pgvector version (0.8.0 or later is required), the
+    applied migrations and the installed dimensions, and exits non-zero on
+    a problem.
+  - `sql` prints the fresh-install schema without a database.
+  - Without a memory file, `--dimensions <n>` and `DATABASE_URL` with the
+    optional `postgres` peer; without the peer the CLI exits with an
+    install hint. Arguments are parsed with `node:util` `parseArgs`.
+  - PGlite opens its data folder from one process at a time, so the CLI
+    cannot migrate it while the app runs; PGlite users call
+    `migrate({ memory })` from code instead.
+- **Getting started.** One guide from an empty folder to a first `context()`
+  call: install, `.env`, `memory.ts` with a tab per driver, `npx mnemocyte
+  migrate`, a bound scope. Docker on the CI image for a local Postgres, and
+  the in-memory backend for prototypes.
+
+After 1.0:
+
+- **Drizzle schema export.** `mnemocyte generate --adapter drizzle` writes
+  the tables as a Drizzle schema the user adds to `drizzle.config.ts`, so
+  `drizzle-kit` owns the migrations. `migrate` already adopts a schema
+  installed outside it; the open question is keeping a generated schema in
+  step with later Mnemocyte migrations.
+- **`schemaName`.** Tables in a schema other than `public`. Every query and
+  migration needs schema-qualified names, and the tracking table moves with
+  them.
 
 ## Packaging
 
@@ -251,3 +335,21 @@ Dated 2026-10-26 unless noted.
     their client. Lost writes on serverless platforms are acceptable for
     counts that do not affect ranking; an optional `waitUntil` hook can be
     added later if that changes.
+20. **Explicit setup, no runtime migrations** (2026-11-12): pg-boss and
+    Graphile Worker migrate on start by default; Better Auth checks the
+    schema at first use and creates it only through its CLI or
+    `getMigrations`. We follow Better Auth: the client stays free of schema
+    side effects (missing tables already surface as `"MIGRATION"` errors),
+    and setup gets shorter through `migrate` options and a CLI instead.
+    Migrating on start would fail under a restricted runtime role and make
+    every schema change an implicit part of starting the app. Like Better
+    Auth's `auth.ts`, the CLI loads the app's own `memory.ts`, to reuse its
+    client and embedder; there is no separate config format.
+21. **Clients detected by shape** (2026-11-12): `postgresStore(client)`
+    takes postgres.js, `pg`, Drizzle and PGlite clients directly instead of
+    through `nodePg()`, `pglite()` and similar wrappers, as Better Auth's
+    `database: new Pool(...)` does. Setup code then names one thing, the
+    client the app already has. Detection reads properties only and imports
+    no driver, so the core keeps zero dependencies; checks run in a fixed
+    order, and an unrecognised object is a `"CONFIG"` error that points to
+    `SqlExecutor`.

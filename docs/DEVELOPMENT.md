@@ -163,7 +163,7 @@ Vitest has three projects (`vitest.config.ts`):
 | Project | Files | Imports | Command |
 |---|---|---|---|
 | `unit` | `test/**/*.test.ts` except integration, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
-| `package` | `test/package/*.test.ts` plus `exports-types.test-d.ts` | built `dist/` through self-reference | `pnpm test:exports` |
+| `package` | `test/package/*.test.ts` | built `dist/` through self-reference | `pnpm test:exports` |
 | `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` |
 
 - `unit` and `integration` map `mnemocyte` to `src/` with `resolve.alias`,
@@ -172,12 +172,19 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, then runs `unit` and `package` with type tests. This is
-  what CI runs on every push.
-- The package tests pack the tarball, install it into a temporary consumer
-  with `drizzle-orm` and `postgres` absent, and type-check every export
-  against `dist/*.d.mts`. They extract with the system `tar` using relative
-  paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
+- `pnpm test` builds, runs `pnpm test:types`, then runs `unit` and
+  `package`. This is what CI runs on every push. `pnpm test:exports` does the
+  same for `package` alone.
+- `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
+  type-checks every public export in `test/package/exports-types.test-d.ts`
+  against the built `dist/*.d.mts`, so it needs a build first. The file has
+  no `test()` blocks, and Vitest's `--typecheck` drops type errors outside
+  test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
+  negative cases fail with TS2578 if they stop being errors.
+- The package tests pack the tarball and install it into a temporary
+  consumer with `drizzle-orm` and `postgres` absent. They extract with the
+  system `tar` using relative paths, so GNU tar, bsdtar and Windows'
+  `tar.exe` all work.
 - `pnpm lint:package` builds, packs once into a temporary folder and runs
   publint `--strict` and attw on that tarball. attw uses the `node16`
   profile, which skips node10 resolution (it cannot see subpath `exports`),

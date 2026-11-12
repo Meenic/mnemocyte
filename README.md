@@ -48,6 +48,10 @@ bound to one scope; the unbound `memory` takes a `scope` on every call
 instead. `openaiEmbedder` reads `OPENAI_API_KEY`. Without a `store`,
 memories live in process memory, which suits tests and prototypes.
 
+[Getting started](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/getting-started.md)
+walks from an empty folder to a first `context()` call on Postgres, with
+postgres.js, `pg`, Drizzle or PGlite.
+
 ## Postgres
 
 Install your driver (`postgres`, `pg`, or PGlite); the database needs
@@ -125,6 +129,7 @@ endpoint with `fetch`. Retries, timeouts and cancellation are in the
 
 ## Documentation
 
+- [Getting started](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/getting-started.md)
 - [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md)
 - [Postgres](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md)
 - [Embedders](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md)

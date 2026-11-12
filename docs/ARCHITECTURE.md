@@ -218,10 +218,10 @@ The target flow is three steps: install, export `memory` from a
   - PGlite opens its data folder from one process at a time, so the CLI
     cannot migrate it while the app runs; PGlite users call
     `migrate({ memory })` from code instead.
-- **Getting started.** One guide from an empty folder to a first `context()`
-  call: install, `.env`, `memory.ts` with a tab per driver, `npx mnemocyte
-  migrate`, a bound scope. Docker on the CI image for a local Postgres, and
-  the in-memory backend for prototypes.
+- **Getting started.** Landed as
+  [guide/getting-started.md](./guide/getting-started.md), with a
+  `migrate.ts` script that calls `migrate({ memory })`; `feat/cli` replaces
+  that script with `npx mnemocyte migrate`.
 
 After 1.0:
 

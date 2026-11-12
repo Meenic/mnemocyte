@@ -110,7 +110,7 @@ None.
   a client bound to that scope whose methods take no `scope` field. Global
   operations (`allNamespaces`) stay on the unbound client. Starts under
   `experimental` if the shape is not settled.
-- [ ] `docs/getting-started`: `docs/guide/getting-started.md` from an empty
+- [x] `docs/getting-started`: `docs/guide/getting-started.md` from an empty
   folder to a first `context()` call: install, `.env`, a `memory.ts` with
   postgres.js, `pg`, Drizzle and PGlite variants, `npx mnemocyte migrate`
   (or `migrate({ memory })` until `feat/cli` lands), and a bound scope.
@@ -148,7 +148,8 @@ None.
   dimensions and exits non-zero on a problem; `sql` prints the fresh-install
   schema without a database (replaces running `render-initial.mjs` by path).
   Without a memory file, `--dimensions` and `DATABASE_URL` with the installed
-  `postgres` peer. No new dependencies.
+  `postgres` peer. No new dependencies. The getting-started guide's
+  `migrate.ts` and `db:migrate` script become `npx mnemocyte migrate`.
 
 ## Phase 4: 1.0
 

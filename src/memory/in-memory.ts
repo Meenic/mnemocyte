@@ -8,11 +8,10 @@ import {
 import type {
 	AuditEvent,
 	Memory,
-	MemoryClient,
 	MemoryConfig,
 	MemoryStats,
 } from "../types.js";
-import { createMemoryClient } from "./client-core.js";
+import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { memoryHasDependentsError } from "./deletion.js";
 import {
 	isExpired,
@@ -535,6 +534,6 @@ export function createInMemoryStore(): MemoryStore {
 	};
 }
 
-export function createInMemoryClient(config: MemoryConfig): MemoryClient {
+export function createInMemoryClient(config: MemoryConfig): CoreMemoryClient {
 	return createMemoryClient(config, createInMemoryStore());
 }

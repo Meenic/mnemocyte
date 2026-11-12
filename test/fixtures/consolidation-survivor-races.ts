@@ -60,7 +60,7 @@ export function createPausingConsolidationStore(baseStore: MemoryStore): {
 }
 
 async function listEntityMemories(
-	client: MemoryClient,
+	client: Omit<MemoryClient, "for">,
 	entityId: string,
 ): Promise<MemoryWithScore[]> {
 	return client.search({
@@ -73,7 +73,7 @@ async function listEntityMemories(
 }
 
 async function countSupersededEvents(
-	client: MemoryClient,
+	client: Omit<MemoryClient, "for">,
 	entityId: string,
 ): Promise<number> {
 	return (
@@ -82,8 +82,8 @@ async function countSupersededEvents(
 }
 
 export async function exerciseConsolidationSurvivorRaces(params: {
-	client: MemoryClient;
-	mutator: MemoryClient;
+	client: Omit<MemoryClient, "for">;
+	mutator: Omit<MemoryClient, "for">;
 	pauseNext(): ConsolidationPauseGate;
 	entityPrefix: string;
 }): Promise<void> {

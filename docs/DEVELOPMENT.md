@@ -15,8 +15,8 @@ Feature areas:
   client detection, the postgres.js, node-postgres and PGlite adapters,
   `postgresStore`, `drizzleStore(db)`).
 - [features/scopes.md](./features/scopes.md): scopes and their matching
-  rules, keyed `add`, `get`, `list` pagination, `update`, `deleteScope`, the
-  client lifecycle.
+  rules, the default namespace and bound clients, keyed `add`, `get`,
+  `list` pagination, `update`, `deleteScope`, the client lifecycle.
 - [features/retrieval.md](./features/retrieval.md): search, scoring, access
   tracking, `context`.
 - [features/maintenance.md](./features/maintenance.md): delete, prune,
@@ -45,7 +45,7 @@ or from a consuming project.
 ```txt
 src/
   index.ts              root entry: createMemory, migrate, errors, public types
-  client.ts             createMemory: config checks, store (given | in-memory)
+  client.ts             createMemory: config checks, store (given | in-memory), overloads for namespace
   migrate.ts            migrate(): validates input, resolves { memory } or { store }, calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   types.ts              every public type
@@ -54,6 +54,7 @@ src/
   resilience.ts         provider timeout, retry, abort
   memory/
     client-core.ts      shared orchestration for every client method
+    scope-binding.ts    the default namespace layer and memory.for() bound clients
     client-internals.ts the client's store and embedder under a symbol, for migrate({ memory })
     store.ts            the internal MemoryStore contract, scopes and selectors
     in-memory.ts        in-memory MemoryStore
@@ -165,8 +166,10 @@ uses top-level `await`, so `dist/` must not.
 
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
-`listAuditLog`, `stats` and `experimental.consolidate`. There is no
-`close()`.
+`listAuditLog`, `stats`, `for` and `experimental.consolidate`. There is no
+`close()`. `for(scope)` returns a `BoundMemoryClient` with the same
+methods minus `scope`, `allNamespaces` and `for`, plus a read-only
+`scope`.
 
 Design rules for the public surface:
 
@@ -175,8 +178,12 @@ Design rules for the public surface:
   code, never the message.
 - Every long-running method accepts `signal: AbortSignal`.
 - New or unproven behavior goes under `experimental` first.
-- Every method that reads or writes memories takes a `scope`; a global
-  operation needs `allNamespaces: true`.
+- Every method that reads or writes memories takes a `scope` (or is bound
+  to one); a global operation needs `allNamespaces: true`, which bound
+  clients do not offer.
+- A new method that takes a `scope` gets a `DefaultNamespace` type
+  parameter on its input, a wrapper in `createScopedClient` and one in
+  `bindScope` (`memory/scope-binding.ts`), and a `Bound…Input` type.
 - Breaking changes ship in a new minor (0.x) with a `CHANGELOG.md` entry and
   an upgrade note (the 0.5 → 0.6 table is in `docs/guide/api.md`).
 
@@ -221,11 +228,12 @@ Vitest has three projects (`vitest.config.ts`):
 - The Postgres contract (`test/contract/suite.ts`,
   `describeStoreContract`) runs the same checks through every driver:
   migrate, transactions and savepoints, value round trips, chunked
-  `addMany`, search and context, the scoped-API fixtures, and cross-scope
-  isolation for search, id lookups, prune, duplicates, consolidation,
-  `deleteScope` and stats. The `contract` project runs it on PGlite, direct
-  and through Drizzle: an in-process Postgres 18 with pgvector 0.8.7, so no
-  service is needed and every Node job in CI runs it (about 10 s). A third
+  `addMany`, search and context, the scoped-API and bound-scope fixtures,
+  and cross-scope isolation for search, id lookups, prune, duplicates,
+  consolidation, `deleteScope` and stats. The `contract` project runs it on
+  PGlite, direct and through Drizzle: an in-process Postgres 18 with
+  pgvector 0.8.7, so no service is needed and every Node job in CI runs it
+  (about 10 s). A third
   PGlite run wraps the executor and fails on any parameter that is not a
   string, finite number or null, the values postgres.js 3.x and 4.x write
   the same.

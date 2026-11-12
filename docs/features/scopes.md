@@ -1,7 +1,8 @@
 # Scopes, keys and the client surface
 
-How the scoped client is built: scope matching, keyed upserts, `get`,
-`list`, `update`, `deleteScope` and the client lifecycle. The user-facing
+How the scoped client is built: scope matching, the default namespace and
+bound clients, keyed upserts, `get`, `list`, `update`, `deleteScope` and
+the client lifecycle. The user-facing
 rules are in [guide/api.md](../guide/api.md#scopes).
 
 ## Scope
@@ -44,6 +45,52 @@ On Postgres every visibility query is `namespace = $ AND entity_id = $ AND
 (agent_id = $ OR agent_id IS NULL) AND …`; the scope btree
 `(namespace, entity_id, agent_id, session_id)` serves it (an `OR` on the third
 column becomes a bitmap or a filter on the entity's rows).
+
+## Default namespace and bound clients
+
+`createMemory` builds two layers (`memory/scope-binding.ts`) over the core
+client from `memory/client-core.ts`, which only ever sees full scopes:
+
+- **`createScopedClient`** is what `createMemory` returns. Each method
+  fills `createMemory({ namespace })` into the input's `scope` when the
+  scope is an object whose `namespace` is `undefined`, then calls the core
+  method. The input is copied only when the namespace changes, so the
+  caller's objects are never mutated. Anything else (no scope, a
+  non-object, `allNamespaces: true`) passes through for the core's
+  validation to accept or reject as before. Without a default the layer
+  changes nothing.
+- **`bindScope`** backs `for(scope)`. It fills the default, runs
+  `validateScope` (so a bad scope throws `"VALIDATION"` synchronously from
+  `for()`) and keeps a frozen `MemoryScope`, exposed as `bound.scope`.
+  Each bound method checks that its input is an object (an omitted optional
+  input becomes `{}`) with no `scope` and no `allNamespaces`, then calls the
+  core with `{ ...input, scope }`. Selector methods (`deleteScope`,
+  `prune`, `stats`, `listAuditLog`) get the same scope, which they read as a
+  selector: an omitted agent or session matches any value.
+
+A rejected bound input goes through `observe` with the bound scope's
+namespace and entity, so it emits the start and error events every other
+malformed call emits. Calls that pass the check emit the core's events,
+which read the filled-in scope, so `onEvent` always reports the namespace
+actually used.
+
+Both layers attach the client internals (store and embedder, under the
+`Symbol.for("mnemocyte.memory-client")` key) with
+`attachMemoryClientInternals`, which is how `migrate({ memory })` reads a
+bound client. A bound client holds nothing else, so `for()` per request
+costs one validation and two small objects.
+
+Types: `MemoryClient`, `ExperimentalMemoryClient` and every input with a
+scope take `DefaultNamespace extends boolean = false`. `ScopeInput<true>` is
+`OptionalNamespaceScope` and `ScopeSelectorInput<true>` is
+`OptionalNamespaceSelector`; with `false` they are `MemoryScope` and
+`ScopeSelector`. `createMemory` has two overloads: a config with
+`namespace: string` returns `MemoryClient<true>`, any other
+`MemoryClient`. Bound inputs are `Omit<…, "scope">` aliases, except
+`BoundGetInput`, which `GetInput` is built from because `Omit` does not
+distribute over its id-or-key union, and `prune`, which takes
+`PruneSelectors`. `MigrateInput.memory` is
+`MemoryClient<boolean> | BoundMemoryClient`.
 
 ## Keyed `add`
 
@@ -177,7 +224,8 @@ database client right after a search still gets the write.
 ## Observability
 
 Every operation's events carry the `namespace` and `entityId` of its scope,
-read from the raw input so a malformed call still reports them. Operations
+read from the raw input (after the default namespace is filled in, or from
+the bound scope) so a malformed call still reports them. Operations
 are `add`, `addMany`, `search`, `get`, `list`, `update`, `delete`,
 `deleteScope`, `context`, `prune`, `findDuplicates`, `listAuditLog`,
 `consolidate`, `stats` and `trackAccess`.
@@ -193,3 +241,13 @@ pages and malformed cursors; updates with and without re-embedding and key
 collisions; `get` and scope validation on every method. The Postgres file
 adds microsecond `created_at` paging and the audit-event deletion of
 `deleteScope`.
+
+`test/fixtures/bound-scope.ts` runs on the in-memory backend
+(`test/memory/bound-scope.test.ts`) and in the Postgres contract suite: the
+default namespace and its override, visibility and isolation between bound
+clients, selection for `stats`, `prune`, `listAuditLog` and
+`deleteScope`, rejected `scope` and `allNamespaces` fields, `for()`
+validation and `migrate({ memory })` with a bound client. The unit file adds
+the `"CONFIG"` check on `namespace`, observation events, input snapshots
+and `consolidate`; `test/package/exports-types.test-d.ts` checks the
+overloads and the bound types.

@@ -10,6 +10,21 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **Default namespace and bound scopes.** `createMemory({ namespace })`
+  sets a namespace for every scope that leaves it out; a scope that names
+  its own wins. `memory.for(scope)` returns a client bound to one scope
+  whose methods take no `scope`: `memory.for({ entityId: user.id }).add({
+  content })`. On a bound client, `deleteScope()`, `prune`, `stats()` and
+  `listAuditLog` select within the bound scope, `allNamespaces` is not
+  available, and a `scope` or `allNamespaces` field passed anyway throws
+  `"VALIDATION"`. `migrate({ memory })` accepts a bound client. A malformed
+  `namespace` throws `"CONFIG"` from `createMemory`. `MemoryClient` and the
+  scoped input types take a `DefaultNamespace` type parameter that defaults
+  to `false`, so existing annotations keep their meaning; `createMemory`
+  returns `MemoryClient<true>` when `namespace` is set. Code that
+  implements `MemoryClient` by hand, such as a test double, needs a `for`
+  method.
+
 - **`migrate({ memory })`, `createExtension` and `dryRun`.** `migrate` now
   takes the client from `createMemory()` and reads the store and the
   embedding size from it; `{ store, dimensions }` keeps working, and a

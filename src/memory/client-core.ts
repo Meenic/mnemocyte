@@ -368,10 +368,16 @@ function memoryFilter(
 	};
 }
 
+/**
+ * The client methods that take a full scope. `createMemory` adds the
+ * default namespace and `for()` on top (`memory/scope-binding.ts`).
+ */
+export type CoreMemoryClient = Omit<MemoryClient, "for">;
+
 export function createMemoryClient(
 	config: MemoryConfig,
 	store: MemoryStore,
-): MemoryClient {
+): CoreMemoryClient {
 	async function ensureEmbeddingCompatibility(): Promise<void> {
 		await store.ensureEmbeddingCompatibility(config.embedder);
 	}

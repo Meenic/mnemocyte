@@ -25,29 +25,27 @@ import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 
 const memory = createMemory({
+  namespace: "my-app",
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 
-const scope = { namespace: "my-app", entityId: "user_123" };
+const user = memory.for({ entityId: "user_123" });
 
-await memory.add({
-  scope,
-  content: "Prefers short, direct answers.",
-  kind: "preference",
-});
+await user.add({ content: "Prefers short, direct answers.", kind: "preference" });
 
-const results = await memory.search({ scope, query: "How should I respond?" });
+const results = await user.search({ query: "How should I respond?" });
 
-const context = await memory.context({
-  scope,
+const context = await user.context({
   query: "How should I respond?",
   maxTokens: 500,
 });
 ```
 
-Every call names a scope: a `namespace` (your tenant or app) and an
-`entityId` (who the memory is about), plus an optional `agentId` and
-`sessionId`. `openaiEmbedder` reads `OPENAI_API_KEY`. Without a `store`,
+Every memory lives in a scope: a `namespace` (your tenant or app; here the
+client's default) and an `entityId` (who the memory is about), plus an
+optional `agentId` and `sessionId`. `memory.for(scope)` returns a client
+bound to one scope; the unbound `memory` takes a `scope` on every call
+instead. `openaiEmbedder` reads `OPENAI_API_KEY`. Without a `store`,
 memories live in process memory, which suits tests and prototypes.
 
 ## Postgres
@@ -86,6 +84,7 @@ with `psql` instead, and upgrades are in the
 ## API at a glance
 
 - `migrate`: create or upgrade the Postgres schema.
+- `for`: a client bound to one scope, whose methods take no `scope`.
 - `add`, `addMany`: store memories; a `key` makes the add update in place.
 - `search`: rank a scope's memories against a query.
 - `get`, `list`: read one memory by id or key, or page through a scope.

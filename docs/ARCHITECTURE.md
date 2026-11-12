@@ -69,29 +69,14 @@ does not branch on them otherwise.
 ## Data model
 
 This has landed: scopes (`namespace`, `entityId`, optional `agentId` and
-`sessionId`), keyed upserts, `get`, `list`, `update` and `deleteScope` are
+`sessionId`), keyed upserts, `get`, `list`, `update`, `deleteScope`, the
+default namespace and bound clients (`memory.for(scope)`, decision 22) are
 described in [features/scopes.md](./features/scopes.md). Field names carry
 over from 0.5 except `type`, now `kind`.
 
-Still to come, bound scopes. Repeating `{ namespace, entityId }` on every
-call is noise and lets a call drift to the wrong user:
-
-```ts
-const memory = createMemory({ namespace: "my-app", store, embedder });
-const userMemory = memory.for({ entityId: user.id });
-
-await userMemory.add({ content: "Prefers short, direct answers." });
-const context = await userMemory.context({ query: userMessage });
-```
-
-- `namespace` on `createMemory` is a default; a scope that names its own
-  namespace wins, so multi-tenant apps keep per-call namespaces.
-- `memory.for(scope)` returns a client with the same methods, minus the
-  `scope` field. `deleteScope()` on it erases the bound scope; `prune` and
-  `stats` select within it. Operations that need `allNamespaces` exist only
-  on the unbound client, so a bound client cannot reach past its scope.
-- Methods keep a single object parameter. Positional forms such as
-  `add("text")` are rejected: they make later options a breaking change.
+Methods keep a single object parameter, bound ones included. Positional
+forms such as `add("text")` are rejected: they make later options a
+breaking change.
 
 ## Write path
 
@@ -362,3 +347,17 @@ Dated 2026-10-26 unless noted.
     rule; `postgresJs()` and `drizzleStore()` stay, not deprecated. `pg` and
     `@electric-sql/pglite` became optional peers like `postgres` and
     `drizzle-orm`, and the contract suite runs on PGlite in `pnpm test`.
+22. **Bound scopes** (2026-11-13): `createMemory({ namespace })` is a
+    default a scope may override, and `memory.for(scope)` returns a
+    `BoundMemoryClient` whose methods take no `scope`. It ships on the
+    stable client, not under `experimental`: the shape was settled here
+    first, and the AI SDK tools and middleware take a bound client, so an
+    experimental path would leak into their API. The default is typed with
+    a `DefaultNamespace` type parameter (`createMemory` overloads return
+    `MemoryClient<true>` when `namespace` is set) rather than by making
+    `namespace` optional everywhere, so a missing namespace stays a
+    compile error on clients without a default. A bound method rejects a
+    `scope` or `allNamespaces` field from untyped code with
+    `"VALIDATION"` instead of ignoring it. Narrowing a bound client further
+    (`user.for({ sessionId })`) is left out; it can be added without a
+    breaking change.

@@ -9,6 +9,7 @@ import { type PostgresClient, postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
+import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import {
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
@@ -339,6 +340,22 @@ export function describeStoreContract(
 		test("get and scope validation", async () => {
 			const { memory, namespace } = client("get");
 			await verifyGetAndScopeValidation(memory, namespace);
+		});
+
+		test("default namespace and bound clients", async () => {
+			const { memory, namespace } = client("bound");
+			await verifyBoundScope({
+				memory,
+				defaulted: createMemory({
+					namespace,
+					store: postgresStore({
+						client: expectDefined(target, "not connected").client,
+					}),
+					embedder: createContractEmbedder(),
+					audit: { enabled: true },
+				}),
+				namespace,
+			});
 		});
 
 		describe("cross-scope isolation", () => {

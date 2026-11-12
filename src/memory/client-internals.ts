@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../errors.js";
-import type { Embedder, MemoryClient } from "../types.js";
+import type { Embedder } from "../types.js";
 import type { MemoryStore } from "./store.js";
 
 // `Symbol.for`, so a client from one copy of the package still works with
@@ -16,10 +16,10 @@ export interface MemoryClientInternals {
  * Attach the client's store and embedder under a non-enumerable symbol key,
  * so they stay out of `Object.keys`, spreads and `JSON.stringify`.
  */
-export function attachMemoryClientInternals(
-	client: MemoryClient,
+export function attachMemoryClientInternals<Client extends object>(
+	client: Client,
 	internals: MemoryClientInternals,
-): MemoryClient {
+): Client {
 	Object.defineProperty(client, MEMORY_CLIENT_INTERNALS, {
 		value: Object.freeze({ ...internals }),
 		enumerable: false,
@@ -30,16 +30,16 @@ export function attachMemoryClientInternals(
 }
 
 export function readMemoryClientInternals(
-	client: MemoryClient,
+	client: unknown,
 ): MemoryClientInternals {
-	const candidate: unknown = client;
+	const candidate = client;
 	if (
 		typeof candidate !== "object" ||
 		candidate === null ||
 		!(MEMORY_CLIENT_INTERNALS in candidate)
 	) {
 		throw new MnemocyteError(
-			"memory must be a client from createMemory().",
+			"memory must be a client from createMemory() or memory.for().",
 			"CONFIG",
 		);
 	}

@@ -46,7 +46,14 @@ const { applied, adopted, extensionCreated } = await migrate({
 
 `migrate` takes the store and the embedding size (`embedder.dimensions`)
 from the client. A deploy script that has no client can pass them itself:
-`migrate({ store, dimensions: 1536 })`.
+`migrate({ store, dimensions: 1536 })`. The same call upgrades an existing
+installation.
+
+Until the schema is installed or upgraded, a call that needs a missing
+Mnemocyte table or column throws `"MIGRATION"`. The message repeats the
+driver's text (for example `relation "mnemocyte_memories" does not exist`),
+says to run `migrate({ memory })` and links here; the driver error is the
+`cause`.
 
 ### Enabling pgvector
 
@@ -358,6 +365,16 @@ before calling the embedder:
 - An empty installation records the configured model on its first such call.
 - If stored rows hold more than one model, the model stays unrecorded and
   these calls throw `"MIGRATION"`.
+- If the `installation` row is missing, these calls throw `"MIGRATION"`.
+  `migrate` writes the row only when it creates the schema and does not
+  restore a deleted one. Insert it again with the installation's dimensions
+  and vector type (`halfvec` above 2,000 dimensions); the model is recorded
+  on the next such call, as for an empty installation:
+
+  ```sql
+  INSERT INTO mnemocyte_meta (key, embedding_dimensions, vector_type)
+  VALUES ('installation', 1536, 'vector');
+  ```
 
 `get`, `list`, `delete`, `deleteScope`, `prune`, `listAuditLog`, `stats` and
 updates that leave the content alone skip the check, so cleanup works on a

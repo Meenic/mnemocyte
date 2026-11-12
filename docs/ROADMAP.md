@@ -123,7 +123,7 @@ it.
 
 ## Phase 2: setup, embedders and AI SDK (0.7)
 
-- [ ] `fix/migration-hint`: the `"MIGRATION"` errors for missing tables or
+- [x] `fix/migration-hint`: the `"MIGRATION"` errors for missing tables or
   columns (`src/memory/postgres.ts`) tell the user to run
   `migrate({ memory })` and link the Postgres guide, instead of naming SQL
   files; `feat/cli` changes the hint to `npx mnemocyte migrate`.

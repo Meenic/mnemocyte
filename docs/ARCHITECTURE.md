@@ -174,6 +174,45 @@ Where hybrid results will differ between backends even with RRF:
 Shared contract tests therefore assert that expected memories appear in the
 top k, never an exact order.
 
+## Setup
+
+Setup stays explicit (see decision 20): nothing is created when a client is
+built, and every step that touches the schema is a call or command the user
+runs.
+
+- **`migrate` options.** `embedder` supplies `dimensions`, so the number is
+  written once; `dimensions` stays for callers without an embedder at
+  deploy time, and both given and different is a `"CONFIG"` error.
+  `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector`
+  before the first migration, so a role that may create extensions needs no
+  `psql` step. It is off by default: managed databases and restricted roles
+  often cannot create extensions, and the error should then name the step
+  rather than happen implicitly. `dryRun: true` inspects the database as a
+  real run would and returns the `applied` and `adopted` lists without
+  changing anything, the extension included, for checking a deploy step.
+- **CLI.** A `mnemocyte` bin with three commands. `sql --dimensions <n>`
+  prints the fresh-install schema without a database. `migrate` calls
+  `migrate()` and takes `--dimensions`, `--create-extension` and
+  `--dry-run`, since the CLI has no embedder. `check` reports the pgvector version (0.8.0 or later is
+  required), the applied migrations and the installed dimensions, and exits
+  non-zero on a problem. `migrate` and `check` read `DATABASE_URL` and load
+  the optional `postgres` peer; without it they exit with an install hint.
+  Arguments are parsed with `node:util` `parseArgs`. No config file: the
+  schema depends only on `dimensions`, so flags are enough.
+- **Getting started.** One guide from an empty folder to a first `context()`
+  call: in-memory, then PGlite, then Postgres in Docker on the image CI uses.
+
+After 1.0:
+
+- **Drizzle schema export.** `mnemocyte generate --adapter drizzle` writes
+  the tables as a Drizzle schema the user adds to `drizzle.config.ts`, so
+  `drizzle-kit` owns the migrations. `migrate` already adopts a schema
+  installed outside it; the open question is keeping a generated schema in
+  step with later Mnemocyte migrations.
+- **`schemaName`.** Tables in a schema other than `public`. Every query and
+  migration needs schema-qualified names, and the tracking table moves with
+  them.
+
 ## Packaging
 
 One package, `mnemocyte`, with subpaths: `mnemocyte` (core),
@@ -251,3 +290,13 @@ Dated 2026-10-26 unless noted.
     their client. Lost writes on serverless platforms are acceptable for
     counts that do not affect ranking; an optional `waitUntil` hook can be
     added later if that changes.
+20. **Explicit setup, no runtime migrations** (2026-11-12): pg-boss and
+    Graphile Worker migrate on start by default; Better Auth checks the
+    schema at first use and creates it only through its CLI or
+    `getMigrations`. We follow Better Auth: the client stays free of schema
+    side effects (missing tables already surface as `"MIGRATION"` errors),
+    and setup gets shorter through `migrate` options and a CLI instead.
+    Migrating on start would fail under a restricted runtime role and make
+    every schema change an implicit part of starting the app. Better Auth's
+    config file is not copied, because its plugins change the schema and
+    ours depends only on `dimensions`.

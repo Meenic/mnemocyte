@@ -89,6 +89,17 @@ None.
   shared contract suite on PGlite and real Postgres, including cross-scope
   isolation for search, prune, duplicates and consolidation, which no
   Postgres test covers today.
+- [ ] `feat/migrate-setup`: `migrate` accepts the `embedder` and reads
+  `dimensions` from it (`dimensions` stays; both given and different is a
+  `"CONFIG"` error). Opt-in `createExtension: true` runs
+  `CREATE EXTENSION IF NOT EXISTS vector` before the first migration; off by
+  default, because managed databases and restricted roles cannot create
+  extensions. `dryRun: true` returns the `applied` and `adopted` lists the
+  call would produce and changes nothing.
+- [ ] `docs/getting-started`: `docs/guide/getting-started.md` from an empty
+  folder to a first `context()` call: in-memory, then PGlite, then Postgres
+  with a one-line Docker command on the CI image
+  (`pgvector/pgvector:0.8.7-pg18`). `README.md` links it.
 
 ## Phase 2: embedders and AI SDK (0.7)
 
@@ -109,6 +120,13 @@ None.
 - [ ] `feat/audit-retention`: retention option and pruning guidance.
 - [ ] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
+- [ ] `feat/cli`: a `mnemocyte` bin with `sql --dimensions <n>` (prints the
+  fresh-install schema, no database; replaces running `render-initial.mjs`
+  by path), `migrate` (with `--dimensions`, `--create-extension` and
+  `--dry-run`) and `check` (pgvector version, applied migrations,
+  dimensions).
+  `migrate` and `check` read `DATABASE_URL` and use the installed `postgres`
+  peer; no new dependencies.
 
 ## Phase 4: 1.0
 
@@ -128,4 +146,7 @@ adapter, kNN duplicates, audit retention.
 - Public `MemoryStore` contract and a monorepo split
   (`@mnemocyte/postgres`, …).
 - `@mnemocyte/mcp`.
+- Drizzle schema export (`mnemocyte generate --adapter drizzle`) so Drizzle
+  users manage the tables with `drizzle-kit`.
+- A `schemaName` option to keep the tables outside `public`.
 - OpenTelemetry integration on the observability hooks.

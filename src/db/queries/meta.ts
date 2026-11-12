@@ -42,6 +42,19 @@ export async function recordInstallationEmbeddingModel(
 	return rows[0] ?? null;
 }
 
+/** The installed pgvector version (`pg_extension.extversion`), or null. */
+export async function getPgvectorVersion(
+	db: SqlExecutor,
+): Promise<string | null> {
+	const rows = await db.query<{ version: string }>(
+		`SELECT extversion AS "version"
+		FROM pg_extension
+		WHERE extname = 'vector'`,
+		[],
+	);
+	return rows[0]?.version ?? null;
+}
+
 export async function getInstallationVectorType(
 	db: SqlExecutor,
 ): Promise<VectorType | null> {

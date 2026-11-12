@@ -21,6 +21,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   HTTP driver) cannot run it; use a regular connection for migrating. The
   consolidation foreign key names `public.mnemocyte_memories`, so the tables
   must live in `public`.
+- **Recall needs interactive transactions and pgvector 0.8.** The vector
+  search sets pgvector's scan options for one transaction, so drivers without
+  interactive transactions cannot recall, and pgvector before 0.8.0 throws
+  `"MIGRATION"`. Planned: a `batch` path for those drivers
+  (`fix/batch-writes`).
 - **Large batches fail on Postgres.** `rememberMany` sends one `INSERT`; past
   about 2,900 memories it exceeds Postgres's 65,535 bind-parameter limit and
   throws `"DB"`. The whole batch is also embedded in one embedder call. Split
@@ -32,10 +37,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   search (stemming, stop words); the in-memory store matches query words as
   substrings. Both fuse ranks the same way, but they can find different
   keyword matches, so results for the same data can differ.
-- **Selective filters can return too few results.** Filters are applied after
-  the approximate vector search, so a narrow `types` or `tags` filter can
-  return fewer memories than exist. Planned: iterative index scans
-  (`fix/filtered-vector-search`).
+- **Very selective filters cost more on Postgres.** The vector search keeps
+  scanning the HNSW index until it has enough memories that pass the filters,
+  up to pgvector's `hnsw.max_scan_tuples` (20,000 by default). A filter that
+  matches fewer memories than requested on a large entity scans that many
+  rows, and memories beyond that limit are not returned.
 - **Access writes can be lost.** With `trackAccess` on, recall does not wait
   for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so

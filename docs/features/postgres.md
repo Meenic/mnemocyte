@@ -238,6 +238,61 @@ against the two allowed values before it is put into SQL. `forget`,
 `forgetAll`, `prune`, `listAuditLog` and `stats` skip the check, so cleanup
 works on an incompatible installation.
 
+## Filtered vector search
+
+An HNSW index scan collects `hnsw.ef_search` candidates (40 by default) and
+Postgres applies the `WHERE` filters to those afterwards. Without help, a
+selective filter (a `types` or `tags` filter, or one entity in a large table)
+could leave fewer rows than exist, or none. The recall vector search
+(`vectorSearch` in `src/db/queries/memories.ts`) therefore runs in a
+transaction:
+
+```sql
+SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+       set_config('hnsw.ef_search', $1, true);
+SELECT …, embedding <=> $q::vector AS "vectorDistance"
+FROM mnemocyte_memories
+WHERE <scope and filters> AND embedding IS NOT NULL
+ORDER BY "vectorDistance"
+LIMIT $n;
+```
+
+- `set_config(…, true)` is `SET LOCAL`: the settings end with the
+  transaction. Inside a caller's transaction they last until that
+  transaction ends.
+- `strict_order` (pgvector 0.8+) makes the scan continue past the first
+  candidates, in exact distance order, until `LIMIT` rows pass the filters or
+  `hnsw.max_scan_tuples` (20,000 by default) tuples were visited. Mnemocyte
+  leaves `max_scan_tuples` and `scan_mem_multiplier` at the server's values.
+  `relaxed_order` would need a materialized CTE to re-sort and gains little
+  at recall's small limits.
+- `ef_search` is `max(40, limit)`, capped at pgvector's maximum of 1,000, so
+  one HNSW pass can fill the request.
+- The distance is computed once per row. `ORDER BY` names the selected
+  column, and the planner still matches it to the index's ordering operator
+  (pgvector needs `ORDER BY` to be a bare distance operator, ascending). The
+  score `clamp(1 − distance, 0, 1)` (non-finite → 0) is computed in
+  TypeScript with the in-memory backend's `toVectorScore`. Scores fall as
+  distance grows, so the rows at or above `minVectorScore` are a prefix of
+  the result and are filtered after the `LIMIT` with the same outcome.
+- The planner does not always pick HNSW: for a small scope it reads the scope
+  index and sorts, which is exact. `test/integration/filtered-vector-search.test.ts`
+  drops the scope index in a rolled-back transaction to force the HNSW path,
+  checks the plan with `EXPLAIN (ANALYZE, BUFFERS)` (an HNSW index scan, no
+  sort) for `vector` and `halfvec`, and checks that the same statement with
+  `iterative_scan = off` finds none of the filtered rows.
+
+Before the first vector search each store reads `pg_extension.extversion`
+once and rejects pgvector before 0.8.0 with `"MIGRATION"`. Without the check,
+an older pgvector would reject `hnsw.iterative_scan` as an unknown setting
+(`"DB"`), or, in a session that has not loaded pgvector yet, drop it with a
+warning and return too few rows. A failed check is not cached.
+
+Test data needs care: many hand-made vectors at the same distance (for
+example one-hot perturbations) can leave parts of the HNSW graph unreachable,
+so no `ef_search` finds them. The integration test uses seeded pseudo-random
+vectors.
+
 ## Connections
 
 Mnemocyte never creates or closes a database client. The application passes
@@ -265,12 +320,13 @@ interface SqlExecutor {
 
 Every write is one statement. The guarded deletes are one `WITH … DELETE`,
 and `consolidate` is one `WITH` query (see
-[maintenance.md](./maintenance.md#experimentalconsolidate)), so the backend
-never calls `transaction` and needs no connection held across round trips.
-That is what stateless HTTP drivers (Neon's HTTP driver, D1) require.
-`transaction` stays on the interface for drivers that have it; an optional
-`batch` for paths that need several statements is planned with
-`fix/batch-writes`, the first such path.
+[maintenance.md](./maintenance.md#experimentalconsolidate)), so writes need
+no connection held across round trips, which is what stateless HTTP drivers
+(Neon's HTTP driver, D1) require. Two paths call `transaction`: `migrate()`
+and the recall vector search, whose `set_config` must share a transaction
+with the query (see [Filtered vector search](#filtered-vector-search)). An
+optional `batch` for drivers without interactive transactions is planned
+with `fix/batch-writes`; until then those drivers cannot recall.
 
 All queries are plain SQL strings built in `src/db/queries/`. Values are
 always parameters, never interpolated; the only interpolated value is the
@@ -312,13 +368,10 @@ queries are not cancelled.
 
 Each one is a roadmap item in Phase 1 unless noted.
 
-- Filters are applied after the HNSW scan and `hnsw.ef_search` stays at its
-  default of 40, so filtered recall can return fewer matches than exist.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
   after an error and can leave a partial schema; `migrate()` then refuses to
   adopt it. The guide shows the flags.
 - `rememberMany` sends one `INSERT`; past about 2,900 rows it exceeds the
   65,535 bind-parameter limit.
-- The vector query computes the cosine distance three times per row.
 - Scopes exist in the schema but not in the public API: everything is in the
   `default` namespace with no agent or session until `feat/scoped-api`.

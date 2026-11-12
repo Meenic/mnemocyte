@@ -114,10 +114,9 @@ changes only on writes.
    that disappeared, and never touches `updatedAt`. This has landed; see
    [features/retrieval.md](./features/retrieval.md#access-tracking).
 
-Postgres specifics: the vector query runs in a transaction with
-`SET LOCAL hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least
-the candidate count, so filters cannot silently empty the result
-(pgvector 0.8+).
+Postgres specifics: the vector query uses pgvector 0.8 iterative index scans,
+so filters cannot silently empty the result. This has landed; see
+[features/postgres.md](./features/postgres.md#filtered-vector-search).
 
 ## Context
 
@@ -243,7 +242,9 @@ Dated 2026-10-26 unless noted.
     that support it and gains an optional `batch` where one statement is not
     enough. Every write path is one statement today, `consolidate`
     included; chunked inserts in `fix/batch-writes` are the first that need
-    `batch`.
+    `batch`. (2026-11-12) The recall vector search is a read that needs two
+    statements in one transaction (`set_config`, then the query); it uses
+    `transaction` until `batch` exists, then moves to it.
 
 17. **`agentId`** (2026-10-27): a nullable column next to `entityId`, added
     in the first scope migration (`0003`). `entityId` is who a memory is

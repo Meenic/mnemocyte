@@ -44,6 +44,9 @@ function createFakeHandle(options: {
 				}
 				return metaRows.map((row) => ({ ...row })) as Row[];
 			}
+			if (sql.includes("FROM pg_extension")) {
+				return [{ version: "0.8.7" }] as Row[];
+			}
 			if (sql.includes("SELECT DISTINCT embedding_model")) {
 				distinctSelectCount += 1;
 				return (options.storedModels ?? []).map((embeddingModel) => ({

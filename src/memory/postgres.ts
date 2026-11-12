@@ -21,12 +21,14 @@ import {
 import {
 	getInstallationMeta,
 	getInstallationVectorType,
+	getPgvectorVersion,
 	getStoredEmbeddingModels,
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
 import type { EventRow, VectorType } from "../db/rows.js";
 import { MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
+import { toVectorScore } from "../retrieval/scorer.js";
 import type { SqlExecutor } from "../sql/executor.js";
 import type {
 	AuditEvent,
@@ -214,6 +216,33 @@ function assertVectorType(value: string | null): VectorType {
 	return value as VectorType;
 }
 
+/** Iterative HNSW scans (`hnsw.iterative_scan`) arrived in pgvector 0.8.0. */
+const MIN_PGVECTOR_VERSION: readonly [number, number] = [0, 8];
+
+export function assertPgvectorVersion(version: string | null): void {
+	if (version === null) {
+		throw new MnemocyteError(
+			"pgvector is not installed in this database. Run CREATE EXTENSION vector as a role that may create extensions.",
+			"MIGRATION",
+		);
+	}
+	const [major = Number.NaN, minor = Number.NaN] = version
+		.split(".")
+		.map((part) => Number.parseInt(part, 10));
+	const [minMajor, minMinor] = MIN_PGVECTOR_VERSION;
+	if (
+		!Number.isInteger(major) ||
+		!Number.isInteger(minor) ||
+		major < minMajor ||
+		(major === minMajor && minor < minMinor)
+	) {
+		throw new MnemocyteError(
+			`Mnemocyte needs pgvector ${minMajor}.${minMinor}.0 or later for filtered vector search; this database has ${version}. Upgrade the pgvector package on the server, then run ALTER EXTENSION vector UPDATE.`,
+			"MIGRATION",
+		);
+	}
+}
+
 /** Ids that are not UUIDs cannot match a row, so they are never sent. */
 function uuidsOnly(ids: readonly string[]): string[] {
 	return ids.filter(isUuid);
@@ -228,6 +257,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	// clients with different embedders checks each embedder.
 	const compatibilityChecks = new Map<string, Promise<void>>();
 	let vectorTypePromise: Promise<VectorType> | undefined;
+	let pgvectorCheck: Promise<void> | undefined;
 
 	function ensureEmbeddingCompatibility(embedder: Embedder): Promise<void> {
 		const key = compatibilityKey(embedder);
@@ -255,6 +285,19 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				});
 		}
 		return vectorTypePromise;
+	}
+
+	/** Checked once per store, before the first vector search. */
+	function ensurePgvectorVersion(): Promise<void> {
+		if (!pgvectorCheck) {
+			pgvectorCheck = getPgvectorVersion(client)
+				.then(assertPgvectorVersion)
+				.catch((error: unknown) => {
+					pgvectorCheck = undefined;
+					throw error;
+				});
+		}
+		return pgvectorCheck;
 	}
 
 	async function validateEmbeddingCompatibility(
@@ -348,19 +391,28 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
 			return runPostgresOperation(async () => {
-				const { entityId, ...filters } = input;
+				const { entityId, minVectorScore = 0, ...filters } = input;
+				const [vectorType] = await Promise.all([
+					getVectorType(),
+					ensurePgvectorVersion(),
+				]);
 				const rows = await vectorSearchQuery(client, {
 					...filters,
 					scope: entityScope(entityId),
-					vectorType: await getVectorType(),
+					vectorType,
 				});
-				return rows.map(
-					(row) =>
-						({
-							memory: rowToMemory(row),
-							vectorScore: row.vectorScore,
-						}) satisfies StoreVectorCandidate,
-				);
+				// Rows come in increasing distance, so the scores decrease and the
+				// rows at or above `minVectorScore` are a prefix: filtering after
+				// the LIMIT keeps the same rows as filtering before it.
+				return rows
+					.map(
+						(row) =>
+							({
+								memory: rowToMemory(row),
+								vectorScore: toVectorScore(1 - row.vectorDistance),
+							}) satisfies StoreVectorCandidate,
+					)
+					.filter((candidate) => candidate.vectorScore >= minVectorScore);
 			});
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {

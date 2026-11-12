@@ -8,6 +8,8 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-13
+
 ### Added
 
 - **Default namespace and bound scopes.** `createMemory({ namespace })`
@@ -154,7 +156,7 @@ behavioural changes documented in their entries.
   Statements never use named prepared statements, so transaction-mode poolers
   work without `prepare: false`.
 
-- **Breaking: recall ranks by reciprocal rank fusion.** The vector and
+- **Breaking: search ranks by reciprocal rank fusion.** The vector and
   keyword searches are fused by rank (`Σ weight / (k + rank)`, `k = 60`)
   instead of a weighted sum of raw scores, so a real full-text match on
   Postgres no longer ranks below a substring coincidence, and both backends
@@ -162,7 +164,7 @@ behavioural changes documented in their entries.
   instead of adding to it; `confidence` and `accessCount` no longer affect
   ranking. `score` stays between 0 and 1 but values change: a memory found
   by only one search scores at most 0.5, so revisit any `minScore`. When the
-  keyword search finds memories the vector search missed, recall no longer
+  keyword search finds memories the vector search missed, search no longer
   loads their embeddings in a second query.
 - **Breaking: retrieval config and scores.** `retrieval.weights` and
   `retrieval.accessSaturation` are replaced by
@@ -180,22 +182,43 @@ behavioural changes documented in their entries.
   retrieval: { fusion: { vector: 0.7, lexical: 0.3 } }
   ```
 - **Breaking: access tracking is opt-in and off the response path.** By
-  default recall no longer writes, so `accessCount` stays 0 and
+  default search no longer writes, so `accessCount` stays 0 and
   `lastAccessedAt` stays null. With `trackAccess` on, the write starts as
-  recall returns and recall does not wait for it: results show the access
-  values from before the call, a failed write no longer fails the recall
+  search returns and search does not wait for it: results show the access
+  values from before the call, a failed write no longer fails the search
   (it is reported to `onEvent`), and a memory deleted at the same moment no
-  longer makes recall throw `"DB"`. Recall never changes `updatedAt`.
+  longer makes search throw `"DB"`. Search never changes `updatedAt`.
 
   ```ts
-  // keep counting access on every recall
+  // keep counting access on every search
   createMemory({ embedder, store, retrieval: { trackAccess: true } });
   ```
 - **`prune({ notAccessedSince })` counts never-accessed memories from
-  `createdAt`.** Before, a memory that had never been recalled always
-  matched, so with tracking off every memory in scope did. Now a memory
-  created after the date is kept, so this prune deletes the same or fewer
-  memories than before.
+  `createdAt`.** Before, a memory that had never been returned by a search
+  always matched, so with tracking off every memory in scope did. Now a
+  memory created after the date is kept, so this prune deletes the same or
+  fewer memories than before.
+- **Breaking: Postgres schema v2 (`0003_schema_v2.sql`).** Existing
+  installations get it from `migrate()` or by applying
+  `migrations/0003_schema_v2.sql`; fresh installs get it from `migrate()`,
+  `fresh-install.sql` or the rendered template. It adds `namespace`,
+  `agent_id` and `session_id` scope columns (existing rows get namespace
+  `default`), an optional `key` with a unique index per scope, renames
+  `type` to `kind`, precomputes full text in a stored `content_tsv` column
+  with a GIN index, and indexes `superseded_by`. The migration rewrites both
+  tables under an `ACCESS EXCLUSIVE` lock.
+- **Breaking: UUID ids.** Memory and audit event ids are now UUIDv7 strings
+  in `uuid` columns. `0003` converts existing ids that are not UUIDs to
+  `md5(id)::uuid`, including the ids inside audit event metadata; convert
+  ids your application stored the same way (see
+  [Postgres upgrade](docs/guide/postgres.md#upgrading-to-06-0003_schema_v2sql)).
+- **Up to 4,000 dimensions on Postgres.** `migrate()` and
+  `render-initial.mjs` use `halfvec` with `halfvec_cosine_ops` above 2,000
+  dimensions, and refuse more than 4,000. `mnemocyte_meta.vector_type`
+  records the choice.
+- **Consolidation is one statement.** `experimental.consolidate` no longer
+  opens an interactive transaction; aborting it cancels the statement even
+  while it waits for a row lock, before anything is written.
 
 ### Removed
 
@@ -216,36 +239,16 @@ behavioural changes documented in their entries.
 
   // after (npm install postgres)
   import postgres from "postgres";
-  import { postgresJs, postgresStore } from "mnemocyte/postgres";
+  import { postgresStore } from "mnemocyte/postgres";
 
   const sql = postgres(process.env.DATABASE_URL!);
   const memory = createMemory({
-    store: postgresStore({ client: postgresJs(sql) }),
+    namespace: "default",
+    store: postgresStore({ client: sql }),
     embedder,
   });
   // end the pool yourself on shutdown: `await sql.end()`.
   ```
-
-- **Breaking: Postgres schema v2 (`0003_schema_v2.sql`).** Existing
-  installations must apply `migrations/0003_schema_v2.sql`; fresh installs
-  get it from `fresh-install.sql` or the rendered template. It adds
-  `namespace`, `agent_id` and `session_id` scope columns (existing rows get
-  namespace `default`), an optional `key` with a unique index per scope,
-  renames `type` to `kind`, precomputes full text in a stored `content_tsv`
-  column with a GIN index, and indexes `superseded_by`. The migration
-  rewrites both tables under an `ACCESS EXCLUSIVE` lock. The public API is
-  unchanged and uses the `default` namespace.
-- **Breaking: UUID ids.** Memory and audit event ids are now UUIDv7 strings
-  in `uuid` columns. `0003` converts existing ids that are not UUIDs to
-  `md5(id)::uuid`, including the ids inside audit event metadata; convert
-  ids your application stored the same way (see
-  [Postgres upgrade](docs/guide/postgres.md#upgrading-to-06-0003_schema_v2sql)).
-- **Up to 4,000 dimensions on Postgres.** `render-initial.mjs` uses
-  `halfvec` with `halfvec_cosine_ops` above 2,000 dimensions, and refuses
-  more than 4,000. `mnemocyte_meta.vector_type` records the choice.
-- **Consolidation is one statement.** `experimental.consolidate` no longer
-  opens an interactive transaction; aborting it cancels the statement even
-  while it waits for a row lock, before anything is written.
 
 ### Fixed
 
@@ -254,15 +257,15 @@ behavioural changes documented in their entries.
   returns; on postgres.js 4 it rejects when the server does not answer the
   cancel in time (`CANCEL_UNANSWERED`), which crashed a Node process run
   with the default `--unhandled-rejections=throw`.
-- **Breaking: filtered recall finds every match on Postgres; needs pgvector
+- **Breaking: filtered search finds every match on Postgres; needs pgvector
   0.8.0.** The vector search now runs in a short transaction with
   `hnsw.iterative_scan = strict_order` and `hnsw.ef_search` at least the
   candidate count (at most 1,000). Before, the HNSW index returned its 40
-  nearest rows and the filters ran afterwards, so a narrow `types` or `tags`
+  nearest rows and the filters ran afterwards, so a narrow `kinds` or `tags`
   filter, or a small entity in a large table, could return fewer memories
-  than exist, or none. Recall throws `"MIGRATION"` on pgvector before 0.8.0;
+  than exist, or none. Search throws `"MIGRATION"` on pgvector before 0.8.0;
   upgrade the server package, then run `ALTER EXTENSION vector UPDATE`. Each
-  recall now needs a client with interactive transactions or
+  search now needs a client with interactive transactions or
   `SqlExecutor.batch`. The cosine
   distance is also computed once per row instead of three times.
 - **Scoped id lookups.** Loading embeddings for lexical-only candidates and
@@ -842,7 +845,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Meenic/mnemocyte/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/Meenic/mnemocyte/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Meenic/mnemocyte/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Meenic/mnemocyte/compare/v0.3.0...v0.4.0

@@ -85,12 +85,18 @@ None.
   input size caps (`limit`, content, tags, metadata, `key`). Validating
   every search filter and consolidate's `supersededIds` type landed with
   `feat/scoped-api`.
-- [ ] `feat/postgres-drivers`: `postgresStore(client)` takes a postgres.js,
+- [x] `feat/postgres-drivers`: `postgresStore(client)` takes a postgres.js,
   node-postgres (`pg` Pool), Drizzle or PGlite client directly, detected by
   shape (decision 21); a hand-written `SqlExecutor` still works, and
   `postgresJs()` and `drizzleStore()` keep working. Shared contract suite on
   PGlite and real Postgres, including cross-scope isolation for search,
   prune, duplicates and consolidation, which no Postgres test covers today.
+- [ ] `chore/postgres-js-4`: support postgres.js 4 (4.0.0 shipped
+  2026-10-29): peer range `^3.4.9 || ^4`, the contract and integration suites
+  on both majors. 4.x sends parameters untyped and lets the server decide
+  (Mnemocyte casts every parameter), removes `sql.array()`, rejects queries
+  on a transaction's `sql` after it ends, and adds `.signal()` and
+  `sql.batch()`, which could replace the adapter's `begin` pipelining.
 - [ ] `feat/migrate-setup`: `migrate({ memory })` reads the store and
   `dimensions` from the client (`{ store, dimensions }` stays; a
   `dimensions` that differs from the embedder's is a `"CONFIG"` error).
@@ -150,8 +156,8 @@ None.
 
 ## Cut first if time runs short
 
-Voyage/Cohere/Google embedders, the AI SDK middleware, the node-postgres
-adapter, kNN duplicates, audit retention.
+Voyage/Cohere/Google embedders, the AI SDK middleware, kNN duplicates,
+audit retention.
 
 ## After 1.0
 

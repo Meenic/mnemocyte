@@ -33,9 +33,21 @@ export default defineConfig({
 					include: ["test/**/*.test.ts"],
 					exclude: [
 						"test/integration/**",
+						"test/contract/**",
 						"test/package/**",
 						"test/benchmarks/**",
 					],
+				},
+			},
+			{
+				resolve: {
+					alias: sourceAlias,
+				},
+				test: {
+					// The shared Postgres contract on PGlite: no database service needed.
+					name: "contract",
+					include: ["test/contract/**/*.test.ts"],
+					testTimeout: 60_000,
 				},
 			},
 			{

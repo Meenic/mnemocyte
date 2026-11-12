@@ -7,6 +7,7 @@ import type {
 import type { SqlExecutor, SqlStatement } from "../../sql/executor.js";
 import type { ImportanceLevel, JsonObject, MemoryKind } from "../../types.js";
 import { chunk, INSERT_CHUNK_ROWS, runAtomically } from "../atomic.js";
+import { postgresConstraintName } from "../errors.js";
 import {
 	extractPrefixedMemoryRow,
 	type MemoryRow,
@@ -431,8 +432,7 @@ export function isScopeKeyViolation(error: unknown): boolean {
 		error !== null &&
 		"code" in error &&
 		error.code === "23505" &&
-		"constraint_name" in error &&
-		error.constraint_name === SCOPE_KEY_INDEX
+		postgresConstraintName(error) === SCOPE_KEY_INDEX
 	);
 }
 

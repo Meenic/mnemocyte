@@ -34,21 +34,14 @@ application
 ```
 
 **Driver.** The user passes the client they already own; Mnemocyte never
-creates or closes it. `SqlExecutor` (`query`, plus `transaction` and/or
-`batch`) and the postgres.js adapter have landed (see
-[features/postgres.md](./features/postgres.md)).
-
-Still to come: `postgresStore(client)` takes the driver's client itself and
-picks the adapter by its shape (decision 21): a postgres.js `sql` function
-(`unsafe`, `begin`), a `pg` Pool (`query`, `connect`; each transaction checks
-out a client with `connect()` and releases it, because node-postgres warns
-against `pool.query` inside a transaction), a Drizzle instance (`$client`,
-then the same checks) or PGlite (`exec`, `transaction`). A hand-written
-`SqlExecutor` still works for anything else; libSQL later gets its own
-store. Each adapter is a few dozen lines and imports nothing from its
-driver. We write our own interface instead of using Kysely: it is two
-methods, adds no dependency, and a query builder does not help with vector
-or full-text SQL, which is where dialects differ.
+creates or closes it. This has landed: `SqlExecutor` (`query`, plus
+`transaction` and/or `batch`), and `postgresStore({ client })` detecting
+postgres.js, a node-postgres `Pool`, PGlite and Drizzle over them by shape
+(decision 21); see
+[features/postgres.md](./features/postgres.md#client-detection). libSQL
+later gets its own store. We write our own interface instead of using
+Kysely: it is two methods, adds no dependency, and a query builder does not
+help with vector or full-text SQL, which is where dialects differ.
 
 **Backend (`MemoryStore`).** Owns its dialect's SQL, its migrations and a
 capability declaration. The contract shrinks from 18 methods to about ten:
@@ -363,4 +356,11 @@ Dated 2026-10-26 unless noted.
     client the app already has. Detection reads properties only and imports
     no driver, so the core keeps zero dependencies; checks run in a fixed
     order, and an unrecognised object is a `"CONFIG"` error that points to
-    `SqlExecutor`.
+    `SqlExecutor`. (2026-11-12, landed) The order is postgres.js, Drizzle
+    (`$client`), PGlite, `pg` Pool, then `SqlExecutor`, which must come last
+    because PGlite has its shape. A `pg.Client` is rejected: a transaction
+    needs a connection of its own, which only a pool hands out. The input
+    stays `postgresStore({ client })`, keeping the single-object-parameter
+    rule; `postgresJs()` and `drizzleStore()` stay, not deprecated. `pg` and
+    `@electric-sql/pglite` became optional peers like `postgres` and
+    `drizzle-orm`, and the contract suite runs on PGlite in `pnpm test`.

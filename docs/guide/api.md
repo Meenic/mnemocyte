@@ -35,28 +35,46 @@ in-memory store is garbage-collected with the client.
 ```ts
 import { migrate } from "mnemocyte";
 
-const { applied, adopted } = await migrate({
-  store,             // from postgresStore() or drizzleStore()
-  dimensions: 1536,  // required on an empty database
-  signal,            // optional
+const { applied, adopted, extensionCreated } = await migrate({
+  memory,                 // the client from createMemory()
+  createExtension: true,  // optional; enable pgvector if it is missing
+  dryRun: false,          // optional; report what would happen, change nothing
+  signal,                 // optional
 });
+
+// Without a client at hand, name the store and the dimensions instead:
+await migrate({ store, dimensions: 1536 });
 ```
 
 Creates or upgrades the Postgres schema and records each migration in
 `mnemocyte_migrations`. `applied` lists the migrations this call ran;
 `adopted` lists those it found already applied in a schema installed without
-`migrate` (with `psql` or drizzle-kit) and recorded without running. Calling
+`migrate` (with `psql` or drizzle-kit) and recorded without running;
+`extensionCreated` says whether it ran `CREATE EXTENSION vector`. Calling
 it again applies nothing. Each migration runs in its own transaction behind
 an advisory lock, so concurrent calls from several app instances wait for
 each other and apply every migration once. See
 [postgres.md](./postgres.md#install-the-schema) for what each case does.
 
+- Pass exactly one of `memory` and `store` (`"VALIDATION"` otherwise).
+  With `memory`, the client's store is migrated and `embedder.dimensions`
+  is the dimensions; a `dimensions` that differs from it throws `"CONFIG"`.
+  With an in-memory client there is nothing to migrate.
 - `dimensions` is an integer from 1 to 4,000. It is required when the
   database has no Mnemocyte tables (`"VALIDATION"` otherwise) and fixes the
   embedding column: `vector` up to 2,000, `halfvec` above. On an existing
   installation a different value throws `"CONFIG"` before anything runs.
-- pgvector must already be installed; otherwise a fresh install throws
-  `"MIGRATION"`. `migrate` never creates extensions.
+- pgvector must be enabled before a fresh install. With
+  `createExtension: true`, `migrate` runs `CREATE EXTENSION IF NOT EXISTS
+  vector` when it is missing, in the same transaction as the schema. That
+  needs a superuser or the provider's admin role; without it, or when the
+  server does not have pgvector installed, it throws `"MIGRATION"` with a
+  message naming the step, and nothing is created. Without the option a
+  missing pgvector throws `"MIGRATION"`.
+- `dryRun: true` reads the database in one read-only transaction and returns
+  what a run would return, changing nothing (the extension included). It
+  throws what a real run would throw before its first change; a migration
+  that would fail partway through is only found by running it.
 - A failing migration rolls back and throws `"MIGRATION"` with the driver
   error as `cause`; migrations that committed before it stay applied.
 - A schema that matches no migration (for example a half-applied file run

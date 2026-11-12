@@ -10,6 +10,19 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **`migrate({ memory })`, `createExtension` and `dryRun`.** `migrate` now
+  takes the client from `createMemory()` and reads the store and the
+  embedding size from it; `{ store, dimensions }` keeps working, and a
+  `dimensions` that differs from the embedder's throws `"CONFIG"`.
+  `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector` when
+  pgvector is missing, in the fresh install's transaction; it needs a
+  superuser or the provider's admin role, and without it throws
+  `"MIGRATION"` naming the step. `dryRun: true` returns what a run would
+  return from one read-only transaction and changes nothing. The result has
+  a new `extensionCreated` field. `MigrateInput` is now a union of the two
+  input shapes, so code that reads `input.store` from a `MigrateInput`
+  needs to narrow it first.
+
 - **postgres.js 4.** The `postgres` peer range is now `^3.4.9 || ^4`.
   Mnemocyte's statements send only strings, numbers and null, so 4.x
   leaving parameter types to the server changes nothing for them. On

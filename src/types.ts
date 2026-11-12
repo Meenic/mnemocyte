@@ -246,20 +246,23 @@ export interface MnemocyteStoreConfig {
 	readonly [mnemocyteStoreConfigBrand]: true;
 }
 
-/**
- * Input for {@link migrate}.
- */
-export interface MigrateInput {
-	/** The store to migrate, from `postgresStore()` or `drizzleStore()`. */
-	store: MnemocyteStoreConfig;
+/** Options {@link migrate} takes with either input shape. */
+interface MigrateOptions {
 	/**
-	 * Embedding dimensions of the installation. Required on a database with no
-	 * Mnemocyte tables, where it fixes the vector column for good: `vector` up
-	 * to 2,000 dimensions, `halfvec` up to 4,000. On an existing installation
-	 * it is optional, and a value that differs from the installed column
-	 * rejects with `"CONFIG"` before anything runs.
+	 * Run `CREATE EXTENSION IF NOT EXISTS vector` when pgvector is missing,
+	 * in the fresh install's transaction, before the schema. Off by default:
+	 * pgvector is not a trusted extension, so this needs a superuser or a
+	 * provider's admin role (`rds_superuser`, `neon_superuser`, Supabase's
+	 * `postgres`). Without the privilege it rejects with `"MIGRATION"`.
 	 */
-	dimensions?: number;
+	createExtension?: boolean;
+	/**
+	 * Inspect the database as a real run would and return the `applied`,
+	 * `adopted` and `extensionCreated` it would produce, changing nothing.
+	 * It rejects with the errors a real run would raise before its first
+	 * statement; a migration that would fail partway through is not detected.
+	 */
+	dryRun?: boolean;
 	/**
 	 * Cancels the running statement when aborted. The migration in progress
 	 * rolls back; migrations that already committed stay applied.
@@ -268,8 +271,41 @@ export interface MigrateInput {
 }
 
 /**
+ * Input for {@link migrate}: the app's client, or a store with the
+ * dimensions written out.
+ */
+export type MigrateInput =
+	| (MigrateOptions & {
+			/**
+			 * The client from `createMemory()`. Its store is migrated and its
+			 * `embedder.dimensions` fixes the vector column on a fresh install.
+			 */
+			memory: MemoryClient;
+			store?: never;
+			/**
+			 * Optional here. A value that differs from `embedder.dimensions`
+			 * rejects with `"CONFIG"` before anything runs.
+			 */
+			dimensions?: number;
+	  })
+	| (MigrateOptions & {
+			memory?: never;
+			/** The store to migrate, from `postgresStore()` or `drizzleStore()`. */
+			store: MnemocyteStoreConfig;
+			/**
+			 * Embedding dimensions of the installation. Required on a database
+			 * with no Mnemocyte tables, where it fixes the vector column for good:
+			 * `vector` up to 2,000 dimensions, `halfvec` up to 4,000. On an
+			 * existing installation it is optional, and a value that differs from
+			 * the installed column rejects with `"CONFIG"` before anything runs.
+			 */
+			dimensions?: number;
+	  });
+
+/**
  * Result of {@link migrate}. Names are migration file names without the
- * extension, such as `"0003_schema_v2"`.
+ * extension, such as `"0003_schema_v2"`. With `dryRun`, what the call would
+ * have produced.
  */
 export interface MigrateResult {
 	/**
@@ -283,6 +319,11 @@ export interface MigrateResult {
 	 * drizzle-kit). They are recorded without running again.
 	 */
 	adopted: string[];
+	/**
+	 * True when this call ran `CREATE EXTENSION vector` (`createExtension`);
+	 * false when pgvector was already installed or nothing was created.
+	 */
+	extensionCreated: boolean;
 }
 
 /**

@@ -178,6 +178,8 @@ export interface StoreOperationOptions {
 
 export interface StoreMigrateInput {
 	readonly dimensions?: number;
+	readonly createExtension?: boolean;
+	readonly dryRun?: boolean;
 	readonly signal?: AbortSignal;
 }
 

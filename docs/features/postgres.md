@@ -85,7 +85,9 @@ the keyed `INSERT … ON CONFLICT`, `list` pagination and `update` are in
 
 ## Migrations
 
-pgvector is a prerequisite: no migration runs `CREATE EXTENSION`. The SQL
+No migration file runs `CREATE EXTENSION`; pgvector is enabled by an admin
+or, on request, by `migrate()` (see
+[enabling pgvector](#enabling-pgvector)). The SQL
 lives in `migrations/`; `migrate()` runs the same SQL from
 `src/db/migrations/bundled.ts` (see [the runner](#the-migrate-runner)).
 Files in `migrations/`:
@@ -126,7 +128,7 @@ Files in `migrations/`:
 
 Install paths:
 
-- Any database: `migrate({ store, dimensions })`.
+- Any database: `migrate({ memory })` or `migrate({ store, dimensions })`.
 - New database, 1536 dimensions: apply `fresh-install.sql`.
 - New database, other dimensions: render the template and apply the result.
   It already contains the effects of `0001`→`0003`.
@@ -153,11 +155,23 @@ inferred types blocked `isolatedDeclarations`.
 
 ### The `migrate()` runner
 
-`migrate({ store, dimensions?, signal? })` is exported from the root
-`mnemocyte` import and calls the store's `migrate` method; the Postgres one is
-`runPostgresMigrations` in `src/db/migrations/runner.ts`. The root bundle
-contains no SQL: it reaches the runner only through a store from
-`mnemocyte/postgres` or `mnemocyte/stores/drizzle`.
+`migrate(input)` is exported from the root `mnemocyte` import and calls the
+store's `migrate` method; the Postgres one is `runPostgresMigrations` in
+`src/db/migrations/runner.ts`. The root bundle contains no SQL: it reaches
+the runner only through a store from `mnemocyte/postgres` or
+`mnemocyte/stores/drizzle`.
+
+- **Input.** Either `{ memory }` or `{ store, dimensions? }`, plus
+  `createExtension?`, `dryRun?` and `signal?`; both or neither of `memory`
+  and `store` is `"VALIDATION"`, and the TypeScript union rejects them too.
+  `createMemory` attaches the client's store and embedder under the
+  non-enumerable `Symbol.for("mnemocyte.memory-client")` key
+  (`src/memory/client-internals.ts`), so they stay out of `Object.keys`,
+  spreads and JSON, and a client from one copy of the package works with
+  `migrate` from another, like the store envelope. `migrate` reads
+  `embedder.dimensions` from it, rejects an explicit `dimensions` that
+  differs (`"CONFIG"`) and checks the 1–4,000 bound under the name
+  `embedder.dimensions`. An in-memory store resolves with empty lists.
 
 - **Bundled SQL.** `scripts/bundle-migrations.mjs` (`pnpm migration:bundle`)
   writes every journal entry and the template into `bundled.ts` as template
@@ -187,10 +201,16 @@ contains no SQL: it reaches the runner only through a store from
   drivers that use the extended query protocol (one statement per query)
   work. A statement failure becomes `"MIGRATION"` naming the migration, with
   the driver error as `cause`; the transaction rolls back.
+- **Inspection.** Every transaction starts with `inspect`: the lock, the
+  dimensions check, the tracking table, then, without tracked versions, the
+  catalog level and, for a fresh install, `pg_extension`. It returns
+  `fresh`, `untracked` or `tracked` and throws every error a run raises
+  before its first change, so a real step and a dry run share them.
 - **Fresh install.** With no Mnemocyte tables, the runner requires
-  `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`
-  (`"MIGRATION"` when missing), runs the template rendered for those
-  dimensions (`halfvec` above 2,000), and records `0000`→`0003`.
+  `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`, runs
+  the template rendered for those dimensions (`halfvec` above 2,000), and
+  records `0000`→`0003`. A missing pgvector is `"MIGRATION"` unless
+  `createExtension` is set; see the next section.
 - **Adoption.** With tables but an empty tracking table, `installedVersion`
   reads the level from the catalog: `mnemocyte_memories` and
   `mnemocyte_events` (`0000`), `mnemocyte_meta` (`0001`),
@@ -205,10 +225,44 @@ contains no SQL: it reaches the runner only through a store from
   `n` may not exceed the bundled count (a newer Mnemocyte migrated the
   database); both throw `"MIGRATION"`. There are no checksums: the SQL ships
   inside the package and users do not edit it.
+- **Dry run.** `dryRun` opens one transaction whose first statement is
+  `SET TRANSACTION READ ONLY`, so any write would fail instead of landing,
+  then takes the advisory lock (allowed in a read-only transaction), so it
+  waits for a running step and reports what is left after it. It turns the
+  inspection into the whole result: the remaining tracked migrations, or
+  the adopted and pending ones, or every migration for a fresh install,
+  with `extensionCreated` true when pgvector is missing and
+  `createExtension` is set. It creates no tracking table. It cannot see a
+  statement that would fail on data, and it does not check whether the role
+  may create the extension.
 - **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
-  migrate. The self foreign key names `public.mnemocyte_memories`, so the
+  migrate or dry-run. The self foreign key names `public.mnemocyte_memories`, so the
   tables must be in `public`. There is no `lock_timeout`: `0003` waits for
   its `ACCESS EXCLUSIVE` locks as long as the server allows.
+
+### Enabling pgvector
+
+`createExtension: true` lets a fresh install run `CREATE EXTENSION IF NOT
+EXISTS vector` (no `SCHEMA` clause, so pgvector's objects go into the first
+schema on `search_path`, normally `public` like the tables). It is off by
+default (ARCHITECTURE decision 20): pgvector's control file is not marked
+`trusted`, so only a superuser, or a provider's admin role, may create it.
+
+- It runs only on the fresh-install path, after `pg_extension` shows
+  `vector` missing, so an installed pgvector gets no statement and no
+  notice. Once Mnemocyte tables exist the `vector` column depends on the
+  extension, so the existing-installation paths never look.
+- It runs inside the fresh install's locked transaction, before the schema.
+  `CREATE EXTENSION` is transactional: a schema that fails takes the
+  extension with it, and concurrent callers take turns at the lock, so two
+  of them never race to insert the same `pg_extension` row.
+- SQLSTATE `42501` (`insufficient_privilege`: "permission denied to create
+  extension") becomes `"MIGRATION"` with a message to have an admin run
+  `CREATE EXTENSION vector;`; `0A000` ("extension is not available": the
+  server lacks pgvector's files) becomes `"MIGRATION"` saying so; anything
+  else becomes `"MIGRATION"` "CREATE EXTENSION vector failed". The driver
+  error is the `cause` each time.
+- `extensionCreated` in the result is true when the call ran it.
 
 ## Installation metadata
 

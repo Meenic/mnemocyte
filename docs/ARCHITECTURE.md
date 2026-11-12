@@ -209,17 +209,9 @@ runs.
 The target flow is three steps: install, export `memory` from a
 `memory.ts`, run `npx mnemocyte migrate`. No `migrate` call sits in app code.
 
-- **`migrate` options.** `migrate({ memory })` takes the client, which
-  already holds the store and the embedder, so `dimensions` is written once.
-  `{ store, dimensions }` stays for callers without a client at deploy time;
-  a `dimensions` that differs from the embedder's is a `"CONFIG"` error.
-  `createExtension: true` runs `CREATE EXTENSION IF NOT EXISTS vector`
-  before the first migration, so a role that may create extensions needs no
-  `psql` step. It is off by default: managed databases and restricted roles
-  often cannot create extensions, and the error should then name the step
-  rather than happen implicitly. `dryRun: true` inspects the database as a
-  real run would and returns the `applied` and `adopted` lists without
-  changing anything, the extension included, for checking a deploy step.
+- **`migrate` options.** Landed: `migrate({ memory })`, `createExtension`
+  and `dryRun` are described in
+  [features/postgres.md](./features/postgres.md#the-migrate-runner).
 - **CLI.** A `mnemocyte` bin. It loads the app's own `memory.ts` from the
   project root, `lib/`, `src/` or `src/lib/` (or `--config <path>`) and
   uses its exported `memory`, so the CLI and the app share one client and

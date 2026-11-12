@@ -188,6 +188,21 @@ const migrateInput: MigrateInput = {
 };
 const migrated: Promise<MigrateResult> = migrate(migrateInput);
 const client: MemoryClient = createMemory(config);
+const migrateFromClient: MigrateInput = {
+	memory: client,
+	createExtension: true,
+	dryRun: true,
+};
+const dryRunResult: Promise<boolean> = migrate(migrateFromClient).then(
+	(result) => result.extensionCreated,
+);
+// @ts-expect-error migrate takes memory or store, not both.
+const migrateBoth: MigrateInput = {
+	memory: client,
+	store: postgresStore(postgresOptions),
+};
+// @ts-expect-error migrate needs memory or store.
+const migrateNeither: MigrateInput = { dimensions: 1536 };
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
 const conflictError = new MnemocyteError("conflict", conflictCode);
 const jsonValue: JsonValue = ["value", 1, true, null, { nested: "value" }];
@@ -349,6 +364,9 @@ const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 
 void client;
 void migrated;
+void dryRunResult;
+void migrateBoth;
+void migrateNeither;
 void callerStoreConfig;
 void postgresConfig;
 void queryOptions;

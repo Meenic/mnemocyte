@@ -52,20 +52,16 @@ memories live in process memory, which suits tests and prototypes.
 
 ## Postgres
 
-Install your driver (`postgres`, `pg`, or PGlite) and enable pgvector
-(0.8.0 or later):
+Install your driver (`postgres`, `pg`, or PGlite); the database needs
+pgvector 0.8.0 or later available:
 
 ```bash
 pnpm add postgres
 ```
 
-```bash
-psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-```
-
 Pass the client you already have (a postgres.js `sql`, a `pg` Pool, a
-PGlite instance or a Drizzle instance), and create or upgrade the schema
-with `migrate`:
+PGlite instance or a Drizzle instance), then create or upgrade the schema
+with `migrate`, for example in a deploy step:
 
 ```ts
 import { createMemory, migrate } from "mnemocyte";
@@ -73,17 +69,18 @@ import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
-const store = postgresStore({ client: sql });
+const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
 
-await migrate({ store, dimensions: 1536 });
-
-const memory = createMemory({ store, embedder });
+await migrate({ memory, createExtension: true });
 ```
 
-`dimensions` must match your embedder and is fixed when the schema is
-created. `migrate` applies only what is missing, so it is safe in every
-deploy. Each driver, applying the SQL files with `psql` instead, and
-upgrades are in the
+`migrate` takes the embedding size from your embedder and fixes it when the
+schema is created. `createExtension: true` enables pgvector first, which
+needs a superuser or your provider's admin role; if yours may not, have an
+admin run `CREATE EXTENSION vector;` once and drop the option. `migrate`
+applies only what is missing, so it is safe in every deploy, and
+`dryRun: true` shows what it would do. Each driver, applying the SQL files
+with `psql` instead, and upgrades are in the
 [Postgres guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md).
 
 ## API at a glance

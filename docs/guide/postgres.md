@@ -23,32 +23,68 @@ in-memory backend needs none of this.
   none of them.
 
 Mnemocyte never creates extensions, tables or indexes when a client is
-created. You create the schema with `migrate()`, or by applying the bundled
-SQL files yourself.
+created. You create the schema with `migrate()`, which can also enable
+pgvector when you ask it to, or by applying the bundled SQL files yourself.
 
 ## Install the schema
 
-Enable pgvector once, as a role that may create extensions:
+Run `migrate` with the client your app uses, for example in a deploy step:
+
+```ts
+import { createMemory, migrate } from "mnemocyte";
+import { postgresStore } from "mnemocyte/postgres";
+import postgres from "postgres";
+
+const sql = postgres(process.env.DATABASE_URL!);
+const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
+
+const { applied, adopted, extensionCreated } = await migrate({
+  memory,
+  createExtension: true,
+});
+```
+
+`migrate` takes the store and the embedding size (`embedder.dimensions`)
+from the client. A deploy script that has no client can pass them itself:
+`migrate({ store, dimensions: 1536 })`.
+
+### Enabling pgvector
+
+pgvector has to be enabled in each database before the first install.
+`createExtension: true` makes `migrate` run `CREATE EXTENSION IF NOT EXISTS
+vector` when it is missing, in the same transaction as the schema, so a
+failed install leaves neither behind. pgvector is not a trusted extension,
+so this needs a superuser or the admin role your provider gives you
+(`rds_superuser` on RDS, `neon_superuser` on Neon, `postgres` on Supabase).
+A role without it gets `"MIGRATION"` with a message saying so, and a server
+without pgvector installed gets `"MIGRATION"` too.
+
+When the app's role may not create extensions, leave the option off and
+have an admin enable pgvector once:
 
 ```bash
 psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ```
 
-Then run `migrate` with the same client your app uses, for example in a
-deploy step or at startup:
+### Check a deploy with `dryRun`
+
+`dryRun: true` reads the database in one read-only transaction and returns
+the `applied`, `adopted` and `extensionCreated` a real run would return,
+without changing anything:
 
 ```ts
-import { migrate } from "mnemocyte";
-import { postgresStore } from "mnemocyte/postgres";
-import postgres from "postgres";
-
-const sql = postgres(process.env.DATABASE_URL!);
-const store = postgresStore({ client: sql });
-
-const { applied, adopted } = await migrate({ store, dimensions: 1536 });
+const plan = await migrate({ memory, createExtension: true, dryRun: true });
+// { applied: ["0003_schema_v2"], adopted: [], extensionCreated: false }
 ```
 
-What it does depends on the database:
+It throws the errors a real run would throw before its first change (a
+missing pgvector, dimensions that do not match, a schema it cannot place).
+It cannot tell whether a migration will fail partway through, for example on
+data; only running it shows that.
+
+### What `migrate` does
+
+It depends on what the database already has:
 
 - **No Mnemocyte tables:** creates the current schema in one transaction for
   `dimensions` (required here) and records every migration as applied.
@@ -162,17 +198,17 @@ next statement; the one already sent runs to the end.
 ### PGlite
 
 [PGlite](https://pglite.dev) runs Postgres inside your process. Load
-pgvector through its extension package, enable it, then migrate as usual:
+pgvector through its extension package, then migrate; `createExtension`
+enables it in the database:
 
 ```ts
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 
 const db = await PGlite.create({ dataDir: "./memory-data", extensions: { vector } });
-await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
 
-const store = postgresStore({ client: db });
-await migrate({ store, dimensions: 1536 });
+const memory = createMemory({ store: postgresStore({ client: db }), embedder });
+await migrate({ memory, createExtension: true });
 ```
 
 PGlite 0.5 is Postgres 18 with pgvector 0.8.7. It runs one transaction at
@@ -255,7 +291,8 @@ executor, for code written before detection.
 
 ## Upgrade an existing installation
 
-Run `migrate({ store })` after upgrading the package. It applies the pending
+Run `migrate({ memory })` (or `migrate({ store })`) after upgrading the
+package. It applies the pending
 migrations, adopting an installation that was set up with `psql` first.
 
 With `psql`, apply the numbered migrations yourself. Never apply

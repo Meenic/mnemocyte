@@ -1,5 +1,5 @@
 import { assertSqlExecutor } from "../db/atomic.js";
-import { postgresConstraintName } from "../db/errors.js";
+import { postgresConstraintName, postgresErrorCode } from "../db/errors.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
 import { insertEvents, listEvents } from "../db/queries/events.js";
 import {
@@ -93,20 +93,11 @@ function hasPostgresConstraintName(error: unknown, name: string): boolean {
 	return postgresConstraintName(error) === name;
 }
 
-function getPostgresErrorCode(error: unknown): string | undefined {
-	return typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		typeof (error as { code?: unknown }).code === "string"
-		? (error as { code: string }).code
-		: undefined;
-}
-
 function normalizePostgresError(error: unknown): MnemocyteError {
 	if (error instanceof MnemocyteError) {
 		return error;
 	}
-	const code = getPostgresErrorCode(error);
+	const code = postgresErrorCode(error);
 	if (code && MIGRATION_ERROR_CODES.has(code)) {
 		return new MnemocyteError(
 			"Postgres schema is missing or incompatible. Apply the bundled Mnemocyte migrations before using the Postgres backend.",

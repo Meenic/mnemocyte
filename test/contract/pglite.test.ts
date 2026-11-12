@@ -1,8 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { drizzle } from "drizzle-orm/pglite";
+import { createMemory, type Embedder, migrate } from "mnemocyte";
+import { postgresStore } from "mnemocyte/postgres";
+import { describe, expect, test } from "vitest";
+import { MIGRATIONS } from "../../src/db/migrations/bundled.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
+import { expectMnemocyteError } from "../helpers.js";
 import { describeStoreContract } from "./suite.js";
 
 /** An in-process Postgres 18 with pgvector, gone when it is closed. */
@@ -75,4 +80,79 @@ describeStoreContract("PGlite, parameter types checked", async () => {
 		client: checkingParams(toSqlExecutor(db)),
 		close: () => db.close(),
 	};
+});
+
+describe("migrate on a PGlite without pgvector enabled", () => {
+	const names = MIGRATIONS.map((migration) => migration.name);
+	const embedder: Embedder = {
+		model: "pglite-setup",
+		dimensions: 3,
+		async embed(texts) {
+			return texts.map((text) => [text.length, 1, 0]);
+		},
+	};
+
+	async function catalog(db: PGlite) {
+		const { rows } = await db.query<{
+			vector: boolean;
+			memories: boolean;
+			tracking: boolean;
+		}>(`SELECT
+			EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS "vector",
+			to_regclass('mnemocyte_memories') IS NOT NULL AS "memories",
+			to_regclass('mnemocyte_migrations') IS NOT NULL AS "tracking"`);
+		return rows[0];
+	}
+
+	test("dryRun changes nothing; createExtension enables pgvector and installs", async () => {
+		// The extension's files are loaded, but CREATE EXTENSION has not run.
+		const db = await PGlite.create({ extensions: { vector } });
+		try {
+			const memory = createMemory({
+				store: postgresStore({ client: db }),
+				embedder,
+			});
+			const empty = { vector: false, memories: false, tracking: false };
+
+			await expectMnemocyteError(
+				migrate({ memory, dryRun: true }),
+				"MIGRATION",
+			);
+			await expect(
+				migrate({ memory, dryRun: true, createExtension: true }),
+			).resolves.toEqual({
+				applied: names,
+				adopted: [],
+				extensionCreated: true,
+			});
+			expect(await catalog(db)).toEqual(empty);
+
+			await expect(migrate({ memory, createExtension: true })).resolves.toEqual(
+				{
+					applied: names,
+					adopted: [],
+					extensionCreated: true,
+				},
+			);
+			expect(await catalog(db)).toEqual({
+				vector: true,
+				memories: true,
+				tracking: true,
+			});
+
+			const current = { applied: [], adopted: [], extensionCreated: false };
+			await expect(migrate({ memory, createExtension: true })).resolves.toEqual(
+				current,
+			);
+			await expect(migrate({ memory, dryRun: true })).resolves.toEqual(current);
+
+			const scope = { namespace: "setup", entityId: "pglite" };
+			await memory.add({ scope, content: "Installed by migrate." });
+			await expect(
+				memory.search({ scope, query: "Installed" }),
+			).resolves.toHaveLength(1);
+		} finally {
+			await db.close();
+		}
+	});
 });

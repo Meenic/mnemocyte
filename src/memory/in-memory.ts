@@ -113,7 +113,7 @@ export function createInMemoryStore(): MemoryStore {
 	return {
 		backend: "in-memory",
 		async migrate() {
-			return { applied: [], adopted: [] };
+			return { applied: [], adopted: [], extensionCreated: false };
 		},
 		async ensureEmbeddingCompatibility() {},
 		async insertMemories(rows, options) {

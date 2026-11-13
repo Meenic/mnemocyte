@@ -412,8 +412,9 @@ An aborted signal throws `"ABORTED"`. A signal that is already aborted throws
 before any work starts. The signal cancels the embedder attempt and any wait
 between retries.
 
-On Postgres, `prune`, `findDuplicates`, `listAuditLog` and `consolidate`
-also cancel the running query. `consolidate` is one statement, so a cancel
+On Postgres, `prune`, `findDuplicates`, `listAuditLog`, `pruneAuditLog`
+and `consolidate` also cancel the running query; `pruneAuditLog` also
+stops before its next batch. `consolidate` is one statement, so a cancel
 before it finishes writes nothing; one that arrives after it finished has no
 effect. Other queries run to completion.
 

@@ -74,6 +74,7 @@ import {
 	validateListAuditLogInput,
 	validateListFilter,
 	validateNewMemory,
+	validatePruneAuditLogInput,
 	validatePruneInput,
 	validateScope,
 	validateSearchInput,
@@ -822,6 +823,20 @@ export function createMemoryClient(
 					);
 				},
 				(result) => ({ count: result.length }),
+			);
+		},
+		pruneAuditLog(input) {
+			return observe(
+				config,
+				store.backend,
+				"pruneAuditLog",
+				scopeMetadata(input),
+				async () => {
+					throwIfAborted(input?.signal);
+					const prune = validatePruneAuditLogInput(input);
+					return store.pruneAuditLog(prune, storeOptions(input.signal));
+				},
+				(result) => ({ count: result.deletedCount }),
 			);
 		},
 		stats(input) {

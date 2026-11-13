@@ -78,8 +78,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   neighbor. For a small scope it reads the scope's rows for every memory,
   so its cost still grows with the square of the scope's size. The
   in-memory backend is exact but compares every pair.
-- **The audit log grows forever.** Only `deleteScope` deletes audit events.
-  Planned: a retention option (`feat/audit-retention`).
+- **Audit events stay until you prune them.** Nothing expires them on its
+  own; schedule `pruneAuditLog` (see
+  [retention](./api.md#retention)). On Postgres it deletes in batches that
+  commit one by one, so an aborted or failed run leaves the earlier batches
+  deleted and the rest in place.
 
 ## AI SDK tools
 

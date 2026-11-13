@@ -14,14 +14,19 @@ import type {
 	MigrateInput,
 	NewMemory,
 	ProviderResilienceConfig,
+	PruneAuditLogInput,
 	PruneInput,
 	RetrievalConfig,
 	ScopedReadOptions,
 	SearchInput,
 } from "../types.js";
-import { DEFAULT_DEPENDENTS_POLICY } from "./defaults.js";
+import {
+	DEFAULT_AUDIT_PRUNE_BATCH,
+	DEFAULT_DEPENDENTS_POLICY,
+} from "./defaults.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
+	MAX_AUDIT_PRUNE_BATCH,
 	MAX_CONTENT_LENGTH,
 	MAX_DUPLICATE_NEIGHBORS,
 	MAX_KEY_BYTES,
@@ -33,6 +38,7 @@ import {
 } from "./limits.js";
 import {
 	assertPruneFilterHasSelector,
+	type StoreAuditPruneInput,
 	type StoreEntitySelector,
 	type StoreScope,
 	type StoreSelector,
@@ -790,6 +796,42 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	};
 	assertPruneFilterHasSelector(filter);
 	return filter;
+}
+
+/**
+ * Validate a {@link PruneAuditLogInput}: a selector (or `allNamespaces`), a
+ * valid `before`, and a `batchSize` from 1 to {@link MAX_AUDIT_PRUNE_BATCH}.
+ */
+export function validatePruneAuditLogInput(
+	input: PruneAuditLogInput,
+): StoreAuditPruneInput {
+	const selector = validateSelectorInput(input);
+	if (input.before === undefined) {
+		throw new MnemocyteError(
+			"before is required: pruneAuditLog deletes events older than it.",
+			"VALIDATION",
+		);
+	}
+	assertValidDate(input.before, "before");
+	const batchSize = input.batchSize ?? DEFAULT_AUDIT_PRUNE_BATCH;
+	if (
+		!Number.isInteger(batchSize) ||
+		batchSize < 1 ||
+		batchSize > MAX_AUDIT_PRUNE_BATCH
+	) {
+		throw new MnemocyteError(
+			`batchSize must be an integer from 1 to ${MAX_AUDIT_PRUNE_BATCH}.`,
+			"VALIDATION",
+		);
+	}
+	assertOptionalBoolean(input.dryRun, "dryRun");
+	assertOptionalSignal(input.signal);
+	return {
+		selector,
+		before: new Date(input.before),
+		batchSize,
+		dryRun: input.dryRun === true,
+	};
 }
 
 /** Validate a {@link FindDuplicatesInput} and return its visibility. */

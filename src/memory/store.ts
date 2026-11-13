@@ -12,6 +12,7 @@ import type {
 	MemoryStats,
 	MigrateResult,
 	MnemocyteBackend,
+	PruneAuditLogResult,
 	PruneResult,
 } from "../types.js";
 import type { StoredMemory } from "./records.js";
@@ -204,6 +205,16 @@ export interface StorePruneInput extends ValidatedPruneFilter {
 	readonly now: Date;
 	/** Records one `memory.pruned` per affected entity in the same write. */
 	readonly audit: boolean;
+}
+
+/** Audit events a `pruneAuditLog` deletes, already validated. */
+export interface StoreAuditPruneInput {
+	readonly selector: StoreSelector;
+	/** Events strictly before this time are selected. */
+	readonly before: Date;
+	/** Most events one statement deletes. */
+	readonly batchSize: number;
+	readonly dryRun: boolean;
 }
 
 export interface StoreMigrateInput {
@@ -406,6 +417,16 @@ export interface MemoryStore {
 		input: StoreAuditLogInput,
 		options?: StoreOperationOptions,
 	): Promise<AuditEvent[]>;
+	/**
+	 * Deletes the selected events strictly before `before`, at most
+	 * `batchSize` per statement, or counts them on a dry run. Batches commit
+	 * one by one; the signal is checked before each, so an abort keeps the
+	 * batches already deleted.
+	 */
+	pruneAuditLog(
+		input: StoreAuditPruneInput,
+		options?: StoreOperationOptions,
+	): Promise<PruneAuditLogResult>;
 
 	/** Shared validation supplies distinct IDs before this preflight lookup. */
 	loadConsolidationTargets(

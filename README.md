@@ -106,7 +106,8 @@ Every memory belongs to a `namespace` and an `entityId`, plus an optional
 
 - **Write:** `add`, `addMany`, `update`, `delete`, `deleteScope`
 - **Read:** `search`, `context`, `get`, `list`
-- **Maintain:** `prune`, `findDuplicates`, `consolidate`, `stats`, `listAuditLog`
+- **Maintain:** `prune`, `findDuplicates`, `consolidate`, `stats`,
+  `listAuditLog`, `pruneAuditLog`
 - **Setup:** `migrate`, `for`
 
 Errors are `MnemocyteError` with a stable `code`. See the

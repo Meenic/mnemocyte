@@ -176,7 +176,8 @@ it.
   as the write they record, for every write path (`add`, `addMany`,
   `update`, `delete`, `prune`, `consolidate`), so a failed audit write
   fails the call instead of being swallowed.
-- [ ] `feat/audit-retention`: retention option and pruning guidance.
+- [x] `feat/audit-retention`: `pruneAuditLog` (decision 32) and pruning
+  guidance.
 - [ ] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
 - [ ] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
@@ -203,7 +204,7 @@ it.
 
 ## Cut first if time runs short
 
-Audit retention, `mnemocyte init`.
+`mnemocyte init`.
 
 ## After 1.0
 

@@ -535,6 +535,30 @@ export function createInMemoryStore(): MemoryStore {
 				.slice(0, input.limit)
 				.map(cloneAuditEvent);
 		},
+		async pruneAuditLog(input, options) {
+			throwIfAborted(options?.signal);
+			// One synchronous pass: with nothing awaited in between, batches
+			// would change nothing, so `batchSize` only matters on Postgres.
+			const before = input.before.getTime();
+			const matches = (event: AuditEvent) =>
+				event.timestamp.getTime() < before &&
+				isSelected(event.scope, input.selector);
+			if (input.dryRun) {
+				const matchedCount = auditLog.filter(matches).length;
+				return { matchedCount, deletedCount: 0, dryRun: true };
+			}
+			// Compact in place, keeping the order of the remaining events.
+			let kept = 0;
+			for (const event of auditLog) {
+				if (!matches(event)) {
+					auditLog[kept] = event;
+					kept += 1;
+				}
+			}
+			const deletedCount = auditLog.length - kept;
+			auditLog.length = kept;
+			return { matchedCount: deletedCount, deletedCount, dryRun: false };
+		},
 		async loadConsolidationTargets(visibility, ids, options) {
 			return ids.flatMap((id) => {
 				throwIfAborted(options?.signal);

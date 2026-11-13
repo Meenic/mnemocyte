@@ -44,6 +44,9 @@ export const MAX_DUPLICATE_NEIGHBORS = 100;
 /** Memories in one `addMany` call; they are written in one transaction. */
 export const MAX_ADD_MANY = 1000;
 
+/** `batchSize` of `pruneAuditLog`: events one statement deletes. */
+export const MAX_AUDIT_PRUNE_BATCH = 10_000;
+
 const encoder = new TextEncoder();
 
 /** UTF-8 length of `value`. */

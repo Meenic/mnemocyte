@@ -14,6 +14,7 @@ import {
 	verifyAuditFailureRollsBack,
 	verifyAuditPayloads,
 } from "../fixtures/atomic-audit.js";
+import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
@@ -394,6 +395,22 @@ export function describeStoreContract(
 				entityId,
 				...extra,
 			}));
+		});
+
+		test("audit retention", async () => {
+			const { memory, namespace } = client("retention", { audit: true });
+			const other = client("retention_other").namespace;
+			await verifyAuditRetention({
+				client: memory,
+				scopeFor: (entityId, extra = {}) => ({ namespace, entityId, ...extra }),
+				otherScopeFor: (entityId, extra = {}) => ({
+					namespace: other,
+					entityId,
+					...extra,
+				}),
+				// Other suites share this database.
+				allNamespaces: false,
+			});
 		});
 
 		test("a failed audit write rolls back every write path", async () => {

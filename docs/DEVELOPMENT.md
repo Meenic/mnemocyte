@@ -22,7 +22,7 @@ Feature areas:
 - [features/retrieval.md](./features/retrieval.md): search, scoring, access
   tracking, `context`.
 - [features/maintenance.md](./features/maintenance.md): delete, prune,
-  duplicates, consolidation, audit log, stats.
+  duplicates, consolidation, audit log and its retention, stats.
 - [features/embedders.md](./features/embedders.md): the `Embedder` contract
   (`purpose`, `maxBatch`), `openaiEmbedder`, `openaiCompatibleEmbedder`,
   `voyageEmbedder`, `cohereEmbedder`, `googleEmbedder` and
@@ -216,8 +216,9 @@ uses top-level `await`, so `dist/` must not.
 
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
-`listAuditLog`, `stats`, `consolidate`, `for` and the deprecated
-`experimental.consolidate` alias (removed in 1.0). There is no `close()`.
+`listAuditLog`, `pruneAuditLog`, `stats`, `consolidate`, `for` and the
+deprecated `experimental.consolidate` alias (removed in 1.0). There is no
+`close()`.
 `for(scope)` returns a `BoundMemoryClient` with the same methods minus
 `scope`, `allNamespaces` and `for`, plus a read-only `scope`.
 
@@ -303,13 +304,17 @@ Vitest has three projects (`vitest.config.ts`):
   `describeStoreContract`) runs the same checks through every driver:
   migrate, transactions and savepoints, value round trips, chunked
   `addMany`, search and context, the scoped-API and bound-scope fixtures,
-  survivor-aware deletes, nearest-neighbor duplicates and audit payloads
-  (fixtures shared with the in-memory unit tests), audit rollback (a
+  survivor-aware deletes, nearest-neighbor duplicates, audit payloads and
+  audit retention (fixtures shared with the in-memory unit tests), audit rollback (a
   trigger that fails the namespace's audit inserts), and cross-scope
   isolation for search, id
   lookups, prune, duplicates, consolidation, `deleteScope` and stats.
   `test/contract/knn-duplicates-plan.test.ts` checks with `EXPLAIN` that
-  `findDuplicates` uses the HNSW index per memory. The `contract` project
+  `findDuplicates` uses the HNSW index per memory, and
+  `test/contract/audit-retention.test.ts` runs the retention fixture with
+  `allNamespaces` on a PGlite of its own, aborts between batches, and
+  checks that `pruneAuditLog` batches resume along the events' scope
+  index. The `contract` project
   runs the suite on PGlite, direct and through Drizzle: an in-process Postgres 18 with
   pgvector 0.8.7, so no service is needed and every Node job in CI runs it
   (about 20 s). Those runs go through `postgresStore`; another passes the

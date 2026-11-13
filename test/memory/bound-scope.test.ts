@@ -180,6 +180,7 @@ describe("bound scopes (in-memory)", () => {
 				"list",
 				"listAuditLog",
 				"prune",
+				"pruneAuditLog",
 				"scope",
 				"search",
 				"stats",

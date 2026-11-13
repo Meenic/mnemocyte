@@ -104,6 +104,9 @@ describe("lazy Postgres package loading", () => {
 		"dist/index.mjs",
 		"dist/postgres.mjs",
 		"dist/embedders/index.mjs",
+		"dist/embedders/voyage.mjs",
+		"dist/embedders/cohere.mjs",
+		"dist/embedders/google.mjs",
 		"dist/stores/drizzle.mjs",
 	])("keeps ai out of the static import graph of %s", async (entry) => {
 		for (const file of await staticImportGraph(resolve(entry))) {

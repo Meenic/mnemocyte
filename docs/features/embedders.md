@@ -48,16 +48,23 @@ caller as it is. Any other error is wrapped in an `"EMBEDDING"` error
 
 ## Shipped embedders
 
-`openaiEmbedder` and `openaiCompatibleEmbedder` build on
-`createHttpEmbedder` in `src/http-embedder.ts`, which sits outside
-`src/embedders/` so it is not a build entry; `aiSdkEmbedder` (below) calls
-the AI SDK instead. All three build their `ProviderError`s with
-`createProviderError` in `src/provider-error.ts`. It calls
-`POST {baseUrl}/embeddings` with `fetch` (no SDK), checks and snapshots its
-options when the embedder is created (`"CONFIG"`), and validates the
-response: exactly one array embedding per input with unique, in-range
-indexes, sorted by index. A non-JSON success body is `"EMBEDDING"`. An
-`embed` call without a valid `purpose` (untyped code) is `"VALIDATION"`.
+The HTTP embedders build on `createFetchEmbedder` in `src/http-embedder.ts`,
+which sits outside `src/embedders/` so it is not a build entry. It POSTs the
+JSON body each embedder builds to one URL with `fetch` (no SDK) and the
+call's signal, and hands a successful body to the embedder's parser. An
+`embed` call without a valid `purpose` (untyped code) is `"VALIDATION"`, a
+non-2xx response a `ProviderError` and a non-JSON success body
+`"EMBEDDING"`. Each embedder checks and snapshots its options when it is
+created (`"CONFIG"`), with the shared helpers in the same file
+(`resolveApiKey`, `resolveModel`, `resolveModelDimensions`,
+`resolveBoolean`, `resolveMaxBatch`, `resolveBaseUrl`).
+
+`createHttpEmbedder` is the OpenAI-shaped one behind `openaiEmbedder` and
+`openaiCompatibleEmbedder`: `POST {baseUrl}/embeddings`, and a response with
+exactly one array embedding per input with unique, in-range indexes, sorted
+by index (`parseIndexedEmbeddings`, which `voyageEmbedder` uses too).
+`aiSdkEmbedder` (below) calls the AI SDK instead. All of them build their
+`ProviderError`s with `createProviderError` in `src/provider-error.ts`.
 
 ### `openaiCompatibleEmbedder`
 
@@ -95,6 +102,45 @@ is `createHttpEmbedder` with OpenAI's defaults:
   `dimensions`, which is sent too.
 - `baseUrl` defaults to `https://api.openai.com/v1`; `maxBatch` is passed
   through. There are no purpose hints: OpenAI models are symmetric.
+
+### `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder`
+
+`mnemocyte/embedders/voyage`, `/cohere` and `/google` (also re-exported
+from `mnemocyte/embedders`), each a `createFetchEmbedder` with its
+provider's request and response (decision 29 in
+[ARCHITECTURE.md](../ARCHITECTURE.md)).
+
+| | Voyage | Cohere | Google (Gemini API) |
+|---|---|---|---|
+| Request | `POST {baseUrl}/embeddings` | `POST {baseUrl}/embed` | `POST {baseUrl}/models/{model}:batchEmbedContents` |
+| `baseUrl` default | `https://api.voyageai.com/v1` | `https://api.cohere.com/v2` | `https://generativelanguage.googleapis.com/v1beta` |
+| Auth | `authorization: Bearer …` | `authorization: Bearer …` | `x-goog-api-key` |
+| Key default | `VOYAGE_API_KEY` | `COHERE_API_KEY` | `GEMINI_API_KEY` |
+| Texts | `input` | `texts` | one `requests[]` item per text: `model: "models/{id}"`, `content.parts[{ text }]` |
+| Purpose | `input_type` `query` / `document` | `input_type` `search_query` / `search_document` | `embedContentConfig.taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`; text prefixes for `gemini-embedding-2` |
+| Size | `output_dimension` | `output_dimension` | `embedContentConfig.outputDimensionality` |
+| `truncate` | `truncation: boolean` | `truncate: "END"` / `"NONE"` | `embedContentConfig.autoTruncate` |
+| Always sent | | `embedding_types: ["float"]` | |
+| Response | `data[].embedding` by `index` | `embeddings.float`, in order | `embeddings[].values`, in order |
+| `maxBatch` | unset (100) | 96, at most 96 | 100 |
+
+- `apiKey` falls back to the environment variable; a missing or blank key
+  throws `"CONFIG"`. Explicit `apiKey` wins.
+- `dimensions` is resolved by `resolveModelDimensions` against each file's
+  `KNOWN_MODELS`: a known model that can shorten its vectors takes one of
+  its sizes (`sizes` list, or Google's `range` 128–3072), which is sent; a
+  known fixed-size model accepts only its own size, not sent; an unknown
+  model requires `dimensions`, not sent. The tables hold the models in
+  the guide; `voyage-code-4` and `voyage-4-nano` are left out because the
+  Voyage docs disagree on their sizes.
+- `truncate` is a boolean, `true` by default, and always sent.
+- `googleEmbedder` strips a `models/` prefix for `Embedder.model` and
+  encodes the id into the URL. Its known-models entries carry a
+  `purposeStyle`: `taskType`, or `prefix` for `gemini-embedding-2`
+  (`task: search result | query: ` and `title: none | text: `, from the
+  Gemini embeddings guide). Unknown Gemini models get `taskType`.
+- Cohere and Google responses are checked by `assertVectorList`: one array
+  per input, in order. Element values are checked by the core.
 
 ### `aiSdkEmbedder`
 
@@ -182,8 +228,10 @@ In the HTTP embedders, a non-2xx response throws a `ProviderError`
 response body as `cause` (parsed JSON, or text; bodies over 8,192
 characters are cut and kept as text; an empty body leaves `cause`
 undefined). The message names the status and, when the body has one, a
-short `code` or `type` (OpenAI's `error.code`/`error.type`, vLLM's
-top-level `type`). The body's free-text `message` stays out of the message
+short `code` or `type` (OpenAI's `error.code`/`error.type`, Google's
+canonical `error.status` such as `RESOURCE_EXHAUSTED`, vLLM's top-level
+`type`). Voyage's `detail` and Cohere's `message` are free text and give no
+label. The body's free-text `message` stays out of the message
 because providers can echo part of the key in it (OpenAI's "Incorrect API
 key provided: sk-…").
 

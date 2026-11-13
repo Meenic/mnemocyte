@@ -11,9 +11,18 @@ import {
 	memoryTools,
 	withMemory,
 } from "mnemocyte/ai-sdk";
-import { openaiCompatibleEmbedder, openaiEmbedder } from "mnemocyte/embedders";
+import {
+	cohereEmbedder,
+	googleEmbedder,
+	openaiCompatibleEmbedder,
+	openaiEmbedder,
+	voyageEmbedder,
+} from "mnemocyte/embedders";
+import { cohereEmbedder as directCohereEmbedder } from "mnemocyte/embedders/cohere";
+import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/google";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
+import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
@@ -30,6 +39,15 @@ describe("package exports", () => {
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 		expect(openaiCompatibleEmbedder).toBe(directOpenAICompatibleEmbedder);
+		expect(voyageEmbedder).toBe(directVoyageEmbedder);
+		expect(cohereEmbedder).toBe(directCohereEmbedder);
+		expect(googleEmbedder).toBe(directGoogleEmbedder);
+		expect(
+			googleEmbedder({ apiKey: "k", model: "models/gemini-embedding-001" }),
+		).toMatchObject({ model: "gemini-embedding-001", dimensions: 3072 });
+		expect(() => voyageEmbedder({ apiKey: "k", model: "x" })).toThrow(
+			MnemocyteError,
+		);
 
 		expect(typeof ProviderError).toBe("function");
 		// The embedders entry shares the root's error class.

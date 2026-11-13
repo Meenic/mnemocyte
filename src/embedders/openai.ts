@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../errors.js";
-import { createHttpEmbedder } from "../http-embedder.js";
+import { createHttpEmbedder, resolveApiKey } from "../http-embedder.js";
 import type { Embedder } from "../types.js";
 
 const KNOWN_MODEL_DIMENSIONS: Record<string, number> = {
@@ -44,17 +44,6 @@ function assertDimensions(dimensions: number): void {
 			"CONFIG",
 		);
 	}
-}
-
-function resolveApiKey(apiKey: string | undefined): string {
-	const resolved = apiKey ?? process.env.OPENAI_API_KEY;
-	if (!resolved || resolved.trim().length === 0) {
-		throw new MnemocyteError(
-			"openaiEmbedder requires an API key. Pass apiKey or set OPENAI_API_KEY.",
-			"CONFIG",
-		);
-	}
-	return resolved;
 }
 
 function resolveDimensions(options: OpenAIEmbedderOptions): {
@@ -104,7 +93,11 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
  * and known model sizes.
  */
 export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
-	const apiKey = resolveApiKey(options.apiKey);
+	const apiKey = resolveApiKey(
+		options.apiKey,
+		"OPENAI_API_KEY",
+		"openaiEmbedder",
+	);
 	const { embedderDimensions, requestDimensions } = resolveDimensions(options);
 	return createHttpEmbedder({
 		name: "openaiEmbedder",

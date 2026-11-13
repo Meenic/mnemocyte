@@ -58,7 +58,7 @@ interface EmbeddingItem {
 	readonly index: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -75,7 +75,7 @@ export function assertPositiveInteger(
 	}
 }
 
-function resolveBaseUrl(baseUrl: unknown, name: string): string {
+export function resolveBaseUrl(baseUrl: unknown, name: string): string {
 	if (typeof baseUrl !== "string" || baseUrl.trim().length === 0) {
 		throw new MnemocyteError(`${name} requires a baseUrl.`, "CONFIG");
 	}
@@ -250,38 +250,92 @@ function validateEmbeddingResponse(
 }
 
 /**
- * Build an {@link Embedder} for an OpenAI-shaped `POST {baseUrl}/embeddings`
- * endpoint with `fetch`. Options are checked and snapshotted here, so a
- * mistake throws `"CONFIG"` when the embedder is created.
+ * Read an OpenAI-shaped `{ data: [{ embedding, index }] }` body (OpenAI,
+ * Voyage and the servers `openaiCompatibleEmbedder` targets): exactly one
+ * array embedding per input with unique, in-range indexes, sorted by index.
  */
-export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
-	const { name, provider, model, dimensions, sendDimensions } = config;
-	const baseUrl = resolveBaseUrl(config.baseUrl, name);
-	if (typeof model !== "string" || model.trim().length === 0) {
-		throw new MnemocyteError(`${name} requires a model.`, "CONFIG");
-	}
-	assertPositiveInteger(dimensions, "dimensions", name);
-	if (config.maxBatch !== undefined) {
-		assertPositiveInteger(config.maxBatch, "maxBatch", name);
-	}
-	if (
-		config.apiKey !== undefined &&
-		(typeof config.apiKey !== "string" || config.apiKey.trim().length === 0)
-	) {
+export function parseIndexedEmbeddings(
+	body: unknown,
+	expectedCount: number,
+	provider: string,
+): number[][] {
+	return validateEmbeddingResponse(body, expectedCount, provider)
+		.sort((left, right) => left.index - right.index)
+		.map((item) => item.embedding);
+}
+
+/**
+ * Check a list of vectors that is in input order (Cohere's
+ * `embeddings.float`, Google's `embeddings[].values`): exactly one array
+ * per input. Element checks are left to the core's output validation.
+ */
+export function assertVectorList(
+	vectors: unknown,
+	expectedCount: number,
+	provider: string,
+): number[][] {
+	if (!Array.isArray(vectors)) {
 		throw new MnemocyteError(
-			`${name} apiKey must be a non-empty string.`,
-			"CONFIG",
+			`${provider} returned malformed embedding response data.`,
+			"EMBEDDING",
 		);
 	}
+	if (vectors.length !== expectedCount) {
+		throw new MnemocyteError(
+			`${provider} returned an unexpected number of embeddings.`,
+			"EMBEDDING",
+		);
+	}
+	for (const vector of vectors) {
+		if (!Array.isArray(vector)) {
+			throw new MnemocyteError(
+				`${provider} returned an embedding that is not an array.`,
+				"EMBEDDING",
+			);
+		}
+	}
+	return vectors as number[][];
+}
+
+/** Everything {@link createFetchEmbedder} needs to call one provider. */
+export interface FetchEmbedderConfig {
+	/** Name used in error messages, such as `"voyageEmbedder"`. */
+	readonly name: string;
+	/** Provider name used in response errors, such as `"Voyage"`. */
+	readonly provider: string;
+	/** Reported as `Embedder.model`. */
+	readonly model: string;
+	readonly dimensions: number;
+	readonly maxBatch: number | undefined;
+	/** The endpoint every request is sent to. */
+	readonly url: string;
+	/** Request headers; `content-type` is added. */
+	readonly headers: Readonly<Record<string, string>>;
+	/** The JSON request body for one call. */
+	readonly buildBody: (
+		texts: readonly string[],
+		purpose: EmbeddingPurpose,
+	) => unknown;
+	/**
+	 * Read one vector per input, in input order, from a successful response
+	 * body; throws `"EMBEDDING"` when the body is malformed.
+	 */
+	readonly parseResponse: (body: unknown, expectedCount: number) => number[][];
+}
+
+/**
+ * Build an {@link Embedder} that POSTs JSON to one provider endpoint with
+ * `fetch`. It checks `purpose`, forwards the call's signal, turns a non-2xx
+ * response into a `ProviderError` and a non-JSON success body into
+ * `"EMBEDDING"`. The provider's options must already be checked.
+ */
+export function createFetchEmbedder(config: FetchEmbedderConfig): Embedder {
+	const { name, provider, model, dimensions, url, buildBody, parseResponse } =
+		config;
 	const headers: Record<string, string> = {
-		...resolveHeaders(config.headers, name),
-		...(config.apiKey === undefined
-			? {}
-			: { authorization: `Bearer ${config.apiKey}` }),
+		...config.headers,
 		"content-type": "application/json",
 	};
-	const hints = resolvePurposes(config.purposes, name);
-
 	return {
 		model,
 		dimensions,
@@ -295,20 +349,10 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 					"VALIDATION",
 				);
 			}
-			const hint = hints[purpose];
-			const response = await fetch(`${baseUrl}/embeddings`, {
+			const response = await fetch(url, {
 				method: "POST",
 				headers: { ...headers },
-				body: JSON.stringify({
-					...hint.body,
-					model,
-					input:
-						hint.prefix.length === 0
-							? [...texts]
-							: texts.map((text) => `${hint.prefix}${text}`),
-					encoding_format: "float",
-					...(sendDimensions ? { dimensions } : {}),
-				}),
+				body: JSON.stringify(buildBody(texts, purpose)),
 				...(options.signal === undefined ? {} : { signal: options.signal }),
 			});
 
@@ -329,9 +373,194 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 					error,
 				);
 			}
-			return validateEmbeddingResponse(body, texts.length, provider)
-				.sort((left, right) => left.index - right.index)
-				.map((item) => item.embedding);
+			return parseResponse(body, texts.length);
 		},
 	};
+}
+
+/**
+ * The API key for a hosted provider: `apiKey`, else `process.env[envVar]`.
+ * A missing or blank key throws `"CONFIG"`.
+ */
+export function resolveApiKey(
+	apiKey: unknown,
+	envVar: string,
+	name: string,
+): string {
+	const resolved = apiKey ?? process.env[envVar];
+	if (typeof resolved !== "string" || resolved.trim().length === 0) {
+		throw new MnemocyteError(
+			`${name} requires an API key. Pass apiKey or set ${envVar}.`,
+			"CONFIG",
+		);
+	}
+	return resolved;
+}
+
+/** A model's default vector length and the lengths it can be asked for. */
+export interface KnownModelSize {
+	readonly dimensions: number;
+	/** Every accepted length; leave out both for a fixed size. */
+	readonly sizes?: readonly number[];
+	/** An inclusive range of accepted lengths. */
+	readonly range?: readonly [min: number, max: number];
+}
+
+/**
+ * Resolve `dimensions` against a known-models table:
+ *
+ * - a known model with selectable sizes takes one of them, which is sent;
+ * - a known fixed-size model accepts only its own size, which is not sent;
+ * - an unknown model requires `dimensions`, which only states the length
+ *   the model returns and is not sent.
+ */
+export function resolveModelDimensions(input: {
+	readonly name: string;
+	readonly model: string;
+	readonly dimensions: unknown;
+	readonly known: ReadonlyMap<string, KnownModelSize>;
+}): { readonly dimensions: number; readonly send: boolean } {
+	const { name, model, dimensions } = input;
+	if (dimensions !== undefined) {
+		assertPositiveInteger(dimensions as number, "dimensions", name);
+	}
+	const size = input.known.get(model);
+	if (size === undefined) {
+		if (dimensions === undefined) {
+			throw new MnemocyteError(
+				`${name} requires dimensions for unknown model "${model}".`,
+				"CONFIG",
+			);
+		}
+		return { dimensions: dimensions as number, send: false };
+	}
+	if (dimensions === undefined) {
+		return { dimensions: size.dimensions, send: false };
+	}
+	const requested = dimensions as number;
+	if (size.sizes !== undefined) {
+		if (!size.sizes.includes(requested)) {
+			throw new MnemocyteError(
+				`${name} dimensions for "${model}" must be one of ${size.sizes.join(", ")}.`,
+				"CONFIG",
+			);
+		}
+		return { dimensions: requested, send: true };
+	}
+	if (size.range !== undefined) {
+		const [min, max] = size.range;
+		if (requested < min || requested > max) {
+			throw new MnemocyteError(
+				`${name} dimensions for "${model}" must be between ${min} and ${max}.`,
+				"CONFIG",
+			);
+		}
+		return { dimensions: requested, send: true };
+	}
+	if (requested !== size.dimensions) {
+		throw new MnemocyteError(
+			`${name} model "${model}" always returns ${size.dimensions} dimensions.`,
+			"CONFIG",
+		);
+	}
+	return { dimensions: requested, send: false };
+}
+
+/** Check an optional boolean option; `"CONFIG"` for anything else. */
+export function resolveBoolean(
+	value: unknown,
+	field: string,
+	name: string,
+	fallback: boolean,
+): boolean {
+	if (value === undefined) {
+		return fallback;
+	}
+	if (typeof value !== "boolean") {
+		throw new MnemocyteError(`${name} ${field} must be a boolean.`, "CONFIG");
+	}
+	return value;
+}
+
+/** Check a non-empty model id; `"CONFIG"` otherwise. */
+export function resolveModel(model: unknown, name: string): string {
+	if (typeof model !== "string" || model.trim().length === 0) {
+		throw new MnemocyteError(`${name} requires a model.`, "CONFIG");
+	}
+	return model;
+}
+
+/** Check an optional `maxBatch`, capped at `max` when the API has a limit. */
+export function resolveMaxBatch(
+	maxBatch: unknown,
+	name: string,
+	fallback: number | undefined,
+	max?: number,
+): number | undefined {
+	if (maxBatch === undefined) {
+		return fallback;
+	}
+	assertPositiveInteger(maxBatch as number, "maxBatch", name);
+	if (max !== undefined && (maxBatch as number) > max) {
+		throw new MnemocyteError(
+			`${name} maxBatch must be at most ${max}.`,
+			"CONFIG",
+		);
+	}
+	return maxBatch as number;
+}
+
+/**
+ * Build an {@link Embedder} for an OpenAI-shaped `POST {baseUrl}/embeddings`
+ * endpoint with `fetch`. Options are checked and snapshotted here, so a
+ * mistake throws `"CONFIG"` when the embedder is created.
+ */
+export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
+	const { name, provider, dimensions, sendDimensions } = config;
+	const baseUrl = resolveBaseUrl(config.baseUrl, name);
+	const model = resolveModel(config.model, name);
+	assertPositiveInteger(dimensions, "dimensions", name);
+	const maxBatch = resolveMaxBatch(config.maxBatch, name, undefined);
+	if (
+		config.apiKey !== undefined &&
+		(typeof config.apiKey !== "string" || config.apiKey.trim().length === 0)
+	) {
+		throw new MnemocyteError(
+			`${name} apiKey must be a non-empty string.`,
+			"CONFIG",
+		);
+	}
+	const headers: Record<string, string> = {
+		...resolveHeaders(config.headers, name),
+		...(config.apiKey === undefined
+			? {}
+			: { authorization: `Bearer ${config.apiKey}` }),
+	};
+	const hints = resolvePurposes(config.purposes, name);
+
+	return createFetchEmbedder({
+		name,
+		provider,
+		model,
+		dimensions,
+		maxBatch,
+		url: `${baseUrl}/embeddings`,
+		headers,
+		buildBody(texts, purpose) {
+			const hint = hints[purpose];
+			return {
+				...hint.body,
+				model,
+				input:
+					hint.prefix.length === 0
+						? [...texts]
+						: texts.map((text) => `${hint.prefix}${text}`),
+				encoding_format: "float",
+				...(sendDimensions ? { dimensions } : {}),
+			};
+		},
+		parseResponse(body, expectedCount) {
+			return parseIndexedEmbeddings(body, expectedCount, provider);
+		},
+	});
 }

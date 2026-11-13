@@ -47,6 +47,24 @@ behavioural changes documented in their entries.
   The AI SDK's own retries are off, so the client's `provider` settings
   apply, and AI SDK errors with an HTTP status become a `ProviderError`
   with `retryAfterMs` from the response headers.
+- **Voyage, Cohere and Gemini embedders.** `voyageEmbedder`,
+  `cohereEmbedder` and `googleEmbedder` call each provider's embeddings API
+  with `fetch` (no SDK), from `mnemocyte/embedders` and
+  `mnemocyte/embedders/voyage`, `/cohere` and `/google`. The key comes from
+  `apiKey` or `VOYAGE_API_KEY`, `COHERE_API_KEY` or `GEMINI_API_KEY`.
+  Current models have a default `dimensions`, and those that can shorten
+  their vectors accept a smaller one, which is sent; other models require
+  `dimensions`. Queries and documents are marked for each provider: Voyage
+  `input_type` `query` / `document`, Cohere `search_query` /
+  `search_document`, Gemini `taskType` `RETRIEVAL_QUERY` /
+  `RETRIEVAL_DOCUMENT`, or for `gemini-embedding-2` the text prefixes
+  Google documents for it. `truncate` (default `true`) cuts texts longer
+  than the model's context instead of failing the request. `cohereEmbedder`
+  sends at most 96 texts per request (Cohere's limit) and `googleEmbedder`
+  100 by default. `googleEmbedder` calls the Gemini API (Google AI Studio),
+  not Vertex AI. Errors are a `ProviderError`, retried by the client's
+  `provider` settings like the other embedders; a Gemini error's message
+  names its canonical status, such as `RESOURCE_EXHAUSTED`.
 - **AI SDK memory tools.** `memoryTools({ memory: memory.for(scope) })` from
   `mnemocyte/ai-sdk` returns `searchMemories`, `saveMemory` and
   `forgetMemory` for `generateText`, `streamText` and agents. The scope is

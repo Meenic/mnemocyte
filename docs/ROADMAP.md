@@ -145,7 +145,10 @@ it.
   `"provider/model"` string, which the AI SDK resolves through its global
   provider (the AI Gateway by default). `dimensions` comes from a table of
   known models; for any other model it is required (`"CONFIG"`).
-- [ ] `feat/ai-sdk-tools`: server-scoped memory tools.
+- [x] `feat/ai-sdk-tools`: `memoryTools({ memory })` with
+  `searchMemories`, `saveMemory` and `forgetMemory` over a bound client;
+  the model supplies no scope field, and the call's abort signal is
+  forwarded.
 - [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook,
   plus `withMemory({ model, memory })`, which returns the model wrapped
   with `wrapLanguageModel` and the middleware in one call.

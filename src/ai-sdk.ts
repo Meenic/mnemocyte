@@ -418,3 +418,16 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 		},
 	};
 }
+
+export {
+	type ForgetMemoryInput,
+	type ForgetMemoryOutput,
+	type FoundMemory,
+	type MemoryTools,
+	type MemoryToolsOptions,
+	memoryTools,
+	type SaveMemoryInput,
+	type SaveMemoryOutput,
+	type SearchMemoriesInput,
+	type SearchMemoriesOutput,
+} from "./ai-sdk-tools.js";

@@ -47,6 +47,16 @@ behavioural changes documented in their entries.
   The AI SDK's own retries are off, so the client's `provider` settings
   apply, and AI SDK errors with an HTTP status become a `ProviderError`
   with `retryAfterMs` from the response headers.
+- **AI SDK memory tools.** `memoryTools({ memory: memory.for(scope) })` from
+  `mnemocyte/ai-sdk` returns `searchMemories`, `saveMemory` and
+  `forgetMemory` for `generateText`, `streamText` and agents. The scope is
+  fixed on the server: no tool takes a scope field, and a model that sends
+  one gets a tool error. `searchMemories` returns id, content, kind,
+  importance, tags, creation time and score, never metadata;
+  `saveMemory` stores content, kind and importance with
+  `source: "saveMemory"`; `forgetMemory` deletes by id and returns
+  `forgotten: false` when there is no such memory. The call's abort signal
+  cancels a running tool. Passing the unbound client throws `"CONFIG"`.
 
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle

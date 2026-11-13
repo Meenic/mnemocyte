@@ -142,21 +142,17 @@ Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
 ## AI SDK integration
 
 `mnemocyte/ai-sdk`, with `ai` as an optional peer dependency, ships
-`aiSdkEmbedder` today (see
-[features/embedders.md](./features/embedders.md#aisdkembedder)). Still to
-come in the same entry:
+`aiSdkEmbedder` (see
+[features/embedders.md](./features/embedders.md#aisdkembedder)) and
+`memoryTools({ memory })` (see [features/ai-sdk.md](./features/ai-sdk.md),
+decision 26) today. Still to come in the same entry:
 
-1. `memoryTools({ memory })`: `searchMemories`, `saveMemory`,
-   `forgetMemory` built with `tool()`, from a bound client
-   (`memory.for(scope)`). The scope is bound on the server when the tools are
-   created; the model never supplies `entityId`, so a prompt injection cannot
-   reach another user's memories.
-2. `memoryMiddleware({ memory })`: from a bound client, a language model
+1. `memoryMiddleware({ memory })`: from a bound client, a language model
    middleware for `wrapLanguageModel` whose `transformParams` adds
    `context()` output to the prompt. `withMemory({ model, memory })`
    returns `wrapLanguageModel({ model, middleware })` in one call, the
    shape of Supermemory's `withSupermemory`.
-3. Saving (decision 24): an opt-in hook the app controls, and an opt-in
+2. Saving (decision 24): an opt-in hook the app controls, and an opt-in
    `save: { model }` that has the user's own AI SDK model extract memories
    from the turn into the bound scope after the response. Nothing is
    extracted unless configured, the response never waits for it, and
@@ -431,3 +427,25 @@ Dated 2026-10-26 unless noted.
     those the AI SDK provider docs state, and `Embedder.model` is the model
     id without the gateway's `provider/` prefix, so `openaiEmbedder`, a
     direct model object and a gateway string can share an installation.
+26. **Memory tools** (2026-11-13, landed): `memoryTools({ memory })` takes
+    only a bound client (`"CONFIG"` otherwise) and returns
+    `searchMemories`, `saveMemory` and `forgetMemory`. No input has a scope
+    field, and one sent anyway fails validation with a message that the
+    scope is fixed, so the model learns it cannot widen it. Schemas use the
+    AI SDK's `jsonSchema()` with our own `validate` instead of zod: no new
+    peer and no zod major to support, and `jsonSchema()` alone validates
+    nothing. `searchMemories` takes `query`, `limit` (1–20, default 5) and
+    `kinds`, and returns id, content, kind, importance, tags, `createdAt`
+    and a rounded score; metadata, keys, sources and scopes stay out of the
+    model's context. `saveMemory` sets only `content`, `kind` and
+    `importance`, with `source: "saveMemory"`; a model-chosen `key` could
+    overwrite a keyed memory the app wrote, and tags may drive app logic.
+    `forgetMemory` deletes by id with the bound client's visibility, so
+    shared memories of the entity are reachable, and returns
+    `{ forgotten: false }` for `"NOT_FOUND"`; other errors are thrown and
+    reach the model as AI SDK tool errors. Each tool forwards the call's
+    `abortSignal`. There are no options besides `memory`: the result is a
+    plain object, so apps drop or reword a tool by destructuring and
+    spreading, and approval belongs to the AI SDK's `toolApproval`
+    (tool-level `needsApproval` is deprecated in AI SDK 7).
+    `MemoryTools` is a type alias so it is assignable to `ToolSet`.

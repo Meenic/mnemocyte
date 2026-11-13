@@ -6,6 +6,7 @@ import {
 } from "mnemocyte";
 import {
 	aiSdkEmbedder,
+	extractMemories,
 	memoryMiddleware,
 	memoryTools,
 	withMemory,
@@ -55,6 +56,14 @@ describe("package exports", () => {
 		expect(() =>
 			withMemory({ model: undefined as never, memory: undefined as never }),
 		).toThrow(MnemocyteError);
+		await expect(
+			extractMemories({
+				model: undefined as never,
+				memory: undefined as never,
+				prompt: [],
+				text: "",
+			}),
+		).rejects.toBeInstanceOf(MnemocyteError);
 
 		const client = createMemory({
 			embedder: {

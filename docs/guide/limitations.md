@@ -84,8 +84,9 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 ## AI SDK tools
 
 - **Saved memories are not deduplicated.** `saveMemory` has no `key`, so a
-  model that saves the same fact twice stores two memories. Planned:
-  `feat/ai-sdk-extraction` decides how existing facts are matched.
+  model that saves the same fact twice stores two memories. Extraction
+  (`save: { model }`) avoids this with keys; see
+  [extraction](#extraction).
 - **The model decides what is saved.** Content from the conversation,
   including a prompt injection, can be stored and come back in later
   searches and `context()` output for the same user. Memories it writes
@@ -94,6 +95,26 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 - **`forgetMemory` reaches shared memories.** On a client bound to an
   `agentId` or `sessionId`, it can also delete the entity's memories shared
   by every agent or session, as `delete` can.
+
+## Extraction
+
+- **Only its own memories are updated.** Extraction upserts keys prefixed
+  `extracted:`. A memory your app or `saveMemory` wrote is shown to the
+  extraction model, so the fact is not stored again, but it is never
+  changed: when that fact changes, the new version is stored next to the
+  old one.
+- **Matching depends on the model.** A changed fact updates in place only
+  when the model reuses the key it sees. It sees up to 20 memories from a
+  search for the user's message; a stored fact the search does not return
+  can be stored again under a new key.
+- **The model decides what is saved.** The extraction prompt tells it to
+  save only what the user stated and never secrets, but a model can still
+  get this wrong, and what the user writes, including a prompt injection,
+  can be stored. Tool results and system messages are never shown to it.
+- **It can be cut off.** Extraction runs after the response; on serverless
+  platforms pass `waitUntil`, or the function may stop before it finishes.
+  It costs one model call per response, plus an embedder call for the
+  search and, when something is stored, one for the new memories.
 
 ## Providers
 

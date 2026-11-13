@@ -1,4 +1,11 @@
 import { type LanguageModelMiddleware, wrapLanguageModel } from "ai";
+import {
+	type ExtractMemoriesOptions,
+	isExtractionCall,
+	type ResolvedExtractionOptions,
+	resolveExtractionOptions,
+	runExtraction,
+} from "./ai-sdk-extraction.js";
 import { isMnemocyteError, MnemocyteError } from "./errors.js";
 import { MAX_CONTENT_LENGTH } from "./memory/limits.js";
 import type { BoundContextInput, BoundMemoryClient } from "./types.js";
@@ -54,9 +61,28 @@ export interface MemoryTurn {
 	readonly finishReason: MemoryFinishReason;
 }
 
+/** A `save` hook: called after each response with the turn. */
+export type MemorySaveHook = (turn: MemoryTurn) => void | Promise<void>;
+
+/**
+ * `save` as options: the given model extracts memories from each turn with
+ * `extractMemories` and stores them in the bound scope.
+ */
+export interface MemorySaveOptions extends ExtractMemoriesOptions {
+	/**
+	 * Receives each extraction's promise, which settles when it is done and
+	 * never rejects (failures go to `onError`). Pass the platform's
+	 * `waitUntil` so a serverless function is not stopped mid-extraction.
+	 */
+	readonly waitUntil?: (promise: Promise<void>) => void;
+}
+
 /** A failure the middleware caught instead of failing the call. */
 export interface MemoryMiddlewareError {
-	/** `"context"`: recalling memories; `"save"`: the `save` hook. */
+	/**
+	 * `"context"`: recalling memories; `"save"`: the `save` hook, or an
+	 * extraction with `save: { model }`.
+	 */
 	readonly phase: "context" | "save";
 	/** The thrown value. */
 	readonly error: unknown;
@@ -89,11 +115,13 @@ export interface MemoryMiddlewareOptions {
 		readonly prompt: MemoryPrompt;
 	}) => string | undefined;
 	/**
-	 * Called once per response, after the final model call of a
+	 * Runs once per response, after the final model call of a
 	 * `generateText` or `streamText` (not after a step that ends in tool
-	 * calls). The response does not wait for it; failures go to `onError`.
+	 * calls). A function is called with the turn; `{ model }` has that model
+	 * extract memories from the turn into the bound scope. The response does
+	 * not wait for either; failures go to `onError`. Off by default.
 	 */
-	readonly save?: (turn: MemoryTurn) => void | Promise<void>;
+	readonly save?: MemorySaveHook | MemorySaveOptions;
 	/**
 	 * Receives failures the middleware swallows: a `context()` call that
 	 * failed (the model call then runs without memory) and a `save` hook that
@@ -146,6 +174,29 @@ function isBoundClient(value: unknown): value is BoundMemoryClient {
 	);
 }
 
+interface ResolvedSaveOptions extends ResolvedExtractionOptions {
+	readonly waitUntil: ((promise: Promise<void>) => void) | undefined;
+}
+
+function resolveSave(
+	name: string,
+	save: unknown,
+): MemorySaveHook | ResolvedSaveOptions | undefined {
+	if (save === undefined || typeof save === "function") {
+		return save as MemorySaveHook | undefined;
+	}
+	if (!isRecord(save)) {
+		throw configError(
+			name,
+			"save must be a function or an options object with a model.",
+		);
+	}
+	return {
+		...resolveExtractionOptions(`${name} save`, save),
+		waitUntil: optionalFunction(name, "save.waitUntil", save.waitUntil),
+	};
+}
+
 interface ResolvedOptions {
 	readonly memory: BoundMemoryClient;
 	readonly placement: "user" | "system";
@@ -153,7 +204,7 @@ interface ResolvedOptions {
 	readonly query: (input: {
 		readonly prompt: MemoryPrompt;
 	}) => string | undefined;
-	readonly save: ((turn: MemoryTurn) => void | Promise<void>) | undefined;
+	readonly save: MemorySaveHook | ResolvedSaveOptions | undefined;
 	readonly onError: ((error: MemoryMiddlewareError) => void) | undefined;
 }
 
@@ -205,7 +256,7 @@ function resolveOptions(name: string, options: unknown): ResolvedOptions {
 				"query",
 				options.query,
 			) ?? lastUserMessageText,
-		save: optionalFunction(name, "save", options.save),
+		save: resolveSave(name, options.save),
 		onError: optionalFunction(name, "onError", options.onError),
 	};
 }
@@ -281,9 +332,11 @@ function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
  * A failed `context()` call goes to `onError` and the model call runs
  * without memory; an abort is thrown.
  *
- * With `save`, the hook runs after the response with the conversation and
- * the response text; the response does not wait for it. The middleware
- * makes no model calls of its own. Requires the `ai` package.
+ * With a `save` function, the hook runs after the response with the
+ * conversation and the response text. With `save: { model }`, that model
+ * extracts memories from the turn (`extractMemories`). The response
+ * waits for neither. Without `save: { model }` the middleware makes no
+ * model calls of its own. Requires the `ai` package.
  *
  * @example
  * ```ts
@@ -304,7 +357,7 @@ export function memoryMiddleware(
 }
 
 function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
-	const { memory, placement, save, onError } = options;
+	const { memory, placement, onError } = options;
 	/** The last successful recall, reused while the query stays the same. */
 	let cached: { readonly query: string; readonly context: string } | undefined;
 	/** Prompts before the context was added, by the params that carry it. */
@@ -316,6 +369,29 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 		} catch {
 			// The handler's own failure must not reach the model call.
 		}
+	}
+
+	/** The `save` option as a hook; extraction reports its own failures. */
+	const save: MemorySaveHook | undefined =
+		options.save === undefined || typeof options.save === "function"
+			? options.save
+			: extractionHook(options.save);
+
+	function extractionHook(settings: ResolvedSaveOptions): MemorySaveHook {
+		return (turn) => {
+			const done = runExtraction({
+				...settings,
+				memory: turn.memory,
+				prompt: turn.prompt,
+				text: turn.text,
+			}).then(
+				() => undefined,
+				(error: unknown) => {
+					report({ phase: "save", error });
+				},
+			);
+			settings.waitUntil?.(done);
+		};
 	}
 
 	async function recall(
@@ -355,6 +431,9 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 
 	const middleware: LanguageModelMiddleware = {
 		async transformParams({ params }) {
+			if (isExtractionCall(params.providerOptions)) {
+				return params;
+			}
 			const signal = params.abortSignal;
 			let context: string;
 			try {
@@ -392,6 +471,9 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 		...middleware,
 		async wrapGenerate({ doGenerate, params }) {
 			const result = await doGenerate();
+			if (isExtractionCall(params.providerOptions)) {
+				return result;
+			}
 			const text = result.content
 				.flatMap((part) => (part.type === "text" ? [part.text] : []))
 				.join("");
@@ -400,6 +482,9 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 		},
 		async wrapStream({ doStream, params }) {
 			const result = await doStream();
+			if (isExtractionCall(params.providerOptions)) {
+				return result;
+			}
 			let text = "";
 			let reason: string | undefined;
 			let failed = false;

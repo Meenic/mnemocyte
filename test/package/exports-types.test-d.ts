@@ -77,6 +77,9 @@ import {
 	type AiSdkProviderOptions,
 	type AiSdkPurposeOptions,
 	aiSdkEmbedder,
+	type ExtractMemoriesInput,
+	type ExtractMemoriesOptions,
+	extractMemories,
 	type ForgetMemoryInput,
 	type ForgetMemoryOutput,
 	type FoundMemory,
@@ -86,6 +89,8 @@ import {
 	type MemoryMiddlewareError,
 	type MemoryMiddlewareOptions,
 	type MemoryPrompt,
+	type MemorySaveHook,
+	type MemorySaveOptions,
 	type MemoryTools,
 	type MemoryToolsOptions,
 	type MemoryTurn,
@@ -669,6 +674,40 @@ withMemory({ model: "openai/gpt-6.1-sol", memory: bound });
 const queryInContext: MemoryMiddlewareContextOptions = { query: "q" };
 // @ts-expect-error Placement is "user" or "system".
 memoryMiddleware({ memory: bound, placement: "assistant" });
+
+// save takes a hook or extraction options with a model object or id.
+const saveHook: MemorySaveHook = (turn: MemoryTurn) => {
+	void turn.text;
+};
+const saveOptions: MemorySaveOptions = {
+	model: "openai/gpt-6.1-mini",
+	instructions: "Only remember travel details.",
+	maxMemories: 5,
+	timeout: 10_000,
+	waitUntil: (promise: Promise<void>) => {
+		void promise;
+	},
+};
+withMemory({ model: languageModel, memory: bound, save: saveHook });
+withMemory({ model: languageModel, memory: bound, save: saveOptions });
+const extractionOptions: ExtractMemoriesOptions = { model: languageModel };
+const extractionInput: ExtractMemoriesInput = {
+	...extractionOptions,
+	memory: bound,
+	prompt: [],
+	text: "",
+};
+const extracted: Promise<Memory[]> = extractMemories(extractionInput);
+// @ts-expect-error Extraction options need a model.
+withMemory({ model: languageModel, memory: bound, save: { maxMemories: 5 } });
+extractMemories({
+	...extractionOptions,
+	// @ts-expect-error extractMemories takes a bound client, not the client itself.
+	memory: defaulted,
+	prompt: [],
+	text: "",
+});
+void extracted;
 
 void wrappedByHand;
 void wrappedAsModel;

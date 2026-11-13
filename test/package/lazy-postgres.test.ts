@@ -288,7 +288,7 @@ describe("lazy Postgres package loading", () => {
 						import { generateText } from "ai";
 						import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 						import { createMemory, ProviderError } from "mnemocyte";
-						import { aiSdkEmbedder, memoryTools, withMemory } from "mnemocyte/ai-sdk";
+						import { aiSdkEmbedder, extractMemories, memoryTools, withMemory } from "mnemocyte/ai-sdk";
 
 						const model = new MockEmbeddingModelV4({
 							modelId: "packed-model",
@@ -336,6 +336,39 @@ describe("lazy Postgres package loading", () => {
 						const sent = JSON.stringify(languageModel.doGenerateCalls[0]?.prompt);
 						if (!sent.includes("Embedded through the AI SDK.")) {
 							throw new Error("withMemory did not add the memory context.");
+						}
+						const extracted = await extractMemories({
+							model: new MockLanguageModelV4({
+								doGenerate: {
+									content: [
+										{
+											type: "text",
+											text: JSON.stringify({
+												memories: [
+													{
+														key: "sdk",
+														content: "Uses the AI SDK.",
+														kind: "fact",
+														importance: "normal",
+													},
+												],
+											}),
+										},
+									],
+									finishReason: { unified: "stop", raw: undefined },
+									usage: {
+										inputTokens: { total: 1, noCache: 1 },
+										outputTokens: { total: 1, text: 1 },
+									},
+									warnings: [],
+								},
+							}),
+							memory: memory.for({ namespace: "packed", entityId: "ai-sdk" }),
+							prompt: [{ role: "user", content: [{ type: "text", text: "I use the AI SDK." }] }],
+							text: "Nice.",
+						});
+						if (extracted[0]?.key !== "extracted:sdk") {
+							throw new Error("extractMemories did not store the memory.");
 						}
 						const failing = aiSdkEmbedder({
 							model: new MockEmbeddingModelV4({

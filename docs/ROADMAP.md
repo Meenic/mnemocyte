@@ -152,13 +152,13 @@ it.
 - [x] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook,
   plus `withMemory({ model, memory })`, which returns the model wrapped
   with `wrapLanguageModel` and the middleware in one call.
-- [ ] `feat/ai-sdk-extraction`: an opt-in `save: { model }` on the
-  middleware and `withMemory` (decision 24). After a response, the user's
-  own AI SDK model extracts memories from the turn into the bound scope,
-  with structured output. Off by default, never delays or fails the
-  response (errors go to `onEvent`), and extracted facts that already exist
-  update in place instead of duplicating; how they are matched (keys or a
-  similarity threshold) is decided in the PR with tests.
+- [x] `feat/ai-sdk-extraction`: an opt-in `save: { model }` on the
+  middleware and `withMemory` (decisions 24 and 28), and
+  `extractMemories`. After a response, the user's own AI SDK model
+  extracts memories from the turn into the bound scope, with structured
+  output. Off by default, never delays or fails the response (errors go to
+  `onError`), and extracted facts that already exist update in place by
+  key (`extracted:` prefix) instead of duplicating.
 - [ ] `feat/embedders-voyage-cohere-google`: fetch-based embedders.
 
 ## Phase 3: operations (0.8)

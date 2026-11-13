@@ -1,12 +1,14 @@
 # AI SDK integration
 
 `mnemocyte/ai-sdk` (`src/ai-sdk.ts`) is the only entry that imports `ai`,
-an optional peer at `^7.0.135`; `src/ai-sdk.ts`, `src/ai-sdk-tools.ts` and
-`src/ai-sdk-middleware.ts` are the only source files that do. It exports
-`aiSdkEmbedder` (see [embedders.md](./embedders.md#aisdkembedder)),
-`memoryTools` (`src/ai-sdk-tools.ts`), and `memoryMiddleware` and
-`withMemory` (`src/ai-sdk-middleware.ts`). The user guide is
-[guide/ai-sdk.md](../guide/ai-sdk.md); decisions 26 and 27 in
+an optional peer at `^7.0.135`; `src/ai-sdk.ts`, `src/ai-sdk-tools.ts`,
+`src/ai-sdk-middleware.ts` and `src/ai-sdk-extraction.ts` are the only
+source files that do. It exports `aiSdkEmbedder` (see
+[embedders.md](./embedders.md#aisdkembedder)), `memoryTools`
+(`src/ai-sdk-tools.ts`), `memoryMiddleware` and `withMemory`
+(`src/ai-sdk-middleware.ts`), and `extractMemories`
+(`src/ai-sdk-extraction.ts`). The user guide is
+[guide/ai-sdk.md](../guide/ai-sdk.md); decisions 24, 26, 27 and 28 in
 [ARCHITECTURE.md](../ARCHITECTURE.md#decisions) record the choices below.
 
 ## Memory tools
@@ -79,8 +81,9 @@ type: `LanguageModelV4Middleware` without `specificationVersion`, which
 eagerly and throw `"CONFIG"` for: a missing options object; a value without
 an object `scope` and a `context` method (the unbound client has no
 `scope`); a `placement` other than `"user"` or `"system"`; a non-object
-`context` or one with `query`, `signal`, `scope` or `allNamespaces`; and a
-`query`, `save` or `onError` that is not a function. `withMemory` also
+`context` or one with `query`, `signal`, `scope` or `allNamespaces`; a
+`query` or `onError` that is not a function; and a `save` that is neither a
+function nor valid extraction options (see [Extraction](#extraction)). `withMemory` also
 rejects a string or non-object `model`: `wrapLanguageModel` only accepts
 model objects, and resolving strings ourselves would copy the AI SDK's
 internal global-provider lookup. The `context` options are copied
@@ -129,7 +132,9 @@ reports the failed `"context"` operation. `onError` is called in a
 
 ### Save hook
 
-Without `save` the middleware has only `transformParams`. With it,
+Without `save` the middleware has only `transformParams`. With it (a
+function, or `{ model }`, which becomes the extraction hook described in
+[Extraction](#extraction)),
 `wrapGenerate` awaits `doGenerate()` and `wrapStream` pipes the stream
 through a pass-through `TransformStream` that joins `text-delta` parts,
 records the `finish` part's reason and notes any `error` part; its
@@ -142,6 +147,101 @@ The hook gets `{ memory, prompt, text, finishReason }`, where `prompt` is
 the original prompt from the `WeakMap` (or `params.prompt` when nothing
 was added). It is started without being awaited: a synchronous throw and a
 rejected promise both go to `onError({ phase: "save", error })`.
+
+## Extraction
+
+`extractMemories({ model, memory, prompt, text })` and
+`save: { model, ...options }` on the middleware share `runExtraction`
+(`src/ai-sdk-extraction.ts`). The middleware checks the options when it is
+created (`resolveExtractionOptions`, `"CONFIG"` with the
+`memoryMiddleware save` or `withMemory save` prefix) and turns them into a
+hook; `extractMemories` checks them on each call and rejects with
+`"CONFIG"`, or `"VALIDATION"` for a `prompt` that is not an array or a
+`text` that is not a string. The settings:
+
+| Option | Check | Default |
+|---|---|---|
+| `model` | a non-blank string or an object; `generateText` resolves it | required |
+| `instructions` | a string of at most 4,000 characters | none |
+| `maxMemories` | an integer from 1 to 20 | 10 |
+| `timeout` | a positive integer, in ms | 30,000 |
+| `waitUntil` (middleware only) | a function | none |
+
+Unlike `withMemory`'s `model`, a `"provider/model"` string is accepted:
+`generateText` resolves it, so no AI SDK internals are copied.
+
+### Steps
+
+1. **The turn.** `readTurn` takes the run of user messages that ends with
+   the last one (their text parts, joined with blank lines, last 8,000
+   characters), and the text of the assistant message right before that run
+   (last 2,000). The response `text` is cut to its first 4,000. System
+   messages, tool calls, tool results, files and reasoning parts are never
+   read: tool results carry third-party text, the main way an injection
+   would reach memory. A turn with no user text returns `[]` without any
+   call.
+2. **Existing memories.** `memory.search({ query: userText, limit: 20,
+   trackAccess: false })` with the bound client's default visibility, so
+   shared memories are included. Each is shown as `{ kind, content }`
+   (content cut to 500 characters), plus `key` without the prefix when the
+   key starts with `extracted:` and the memory is in the exact bound scope:
+   only those keys are ones an upsert from here would update. App keys
+   stay hidden, so the model cannot copy one.
+3. **The model call.** `generateText` with `instructions` (the built-in
+   prompt, a "return at most N" line, then any `instructions` under
+   "Application guidance:"), a JSON `prompt` of `{ existingMemories,
+   conversation: { previousAssistantMessage, userMessage,
+   assistantResponse } }` (JSON, so text in a message cannot close a
+   section), `output: Output.object({ schema, name: "memories" })` and
+   `providerOptions: { mnemocyte: { extraction: true } }`. AI SDK 7
+   deprecates `generateObject` for `generateText` with `output`. The AI
+   SDK's default retries (2) apply.
+4. **Validation.** The schema is `jsonSchema()` with our `validate`, as for
+   the tools. Every property is required and `additionalProperties` is
+   false, so OpenAI's strict mode accepts it; `maxItems` and `pattern` are
+   left out because not every provider accepts them. `validate` rejects a
+   non-object, a kind other than `fact`, `preference`, `instruction` or
+   `backstory`, an importance other than `low`, `normal` or `high`, blank
+   content, or a key with no letters or digits; the AI SDK then throws
+   `NoObjectGeneratedError`. Keys are lower-cased and every run of other
+   characters becomes `_` (at most 64 characters), and content is trimmed.
+5. **Write.** The last item per key is kept, in first-seen order, and the
+   list is cut to `maxMemories`. One `addMany` stores them with key
+   `extracted:<key>` and `source: "extractMemories"`. The keyed upsert
+   (`ON CONFLICT … DO UPDATE` on Postgres; see [scopes.md](./scopes.md))
+   updates a memory with that key in the exact scope in place, keeping its
+   id, so concurrent extractions of one fact end in one memory. An empty
+   list writes nothing.
+
+One `AbortSignal.timeout(timeout)`, combined with the caller's `signal`
+through `AbortSignal.any`, covers the search, the model call and the write.
+When the timer fired and the caller's signal did not, the error becomes a
+`"TIMEOUT"` `MnemocyteError` with the original as `cause`.
+
+No similarity threshold is used to match facts. `search` embeds its query
+with `purpose: "query"`, and for asymmetric embedders (Cohere, Google,
+nomic) a query-to-document cosine is not comparable to the
+document-to-document cosine of `findDuplicates`; a cut-off also differs
+from one embedding model to another, and a check-then-insert races where
+the keyed upsert does not.
+
+### In the middleware
+
+`save: { model }` becomes a hook that starts `runExtraction` with the
+turn's `memory`, `prompt` (the original, without the added context) and
+`text`, under the same final-step rule as a `save` function. A failure goes
+to `onError({ phase: "save", error })`; the promise handed to `waitUntil`
+settles after that and never rejects. The request's `abortSignal` is not
+passed: the response has finished by then. The store calls report to the
+client's `onEvent` as any call does; extraction adds no operation of its
+own.
+
+`isExtractionCall(params.providerOptions)` makes `transformParams`,
+`wrapGenerate` and `wrapStream` pass an extraction call through untouched,
+so a model wrapped with `withMemory` (or any memory middleware) given as
+the extraction model neither adds context to the extraction prompt nor
+starts another extraction. Providers read only their own key in
+`providerOptions`, so they ignore the `mnemocyte` key.
 
 ## Tests
 
@@ -158,6 +258,24 @@ a tool loop with the original prompt, after `streamText` finishes, not
 after a tool-call step or an errored stream, and failing hooks reported
 without affecting the response.
 
+`test/ai-sdk/extraction.test.ts` runs on the in-memory backend with
+`MockLanguageModelV4`: stored memories with prefixed, normalized keys,
+`source` and trimmed content; the request (`responseFormat`, the marker,
+the conversation without system messages or tool results); a changed fact
+updated in place with the same id and its key shown to the model; an app
+key never overwritten and shown without its key; a shared memory shown
+without its key to an agent-bound client; no write for an empty result and
+no call without user text; the last item per key, `maxMemories` and
+`instructions`; schema rejections (`episode`, `critical`, a key without
+letters, blank content) as `NoObjectGeneratedError`; `"TIMEOUT"`; the
+`"CONFIG"` and `"VALIDATION"` checks. Through the middleware: `save`
+option checks; a response that returns while the extraction model is
+still blocked, then the stored memory and the `waitUntil` promise; one
+extraction after a tool loop and one after `streamText`; a failing
+extraction reaching `onError`; and a `withMemory` model as the extraction
+model, which makes exactly one extraction call with no added context
+(the test fails with the guard removed).
+
 `test/ai-sdk/tools.test.ts` runs on the in-memory backend: schemas and
 descriptions, the `"CONFIG"` checks, save, search and forget at the bound
 scope, isolation between two entities (search finds nothing, forget returns
@@ -168,10 +286,13 @@ searches, and a model that sends `entityId`, which ends as a `tool-error`.
 A third aborts `generateText` while a tool is embedding.
 
 `test/package/exports.test.ts` checks the built entry,
-`test/package/lazy-postgres.test.ts` runs `searchMemories` and a
-`withMemory` `generateText` call from the packed tarball with `ai` linked
-in, and `test/package/exports-types.test-d.ts` checks the exported types,
+`test/package/lazy-postgres.test.ts` runs `searchMemories`, a
+`withMemory` `generateText` call and an `extractMemories` call from the
+packed tarball with `ai` linked in, and
+`test/package/exports-types.test-d.ts` checks the exported types,
 `ToolSet` assignability, that the middleware fits `wrapLanguageModel` and
-`withMemory`'s result is a `LanguageModel`, and that the unbound client, a
-`key`, a scope field, a string model, `context.query` and an unknown
-placement are type errors.
+`withMemory`'s result is a `LanguageModel`, that `save` takes a hook or
+extraction options with a model id or object, and that the unbound client
+(for the tools, the middleware and `extractMemories`), a `key`, a scope
+field, a string model for `withMemory`, `context.query`, an unknown
+placement and extraction options without a model are type errors.

@@ -182,7 +182,7 @@ appears from the next turn on. Create the middleware per request, from the
 | `placement` | `"user"` (default) or `"system"`. |
 | `context` | `context()` settings: `maxTokens` (default 1200), `format` (default `"markdown"`), `limit`, `minScore`, `kinds`, `tags`, `tokenCounter`, `trackAccess` and the other filters. |
 | `query` | `({ prompt }) => string \| undefined`. Replaces the last-user-message query; return `undefined` to add nothing. |
-| `save` | A hook called after each response; see below. |
+| `save` | A hook called after each response, or `{ model }` to extract memories with your model; see below. |
 | `onError` | `({ phase, error }) => void`. Receives the failures the middleware swallows. |
 
 `context` takes neither `query` nor `signal` (both come from the call), nor
@@ -221,8 +221,9 @@ when the stream has finished. It receives:
 | `text` | The response text. |
 | `finishReason` | Why the model stopped, such as `"stop"` or `"length"`. |
 
-The response does not wait for the hook, and Mnemocyte saves nothing by
-itself: the hook decides what to store.
+The response does not wait for the hook, and a hook saves nothing by
+itself: it decides what to store. To have a model decide, use
+[extraction](#extracting-memories-with-your-model) instead.
 
 ```ts
 const model = withMemory({
@@ -253,6 +254,102 @@ const model = withMemory({
 });
 ```
 
+### Extracting memories with your model
+
+`save: { model }` has a model of your choice read each turn and store
+lasting facts about the user in the bound scope. It is off unless you set
+it, and it is the only option that makes Mnemocyte call a language model;
+the call goes to your provider, with your key.
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { waitUntil } from "@vercel/functions";
+import { withMemory } from "mnemocyte/ai-sdk";
+
+const model = withMemory({
+  model: openai("gpt-6.1-sol"),
+  memory: memory.for({ entityId: session.userId }),
+  save: {
+    model: openai("gpt-6.1-mini"),
+    waitUntil,
+  },
+  onError: ({ phase, error }) => logger.warn({ phase, error }),
+});
+```
+
+After the final response, as with a `save` function, the extraction model
+gets:
+
+- the user's messages of this turn, the assistant message before them and
+  the response. System messages, tool calls, tool results and files are
+  never sent, so text from a web page or another tool cannot ask it to
+  store something;
+- up to 20 of the user's stored memories that match the message, so it
+  skips facts you already have.
+
+It returns structured output (`generateText` with `Output.object`), so the
+model must support it. Each memory gets one short sentence, a kind
+(`fact`, `preference`, `instruction` or `backstory`), an importance
+(`low`, `normal` or `high`) and a snake_case key such as `home_city`.
+Mnemocyte stores them with `addMany` under the key `extracted:home_city`
+and `source: "extractMemories"`. When the user later says they moved, the
+model sees the stored memory with its key and returns the new fact under
+the same key, which updates that memory in place: same id, new content.
+The model is told to save only what the user said or confirmed, never
+something only the assistant said, and never passwords, keys, card or
+account numbers or id numbers.
+
+| Option | |
+|---|---|
+| `model` | Required. A model object, or a `"provider/model"` id for the AI SDK's global provider (the AI Gateway by default). A small, fast model is usually enough. |
+| `instructions` | Added after the built-in rules, such as `"Only remember dietary preferences."` At most 4,000 characters. |
+| `maxMemories` | Most memories stored per turn, 1–20. Defaults to 10. |
+| `timeout` | Milliseconds for the whole extraction. Defaults to 30,000. |
+| `waitUntil` | Receives each extraction's promise. Pass your platform's `waitUntil`, or the function may stop before the extraction finishes. |
+
+Extraction never changes the response and never fails it. A failure (the
+model call, output that does not match the schema, the embedder or the
+database, or a timeout as `"TIMEOUT"`) goes to `onError` with
+`phase: "save"`; the promise given to `waitUntil` resolves either way.
+The search and the write also appear in the client's `onEvent` like any
+other call.
+
+Extraction only ever updates keys that start with `extracted:`, so it
+cannot overwrite a memory your app stored with a key. It does not update
+memories without one, such as those from `saveMemory`: it skips facts
+they already hold, but a change to one of them is stored as a new memory.
+See [limitations](./limitations.md#extraction).
+
+Passing a model wrapped with `withMemory` as the extraction model is
+safe: the middleware recognises its own extraction calls and leaves them
+alone.
+
+#### `extractMemories`
+
+The same extraction as a function, for a `save` hook that also does other
+work, a queue, or a background job:
+
+```ts
+import { extractMemories, withMemory } from "mnemocyte/ai-sdk";
+
+const model = withMemory({
+  model: openai("gpt-6.1-sol"),
+  memory: user,
+  save: async (turn) => {
+    const stored = await extractMemories({ ...turn, model: openai("gpt-6.1-mini") });
+    metrics.count("memories.extracted", stored.length);
+  },
+});
+```
+
+It takes `model`, `memory` (a bound client), `prompt` and `text` (as in
+the turn), the options above except `waitUntil`, and an optional `signal`.
+It returns the stored memories, new or updated, and `[]` when there was
+nothing to store. Unlike the middleware, it throws: `"CONFIG"` for bad
+options or an unbound client, `"TIMEOUT"`, the AI SDK's
+`NoObjectGeneratedError` for output that does not match the schema, and
+any error of the model, the embedder or the database.
+
 ### Errors and cancellation
 
 If `context()` fails (the embedder or the database is down), the error goes
@@ -261,5 +358,6 @@ memory; the client's `onEvent` also records it as a failed `"context"`
 operation. Aborting the call is different: an aborted `abortSignal` cancels
 `context()` and the call throws, without calling the model.
 
-A `save` hook that throws or rejects goes to `onError` with
-`phase: "save"`. Errors thrown by `onError` itself are ignored.
+A `save` hook that throws or rejects, and a failed extraction, go to
+`onError` with `phase: "save"`. Errors thrown by `onError` itself are
+ignored.

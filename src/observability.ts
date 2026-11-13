@@ -27,14 +27,45 @@ function withMetadata(
 	};
 }
 
-async function emitObservation(
+function reportHookError(
+	config: MemoryConfig,
+	error: unknown,
+	event: MnemocyteObservation,
+): void {
+	try {
+		const reported = config.observability?.onError?.({ error, event });
+		// A misbehaving error hook must not fail anything either.
+		(reported as unknown as PromiseLike<unknown> | undefined)?.then?.(
+			undefined,
+			() => undefined,
+		);
+	} catch {
+		// Telemetry never affects the call.
+	}
+}
+
+/**
+ * Calls `onEvent` without waiting for it. The call is synchronous, so events
+ * of one operation are delivered in order; a returned promise is never
+ * awaited and a throw or rejection goes to `onError`, never to the caller.
+ */
+function emitObservation(
 	config: MemoryConfig,
 	event: MnemocyteObservation,
-): Promise<void> {
+): void {
 	try {
-		await config.observability?.onEvent?.(event);
-	} catch {
-		return;
+		const result: unknown = config.observability?.onEvent?.(event);
+		if (
+			result !== null &&
+			typeof result === "object" &&
+			typeof (result as PromiseLike<unknown>).then === "function"
+		) {
+			(result as PromiseLike<unknown>).then(undefined, (error: unknown) => {
+				reportHookError(config, error, event);
+			});
+		}
+	} catch (error) {
+		reportHookError(config, error, event);
 	}
 }
 
@@ -47,7 +78,7 @@ async function observeFromStartedAt<T>(
 	action: () => Promise<T>,
 	successMetadata?: (result: T) => ObservationMetadata,
 ): Promise<T> {
-	await emitObservation(
+	emitObservation(
 		config,
 		withMetadata(
 			{
@@ -61,7 +92,7 @@ async function observeFromStartedAt<T>(
 	);
 	try {
 		const result = await action();
-		await emitObservation(
+		emitObservation(
 			config,
 			withMetadata(
 				{
@@ -76,7 +107,7 @@ async function observeFromStartedAt<T>(
 		);
 		return result;
 	} catch (error) {
-		await emitObservation(
+		emitObservation(
 			config,
 			withMetadata(
 				{

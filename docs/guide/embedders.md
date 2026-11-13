@@ -434,6 +434,23 @@ Each public operation emits one `start` event, then one `success` or `error`
 event; so does the access write of a tracked search (`"trackAccess"`, see
 [search](./api.md#search)), with `operation`, `phase`, `backend`, `timestamp`,
 `durationMs`, and `namespace`, `entityId`, `memoryId`, `count` or `error`
-where they apply. Errors thrown by
-`onEvent` are ignored, but an async `onEvent` is awaited, so a slow hook
-slows every operation.
+where they apply.
+
+`onEvent` is never awaited, so a slow or failing hook cannot delay or fail a
+call. Events are delivered in order (`start`, then `success` or `error`), but
+async work from one event can still be running when the next arrives. A
+synchronous hook still blocks while it runs. If `onEvent` throws or rejects,
+the optional `onError` receives it:
+
+```ts
+observability: {
+  onEvent: (event) => exporter.send(event),
+  onError({ error, event }) {
+    console.warn("telemetry failed", event.operation, error);
+  },
+},
+```
+
+Without `onError` the failure is dropped. On serverless platforms, work the
+hook leaves running can be cut off when the function ends; flush your
+exporter yourself (for example with `waitUntil`).

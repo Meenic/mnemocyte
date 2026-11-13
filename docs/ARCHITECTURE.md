@@ -571,3 +571,17 @@ Dated 2026-10-26 unless noted.
     consolidating finds what one missed. The index plan was measured on
     PGlite (see features/maintenance.md); server numbers come with
     `chore/benchmarks`.
+31. **Non-blocking observability** (2026-11-13, landed): `onEvent` is called
+    synchronously and never awaited, so a slow async hook cannot delay or
+    fail a call. Failures (a throw, or a rejection caught on the returned
+    promise) go to an optional `observability.onError({ error, event })`
+    and are dropped when it is unset: a library writing to the console is
+    noisy and cannot be turned off, and silence alone would hide a broken
+    exporter. A throwing `onError` is ignored. Events keep invocation order
+    (`start`, then `success` or `error`) and are not serialized: chaining
+    each event on the previous hook's promise would give non-overlapping
+    handlers, but a hook that never settles would queue every later event
+    for the life of the call. A synchronous hook still blocks while it
+    runs, and serverless platforms may cut off un-awaited work, so apps
+    flush their exporter themselves. The AI SDK middleware and tools only
+    call client methods, so they inherit this.

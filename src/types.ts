@@ -226,16 +226,26 @@ export interface MnemocyteObservation {
 /**
  * Hooks for observing client activity.
  *
- * Exceptions thrown by {@link ObservabilityConfig.onEvent} are swallowed so
- * that telemetry never affects application logic.
+ * Hooks never delay or fail a client call: `onEvent` is called without being
+ * awaited, and anything it throws or rejects with goes to
+ * {@link ObservabilityConfig.onError} (or is dropped when that is unset).
  */
 export interface ObservabilityConfig {
 	/**
 	 * Called for every lifecycle event of every operation. Receives a single
-	 * {@link MnemocyteObservation}. May be sync or async; it is awaited, so a
-	 * slow async hook delays the operation.
+	 * {@link MnemocyteObservation}. May be sync or async. It is called in order
+	 * (`"start"`, then `"success"` or `"error"`) but never awaited, so async
+	 * work from one event may still be running when the next one is delivered.
+	 * A synchronous hook still blocks while it runs. On serverless platforms
+	 * un-awaited work can be cut off when the function ends; flush it yourself.
 	 */
 	onEvent?: (event: MnemocyteObservation) => void | Promise<void>;
+	/**
+	 * Called when `onEvent` throws or rejects, with the error and the event it
+	 * was handling. Unset by default, so failures are dropped. A throw from
+	 * this hook is ignored too.
+	 */
+	onError?: (info: { error: unknown; event: MnemocyteObservation }) => void;
 }
 
 /**

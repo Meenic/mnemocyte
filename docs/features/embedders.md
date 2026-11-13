@@ -301,9 +301,14 @@ stop promptly only if the embedder forwards the signal to `fetch`.
 `error` event per public operation, and per access write of a tracked search
 (`"trackAccess"`), with `operation`, `backend`, `timestamp`,
 `durationMs`, and `namespace`, `entityId`, `memoryId`, `count` where they
-apply. Errors
-thrown by the hook are swallowed, but the hook is **awaited**, so a slow async
-hook delays every operation.
+apply. The hook
+is called synchronously and **not awaited** (`observability.ts`): events of a
+call are delivered in order, but async hook work may overlap, and a
+synchronous hook still blocks. A throw or rejection goes to the optional
+`observability.onError({ error, event })`, or is dropped; a failing `onError`
+is ignored too. There is no per-call queue, so a hook that never settles
+holds nothing. The AI SDK middleware and tools only call client methods, so
+they are covered by the same behavior (decision 27 keeps them off `onEvent`).
 
 ## Client lifecycle
 

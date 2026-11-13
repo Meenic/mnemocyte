@@ -22,9 +22,15 @@ behavioural changes documented in their entries.
   `DependentsPolicy` type is exported.
 - **`neighbors` on `findDuplicates`.** How many nearest memories each
   memory is compared with (default 10, at most 100).
+- **`observability.onError`.** Receives `{ error, event }` when `onEvent`
+  throws or rejects.
 
 ### Changed
 
+- **Observability hooks are not awaited.** A slow or failing `onEvent` no
+  longer delays or fails a call. Events are still delivered in order, and
+  errors from the hook go to `onError` (dropped when unset). A synchronous
+  hook still blocks while it runs.
 - **`findDuplicates` uses nearest neighbors.** Each memory is compared
   with its `neighbors` nearest instead of every other memory. On Postgres a
   large scope uses the HNSW index once per memory (7.4 s instead of 32.8 s

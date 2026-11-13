@@ -102,8 +102,8 @@ does not wait for it ("fire-and-forget"):
 - The write is observed as its own `"trackAccess"` operation: a `start` event,
   then `success` or `error` with `namespace`, `entityId` and `count`. The store promise is
   settled into a value as soon as it is created, so a failure that lands
-  while a slow `onEvent` is still handling `start` is never an unhandled
-  rejection. Errors go only to `onEvent`; search has already resolved.
+  before the observed action awaits it is never an unhandled rejection.
+  Errors go only to `onEvent`; search has already resolved.
 - A write that fails because the caller ended their database client is
   reported like any other failure.
 - It increments `access_count` and sets `last_accessed_at`; `updated_at`

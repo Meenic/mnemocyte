@@ -140,5 +140,8 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   the embedder's `model` and `dimensions`, not its `purposes`; changing the
   prefixes or body fields after memories are stored makes old and new
   vectors compare poorly, without an error.
-- **The observability hook is awaited.** A slow `onEvent` slows every
-  operation. Planned: `fix/observability-non-blocking`.
+- **Observability hooks are not awaited.** A slow async `onEvent` never
+  delays a call, but a synchronous one still blocks while it runs, async
+  work from consecutive events can overlap, and on serverless platforms it
+  can be cut off when the function ends. Failures reach `onError` only if
+  you set it.

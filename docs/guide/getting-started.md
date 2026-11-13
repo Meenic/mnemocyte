@@ -84,14 +84,13 @@ your app and your scripts to share:
 ```ts
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
-import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
 
 export const memory = createMemory({
   namespace: "my-agent",
-  store: postgresStore({ client: sql }),
+  store: sql,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 
@@ -102,9 +101,11 @@ export async function closeDatabase() {
 
 - `namespace` is the default for every call: your app, or your tenant in a
   multi-tenant app. A call can still name another one.
-- `postgresStore` takes the database client your app already has; here a
-  [postgres.js](https://github.com/porsager/postgres) `sql`. Using `pg`,
-  Drizzle or PGlite instead? See [other drivers](#other-drivers).
+- `store` is the database client your app already has; here a
+  [postgres.js](https://github.com/porsager/postgres) `sql`. Mnemocyte
+  recognises the driver by its shape and loads its Postgres code on the
+  first call. Using `pg`, Drizzle or PGlite instead? See
+  [other drivers](#other-drivers).
 - `openaiEmbedder` reads `OPENAI_API_KEY` and calls OpenAI with `fetch`.
   `text-embedding-3-small` returns 1536-dimension vectors.
 - The client holds no connections of its own and has no `close()`. Your
@@ -277,14 +278,13 @@ pnpm add -D @types/pg
 ```ts
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
-import { postgresStore } from "mnemocyte/postgres";
 import pg from "pg";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 export const memory = createMemory({
   namespace: "my-agent",
-  store: postgresStore({ client: pool }),
+  store: pool,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 
@@ -305,7 +305,6 @@ pnpm add drizzle-orm
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
-import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
@@ -313,7 +312,7 @@ export const db = drizzle({ client: sql });
 
 export const memory = createMemory({
   namespace: "my-agent",
-  store: postgresStore({ client: db }),
+  store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 
@@ -341,7 +340,6 @@ import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
-import { postgresStore } from "mnemocyte/postgres";
 
 const db = await PGlite.create({
   dataDir: "./memory-data",
@@ -350,7 +348,7 @@ const db = await PGlite.create({
 
 export const memory = createMemory({
   namespace: "my-agent",
-  store: postgresStore({ client: db }),
+  store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
 

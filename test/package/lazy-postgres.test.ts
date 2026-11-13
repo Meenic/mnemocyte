@@ -73,6 +73,37 @@ describe("lazy Postgres package loading", () => {
 		},
 	);
 
+	test("keeps the Postgres backend out of the root entry's static imports", async () => {
+		// Follow every relative static import from dist/index.mjs. The backend
+		// (queries, migration runner, driver adapters) must only be reachable
+		// through the dynamic import() that createMemory({ store: client })
+		// runs on first use.
+		const reached = new Set<string>();
+		const pending = [resolve("dist/index.mjs")];
+		for (let file = pending.pop(); file; file = pending.pop()) {
+			if (reached.has(file)) {
+				continue;
+			}
+			reached.add(file);
+			const source = await readFile(file, "utf8");
+			for (const match of source.matchAll(
+				/^import\s+(?:[^"']+\s+from\s+)?["'](\.{1,2}\/[^"']+)["'];?\s*$/gm,
+			)) {
+				pending.push(resolve(dirname(file), match[1] ?? ""));
+			}
+		}
+		const root = await readFile(resolve("dist/index.mjs"), "utf8");
+		expect(root).toMatch(
+			/\bimport\(["']\.\/postgres-backend-[^"']+\.mjs["']\)/,
+		);
+		for (const file of reached) {
+			const source = await readFile(file, "utf8");
+			expect(source, file).not.toMatch(
+				/\bCREATE TABLE\b|\bfunction createPostgresStore\b/,
+			);
+		}
+	});
+
 	test("runs an in-memory client from the packed package with database packages absent", async () => {
 		const temporaryRoot = await mkdtemp(
 			join(tmpdir(), "mnemocyte-packed-consumer-"),
@@ -152,6 +183,60 @@ describe("lazy Postgres package loading", () => {
 				windowsHide: true,
 			});
 			expect(stdout).toBe("packed-in-memory-ok");
+
+			// CommonJS: require(esm) fails with ERR_REQUIRE_ASYNC_MODULE if any
+			// module in the graph uses top-level await. A client passed as store
+			// loads the Postgres chunk on first use, from require() as well.
+			const cjsScript = join(consumer, "client-store.cjs");
+			await writeFile(
+				cjsScript,
+				`
+						const { createMemory } = require("mnemocyte");
+
+						const statements = [];
+						const executor = {
+							async query(sql) {
+								statements.push(sql);
+								return [];
+							},
+							async transaction(fn) {
+								return fn(executor);
+							},
+						};
+						const memory = createMemory({
+							store: executor,
+							embedder: {
+								model: "packed-client-store",
+								dimensions: 2,
+								async embed(texts) {
+									return texts.map((text) => [text.length, 1]);
+								},
+							},
+						});
+						if (statements.length !== 0) {
+							throw new Error("createMemory queried the database.");
+						}
+						memory
+							.get({ scope: { namespace: "packed", entityId: "cjs" }, key: "missing" })
+							.then((found) => {
+								if (found !== null || !statements.some((sql) => sql.includes("mnemocyte_memories"))) {
+									throw new Error("The lazily loaded Postgres store did not run.");
+								}
+								process.stdout.write("packed-client-store-ok");
+							})
+							.catch((error) => {
+								process.stderr.write(String(error && error.stack));
+								process.exitCode = 1;
+							});
+					`,
+				"utf8",
+			);
+			const cjs = await execFileAsync(process.execPath, [cjsScript], {
+				cwd: consumer,
+				env: { ...process.env, NODE_PATH: "" },
+				windowsHide: true,
+			});
+			expect(cjs.stdout).toBe("packed-client-store-ok");
 		} finally {
 			await rm(temporaryRoot, { recursive: true, force: true });
 		}

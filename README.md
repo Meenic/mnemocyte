@@ -61,17 +61,16 @@ pgvector 0.8.0 or later available:
 pnpm add postgres
 ```
 
-Pass the client you already have (a postgres.js `sql`, a `pg` Pool, a
-PGlite instance or a Drizzle instance), then create or upgrade the schema
-with `migrate`, for example in a deploy step:
+Pass the client you already have as `store` (a postgres.js `sql`, a `pg`
+Pool, a PGlite instance or a Drizzle instance), then create or upgrade the
+schema with `migrate`, for example in a deploy step:
 
 ```ts
 import { createMemory, migrate } from "mnemocyte";
-import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
-const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
+const memory = createMemory({ store: sql, embedder });
 
 await migrate({ memory, createExtension: true });
 ```

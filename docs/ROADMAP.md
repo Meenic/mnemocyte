@@ -127,7 +127,7 @@ it.
   columns (`src/memory/postgres.ts`) tell the user to run
   `migrate({ memory })` and link the Postgres guide, instead of naming SQL
   files; `feat/cli` changes the hint to `npx mnemocyte migrate`.
-- [ ] `feat/store-client`: `createMemory({ store })` also takes a database
+- [x] `feat/store-client`: `createMemory({ store })` also takes a database
   client (postgres.js, a `pg` Pool, PGlite, Drizzle over one of them, or a
   `SqlExecutor`) and detects it with decision 21's checks, after store
   configs from `postgresStore()`, which keeps working (decision 23). The

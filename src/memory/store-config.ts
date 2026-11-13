@@ -16,20 +16,32 @@ export function createMnemocyteStoreConfig(
 	}) as unknown as MnemocyteStoreConfig;
 }
 
+function hasEnvelope(value: unknown): value is MemoryStoreConfigEnvelope {
+	return (
+		typeof value === "object" && value !== null && MEMORY_STORE_CONFIG in value
+	);
+}
+
+/**
+ * True for a value from `createMnemocyteStoreConfig`, from any copy of the
+ * package (the key is a `Symbol.for`).
+ */
+export function isMnemocyteStoreConfig(
+	value: unknown,
+): value is MnemocyteStoreConfig {
+	return hasEnvelope(value);
+}
+
 export function unwrapMnemocyteStoreConfig(
 	config: MnemocyteStoreConfig,
 ): MemoryStore {
 	const candidate: unknown = config;
-	if (
-		typeof candidate !== "object" ||
-		candidate === null ||
-		!(MEMORY_STORE_CONFIG in candidate)
-	) {
+	if (!hasEnvelope(candidate)) {
 		throw new MnemocyteError(
 			"store must be created by a supported Mnemocyte store adapter.",
 			"CONFIG",
 		);
 	}
 
-	return (candidate as MemoryStoreConfigEnvelope)[MEMORY_STORE_CONFIG];
+	return candidate[MEMORY_STORE_CONFIG];
 }

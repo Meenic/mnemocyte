@@ -32,11 +32,10 @@ Run `migrate` with the client your app uses, for example in a deploy step:
 
 ```ts
 import { createMemory, migrate } from "mnemocyte";
-import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
-const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
+const memory = createMemory({ store: sql, embedder });
 
 const { applied, adopted, extensionCreated } = await migrate({
   memory,
@@ -151,17 +150,16 @@ this way.
 
 ## Connect
 
-Pass the client your app already has. `postgresStore` recognises it by its
-shape, without importing any driver:
+Pass the client your app already has as `store`. Mnemocyte recognises it
+by its shape, without importing any driver:
 
 ```ts
 import { createMemory } from "mnemocyte";
-import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!, { ssl: "require", max: 10 });
 
-const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
+const memory = createMemory({ store: sql, embedder });
 
 // ... on shutdown, end your own client:
 await sql.end();
@@ -169,6 +167,16 @@ await sql.end();
 
 You own the client: TLS, pool size, timeouts and `prepare` are whatever you
 configure. The memory client holds no connections and has no `close()`.
+
+Mnemocyte's Postgres code (queries, the migration runner, the driver
+adapters) is imported with a dynamic `import()` on the first call that
+needs it, `migrate` included, so an app on the in-memory backend never
+loads it. `createMemory` stays synchronous.
+
+`postgresStore({ client })` from `mnemocyte/postgres` takes the same
+clients and keeps working; `createMemory` recognises the store it returns
+before checking for a client. `migrate({ store, dimensions })` accepts
+either too, for a deploy step without an embedder.
 
 Checks run in this order, and the first match wins:
 
@@ -182,7 +190,8 @@ Checks run in this order, and the first match wins:
 5. **`SqlExecutor`:** an object with `query` and `transaction` or `batch`
    (see [below](#bring-another-driver)).
 
-Anything else throws `"CONFIG"` when `postgresStore` is called.
+Anything else throws `"CONFIG"` from `createMemory` (or `postgresStore`)
+right away, before any query runs.
 
 ### node-postgres
 
@@ -190,7 +199,7 @@ Anything else throws `"CONFIG"` when `postgresStore` is called.
 import pg from "pg";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-const store = postgresStore({ client: pool });
+const memory = createMemory({ store: pool, embedder });
 ```
 
 Pass a `Pool`, not a `Client`: each transaction checks out one connection
@@ -214,7 +223,7 @@ import { vector } from "@electric-sql/pglite-pgvector";
 
 const db = await PGlite.create({ dataDir: "./memory-data", extensions: { vector } });
 
-const memory = createMemory({ store: postgresStore({ client: db }), embedder });
+const memory = createMemory({ store: db, embedder });
 await migrate({ memory, createExtension: true });
 ```
 
@@ -231,7 +240,7 @@ Pass the Drizzle instance itself:
 import { drizzle } from "drizzle-orm/node-postgres";
 
 const db = drizzle({ client: pool });
-const store = postgresStore({ client: db });
+const memory = createMemory({ store: db, embedder });
 ```
 
 Mnemocyte runs its own SQL on `db.$client` and shares its pool. Supported:
@@ -241,8 +250,8 @@ Drizzle schema does not need to include Mnemocyte's tables, but the
 migrations must be applied. `drizzleStore(db)` from
 `mnemocyte/stores/drizzle` does the same and keeps working. TypeScript
 types that omit `$client` (such as an instance annotated as
-`PostgresJsDatabase`) are accepted by `drizzleStore`; for `postgresStore`,
-let the type be inferred from `drizzle()`.
+`PostgresJsDatabase`) are accepted by `drizzleStore`; for `store` and
+`postgresStore`, let the type be inferred from `drizzle()`.
 
 ### postgres.js 3 and 4
 
@@ -266,8 +275,8 @@ statements, so a transaction-mode pooler (PgBouncer, Supavisor) works without
 
 ### Bring another driver
 
-`postgresStore` also takes any `SqlExecutor`, an interface exported from
-`mnemocyte/postgres`:
+`store` (and `postgresStore`) also takes any `SqlExecutor`, an interface
+exported from `mnemocyte/postgres`:
 
 ```ts
 interface SqlExecutor {

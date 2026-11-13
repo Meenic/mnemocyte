@@ -69,6 +69,17 @@ describeStoreContract("PGlite", async () => {
 	return { client: db, close: () => db.close() };
 });
 
+// createMemory({ store: db }) and migrate({ store: db }): detection and the
+// lazily imported backend, end to end.
+describeStoreContract(
+	"PGlite passed as store",
+	async () => {
+		const db = await createPGlite();
+		return { client: db, close: () => db.close() };
+	},
+	{ directClient: true },
+);
+
 describeStoreContract("Drizzle over PGlite", async () => {
 	const db = await createPGlite();
 	return { client: drizzle({ client: db }), close: () => db.close() };

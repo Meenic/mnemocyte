@@ -1,7 +1,7 @@
 import { MnemocyteError } from "./errors.js";
 import { readMemoryClientInternals } from "./memory/client-internals.js";
 import type { MemoryStore } from "./memory/store.js";
-import { unwrapMnemocyteStoreConfig } from "./memory/store-config.js";
+import { resolveStore } from "./memory/store-input.js";
 import {
 	assertMigrateDimensions,
 	validateMigrateInput,
@@ -13,7 +13,8 @@ import type { MigrateInput, MigrateResult } from "./types.js";
  *
  * Pass the app's client as `memory`: its store is migrated and its
  * `embedder.dimensions` fixes the embedding column on a fresh install. A
- * deploy step without a client passes `store` and `dimensions` instead.
+ * deploy step without a client passes `store` (the database client, or a
+ * store from `postgresStore()`) and `dimensions` instead.
  *
  * Postgres: each migration runs in its own transaction, which first takes a
  * transaction-level advisory lock, so app instances that call `migrate()` at
@@ -29,7 +30,8 @@ import type { MigrateInput, MigrateResult } from "./types.js";
  * @throws {MnemocyteError} `"VALIDATION"` for malformed input, both or
  * neither of `memory` and `store`, or a fresh install without dimensions;
  * `"CONFIG"` when `dimensions` differs from the embedder or the
- * installation, or `memory`/`store` did not come from Mnemocyte;
+ * installation, `memory` did not come from Mnemocyte, or `store` is neither
+ * a store from Mnemocyte nor a supported client;
  * `"MIGRATION"` when pgvector is missing (or `createExtension` lacks the
  * privilege), a migration fails (it is rolled back) or the schema matches no
  * known migration; `"ABORTED"` when `signal` aborts; `"DB"` for other driver
@@ -38,11 +40,10 @@ import type { MigrateInput, MigrateResult } from "./types.js";
  * @example
  * ```ts
  * import { createMemory, migrate } from "mnemocyte";
- * import { postgresStore } from "mnemocyte/postgres";
  * import postgres from "postgres";
  *
  * const sql = postgres(process.env.DATABASE_URL!);
- * const memory = createMemory({ store: postgresStore({ client: sql }), embedder });
+ * const memory = createMemory({ store: sql, embedder });
  * await migrate({ memory, createExtension: true });
  * ```
  */
@@ -63,7 +64,7 @@ export async function migrate(input: MigrateInput): Promise<MigrateResult> {
 		store = internals.store;
 		dimensions = embedderDimensions;
 	} else {
-		store = unwrapMnemocyteStoreConfig(input.store);
+		store = resolveStore(input.store);
 	}
 	return await store.migrate({
 		...(dimensions === undefined ? {} : { dimensions }),

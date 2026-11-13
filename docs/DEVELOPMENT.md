@@ -12,8 +12,9 @@ Feature areas:
 
 - [features/postgres.md](./features/postgres.md): schema, migrations and
   the `migrate()` runner, installation metadata, connections (`SqlExecutor`,
-  client detection, the postgres.js, node-postgres and PGlite adapters,
-  `postgresStore`, `drizzleStore(db)`).
+  client detection, the lazily loaded backend for `store: client`, the
+  postgres.js, node-postgres and PGlite adapters, `postgresStore`,
+  `drizzleStore(db)`).
 - [features/scopes.md](./features/scopes.md): scopes and their matching
   rules, the default namespace and bound clients, keyed `add`, `get`,
   `list` pagination, `update`, `deleteScope`, the client lifecycle.
@@ -45,8 +46,8 @@ or from a consuming project.
 ```txt
 src/
   index.ts              root entry: createMemory, migrate, errors, public types
-  client.ts             createMemory: config checks, store (given | in-memory), overloads for namespace
-  migrate.ts            migrate(): validates input, resolves { memory } or { store }, calls the store's migrate
+  client.ts             createMemory: config checks, store (resolveStore | in-memory), overloads for namespace
+  migrate.ts            migrate(): validates input, resolves { memory } or { store } (resolveStore), calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   types.ts              every public type
   errors.ts             MnemocyteError and its codes
@@ -59,6 +60,10 @@ src/
     store.ts            the internal MemoryStore contract, scopes and selectors
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
+    store-input.ts      resolveStore: a store config, or a client detected by shape → lazy store
+    store-config.ts     the opaque store config envelope from postgresStore() and drizzleStore()
+    lazy-store.ts       MemoryStore that loads the real one on its first call
+    postgres-backend.ts dynamic import() target: client → Postgres MemoryStore
     validation.ts       runtime input and config validation
     limits.ts           input size caps (content, tags, metadata, key, limit)
     json.ts             JSON metadata validation and deep clone
@@ -68,7 +73,8 @@ src/
     records.ts          ids, tag normalization, cloning
   sql/
     executor.ts         SqlExecutor: query, optional transaction and batch
-    clients.ts          toSqlExecutor: client detection, PostgresClient types
+    detect.ts           detectClient: shape checks, PostgresClient types (no adapters, in the root entry)
+    clients.ts          executorFor / toSqlExecutor: detected client → its adapter
     postgres-js.ts      postgresJs(sql): the postgres.js adapter
     node-postgres.ts    the node-postgres Pool adapter
     pglite.ts           the PGlite adapter
@@ -148,7 +154,13 @@ plugin in `tsdown.config.ts` strips that comment.
 Exports:
 
 - `mnemocyte`: `createMemory`, `migrate`, `MnemocyteError`,
-  `isMnemocyteError` and the public types.
+  `isMnemocyteError` and the public types, including `PostgresClient`.
+  `createMemory({ store })` and `migrate({ store })` take a store config or
+  a database client; the Postgres backend loads with a dynamic `import()`
+  on first use (see
+  [features/postgres.md](./features/postgres.md#lazy-loading)). The root
+  entry must not import the backend statically; a package test follows its
+  static imports to check.
 - `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
   `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
@@ -216,7 +228,10 @@ Vitest has three projects (`vitest.config.ts`):
 - The package tests pack the tarball and install it into a temporary
   consumer with `drizzle-orm` and `postgres` absent. They extract with the
   system `tar` using relative paths, so GNU tar, bsdtar and Windows'
-  `tar.exe` all work.
+  `tar.exe` all work. The consumer runs an in-memory client from ESM and,
+  through `require()`, a client with a `SqlExecutor` as `store`, which
+  loads the Postgres chunk lazily; `require()` would throw if any module
+  used top-level `await`.
 - `pnpm lint:package` builds, packs once into a temporary folder and runs
   publint `--strict` and attw on that tarball. attw uses the `node16`
   profile, which skips node10 resolution (it cannot see subpath `exports`),
@@ -233,7 +248,9 @@ Vitest has three projects (`vitest.config.ts`):
   consolidation, `deleteScope` and stats. The `contract` project runs it on
   PGlite, direct and through Drizzle: an in-process Postgres 18 with
   pgvector 0.8.7, so no service is needed and every Node job in CI runs it
-  (about 10 s). A third
+  (about 20 s). Those runs go through `postgresStore`; another passes the
+  PGlite instance itself as `store` (`directClient`), which covers
+  detection and the lazily imported backend end to end. One more
   PGlite run wraps the executor and fails on any parameter that is not a
   string, finite number or null, the values postgres.js 3.x and 4.x write
   the same.

@@ -37,11 +37,11 @@ application
 creates or closes it. This has landed: `SqlExecutor` (`query`, plus
 `transaction` and/or `batch`), and `postgresStore({ client })` detecting
 postgres.js, a node-postgres `Pool`, PGlite and Drizzle over them by shape
-(decision 21); see
-[features/postgres.md](./features/postgres.md#client-detection). Next,
-`createMemory({ store })` takes the client itself and runs the same
-detection, so `postgresStore` becomes optional (decision 23). libSQL later
-gets its own store. We write our own interface instead of using
+(decision 21), and `createMemory({ store })` taking the client itself with
+the same detection and a lazily imported backend, so `postgresStore` is
+optional (decision 23); see
+[features/postgres.md](./features/postgres.md#client-detection). libSQL
+later gets its own store. We write our own interface instead of using
 Kysely: it is two methods, adds no dependency, and a query builder does not
 help with vector or full-text SQL, which is where dialects differ.
 
@@ -388,6 +388,14 @@ Dated 2026-10-26 unless noted.
     dynamic `import()`, because a static import would put it in every
     in-memory user's bundle and top-level `await` would break `require()`;
     the PR measures both bundles to confirm the lazy load is worth it.
+    (2026-11-13, landed) Measured with a Rolldown-bundled consumer: the
+    lazy load keeps startup at 15.0 KB gzipped against 26.1 KB for a
+    static import, and the backend chunk (12.5 KB) loads on the first
+    call. Detection stays in the root entry, so an unrecognised client is
+    still a synchronous `"CONFIG"`; `migrate({ store })` takes a client
+    too; `MemoryConfig.store` is widened to
+    `MnemocyteStoreConfig | PostgresClient` instead of new overloads. A
+    failed import is not cached.
 24. **Extraction in 1.0** (2026-11-13): supersedes 11. mem0, Mastra and
     Supermemory all save from the conversation without app code; with only
     a bare hook, every Mnemocyte app would write its own extraction. The AI

@@ -46,6 +46,7 @@ import type {
 	RetrievalExplanation,
 	RetrievalFusionConfig,
 	RetrievalScores,
+	PostgresClient as RootPostgresClient,
 	ScopeInput,
 	ScopeSelector,
 	ScopeSelectorInput,
@@ -180,6 +181,29 @@ postgresStore({ client: postgresJs3Tx });
 postgresStore({ client: postgresJs4Tx });
 // @ts-expect-error A reserved connection has neither begin nor savepoint.
 postgresStore({ client: postgresJs4Reserved });
+// createMemory and migrate take the same clients as store, no wrapper; the
+// root entry exports PostgresClient too.
+const rootClients: RootPostgresClient[] = driverClients;
+for (const driverClient of rootClients) {
+	const direct: MemoryClient = createMemory({ store: driverClient, embedder });
+	const defaulted: MemoryClient<true> = createMemory({
+		namespace: "app",
+		store: driverClient,
+		embedder,
+	});
+	void direct;
+	void defaulted;
+	void migrate({ store: driverClient, dimensions: 1536 });
+}
+createMemory({ store: postgresJsSql, embedder });
+createMemory({ store: postgresJs3Sql, embedder });
+createMemory({ store: drizzleOverPGlite, embedder });
+const clientConfig: MemoryConfig = { embedder, store: nodePostgresPool };
+void clientConfig;
+// @ts-expect-error A reserved connection has neither begin nor savepoint.
+createMemory({ store: postgresJs4Reserved, embedder });
+// @ts-expect-error A connection string is not a client.
+createMemory({ store: "postgres://localhost/app", embedder });
 void postgresJsClient;
 void nodePostgresPoolClient;
 void pgliteClient;

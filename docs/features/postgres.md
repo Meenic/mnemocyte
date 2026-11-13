@@ -351,8 +351,9 @@ vectors.
 ## Connections
 
 Mnemocyte never creates or closes a database client. The application passes
-the client it already owns to `postgresStore({ client })`, which turns it
-into a `SqlExecutor`:
+the client it already owns as `createMemory({ store })` (or
+`migrate({ store })`), or to `postgresStore({ client })`; either way it
+becomes a `SqlExecutor`:
 
 ```ts
 interface SqlExecutor {
@@ -393,9 +394,14 @@ interface SqlExecutor {
 
   On abort it cancels what it sent (the `sql.batch`, or every statement)
   and throws `"ABORTED"`; postgres.js rolls back.
-- `postgresStore({ client })` turns a client into `MemoryConfig.store`
-  through `toSqlExecutor` (`src/sql/clients.ts`); see
-  [client detection](#client-detection).
+- `createMemory({ store: client })` and `migrate({ store: client })`
+  resolve `store` in `resolveStore` (`src/memory/store-input.ts`): a store
+  config from `postgresStore()` or `drizzleStore()` first, then a client;
+  see [client detection](#client-detection) and
+  [lazy loading](#lazy-loading).
+- `postgresStore({ client })` turns a client into a store config through
+  `toSqlExecutor` (`src/sql/clients.ts`), eagerly: the `mnemocyte/postgres`
+  entry imports the backend statically.
 - `drizzleStore(db)` (`mnemocyte/stores/drizzle`) is
   `postgresStore({ client: db })` for a Drizzle instance; its parameter type
   also accepts `PostgresJsDatabase`, which does not declare `$client`. A
@@ -414,9 +420,13 @@ what to run from it; without one it throws `"CONFIG"`.
 
 ### Client detection
 
-`toSqlExecutor` reads properties only and imports no driver, so the built
-entries stay free of driver imports (a package test checks this). Checks run
-in a fixed order and the first match wins (ARCHITECTURE decision 21):
+`detectClient` (`src/sql/detect.ts`) reads properties only and imports no
+driver or adapter, so it can sit in the root entry and the built entries
+stay free of driver imports (a package test checks this). It returns the
+client tagged with its driver, unwrapped from Drizzle, or `undefined`;
+`executorFor` (`src/sql/clients.ts`) then wraps it in its adapter, and
+`toSqlExecutor` is the two in a row. Checks run in a fixed order and the
+first match wins (ARCHITECTURE decisions 21 and 23):
 
 1. postgres.js: a function with `unsafe` and `begin` (or `savepoint`, a
    transaction's `sql`) → `postgresJs`. The top-level `sql` has `begin` on
@@ -443,14 +453,51 @@ An object with `query` and `connect` but no `totalCount` is a `pg.Client`
 and throws `"CONFIG"` asking for a `Pool`: a transaction must run on one
 connection, which only `pool.connect()` gives without taking over the
 caller's client. Everything else throws `"CONFIG"` listing the accepted
-clients.
+clients. Messages name what the caller passed: `client` for
+`postgresStore` and `toSqlExecutor`, `store` for `createMemory` and
+`migrate`, whose unrecognised-value message also names `postgresStore()`
+and `drizzleStore()`.
 
 The public types are structural (`PostgresJsClient`, a union of the
 `begin` and `savepoint` shapes, `NodePostgresPool`,
 `PGliteClient`, `DrizzleClient`, their union `PostgresClient`), so the
-`.d.mts` files name no driver package either. A `pg.Client` still
-type-checks, because its `query` fits `SqlExecutor`, whose other methods are
-optional; it fails at runtime.
+`.d.mts` files name no driver package either. `MemoryConfig.store` and
+`migrate`'s `store` are `MnemocyteStoreConfig | PostgresClient`, without
+extra `createMemory` overloads, and `mnemocyte` exports `PostgresClient`
+as a type. A `pg.Client` still type-checks, because its `query` fits
+`SqlExecutor`, whose other methods are optional; it fails at runtime.
+
+### Lazy loading
+
+A client passed as `store` gets a lazy store (`createLazyStore`,
+`src/memory/lazy-store.ts`): a `MemoryStore` whose `backend` is
+`"postgres"` from the start and whose every method first awaits one shared
+`import("./postgres-backend.js")`, which builds the real store with
+`executorFor` and `createPostgresStore`. Every `MemoryStore` method is
+async, so `createMemory` stays synchronous and detection errors stay
+synchronous `"CONFIG"`; nothing is imported or queried until the first
+call, `migrate({ memory })` included. Concurrent first calls share one
+load; a failed load throws `"CONFIG"` with the import error as `cause` and
+is not cached, so the next call retries.
+
+Rolldown puts every dynamic `import()` target in its own chunk, so
+`dist/index.mjs` reaches the backend (`postgres-backend-*.mjs`, which
+imports the shared chunk `mnemocyte/postgres` also uses) only through
+that `import()`. A static import would put the queries, migration runner
+and adapters in every in-memory user's bundle, and top-level `await`
+would make `require("mnemocyte")` throw `ERR_REQUIRE_ASYNC_MODULE`. A
+consumer importing only `createMemory`, bundled and minified with
+Rolldown (2026-11-13):
+
+| Build | Loaded at startup | Loaded on first Postgres call |
+|---|---|---|
+| 0.6 (no client support) | 45.2 KB, 13.4 KB gzip | none |
+| Lazy (this design) | 48.8 KB, 15.0 KB gzip | 47.0 KB, 12.5 KB gzip |
+| Static import | 95.3 KB, 26.1 KB gzip | none |
+
+Package tests check that no static import from `dist/index.mjs` reaches
+the backend, and that a packed CommonJS consumer can `require` the
+package and run a client passed as `store`.
 
 The adapters:
 

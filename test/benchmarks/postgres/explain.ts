@@ -292,6 +292,8 @@ export interface MeasureOptions {
 
 export interface Measurement extends PlanRun {
 	runs: number;
+	/** Execution time of the slowest measured run. */
+	slowestMs: number;
 	/** The text plan of one more run, for warm measurements. */
 	text?: string;
 }
@@ -327,11 +329,13 @@ export async function measure(
 		}
 		const sorted = [...results].sort((a, b) => a.executionMs - b.executionMs);
 		const median = sorted[Math.floor((sorted.length - 1) / 2)];
-		if (!median) {
+		const slowest = sorted[sorted.length - 1];
+		if (!median || !slowest) {
 			throw new Error("No measured runs.");
 		}
+		const summary = { runs: results.length, slowestMs: slowest.executionMs };
 		if (options.cold) {
-			return { ...median, runs: results.length };
+			return { ...median, ...summary };
 		}
 		await tx.query("SAVEPOINT mnemocyte_bench", []);
 		for (const step of options.prelude ?? []) {
@@ -343,7 +347,7 @@ export async function measure(
 		);
 		await tx.query("ROLLBACK TO SAVEPOINT mnemocyte_bench", []);
 		const text = lines.map((line) => String(Object.values(line)[0])).join("\n");
-		return { ...median, runs: results.length, text };
+		return { ...median, ...summary, text };
 	});
 }
 

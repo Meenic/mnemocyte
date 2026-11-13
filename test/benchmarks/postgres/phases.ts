@@ -251,6 +251,12 @@ const EXACT: SqlStatement = {
 /** `hnsw.ef_search` values the search sweep compares with the library's. */
 const EF_SEARCH_SWEEP = [40, 100, 150, 200, 300, 400] as const;
 
+/**
+ * Measured runs, after one warm-up, for `findDuplicates` on the HNSW path,
+ * which takes about 30 s per run at full scale.
+ */
+const HNSW_DUPLICATE_RUNS = 3;
+
 type IterativeScan = "strict_order" | "relaxed_order";
 const ITERATIVE_SCANS: readonly IterativeScan[] = [
 	"strict_order",
@@ -423,7 +429,7 @@ async function duplicates(
 	section: string,
 	entityId: string,
 	options: { runs: number; recall: boolean },
-): Promise<Measurement> {
+): Promise<{ measurement: Measurement; exact?: number }> {
 	const { settings, pairs } = await duplicateStatements(client, entityId);
 	const m = await measure(ctx.db, pairs, {
 		prelude: [settings],
@@ -458,8 +464,9 @@ async function duplicates(
 				note: `${approximate} pairs; exact (index scans off): ${exact}`,
 			});
 		}
+		return { measurement: m, exact };
 	}
-	return m;
+	return { measurement: m };
 }
 
 /** Search and duplicates on `halfvec(3072)`. */
@@ -698,31 +705,40 @@ export async function vectorPhase(ctx: BenchContext): Promise<void> {
 	// Duplicates: one HNSW scan per memory, or the scope index and a sort.
 	section = "findDuplicates";
 	await duplicates(ctx, client, section, SMALL, { runs, recall: true });
-	await duplicates(ctx, client, section, MID, { runs, recall: true });
+	const { exact } = await duplicates(ctx, client, section, MID, {
+		runs,
+		recall: true,
+	});
 	{
 		// Without the scope index the planner has only HNSW for the lateral
-		// kNN, which shows what that path costs for a mid-sized scope.
+		// kNN, which shows what that path costs for a mid-sized scope and
+		// where the iterative scan's ordering matters: the scope filter runs
+		// after each index scan. Exact pairs do not depend on indexes, so
+		// they come from the run above. Each ordering gets a warm-up run, so
+		// the second does not start with the first one's cache.
 		const { settings, pairs } = await duplicateStatements(client, MID);
-		ctx.report.add(section, {
-			case: `findDuplicates, ${MID}`,
-			variant: "no scope index (HNSW path)",
-			measurement: await measure(db, pairs, {
-				prelude: [settings],
-				setup: [drop(INDEX.scope)],
-				runs: 1,
-				cold: true,
-			}),
-		});
-		const found = await rolledBack(db, async (tx) => {
-			await tx.query(drop(INDEX.scope), []);
-			await tx.query(settings.sql, settings.params);
-			return (await tx.query(pairs.sql, pairs.params)).length;
-		});
-		ctx.report.add(section, {
-			case: `findDuplicates, ${MID}`,
-			variant: "no scope index, recall",
-			note: `${found} pairs`,
-		});
+		for (const iterativeScan of ITERATIVE_SCANS) {
+			const ordered = withIterativeScan(settings, iterativeScan);
+			ctx.report.add(section, {
+				case: `findDuplicates, ${MID}`,
+				variant: `no scope index (HNSW path), ${iterativeScan}`,
+				measurement: await measure(db, pairs, {
+					prelude: [ordered],
+					setup: [drop(INDEX.scope)],
+					runs: HNSW_DUPLICATE_RUNS,
+				}),
+			});
+			const found = await rolledBack(db, async (tx) => {
+				await tx.query(drop(INDEX.scope), []);
+				await tx.query(ordered.sql, ordered.params);
+				return (await tx.query(pairs.sql, pairs.params)).length;
+			});
+			ctx.report.add(section, {
+				case: `findDuplicates, ${MID}`,
+				variant: `no scope index, ${iterativeScan}, recall`,
+				note: `${found} pairs; exact (index scans off): ${exact ?? "not measured"}`,
+			});
+		}
 	}
 	await duplicates(ctx, client, section, LARGE, { runs: 1, recall: false });
 

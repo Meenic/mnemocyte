@@ -456,9 +456,10 @@ SELECT * FROM nearest ORDER BY "vectorDistance" + 0;
   one sort, the outer one on `"vectorDistance" + 0`) for `vector` and
   `halfvec`, and checks that the same statement with `iterative_scan = off`
   finds none of the filtered rows.
-- `findDuplicates` keeps `strict_order` without a CTE (see
-  [maintenance.md](./maintenance.md)); measuring `relaxed_order` on its
-  HNSW path is a roadmap item.
+- `findDuplicates` uses `relaxed_order` too, without a CTE: its pairs are
+  thresholded, grouped and sorted afterwards. On its HNSW path it found
+  200 of 200 pairs instead of 187, in 21 s instead of 30 s (see
+  [maintenance.md](./maintenance.md)).
 
 Before the first vector search each store reads `pg_extension.extversion`
 once and rejects pgvector before 0.8.0 with `"MIGRATION"`. Without the check,

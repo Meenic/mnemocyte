@@ -30,7 +30,9 @@ function vectors(count: number): number[][] {
  * The plan of the kNN duplicate query: with a scope that is a large part of
  * the table, each memory's neighbors come from one HNSW index scan ordered by
  * the distance to that memory (`Order By: (embedding <=> a.embedding)`), not
- * from comparing every pair. Measurements on larger data are in the PR.
+ * from comparing every pair, and that holds under `relaxed_order`, whose
+ * setting the planner's cost estimate does not read. Measurements on larger
+ * data are in features/maintenance.md.
  */
 describe("findDuplicates query plan (PGlite)", () => {
 	let db: PGlite;
@@ -89,6 +91,9 @@ describe("findDuplicates query plan (PGlite)", () => {
 		await memory.findDuplicates({ scope: { entityId: "large" }, threshold: 0 });
 		const settings = expectDefined(
 			recorded.find((entry) => entry.sql.includes("hnsw.iterative_scan")),
+		);
+		expect(settings.sql).toContain(
+			"set_config('hnsw.iterative_scan', 'relaxed_order', true)",
 		);
 		const statement = expectDefined(
 			recorded.find((entry) => entry.sql.includes("CROSS JOIN LATERAL")),

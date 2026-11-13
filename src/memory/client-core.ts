@@ -17,15 +17,12 @@ import {
 import type {
 	AddInput,
 	AddManyInput,
-	AuditEvent,
 	ConsolidateResult,
 	DuplicatePair,
 	EmbeddingPurpose,
-	JsonObject,
 	Memory,
 	MemoryClient,
 	MemoryConfig,
-	MemoryRecordScope,
 	MemoryWithScore,
 	NewMemory,
 	SearchInput,
@@ -48,7 +45,6 @@ import { snapshotMetadata } from "./json.js";
 import { MAX_ADD_MANY } from "./limits.js";
 import {
 	cloneMemory,
-	createEventId,
 	createId,
 	normalizeTags,
 	type StoredMemory,
@@ -57,10 +53,7 @@ import type {
 	MemoryStore,
 	StoreMemoryFilter,
 	StoreMemoryPatch,
-	StorePruneEntityDeletion,
-	StorePruneResult,
 	StoreScope,
-	StoreSelector,
 	StoreVisibility,
 } from "./store.js";
 import {
@@ -220,21 +213,6 @@ function createStoredMemory(
 	};
 }
 
-function auditEvent(
-	scope: MemoryRecordScope,
-	description: string,
-	metadata: JsonObject,
-	timestamp = new Date(),
-): AuditEvent {
-	return {
-		id: createEventId(),
-		scope: { ...scope },
-		description,
-		metadata,
-		timestamp,
-	};
-}
-
 interface InsertOutcome {
 	memory: Memory;
 	/** `false` when a keyed row updated an existing memory. */
@@ -279,60 +257,6 @@ function matchInsertResults(
 		throw new MnemocyteError("Memory insert returned an unknown ID.", "DB");
 	}
 	return outcomes;
-}
-
-function writeAuditEvent(outcome: InsertOutcome): AuditEvent {
-	const { memory } = outcome;
-	return auditEvent(
-		memory.scope,
-		outcome.created ? "memory.created" : "memory.updated",
-		{
-			memoryId: memory.id,
-			kind: memory.kind,
-			importance: memory.importance,
-			...(memory.key === null ? {} : { key: memory.key }),
-		},
-	);
-}
-
-function normalizePruneEntityDeletions(
-	result: StorePruneResult,
-	selector: StoreSelector,
-): StorePruneEntityDeletion[] {
-	const seen = new Set<string>();
-	let detailedDeletedCount = 0;
-
-	for (const detail of result.deletedByEntity) {
-		const entityKey = JSON.stringify([detail.namespace, detail.entityId]);
-		if (
-			detail.entityId.length === 0 ||
-			!Number.isInteger(detail.deletedCount) ||
-			detail.deletedCount <= 0 ||
-			seen.has(entityKey) ||
-			(selector.namespace !== null &&
-				detail.namespace !== selector.namespace) ||
-			(selector.entityId !== undefined && detail.entityId !== selector.entityId)
-		) {
-			throw new MnemocyteError(
-				"Memory prune returned invalid per-entity deletion details.",
-				"DB",
-			);
-		}
-		seen.add(entityKey);
-		detailedDeletedCount += detail.deletedCount;
-	}
-
-	if (
-		detailedDeletedCount !== result.deletedCount ||
-		(result.dryRun && result.deletedByEntity.length > 0)
-	) {
-		throw new MnemocyteError(
-			"Memory prune deletion details did not match the deleted count.",
-			"DB",
-		);
-	}
-
-	return [...result.deletedByEntity];
 }
 
 function toDuplicatePair(pair: {
@@ -387,16 +311,10 @@ export function createMemoryClient(
 		await store.ensureEmbeddingCompatibility(config.embedder);
 	}
 
-	async function recordAudit(events: readonly AuditEvent[]): Promise<void> {
-		if (events.length === 0 || config.audit?.enabled !== true) {
-			return;
-		}
-		try {
-			await store.addAuditEvents(events);
-		} catch {
-			// Audit writes must not break the primary operation.
-		}
-	}
+	// Audit events are written by the store in the same statement or
+	// transaction as the write they record, so a failed audit write fails the
+	// call and leaves nothing written.
+	const audit = config.audit?.enabled === true;
 
 	/**
 	 * Starts the access write for a search's results without waiting for it.
@@ -461,7 +379,7 @@ export function createMemoryClient(
 				];
 				const [outcome] = matchInsertResults(
 					stored,
-					await store.insertMemories(stored),
+					await store.insertMemories(stored, { audit }),
 				);
 				if (!outcome) {
 					throw new MnemocyteError(
@@ -469,7 +387,6 @@ export function createMemoryClient(
 						"DB",
 					);
 				}
-				await recordAudit([writeAuditEvent(outcome)]);
 				return outcome.memory;
 			},
 			(memory) => ({ memoryId: memory.id, count: 1 }),
@@ -528,13 +445,15 @@ export function createMemoryClient(
 					),
 				);
 				// Every chunk was embedded above, outside any transaction; the
-				// store writes all rows in one transaction, so a failure writes
-				// none of them.
+				// store writes all rows and their audit events in one
+				// transaction, so a failure writes none of them.
 				const outcomes = matchInsertResults(
 					stored,
-					await store.insertMemories(stored, storeOptions(signal)),
+					await store.insertMemories(stored, {
+						...storeOptions(signal),
+						audit,
+					}),
 				);
-				await recordAudit(outcomes.map(writeAuditEvent));
 				return outcomes.map((outcome) => outcome.memory);
 			},
 			(result) => ({ count: result.length }),
@@ -758,16 +677,11 @@ export function createMemoryClient(
 						id: input.id,
 						patch,
 						now: new Date(),
+						...(audit ? { audit: { fields: Object.keys(fields).sort() } } : {}),
 					});
 					if (!memory) {
 						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
 					}
-					await recordAudit([
-						auditEvent(memory.scope, "memory.updated", {
-							memoryId: memory.id,
-							fields: Object.keys(fields).sort(),
-						}),
-					]);
 					return memory;
 				},
 				(memory) => ({ memoryId: memory.id, count: 1 }),
@@ -791,28 +705,13 @@ export function createMemoryClient(
 							memoryId: input.id,
 							dependents,
 							now: new Date(),
+							audit,
 						},
 						storeOptions(input.signal),
 					);
 					if (!result) {
 						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
 					}
-					await recordAudit(
-						result.deletedIds.map((memoryId) =>
-							auditEvent(
-								scope,
-								"memory.deleted",
-								memoryId === input.id
-									? {
-											memoryId,
-											...(result.restoredIds.length > 0
-												? { restoredIds: [...result.restoredIds] }
-												: {}),
-										}
-									: { memoryId, deletedWith: input.id },
-							),
-						),
-					);
 				},
 			);
 		},
@@ -860,27 +759,10 @@ export function createMemoryClient(
 				async () => {
 					throwIfAborted(input?.signal);
 					const filter = validatePruneInput(input);
-					const result = await store.prune(filter, storeOptions(input.signal));
-					const deletedByEntity = normalizePruneEntityDeletions(
-						result,
-						filter.selector,
+					const result = await store.prune(
+						{ ...filter, now: new Date(), audit },
+						storeOptions(input.signal),
 					);
-					if (result.deletedCount > 0 && result.dryRun === false) {
-						await recordAudit(
-							deletedByEntity.map((detail) =>
-								auditEvent(
-									{
-										namespace: detail.namespace,
-										entityId: detail.entityId,
-										agentId: filter.selector.agentId ?? null,
-										sessionId: filter.selector.sessionId ?? null,
-									},
-									"memory.pruned",
-									{ count: detail.deletedCount },
-								),
-							),
-						);
-					}
 					return {
 						matchedCount: result.matchedCount,
 						deletedCount: result.deletedCount,
@@ -1030,7 +912,7 @@ export function createMemoryClient(
 							supersededIds: input.supersededIds,
 							mergeTags: input.mergeTags !== false,
 							now: new Date(),
-							auditEnabled: config.audit?.enabled === true,
+							auditEnabled: audit,
 						},
 						storeOptions(input.signal),
 					);

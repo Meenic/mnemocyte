@@ -24,6 +24,19 @@ export interface SqlParams {
 	json(value: unknown): string;
 }
 
+/**
+ * A UUIDv7 built in SQL, for statements that cannot know how many ids they
+ * need (audit events of a `delete` or `prune`). The first 48 bits are the
+ * Unix milliseconds of `timestamp` (a `timestamptz` expression); the rest come
+ * from `gen_random_uuid()`, a core function since Postgres 13, with the
+ * version nibble raised from 4 to 7 by setting bits 52 and 53 (`set_bit`
+ * numbers bits from the least significant of each byte). Postgres has
+ * `uuidv7()` only from version 18.
+ */
+export function sqlUuidV7(timestamp: string): string {
+	return `encode(set_bit(set_bit(overlay(uuid_send(gen_random_uuid()) PLACING substring(int8send(floor(extract(epoch FROM ${timestamp}) * 1000)::bigint) FROM 3) FROM 1 FOR 6), 52, 1), 53, 1), 'hex')::uuid`;
+}
+
 export function createSqlParams(): SqlParams {
 	const values: unknown[] = [];
 	const params: SqlParams = {

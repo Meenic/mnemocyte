@@ -11,6 +11,13 @@ import type {
 	MemoryConfig,
 	MemoryStats,
 } from "../types.js";
+import {
+	deletedEvents,
+	prunedEvent,
+	supersededEvent,
+	updatedEvent,
+	writtenEvent,
+} from "./audit.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
 import {
@@ -22,22 +29,18 @@ import {
 	matchesMemoryFilter,
 	matchesPruneFilter,
 } from "./filters.js";
-import {
-	cloneAuditEvent,
-	cloneMemory,
-	createEventId,
-	type StoredMemory,
-} from "./records.js";
+import { cloneAuditEvent, cloneMemory, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
 	type StoreConsolidateInput,
 	type StoreConsolidateResult,
+	type StoreDeleteInput,
+	type StoreDeleteResult,
 	type StoreDuplicatePair,
 	type StoreLexicalCandidate,
 	type StoreLexicalSearchInput,
 	type StoreListPosition,
-	type StorePruneEntityDeletion,
 	type StoreVectorCandidate,
 	type StoreVectorSearchInput,
 } from "./store.js";
@@ -101,6 +104,19 @@ export function createInMemoryStore(): MemoryStore {
 			.sort((a, b) => compareIds(a.id, b.id));
 	}
 
+	function deleteAuditEvents(
+		input: StoreDeleteInput,
+		result: StoreDeleteResult,
+	): AuditEvent[] {
+		return deletedEvents({
+			scope: input.visibility.scope,
+			memoryId: input.memoryId,
+			deletedIds: result.deletedIds,
+			restoredIds: result.restoredIds,
+			now: input.now,
+		});
+	}
+
 	/**
 	 * Throws `"CONFLICT"` when a memory outside `targetIds` (or any memory when
 	 * `allowSelectedDependents` is false) references a target.
@@ -128,10 +144,25 @@ export function createInMemoryStore(): MemoryStore {
 		async ensureEmbeddingCompatibility() {},
 		async insertMemories(rows, options) {
 			throwIfAborted(options?.signal);
+			// Keys are distinct within a call, so every row's target can be
+			// found, and its audit event built, before anything changes.
+			const planned = rows.map((row) => ({
+				row,
+				existing: row.key === null ? undefined : findByKey(row.scope, row.key),
+			}));
+			const events =
+				options?.audit === true
+					? planned.map(({ row, existing }) =>
+							writtenEvent(
+								existing
+									? { ...row, id: existing.id, scope: existing.scope }
+									: row,
+								existing === undefined,
+							),
+						)
+					: [];
 			const results: Memory[] = [];
-			for (const row of rows) {
-				const existing =
-					row.key === null ? undefined : findByKey(row.scope, row.key);
+			for (const { row, existing } of planned) {
 				if (!existing) {
 					memories.set(row.id, row);
 					results.push(cloneMemory(row));
@@ -151,6 +182,7 @@ export function createInMemoryStore(): MemoryStore {
 				existing.updatedAt = row.updatedAt;
 				results.push(cloneMemory(existing));
 			}
+			auditLog.push(...events);
 			return results;
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
@@ -233,6 +265,13 @@ export function createInMemoryStore(): MemoryStore {
 					throw keyConflictError();
 				}
 			}
+			const event =
+				input.audit === undefined
+					? undefined
+					: updatedEvent(
+							{ ...memory, updatedAt: input.now },
+							input.audit.fields,
+						);
 			if (patch.content !== undefined) {
 				memory.content = patch.content;
 			}
@@ -270,6 +309,9 @@ export function createInMemoryStore(): MemoryStore {
 				memory.expiresAt = patch.expiresAt;
 			}
 			memory.updatedAt = input.now;
+			if (event) {
+				auditLog.push(event);
+			}
 			return cloneMemory(memory);
 		},
 		async deleteMemory(input, options) {
@@ -289,16 +331,19 @@ export function createInMemoryStore(): MemoryStore {
 				) {
 					throw hiddenDependentsError();
 				}
+				const result = {
+					deletedIds: [memoryId],
+					restoredIds: direct.map((dependent) => dependent.id),
+				};
+				const events = input.audit ? deleteAuditEvents(input, result) : [];
 				for (const dependent of direct) {
 					dependent.supersededBy = null;
 					dependent.supersededAt = null;
 					dependent.updatedAt = input.now;
 				}
 				memories.delete(memoryId);
-				return {
-					deletedIds: [memoryId],
-					restoredIds: direct.map((dependent) => dependent.id),
-				};
+				auditLog.push(...events);
+				return result;
 			}
 			// "delete", or "reject" without dependents: the memory and every
 			// memory consolidated into it, directly or through another.
@@ -311,14 +356,19 @@ export function createInMemoryStore(): MemoryStore {
 			if (tree.some((dependent) => !isVisible(dependent.scope, visibility))) {
 				throw hiddenDependentsError();
 			}
-			const deletedIds = [
-				memoryId,
-				...tree.map((dependent) => dependent.id).sort(compareIds),
-			];
-			for (const id of deletedIds) {
+			const result = {
+				deletedIds: [
+					memoryId,
+					...tree.map((dependent) => dependent.id).sort(compareIds),
+				],
+				restoredIds: [],
+			};
+			const events = input.audit ? deleteAuditEvents(input, result) : [];
+			for (const id of result.deletedIds) {
 				memories.delete(id);
 			}
-			return { deletedIds, restoredIds: [] };
+			auditLog.push(...events);
+			return result;
 		},
 		async deleteScope(selector, options) {
 			throwIfAborted(options?.signal);
@@ -342,48 +392,52 @@ export function createInMemoryStore(): MemoryStore {
 		async prune(input, options) {
 			throwIfAborted(options?.signal);
 			assertPruneFilterHasSelector(input);
-			const now = new Date();
 			const matched: StoredMemory[] = [];
 			for (const memory of memories.values()) {
 				throwIfAborted(options?.signal);
-				if (matchesPruneFilter(memory, input, now)) {
+				if (matchesPruneFilter(memory, input, input.now)) {
 					matched.push(memory);
 				}
 			}
 			const dryRun = input.dryRun === true;
-			const deletedByEntity: StorePruneEntityDeletion[] = [];
 			if (!dryRun) {
 				throwIfAborted(options?.signal);
 				assertNoDependents(new Set(matched.map((memory) => memory.id)), true);
-				const deletedCounts = new Map<string, StorePruneEntityDeletion>();
+				const counts = new Map<
+					string,
+					{ namespace: string; entityId: string; count: number }
+				>();
 				for (const memory of matched) {
-					memories.delete(memory.id);
 					const entityKey = JSON.stringify([
 						memory.scope.namespace,
 						memory.scope.entityId,
 					]);
-					const detail = deletedCounts.get(entityKey) ?? {
+					const entity = counts.get(entityKey) ?? {
 						namespace: memory.scope.namespace,
 						entityId: memory.scope.entityId,
-						deletedCount: 0,
+						count: 0,
 					};
-					detail.deletedCount += 1;
-					deletedCounts.set(entityKey, detail);
+					entity.count += 1;
+					counts.set(entityKey, entity);
 				}
-				// Same order as the Postgres store: namespace, then entity.
-				deletedByEntity.push(
-					...[...deletedCounts.values()].sort(
-						(a, b) =>
-							a.namespace.localeCompare(b.namespace) ||
-							a.entityId.localeCompare(b.entityId),
-					),
-				);
+				const events = input.audit
+					? [...counts.values()].map((entity) =>
+							prunedEvent({
+								selector: input.selector,
+								...entity,
+								now: input.now,
+							}),
+						)
+					: [];
+				for (const memory of matched) {
+					memories.delete(memory.id);
+				}
+				auditLog.push(...events);
 			}
 			return {
 				matchedCount: matched.length,
 				deletedCount: dryRun ? 0 : matched.length,
 				dryRun,
-				deletedByEntity,
 			};
 		},
 		async findDuplicatePairs(input, options) {
@@ -442,9 +496,6 @@ export function createInMemoryStore(): MemoryStore {
 						similarity,
 					}),
 				);
-		},
-		async addAuditEvents(events) {
-			auditLog.push(...events.map(cloneAuditEvent));
 		},
 		async listAuditLog(input, options) {
 			throwIfAborted(options?.signal);
@@ -556,17 +607,15 @@ export function createInMemoryStore(): MemoryStore {
 					mergedSurvivorTags = [...mergedTags];
 				}
 			}
-			const auditEvents: AuditEvent[] = input.auditEnabled
-				? newlySuperseded.map((memory) => ({
-						id: createEventId(),
-						scope: { ...input.visibility.scope },
-						description: "memory.superseded",
-						metadata: {
+			const auditEvents = input.auditEnabled
+				? newlySuperseded.map((memory) =>
+						supersededEvent({
+							scope: input.visibility.scope,
 							memoryId: memory.id,
-							supersededBy: input.survivorId,
-						},
-						timestamp: input.now,
-					}))
+							survivorId: input.survivorId,
+							now: input.now,
+						}),
+					)
 				: [];
 			throwIfAborted(options?.signal);
 			for (const memory of newlySuperseded) {

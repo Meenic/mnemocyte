@@ -65,6 +65,13 @@ random bits. They sort roughly by creation time, so primary-key inserts stay
 near the right edge of the btree instead of hitting random pages as UUIDv4
 does. Postgres has `uuidv7()` only from version 18, and CI also runs 17.
 
+Audit events written by a `delete` or `prune` are the exception: the
+statement cannot know in advance how many events it writes, so it builds
+each id in SQL (`sqlUuidV7` in `src/db/sql.ts`): the event time's Unix
+milliseconds over the first 48 bits of a `gen_random_uuid()` (core since
+Postgres 13), with the version nibble set to 7. `add`, `addMany`, `update`
+and `consolidate` pass ids generated in JavaScript, one per row.
+
 Every statement casts id parameters with `$n::uuid` and selects ids with
 `::text`, so drivers that type string parameters as `text` work and every
 driver returns ids as strings. An id that is not a canonical UUID cannot
@@ -530,7 +537,8 @@ for the key-collision and foreign-key `"CONFLICT"` mappings.
 
 Two paths need several statements to commit together: the search vector
 query (its `set_config` must share a transaction with the query) and chunked
-inserts. Both go through `runAtomically` (`src/db/atomic.ts`):
+inserts. Every other write, audit events included, is one statement. Both
+go through `runAtomically` (`src/db/atomic.ts`):
 
 - One statement goes through `query`; a single statement is already atomic.
 - Otherwise `batch` when the executor has it, else a `transaction` that sends
@@ -553,9 +561,10 @@ statement.
   HTTP sends every statement in one request (64 MB on Neon), and `addMany`
   takes at most 1,000 memories, so a full call stays near 20 MB of vectors.
 - Keys are distinct within a call, so two chunks never upsert the same row.
-- Audit events use the same chunking: `insertEvents` writes one multi-row
-  `INSERT` per 250 events (8 parameters each) instead of one statement per
-  event. Audit stays best-effort after the memory write commits.
+- With audit on, each chunk is a `WITH written AS (INSERT … RETURNING …)`
+  whose `audit` step inserts that chunk's events, so they commit or roll
+  back with the chunks. The step adds one JSON parameter (each row's id,
+  key and event id, read with `jsonb_to_recordset`).
 
 All queries are plain SQL strings built in `src/db/queries/`. Values are
 always parameters, never interpolated; the only interpolated value is the

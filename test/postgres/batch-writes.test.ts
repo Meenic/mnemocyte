@@ -5,7 +5,6 @@ import {
 	runAtomically,
 } from "../../src/db/atomic.js";
 import { runPostgresMigrations } from "../../src/db/migrations/runner.js";
-import { insertEvents } from "../../src/db/queries/events.js";
 import {
 	insertMemories,
 	type NewMemoryRow,
@@ -291,34 +290,37 @@ describe("chunked memory inserts", () => {
 	});
 });
 
-describe("batched audit inserts", () => {
-	test("writes events as multi-row INSERTs", async () => {
+describe("audit events with chunked inserts", () => {
+	test("writes each chunk's events in that chunk's statement", async () => {
 		const { executor, recorded } = createExecutor({ batch: true });
-		const events = Array.from({ length: INSERT_CHUNK_ROWS + 1 }, () => ({
-			id: createUuidV7(),
-			scope: testStoreScope("alice"),
-			description: "Memory created",
-			metadata: {},
-			timestamp: new Date(),
-		}));
+		const rows = Array.from({ length: INSERT_CHUNK_ROWS + 1 }, (_, index) =>
+			newMemoryRow(index),
+		);
 
-		await insertEvents(executor, events);
+		await insertMemories(
+			executor,
+			rows,
+			"vector",
+			undefined,
+			rows.map(() => createUuidV7()),
+		);
 
 		const [batch = []] = recorded.batches;
 		expect(batch).toHaveLength(2);
-		expect(batch.map((statement) => statement.params.length)).toEqual([
-			INSERT_CHUNK_ROWS * 8,
-			8,
-		]);
+		for (const statement of batch) {
+			expect(statement.sql).toContain("INSERT INTO mnemocyte_events");
+		}
 	});
 
-	test("sends nothing for no events", async () => {
+	test("rejects a missing event id before sending anything", async () => {
 		const { executor, recorded } = createExecutor({ batch: true });
 
-		await insertEvents(executor, []);
-
-		expect(recorded.queries).toHaveLength(0);
+		await expectMnemocyteError(
+			insertMemories(executor, [newMemoryRow(0)], "vector", undefined, []),
+			"DB",
+		);
 		expect(recorded.batches).toHaveLength(0);
+		expect(recorded.queries).toHaveLength(0);
 	});
 });
 

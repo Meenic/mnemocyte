@@ -52,7 +52,6 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 		prune: async (...args) => (await load()).prune(...args),
 		findDuplicatePairs: async (...args) =>
 			(await load()).findDuplicatePairs(...args),
-		addAuditEvents: async (...args) => (await load()).addAuditEvents(...args),
 		listAuditLog: async (...args) => (await load()).listAuditLog(...args),
 		loadConsolidationTargets: async (...args) =>
 			(await load()).loadConsolidationTargets(...args),

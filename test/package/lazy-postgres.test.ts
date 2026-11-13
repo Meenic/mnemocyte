@@ -287,7 +287,7 @@ describe("lazy Postgres package loading", () => {
 						import { APICallError } from "ai";
 						import { MockEmbeddingModelV4 } from "ai/test";
 						import { createMemory, ProviderError } from "mnemocyte";
-						import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+						import { aiSdkEmbedder, memoryTools } from "mnemocyte/ai-sdk";
 
 						const model = new MockEmbeddingModelV4({
 							modelId: "packed-model",
@@ -304,6 +304,16 @@ describe("lazy Postgres package loading", () => {
 							scope: { namespace: "packed", entityId: "ai-sdk" },
 							content: "Embedded through the AI SDK.",
 						});
+						const tools = memoryTools({
+							memory: memory.for({ namespace: "packed", entityId: "ai-sdk" }),
+						});
+						const found = await tools.searchMemories.execute(
+							{ query: "AI SDK" },
+							{ toolCallId: "call", messages: [] },
+						);
+						if (found.memories[0]?.content !== "Embedded through the AI SDK.") {
+							throw new Error("searchMemories did not find the memory.");
+						}
 						const failing = aiSdkEmbedder({
 							model: new MockEmbeddingModelV4({
 								modelId: "packed-model",

@@ -141,12 +141,34 @@ Failed calls are retried twice with backoff and `Retry-After`. Retries,
 timeouts and provider errors are in the
 [embedders guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md).
 
+## AI SDK tools
+
+`memoryTools` gives a model `searchMemories`, `saveMemory` and
+`forgetMemory` tools for one user. The scope is bound on your server, so
+the model cannot reach anyone else's memories:
+
+```ts
+import { generateText, stepCountIs } from "ai";
+import { memoryTools } from "mnemocyte/ai-sdk";
+
+const { text } = await generateText({
+  model: "openai/gpt-5",
+  tools: memoryTools({ memory: memory.for({ entityId: userId }) }),
+  stopWhen: stepCountIs(5),
+  prompt,
+});
+```
+
+Inputs, outputs and approval are in the
+[AI SDK guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md).
+
 ## Documentation
 
 - [Getting started](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/getting-started.md)
 - [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md)
 - [Postgres](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md)
 - [Embedders](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md)
+- [AI SDK](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md)
 - [Limitations](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/limitations.md)
 - [Roadmap](https://github.com/Meenic/mnemocyte/blob/main/docs/ROADMAP.md)
 - [Changelog](https://github.com/Meenic/mnemocyte/blob/main/CHANGELOG.md)

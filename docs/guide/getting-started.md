@@ -395,4 +395,5 @@ to 5 with the same calls.
 - [Postgres](./postgres.md): drivers, poolers, `migrate`, upgrades and
   indexes.
 - [Embedders](./embedders.md): custom embedders, timeouts and retries.
+- [AI SDK](./ai-sdk.md): memory tools for `generateText` and `streamText`.
 - [Limitations](./limitations.md): what does not work yet.

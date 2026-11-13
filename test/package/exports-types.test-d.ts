@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { InferToolInput, InferToolOutput, ToolSet } from "ai";
 import { MockEmbeddingModelV4 } from "ai/test";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
@@ -69,6 +70,16 @@ import {
 	type AiSdkProviderOptions,
 	type AiSdkPurposeOptions,
 	aiSdkEmbedder,
+	type ForgetMemoryInput,
+	type ForgetMemoryOutput,
+	type FoundMemory,
+	type MemoryTools,
+	type MemoryToolsOptions,
+	memoryTools,
+	type SaveMemoryInput,
+	type SaveMemoryOutput,
+	type SearchMemoriesInput,
+	type SearchMemoriesOutput,
 } from "mnemocyte/ai-sdk";
 import {
 	type OpenAICompatibleEmbedderOptions,
@@ -570,6 +581,36 @@ void bound.for;
 // @ts-expect-error get takes an id or a key, not both.
 void bound.get({ id: "id", key: "key" });
 
+// Memory tools take a bound client and form an AI SDK tool set.
+const memoryToolsOptions: MemoryToolsOptions = { memory: bound };
+const tools: MemoryTools = memoryTools(memoryToolsOptions);
+const toolSet: ToolSet = tools;
+const searchInput: SearchMemoriesInput = {
+	query: "query",
+	limit: 5,
+	kinds: ["preference"],
+};
+const searchToolInput: InferToolInput<MemoryTools["searchMemories"]> =
+	searchInput;
+const searchOutput: SearchMemoriesOutput = {} as InferToolOutput<
+	MemoryTools["searchMemories"]
+>;
+const foundMemory: FoundMemory | undefined = searchOutput.memories[0];
+const saveInput: SaveMemoryInput = { content: "content", kind: "fact" };
+const saveOutput: SaveMemoryOutput = {} as InferToolOutput<
+	MemoryTools["saveMemory"]
+>;
+const forgetInput: ForgetMemoryInput = { id: "id" };
+const forgetOutput: ForgetMemoryOutput = {} as InferToolOutput<
+	MemoryTools["forgetMemory"]
+>;
+// @ts-expect-error memoryTools takes a bound client, not the client itself.
+memoryTools({ memory: defaulted });
+// @ts-expect-error saveMemory takes no key.
+const keyedSave: SaveMemoryInput = { content: "content", key: "key" };
+// @ts-expect-error searchMemories takes no scope fields.
+const scopedSearch: SearchMemoriesInput = { query: "q", entityId: "other" };
+
 void scopeInput;
 void fullScopeInput;
 void selectorInput;
@@ -578,6 +619,15 @@ void boundScope;
 void boundStats;
 void boundErased;
 void boundMigrate;
+void toolSet;
+void searchToolInput;
+void foundMemory;
+void saveInput;
+void saveOutput;
+void forgetInput;
+void forgetOutput;
+void keyedSave;
+void scopedSearch;
 void batchOnlyExecutor;
 void gatewayEmbedder;
 void modelEmbedder;

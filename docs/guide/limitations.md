@@ -81,6 +81,20 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 - **The audit log grows forever.** Only `deleteScope` deletes audit events.
   Planned: a retention option (`feat/audit-retention`).
 
+## AI SDK tools
+
+- **Saved memories are not deduplicated.** `saveMemory` has no `key`, so a
+  model that saves the same fact twice stores two memories. Planned:
+  `feat/ai-sdk-extraction` decides how existing facts are matched.
+- **The model decides what is saved.** Content from the conversation,
+  including a prompt injection, can be stored and come back in later
+  searches and `context()` output for the same user. Memories it writes
+  carry `source: "saveMemory"`; leave `saveMemory` out of the tool set, or
+  require approval for it, where that matters.
+- **`forgetMemory` reaches shared memories.** On a client bound to an
+  `agentId` or `sessionId`, it can also delete the entity's memories shared
+  by every agent or session, as `delete` can.
+
 ## Providers
 
 - **Timeouts need the embedder's help.** A timeout aborts the attempt's

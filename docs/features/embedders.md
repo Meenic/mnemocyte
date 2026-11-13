@@ -177,7 +177,7 @@ AI Gateway when unset) on every call.
 **Dimensions.** The known-models table (`KNOWN_MODELS`) holds the default
 sizes the AI SDK provider docs state: OpenAI `text-embedding-3-small`
 (1536), `text-embedding-3-large` (3072), `text-embedding-ada-002` (1536),
-Google `gemini-embedding-001` (3072), Cohere `embed-v4.0` (1536), Mistral
+Google `gemini-embedding-001` and `gemini-embedding-2` (3072), Cohere `embed-v4.0` (1536), Mistral
 `mistral-embed` (1024) and `codestral-embed` (1536), and Titan Text
 Embeddings v2 under both its Bedrock id (`amazon.titan-embed-text-v2:0`) and
 its gateway id (`titan-embed-text-v2`), 1024. Voyage and the other gateway
@@ -193,9 +193,18 @@ Google `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT` under `google`
 `inputType` `query` / `document` under `voyage`. Cohere's API defaults to
 `search_query`, so stored documents would otherwise be embedded as queries.
 The AI Gateway forwards `providerOptions` to the upstream provider under the
-same keys. `purposes` replaces the hints entirely. The hint for the call's
-purpose is merged over `providerOptions` one provider key at a time, and
-each call gets a `structuredClone` of the result.
+same keys. The hint for the call's purpose is merged over `providerOptions`
+one provider key at a time, and each call gets a `structuredClone` of the
+result.
+
+`gemini-embedding-2` from a `google` provider (`DEFAULT_PREFIXES`, keyed
+`google/gemini-embedding-2`) gets no `taskType`, which the Gemini
+embeddings guide says it cannot take. `embed` puts the prefixes
+`googleEmbedder` uses in front of each value passed to `embedMany`
+instead: `task: search result | query: ` and `title: none | text: `. The
+rule covers the Gemini API, Vertex AI and a `google/…` gateway id; the
+same id from another provider, or a string without a provider, gets
+nothing. `purposes` replaces the hints entirely, prefixes included.
 
 **Calls.** `embedMany` runs with `maxRetries: 0`, `maxParallelCalls: 1` and
 the call's signal as `abortSignal`. Mnemocyte's chunks already go one at a

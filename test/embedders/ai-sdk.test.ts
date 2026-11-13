@@ -304,6 +304,86 @@ describe("aiSdkEmbedder purposes", () => {
 	});
 
 	test.each([
+		["the Gemini API", "google.generative-ai", "gemini-embedding-2"],
+		["Vertex AI", "google.vertex.embedding", "gemini-embedding-2"],
+		["a gateway model", "gateway", "google/gemini-embedding-2"],
+	])(
+		"marks gemini-embedding-2 purposes with text prefixes, not taskType, for %s",
+		async (_label, provider, modelId) => {
+			const model = mockModel({ provider, modelId });
+			const embedder = aiSdkEmbedder({
+				model,
+				providerOptions: { google: { outputDimensionality: 3072 } },
+			});
+			expect(embedder).toMatchObject({
+				model: "gemini-embedding-2",
+				dimensions: 3072,
+			});
+
+			await embedder.embed(["Which tea?", "And coffee?"], { purpose: "query" });
+			await embedder.embed(["Likes tea."], { purpose: "document" });
+			expect(model.doEmbedCalls.map((call) => call.values)).toEqual([
+				[
+					"task: search result | query: Which tea?",
+					"task: search result | query: And coffee?",
+				],
+				["title: none | text: Likes tea."],
+			]);
+			// providerOptions still go out, without a taskType.
+			expect(model.doEmbedCalls.map((call) => call.providerOptions)).toEqual([
+				{ google: { outputDimensionality: 3072 } },
+				{ google: { outputDimensionality: 3072 } },
+			]);
+		},
+	);
+
+	test("sends gemini-embedding-2 through a gateway string with prefixes", async () => {
+		const model = mockModel();
+		globalThis.AI_SDK_DEFAULT_PROVIDER = customProvider({
+			embeddingModels: { "google/gemini-embedding-2": model },
+		});
+		await aiSdkEmbedder({
+			model: "google/gemini-embedding-2",
+			dimensions: 768,
+		}).embed(["q"], { purpose: "query" });
+		const call = model.doEmbedCalls[0];
+		expect(call?.values).toEqual(["task: search result | query: q"]);
+		expect(call?.dimensions).toBe(768);
+		expect(call?.providerOptions).toBeUndefined();
+	});
+
+	test("purposes replace the gemini-embedding-2 prefixes", async () => {
+		for (const purposes of [
+			{},
+			{ query: { google: { taskType: "QUESTION_ANSWERING" } } },
+		]) {
+			const model = mockModel({
+				provider: "google.generative-ai",
+				modelId: "gemini-embedding-2",
+			});
+			await aiSdkEmbedder({ model, purposes }).embed(["q"], {
+				purpose: "query",
+			});
+			expect(model.doEmbedCalls[0]?.values).toEqual(["q"]);
+			expect(model.doEmbedCalls[0]?.providerOptions).toEqual(purposes.query);
+		}
+	});
+
+	test("prefixes only gemini-embedding-2 from a google provider", async () => {
+		for (const [provider, modelId] of [
+			["google.generative-ai", "gemini-embedding-001"],
+			["google.generative-ai", "gemini-embedding-2-preview"],
+			["mock", "gemini-embedding-2"],
+		] as const) {
+			const model = mockModel({ provider, modelId });
+			await aiSdkEmbedder({ model, dimensions: 3072 }).embed(["d"], {
+				purpose: "document",
+			});
+			expect(model.doEmbedCalls[0]?.values).toEqual(["d"]);
+		}
+	});
+
+	test.each([
 		["providerOptions that are not an object", { providerOptions: "x" }],
 		[
 			"a provider entry that is not an object",

@@ -252,7 +252,7 @@ Known models, by id with or without the gateway's `provider/` prefix:
 | `text-embedding-3-small` | 1536 |
 | `text-embedding-3-large` | 3072 |
 | `text-embedding-ada-002` | 1536 |
-| `gemini-embedding-001` | 3072 |
+| `gemini-embedding-001`, `gemini-embedding-2` | 3072 |
 | `embed-v4.0` (Cohere) | 1536 |
 | `mistral-embed` | 1024 |
 | `codestral-embed` | 1536 |
@@ -278,6 +278,7 @@ For them, `aiSdkEmbedder` sends the matching option by default:
 | Provider | Query | Document |
 |---|---|---|
 | Google, Vertex | `google: { taskType: "RETRIEVAL_QUERY" }` | `google: { taskType: "RETRIEVAL_DOCUMENT" }` |
+| Google, Vertex with `gemini-embedding-2` | text prefix `task: search result \| query: ` | text prefix `title: none \| text: ` |
 | Cohere | `cohere: { inputType: "search_query" }` | `cohere: { inputType: "search_document" }` |
 | Voyage | `voyage: { inputType: "query" }` | `voyage: { inputType: "document" }` |
 
@@ -286,8 +287,13 @@ object (`google.embedding(…)`). Other providers get nothing; OpenAI and
 Mistral models embed both the same way. Through the AI Gateway these options
 reach the upstream provider under the same keys.
 
-`purposes` replaces the built-in hints; a purpose it leaves out gets none,
-and `purposes: {}` turns them off. Each purpose's options are merged over
+`gemini-embedding-2` does not take `taskType`, so it gets the same text
+prefixes as with `googleEmbedder`. The prefix is only sent to the provider;
+the stored `content` stays as you wrote it.
+
+`purposes` replaces the built-in hints, the `gemini-embedding-2` prefixes
+included; a purpose it leaves out gets none, and `purposes: {}` turns them
+off. Each purpose's options are merged over
 `providerOptions`, one provider key at a time:
 
 ```ts

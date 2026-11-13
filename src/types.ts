@@ -1,3 +1,5 @@
+import type { PostgresClient } from "./sql/detect.js";
+
 /**
  * What kind of memory a {@link Memory} is.
  *
@@ -337,8 +339,13 @@ export type MigrateInput =
 	  })
 	| (MigrateOptions & {
 			memory?: never;
-			/** The store to migrate, from `postgresStore()` or `drizzleStore()`. */
-			store: MnemocyteStoreConfig;
+			/**
+			 * The database to migrate: the app's database client (postgres.js, a
+			 * node-postgres `Pool`, PGlite, Drizzle over one of them, or a
+			 * `SqlExecutor`), or a store from `postgresStore()` or
+			 * `drizzleStore()`.
+			 */
+			store: MnemocyteStoreConfig | PostgresClient;
 			/**
 			 * Embedding dimensions of the installation. Required on a database
 			 * with no Mnemocyte tables, where it fixes the vector column for good:
@@ -386,12 +393,15 @@ export interface MemoryConfig {
 	 */
 	namespace?: string;
 	/**
-	 * Caller-supplied storage adapter. Use `postgresStore({ client })` from
-	 * `mnemocyte/postgres` with the database client you already own, or
-	 * `drizzleStore(db)` from `mnemocyte/stores/drizzle` for a postgres.js
-	 * Drizzle instance. When omitted, an in-memory backend is used.
+	 * Where memories live: the database client the app already owns (a
+	 * postgres.js `sql` function, a node-postgres `Pool`, a PGlite instance,
+	 * a Drizzle instance over one of them, or a `SqlExecutor`), recognised by
+	 * its shape, or a store from `postgresStore({ client })` or
+	 * `drizzleStore(db)`. Mnemocyte never closes the client. The Postgres
+	 * backend is imported on the first call that uses it. When omitted, an
+	 * in-memory backend is used.
 	 */
-	store?: MnemocyteStoreConfig;
+	store?: MnemocyteStoreConfig | PostgresClient;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
 	/** Default values applied to {@link SearchInput} when properties are omitted. */

@@ -8,6 +8,19 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Pass your database client as `store`.** `createMemory({ store: sql })`
+  takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle
+  instance over one of them or a `SqlExecutor` directly, recognised by
+  shape as `postgresStore` does; `migrate({ store: sql, dimensions })` too.
+  `postgresStore()` and `drizzleStore()` keep working and are not
+  deprecated. An unrecognised value still throws `"CONFIG"` from
+  `createMemory`. The Postgres code is imported on the first call that
+  needs it, so apps on the in-memory backend do not load it (about 15 KB
+  gzipped at startup instead of 26 KB when bundled). `PostgresClient` is
+  also exported as a type from `mnemocyte`.
+
 ### Changed
 
 - **Missing-schema errors name the fix.** A Postgres call that needs a

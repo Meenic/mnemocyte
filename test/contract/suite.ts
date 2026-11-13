@@ -3,6 +3,7 @@ import {
 	type Embedder,
 	type MemoryClient,
 	type MemoryScope,
+	type MnemocyteStoreConfig,
 	migrate,
 } from "mnemocyte";
 import { type PostgresClient, postgresStore } from "mnemocyte/postgres";
@@ -108,8 +109,9 @@ async function sortedIds(
 export function describeStoreContract(
 	name: string,
 	connect: () => Promise<ContractTarget>,
-	options: { skip?: boolean } = {},
+	options: { skip?: boolean; directClient?: boolean } = {},
 ): void {
+	const suiteOptions = options;
 	describe.skipIf(options.skip ?? false)(`Postgres contract (${name})`, () => {
 		let target: ContractTarget | undefined;
 		let executor: SqlExecutor | undefined;
@@ -117,6 +119,17 @@ export function describeStoreContract(
 
 		function db(): SqlExecutor {
 			return expectDefined(executor, "contract target is not connected");
+		}
+
+		/**
+		 * The store input: the client itself with `directClient`, as
+		 * `createMemory({ store: sql })` users pass it, else `postgresStore`.
+		 */
+		function storeInput(): MnemocyteStoreConfig | PostgresClient {
+			const connected = expectDefined(target, "not connected").client;
+			return suiteOptions.directClient === true
+				? connected
+				: postgresStore({ client: connected });
 		}
 
 		function client(
@@ -131,9 +144,7 @@ export function describeStoreContract(
 			namespaces.push(namespace);
 			const embedder = createContractEmbedder();
 			const memory = createMemory({
-				store: postgresStore({
-					client: expectDefined(target, "not connected").client,
-				}),
+				store: storeInput(),
 				embedder,
 				...(options.audit ? { audit: { enabled: true } } : {}),
 			});
@@ -143,8 +154,7 @@ export function describeStoreContract(
 		beforeAll(async () => {
 			target = await connect();
 			executor = toSqlExecutor(target.client);
-			const store = postgresStore({ client: target.client });
-			await migrate({ store, dimensions: CONTRACT_DIMENSIONS });
+			await migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS });
 		}, 120_000);
 
 		afterAll(async () => {
@@ -170,11 +180,8 @@ export function describeStoreContract(
 		}, 120_000);
 
 		test("migrate is a no-op once the schema is current", async () => {
-			const store = postgresStore({
-				client: expectDefined(target).client,
-			});
 			await expect(
-				migrate({ store, dimensions: CONTRACT_DIMENSIONS }),
+				migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS }),
 			).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
 		});
 
@@ -348,9 +355,7 @@ export function describeStoreContract(
 				memory,
 				defaulted: createMemory({
 					namespace,
-					store: postgresStore({
-						client: expectDefined(target, "not connected").client,
-					}),
+					store: storeInput(),
 					embedder: createContractEmbedder(),
 					audit: { enabled: true },
 				}),

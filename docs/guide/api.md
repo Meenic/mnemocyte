@@ -14,7 +14,7 @@ import { createMemory } from "mnemocyte";
 const memory = createMemory({
   embedder,                          // required, see embedders.md
   namespace: "my-app",               // optional; see Scopes
-  store,                             // optional; in-memory when omitted
+  store: sql,                        // optional; your database client, in-memory when omitted
   defaults: { limit: 10, minScore: 0 },
   retrieval: { /* see Retrieval tuning */ },
   provider: { /* see embedders.md */ },
@@ -24,8 +24,13 @@ const memory = createMemory({
 ```
 
 Configuration is validated synchronously; invalid values throw `"CONFIG"`.
-Without `store` the client keeps memories in process memory, which suits
-tests and prototypes. For persistent storage see [postgres.md](./postgres.md).
+`store` is the database client your app already has (a postgres.js `sql`,
+a `pg` Pool, a PGlite instance, a Drizzle instance over one of them, or a
+`SqlExecutor`), recognised by its shape, or a store from `postgresStore()`.
+A value that is none of these throws `"CONFIG"` right away. The Postgres
+code loads on the first call that needs it. Without `store` the client
+keeps memories in process memory, which suits tests and prototypes. For
+persistent storage see [postgres.md](./postgres.md).
 
 The client holds no connections or timers, so there is no `close()`: with
 Postgres, the database client you passed in is yours to end, and the
@@ -43,8 +48,9 @@ const { applied, adopted, extensionCreated } = await migrate({
   signal,                 // optional
 });
 
-// Without a client at hand, name the store and the dimensions instead:
-await migrate({ store, dimensions: 1536 });
+// Without a memory client at hand, pass the database client and the
+// dimensions instead:
+await migrate({ store: sql, dimensions: 1536 });
 ```
 
 Creates or upgrades the Postgres schema and records each migration in

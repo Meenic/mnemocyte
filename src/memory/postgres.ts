@@ -38,7 +38,7 @@ import type { SqlExecutor } from "../sql/executor.js";
 import type { Embedder, ImportanceLevel, MemoryConfig } from "../types.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
-import { memoryHasDependentsError } from "./deletion.js";
+import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
 import { cloneJsonObject } from "./json.js";
 import { rowToAuditEvent, rowToMemory } from "./postgres-records.js";
 import { createEventId, isUuid, type StoredMemory } from "./records.js";
@@ -495,22 +495,29 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				throw normalizePostgresError(error);
 			}
 		},
-		async deleteMemory(visibility, memoryId, options) {
+		async deleteMemory(input, options) {
 			return runPostgresDeleteOperation(async () => {
 				throwIfAborted(options?.signal);
-				if (!isUuid(memoryId)) {
-					return false;
+				if (!isUuid(input.memoryId)) {
+					return null;
 				}
-				const result = await deleteMemoryQuery(
-					client,
-					visibility,
-					memoryId,
-					options?.signal,
-				);
+				const result = await deleteMemoryQuery(client, input, options?.signal);
+				if (!result.found) {
+					return null;
+				}
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
-				return result.deletedCount > 0;
+				if (result.hiddenDependents) {
+					throw hiddenDependentsError();
+				}
+				return {
+					deletedIds: [
+						input.memoryId,
+						...result.deletedIds.filter((id) => id !== input.memoryId),
+					],
+					restoredIds: result.restoredIds,
+				};
 			});
 		},
 		async deleteScope(selector, options) {

@@ -401,13 +401,19 @@ export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 		}),
 		forgetMemory: tool({
 			description:
-				"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Returns forgotten: false when no memory has that id.",
+				"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns forgotten: false when no memory has that id.",
 			inputSchema: jsonSchema<ForgetMemoryInput>(FORGET_SCHEMA, {
 				validate: validateForgetInput,
 			}),
 			async execute(input, callOptions) {
 				try {
-					await memory.delete({ id: input.id, ...signalOf(callOptions) });
+					// Search shows only consolidation survivors, so forgetting one
+					// also deletes the duplicates merged into it.
+					await memory.delete({
+						id: input.id,
+						dependents: "delete",
+						...signalOf(callOptions),
+					});
 					return { forgotten: true };
 				} catch (error) {
 					if (isMnemocyteError(error) && error.code === "NOT_FOUND") {

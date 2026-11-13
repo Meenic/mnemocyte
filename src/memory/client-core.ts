@@ -35,6 +35,7 @@ import { decodeListCursor, encodeListCursor } from "./cursor.js";
 import {
 	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
+	DEFAULT_DUPLICATE_NEIGHBORS,
 	DEFAULT_DUPLICATE_THRESHOLD,
 	DEFAULT_IMPORTANCE,
 	DEFAULT_KIND,
@@ -74,6 +75,7 @@ import {
 	type PreparedUpdateFields,
 	validateConsolidateInput,
 	validateContextInput,
+	validateDeleteInput,
 	validateEntitySelector,
 	validateFindDuplicatesInput,
 	validateListAuditLogInput,
@@ -631,7 +633,7 @@ export function createMemoryClient(
 		);
 	}
 
-	return {
+	const client: Omit<CoreMemoryClient, "experimental"> = {
 		add,
 		addMany,
 		search,
@@ -781,21 +783,36 @@ export function createMemoryClient(
 					...(typeof input?.id === "string" ? { memoryId: input.id } : {}),
 				},
 				async () => {
-					const scope = validateScope(input.scope);
-					assertNonEmptyString(input.id, "id");
-					assertOptionalSignal(input.signal);
+					const { scope, dependents } = validateDeleteInput(input);
 					throwIfAborted(input.signal);
-					const deleted = await store.deleteMemory(
-						writeVisibility(scope),
-						input.id,
+					const result = await store.deleteMemory(
+						{
+							visibility: writeVisibility(scope),
+							memoryId: input.id,
+							dependents,
+							now: new Date(),
+						},
 						storeOptions(input.signal),
 					);
-					if (!deleted) {
+					if (!result) {
 						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
 					}
-					await recordAudit([
-						auditEvent(scope, "memory.deleted", { memoryId: input.id }),
-					]);
+					await recordAudit(
+						result.deletedIds.map((memoryId) =>
+							auditEvent(
+								scope,
+								"memory.deleted",
+								memoryId === input.id
+									? {
+											memoryId,
+											...(result.restoredIds.length > 0
+												? { restoredIds: [...result.restoredIds] }
+												: {}),
+										}
+									: { memoryId, deletedWith: input.id },
+							),
+						),
+					);
 				},
 			);
 		},
@@ -888,6 +905,7 @@ export function createMemoryClient(
 							...memoryFilter(visibility, input),
 							threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
 							limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
+							neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
 						},
 						storeOptions(input.signal),
 					);
@@ -936,96 +954,101 @@ export function createMemoryClient(
 				},
 			);
 		},
-		experimental: {
-			consolidate(input) {
-				return observe(
-					config,
-					store.backend,
-					"consolidate",
-					{
-						...scopeMetadata(input),
-						...(typeof input?.survivorId === "string"
-							? { memoryId: input.survivorId }
-							: {}),
-					},
-					async () => {
-						throwIfAborted(input?.signal);
-						const visibility = writeVisibility(validateConsolidateInput(input));
-						const survivor = await store.getMemory(
-							visibility,
-							input.survivorId,
-							storeOptions(input.signal),
+		consolidate(input) {
+			return observe(
+				config,
+				store.backend,
+				"consolidate",
+				{
+					...scopeMetadata(input),
+					...(typeof input?.survivorId === "string"
+						? { memoryId: input.survivorId }
+						: {}),
+				},
+				async () => {
+					throwIfAborted(input?.signal);
+					const visibility = writeVisibility(validateConsolidateInput(input));
+					const survivor = await store.getMemory(
+						visibility,
+						input.survivorId,
+						storeOptions(input.signal),
+					);
+					throwIfAborted(input.signal);
+					if (!survivor) {
+						throw new MnemocyteError(
+							"Survivor memory was not found.",
+							"NOT_FOUND",
 						);
-						throwIfAborted(input.signal);
-						if (!survivor) {
+					}
+					if (survivor.supersededBy !== null) {
+						throw new MnemocyteError(
+							"Survivor memory is itself superseded.",
+							"VALIDATION",
+						);
+					}
+					const targets = await store.loadConsolidationTargets(
+						visibility,
+						input.supersededIds,
+						storeOptions(input.signal),
+					);
+					throwIfAborted(input.signal);
+					const foundIds = new Set(targets.map((target) => target.id));
+					for (const id of input.supersededIds) {
+						if (!foundIds.has(id)) {
 							throw new MnemocyteError(
-								"Survivor memory was not found.",
+								"Superseded memory was not found.",
 								"NOT_FOUND",
 							);
 						}
-						if (survivor.supersededBy !== null) {
-							throw new MnemocyteError(
-								"Survivor memory is itself superseded.",
-								"VALIDATION",
-							);
-						}
-						const targets = await store.loadConsolidationTargets(
-							visibility,
-							input.supersededIds,
-							storeOptions(input.signal),
+					}
+					if (
+						targets.some(
+							(target) =>
+								target.supersededBy !== null &&
+								target.supersededBy !== survivor.id,
+						)
+					) {
+						throw new MnemocyteError(
+							"Superseded memory already belongs to a different survivor.",
+							"CONFLICT",
 						);
-						throwIfAborted(input.signal);
-						const foundIds = new Set(targets.map((target) => target.id));
-						for (const id of input.supersededIds) {
-							if (!foundIds.has(id)) {
-								throw new MnemocyteError(
-									"Superseded memory was not found.",
-									"NOT_FOUND",
-								);
-							}
-						}
-						if (
-							targets.some(
-								(target) =>
-									target.supersededBy !== null &&
-									target.supersededBy !== survivor.id,
-							)
-						) {
-							throw new MnemocyteError(
-								"Superseded memory already belongs to a different survivor.",
-								"CONFLICT",
-							);
-						}
-						const losers = targets.filter(
-							(target) => target.supersededBy === null,
-						);
-						if (losers.length === 0) {
-							return {
-								survivorId: survivor.id,
-								supersededCount: 0,
-								supersededIds: [],
-							} satisfies ConsolidateResult;
-						}
-						const result = await store.consolidate(
-							{
-								visibility,
-								survivorId: survivor.id,
-								supersededIds: input.supersededIds,
-								mergeTags: input.mergeTags !== false,
-								now: new Date(),
-								auditEnabled: config.audit?.enabled === true,
-							},
-							storeOptions(input.signal),
-						);
+					}
+					const losers = targets.filter(
+						(target) => target.supersededBy === null,
+					);
+					if (losers.length === 0) {
 						return {
 							survivorId: survivor.id,
-							supersededCount: result.supersededIds.length,
-							supersededIds: result.supersededIds,
+							supersededCount: 0,
+							supersededIds: [],
 						} satisfies ConsolidateResult;
-					},
-					(result) => ({ count: result.supersededCount }),
-				);
-			},
+					}
+					const result = await store.consolidate(
+						{
+							visibility,
+							survivorId: survivor.id,
+							supersededIds: input.supersededIds,
+							mergeTags: input.mergeTags !== false,
+							now: new Date(),
+							auditEnabled: config.audit?.enabled === true,
+						},
+						storeOptions(input.signal),
+					);
+					return {
+						survivorId: survivor.id,
+						supersededCount: result.supersededIds.length,
+						supersededIds: result.supersededIds,
+					} satisfies ConsolidateResult;
+				},
+				(result) => ({ count: result.supersededCount }),
+			);
+		},
+	};
+	return {
+		...client,
+		experimental: {
+			// Deprecated alias of `consolidate`, removed in 1.0.
+			consolidate: (input) => client.consolidate(input),
 		},
 	};
 }

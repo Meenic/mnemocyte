@@ -28,6 +28,7 @@ import type {
 	ConsolidateResult,
 	ContextFormat,
 	ContextInput,
+	DependentsPolicy,
 	DuplicatePair,
 	Embedder,
 	EmbeddingPurpose,
@@ -373,6 +374,7 @@ const explanation: RetrievalExplanation = {
 const findDuplicates: FindDuplicatesInput = {
 	scope,
 	threshold: 0.95,
+	neighbors: 10,
 };
 const duplicatePair: DuplicatePair = {
 	a: {
@@ -449,6 +451,13 @@ const consolidateResult: ConsolidateResult = {
 	supersededIds: ["mem_b"],
 };
 const experimental: ExperimentalMemoryClient = client.experimental;
+const consolidated: Promise<ConsolidateResult> =
+	client.consolidate(consolidate);
+const dependentsPolicy: DependentsPolicy = "restore";
+void client.delete({ scope, id: "mem_a", dependents: dependentsPolicy });
+void client.delete({ scope, id: "mem_a", dependents: "delete" });
+// @ts-expect-error dependents is one of three policies.
+void client.delete({ scope, id: "mem_a", dependents: "cascade" });
 const openaiOptions: OpenAIEmbedderOptions = {
 	model: "text-embedding-3-small",
 	dimensions: 1536,
@@ -577,6 +586,7 @@ void listAudit;
 void auditEvent;
 void consolidate;
 void consolidateResult;
+void consolidated;
 void experimental;
 void MnemocyteError;
 void openai;
@@ -631,6 +641,12 @@ void bound.listAuditLog();
 const boundStats: Promise<MemoryStats> = bound.stats();
 const boundErased: Promise<{ deletedCount: number }> = bound.deleteScope();
 void bound.prune({ expired: true, dryRun: true });
+const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
+	survivorId: "a",
+	supersededIds: ["b"],
+});
+void boundConsolidated;
+void bound.delete({ id: "a", dependents: "reject" });
 const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
 void boundExperimental.consolidate({ survivorId: "a", supersededIds: ["b"] });
 const boundMigrate: MigrateInput = { memory: bound };

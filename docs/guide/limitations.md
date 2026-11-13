@@ -61,20 +61,23 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 
 ## Deleting
 
-- **Consolidation blocks deletes.** After a consolidation, `delete` and
-  `prune` throw `"CONFLICT"` for the survivor until the superseded memories
-  are deleted first (`prune({ scope, superseded: true })`). `deleteScope`
-  is not blocked when the survivor and its dependents are deleted together.
-  Planned: survivor-aware deletes (`feat/consolidate-stable`).
+- **Deletes stay inside the scope.** `delete` with `dependents: "restore"`
+  or `"delete"` throws `"CONFLICT"` when a memory consolidated into the
+  survivor is not visible at the call's scope, and `prune` and
+  `deleteScope` throw it when such a memory is outside the selection.
+  Delete at a scope that sees every dependent, for example the agent's.
 - **Reads cannot span agents.** A read at an entity scope without `agentId`
   sees only shared memories, never those an agent holds; there is no way to
   list every agent's memories of an entity in one call. `stats`,
   `listAuditLog` and `deleteScope` do cover all agents.
 - **Moving a memory between scopes takes two calls.** `update` cannot change
   the scope; delete the memory and add it in the new scope.
-- **Duplicate search compares every pair.** `findDuplicates` cost grows with
-  the square of the scope's memory count. Planned: nearest-neighbor based
-  search (`feat/consolidate-stable`).
+- **Duplicate search is approximate on large scopes.** On Postgres,
+  `findDuplicates` takes each memory's nearest neighbors from the HNSW
+  index when the scope is a large part of the table, and HNSW can miss a
+  neighbor. For a small scope it reads the scope's rows for every memory,
+  so its cost still grows with the square of the scope's size. The
+  in-memory backend is exact but compares every pair.
 - **The audit log grows forever.** Only `deleteScope` deletes audit events.
   Planned: a retention option (`feat/audit-retention`).
 

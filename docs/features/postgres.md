@@ -414,7 +414,7 @@ interface SqlExecutor {
 Writes need no connection held across round trips, which is what
 stateless HTTP drivers (Neon's HTTP driver, D1) require. The guarded deletes
 are one `WITH … DELETE`, and `consolidate` is one `WITH` query (see
-[maintenance.md](./maintenance.md#experimentalconsolidate)). Only `migrate()`
+[maintenance.md](./maintenance.md#consolidate)). Only `migrate()`
 needs `transaction`, because each step reads the tracking table and decides
 what to run from it; without one it throws `"CONFIG"`.
 

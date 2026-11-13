@@ -48,7 +48,7 @@ describe("operation cancellation", () => {
 			"ABORTED",
 		);
 		await expectMnemocyteError(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],

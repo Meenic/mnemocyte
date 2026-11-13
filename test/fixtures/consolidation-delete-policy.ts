@@ -37,7 +37,7 @@ async function createConsolidatedPair(
 	});
 	const definedSurvivor = expectDefined(survivor);
 	const definedLoser = expectDefined(loser);
-	await client.experimental.consolidate({
+	await client.consolidate({
 		scope: testScope(entityId),
 		survivorId: definedSurvivor.id,
 		supersededIds: [definedLoser.id],
@@ -106,7 +106,7 @@ export async function exerciseConsolidationDeletePolicy(
 			scope: testScope(entityId),
 			content: `${entityId} loser`,
 		});
-		await client.experimental.consolidate({
+		await client.consolidate({
 			scope: agentScope,
 			survivorId: survivor.id,
 			supersededIds: [loser.id],

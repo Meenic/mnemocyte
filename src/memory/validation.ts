@@ -4,6 +4,8 @@ import type {
 	AuditLogCursor,
 	ConsolidateInput,
 	ContextInput,
+	DeleteInput,
+	DependentsPolicy,
 	Embedder,
 	FindDuplicatesInput,
 	ImportanceLevel,
@@ -17,9 +19,11 @@ import type {
 	ScopedReadOptions,
 	SearchInput,
 } from "../types.js";
+import { DEFAULT_DEPENDENTS_POLICY } from "./defaults.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
 	MAX_CONTENT_LENGTH,
+	MAX_DUPLICATE_NEIGHBORS,
 	MAX_KEY_BYTES,
 	MAX_LIMIT,
 	MAX_SCOPE_FIELD_BYTES,
@@ -808,9 +812,52 @@ export function validateFindDuplicatesInput(
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
 	}
+	if (
+		input.neighbors !== undefined &&
+		(!Number.isInteger(input.neighbors) ||
+			input.neighbors < 1 ||
+			input.neighbors > MAX_DUPLICATE_NEIGHBORS)
+	) {
+		throw new MnemocyteError(
+			`neighbors must be an integer from 1 to ${MAX_DUPLICATE_NEIGHBORS}.`,
+			"VALIDATION",
+		);
+	}
 	validateMemoryFilterFields(input);
 	assertOptionalSignal(input.signal);
 	return visibility;
+}
+
+const DEPENDENTS_POLICIES: ReadonlySet<unknown> = new Set<DependentsPolicy>([
+	"reject",
+	"restore",
+	"delete",
+]);
+
+/**
+ * Validate a {@link DeleteInput} and return its scope and dependents
+ * policy.
+ */
+export function validateDeleteInput(input: DeleteInput): {
+	scope: StoreScope;
+	dependents: DependentsPolicy;
+} {
+	const scope = validateScope(input.scope);
+	assertNonEmptyString(input.id, "id");
+	if (
+		input.dependents !== undefined &&
+		!DEPENDENTS_POLICIES.has(input.dependents)
+	) {
+		throw new MnemocyteError(
+			'dependents must be "reject", "restore" or "delete".',
+			"VALIDATION",
+		);
+	}
+	assertOptionalSignal(input.signal);
+	return {
+		scope,
+		dependents: input.dependents ?? DEFAULT_DEPENDENTS_POLICY,
+	};
 }
 
 /**

@@ -99,8 +99,13 @@ describe("Postgres single-statement writes", () => {
 			"mem_legacy",
 		]);
 		expect(
-			await store.deleteMemory(testVisibility("alice"), "mem_legacy"),
-		).toBe(false);
+			await store.deleteMemory({
+				visibility: testVisibility("alice"),
+				memoryId: "mem_legacy",
+				dependents: "reject",
+				now: new Date(),
+			}),
+		).toBeNull();
 
 		expect(queries).toHaveLength(1);
 		for (const query of queries) {

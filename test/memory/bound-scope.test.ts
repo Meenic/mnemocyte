@@ -146,14 +146,14 @@ describe("bound scopes (in-memory)", () => {
 		const duplicate = await alice.add({ content: "Likes tea.", tags: ["b"] });
 
 		await expectMnemocyteError(
-			bob.experimental.consolidate({
+			bob.consolidate({
 				survivorId: survivor.id,
 				supersededIds: [duplicate.id],
 			}),
 			"NOT_FOUND",
 		);
 		await expect(
-			alice.experimental.consolidate({
+			alice.consolidate({
 				survivorId: survivor.id,
 				supersededIds: [duplicate.id],
 			}),
@@ -170,6 +170,7 @@ describe("bound scopes (in-memory)", () => {
 			[
 				"add",
 				"addMany",
+				"consolidate",
 				"context",
 				"delete",
 				"deleteScope",

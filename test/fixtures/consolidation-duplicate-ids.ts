@@ -42,7 +42,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 	const definedLoser = expectDefined(loser);
 
 	await expectMnemocyteError(
-		client.experimental.consolidate({
+		client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id, definedLoser.id],
@@ -65,7 +65,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 	expect(await listSupersededEvents(client, entityId)).toHaveLength(0);
 
 	await expect(
-		client.experimental.consolidate({
+		client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
@@ -76,7 +76,7 @@ export async function exerciseConsolidationDuplicateIdPolicy(params: {
 		supersededIds: [definedLoser.id],
 	});
 	await expect(
-		client.experimental.consolidate({
+		client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],

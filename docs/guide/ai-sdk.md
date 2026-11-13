@@ -76,7 +76,8 @@ input limits are the same as for `add`.
 Returns `{ forgotten: true }`, or `{ forgotten: false }` when no memory
 with that id is visible at the bound scope. Like `delete`, it can remove a
 memory shared by every agent or session of the bound entity, not only one
-written at the exact scope.
+written at the exact scope. When duplicates were consolidated into the
+memory, they are deleted with it (`delete` with `dependents: "delete"`).
 
 ### Errors and cancellation
 

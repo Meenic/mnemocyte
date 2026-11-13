@@ -57,7 +57,10 @@ index signature.
   `source: "saveMemory"`. No key: a model-chosen key could overwrite a keyed
   memory the app wrote in the same exact scope. Tags, metadata, confidence
   and expiry stay the app's.
-- `forgetMemory` calls `delete` by id. `"NOT_FOUND"` (including a non-UUID
+- `forgetMemory` calls `delete` by id with `dependents: "delete"`: search
+  shows only consolidation survivors, so with the default `"reject"` the
+  model could not forget any memory that duplicates were merged into.
+  Those duplicates are deleted with it. `"NOT_FOUND"` (including a non-UUID
   id) becomes `{ forgotten: false }`; any other error is rethrown. It uses
   the bound client's visibility, so shared memories of the entity are
   reachable.

@@ -65,6 +65,7 @@ export type {
 	DeleteInput,
 	DeleteScopeInput,
 	DeleteScopeResult,
+	DependentsPolicy,
 	DuplicatePair,
 	Embedder,
 	EmbeddingPurpose,

@@ -12,7 +12,7 @@ import type {
 	MemoryStats,
 } from "../types.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
-import { memoryHasDependentsError } from "./deletion.js";
+import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
 import {
 	isExpired,
 	isSameScope,
@@ -67,6 +67,10 @@ function cursorPosition(position: StoreListPosition): {
 	return { id: position.id, timestamp: position.createdAt };
 }
 
+function compareIds(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function keyConflictError(): MnemocyteError {
 	return new MnemocyteError(
 		"Another memory in this scope already uses that key.",
@@ -88,6 +92,13 @@ export function createInMemoryStore(): MemoryStore {
 			}
 		}
 		return undefined;
+	}
+
+	/** Memories whose `supersededBy` is `memoryId`, by id. */
+	function dependentsOf(memoryId: string): StoredMemory[] {
+		return Array.from(memories.values())
+			.filter((memory) => memory.supersededBy === memoryId)
+			.sort((a, b) => compareIds(a.id, b.id));
 	}
 
 	/**
@@ -261,14 +272,53 @@ export function createInMemoryStore(): MemoryStore {
 			memory.updatedAt = input.now;
 			return cloneMemory(memory);
 		},
-		async deleteMemory(visibility, memoryId, options) {
+		async deleteMemory(input, options) {
 			throwIfAborted(options?.signal);
+			const { memoryId, visibility } = input;
 			const memory = memories.get(memoryId);
 			if (!memory || !isVisible(memory.scope, visibility)) {
-				return false;
+				return null;
 			}
-			assertNoDependents(new Set([memoryId]), false);
-			return memories.delete(memoryId);
+			const direct = dependentsOf(memoryId);
+			if (direct.length > 0 && input.dependents === "reject") {
+				throw memoryHasDependentsError();
+			}
+			if (input.dependents === "restore") {
+				if (
+					direct.some((dependent) => !isVisible(dependent.scope, visibility))
+				) {
+					throw hiddenDependentsError();
+				}
+				for (const dependent of direct) {
+					dependent.supersededBy = null;
+					dependent.supersededAt = null;
+					dependent.updatedAt = input.now;
+				}
+				memories.delete(memoryId);
+				return {
+					deletedIds: [memoryId],
+					restoredIds: direct.map((dependent) => dependent.id),
+				};
+			}
+			// "delete", or "reject" without dependents: the memory and every
+			// memory consolidated into it, directly or through another.
+			const tree: StoredMemory[] = [];
+			const pending = [...direct];
+			for (let next = pending.pop(); next; next = pending.pop()) {
+				tree.push(next);
+				pending.push(...dependentsOf(next.id));
+			}
+			if (tree.some((dependent) => !isVisible(dependent.scope, visibility))) {
+				throw hiddenDependentsError();
+			}
+			const deletedIds = [
+				memoryId,
+				...tree.map((dependent) => dependent.id).sort(compareIds),
+			];
+			for (const id of deletedIds) {
+				memories.delete(id);
+			}
+			return { deletedIds, restoredIds: [] };
 		},
 		async deleteScope(selector, options) {
 			throwIfAborted(options?.signal);
@@ -304,7 +354,7 @@ export function createInMemoryStore(): MemoryStore {
 			const deletedByEntity: StorePruneEntityDeletion[] = [];
 			if (!dryRun) {
 				throwIfAborted(options?.signal);
-				assertNoDependents(new Set(matched.map((memory) => memory.id)), false);
+				assertNoDependents(new Set(matched.map((memory) => memory.id)), true);
 				const deletedCounts = new Map<string, StorePruneEntityDeletion>();
 				for (const memory of matched) {
 					memories.delete(memory.id);
@@ -343,34 +393,55 @@ export function createInMemoryStore(): MemoryStore {
 				throwIfAborted(options?.signal);
 				return matchesDuplicateFilter(memory, input, now);
 			});
-			const pairs: StoreDuplicatePair[] = [];
-			for (let i = 0; i < candidates.length; i += 1) {
+			// Exact k nearest neighbors per memory; the Postgres store gets them
+			// from its HNSW index. Pairs are keyed by their ordered ids.
+			const pairs = new Map<
+				string,
+				{ a: StoredMemory; b: StoredMemory; similarity: number }
+			>();
+			for (const memory of candidates) {
 				throwIfAborted(options?.signal);
-				const a = candidates[i];
-				if (a === undefined) {
-					continue;
-				}
-				for (let j = i + 1; j < candidates.length; j += 1) {
-					throwIfAborted(options?.signal);
-					const b = candidates[j];
-					if (b === undefined) {
+				const nearest = candidates
+					.filter((other) => other.id !== memory.id)
+					.map((other) => ({
+						other,
+						similarity: Math.max(
+							0,
+							Math.min(1, cosineSimilarity(memory.embedding, other.embedding)),
+						),
+					}))
+					.sort(
+						(x, y) =>
+							y.similarity - x.similarity || compareIds(x.other.id, y.other.id),
+					)
+					.slice(0, input.neighbors);
+				for (const { other, similarity } of nearest) {
+					if (similarity < input.threshold) {
 						continue;
 					}
-					const similarity = Math.max(
-						0,
-						Math.min(1, cosineSimilarity(a.embedding, b.embedding)),
-					);
-					if (similarity >= input.threshold) {
-						pairs.push({
-							a: cloneMemory(a),
-							b: cloneMemory(b),
-							similarity,
-						});
+					const [a, b] =
+						memory.id < other.id ? [memory, other] : [other, memory];
+					const key = `${a.id} ${b.id}`;
+					if (!pairs.has(key)) {
+						pairs.set(key, { a, b, similarity });
 					}
 				}
 			}
-			pairs.sort((x, y) => y.similarity - x.similarity);
-			return pairs.slice(0, input.limit);
+			return [...pairs.values()]
+				.sort(
+					(x, y) =>
+						y.similarity - x.similarity ||
+						compareIds(x.a.id, y.a.id) ||
+						compareIds(x.b.id, y.b.id),
+				)
+				.slice(0, input.limit)
+				.map(
+					({ a, b, similarity }): StoreDuplicatePair => ({
+						a: cloneMemory(a),
+						b: cloneMemory(b),
+						similarity,
+					}),
+				);
 		},
 		async addAuditEvents(events) {
 			auditLog.push(...events.map(cloneAuditEvent));

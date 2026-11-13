@@ -117,16 +117,11 @@ formats and the token-budget guarantee and no longer echoes the query; see
 
 ## Maintenance
 
-`prune` requiring a scope or `allNamespaces: true` has landed (see
-[features/maintenance.md](./features/maintenance.md#prune)). Still to come:
+`prune` requiring a scope or `allNamespaces: true`, survivor-aware deletes,
+the k-nearest-neighbor `findDuplicates` and `consolidate` on the stable
+client have landed (decision 30; see
+[features/maintenance.md](./features/maintenance.md)). Still to come:
 
-- Deleting a consolidation survivor is allowed when its dependents are
-  deleted in the same call; `delete` of a lone survivor repoints dependents to
-  null or rejects, chosen per call.
-- `findDuplicates` uses a per-row k-nearest-neighbour query instead of a full
-  self-join.
-- `consolidate` graduates from `experimental` with its current locking
-  design.
 - Audit events get a retention option.
 
 ## Embedders
@@ -556,3 +551,23 @@ Dated 2026-10-26 unless noted.
     `ProviderError` message (its `code` is numeric); Voyage's `detail` and
     Cohere's `message` are free text and stay out. No provider documents
     `Retry-After` or `RetryInfo`, so none is read.
+30. **Stable consolidation** (2026-11-13, landed): `consolidate` moved to
+    `MemoryClient` and `BoundMemoryClient` with its one-statement
+    `SELECT … FOR UPDATE` design unchanged. `experimental.consolidate`
+    stays as a deprecated alias until 1.0, so 0.8 breaks nothing.
+    `delete` takes `dependents: "reject" | "restore" | "delete"`, default
+    `"reject"`. `"delete"` goes beyond the per-call choice planned here
+    (repoint to null or reject) because `forgetMemory` needs it: search
+    shows only survivors, so a model could never forget a memory that
+    duplicates were merged into. It deletes transitively, since a
+    consolidation does not stop a loser from being a survivor itself. A
+    dependent the call cannot see blocks `"restore"` and `"delete"`, so a
+    delete never writes outside its visibility. `prune` now deletes a
+    survivor selected with all its dependents, like `deleteScope`.
+    `findDuplicates` takes each memory's `neighbors` nearest (default 10,
+    at most 100) through a `LATERAL` join instead of a self-join: the
+    HNSW index answers it per memory, so results are approximate on
+    Postgres; an exact mode was left out, since a later run after
+    consolidating finds what one missed. The index plan was measured on
+    PGlite (see features/maintenance.md); server numbers come with
+    `chore/benchmarks`.

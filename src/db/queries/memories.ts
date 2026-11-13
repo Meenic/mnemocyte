@@ -5,7 +5,12 @@ import type {
 	StoreVisibility,
 } from "../../memory/store.js";
 import type { SqlExecutor, SqlStatement } from "../../sql/executor.js";
-import type { ImportanceLevel, JsonObject, MemoryKind } from "../../types.js";
+import type {
+	DependentsPolicy,
+	ImportanceLevel,
+	JsonObject,
+	MemoryKind,
+} from "../../types.js";
 import { chunk, INSERT_CHUNK_ROWS, runAtomically } from "../atomic.js";
 import { postgresConstraintName } from "../errors.js";
 import {
@@ -522,18 +527,152 @@ export async function getMemoryStatsCounts(
 	return rows[0] ?? { entityCount: 0, ...emptyMemoryStatsCounts() };
 }
 
+export interface DeleteMemoryInput {
+	visibility: StoreVisibility;
+	memoryId: string;
+	dependents: DependentsPolicy;
+	now: Date;
+}
+
+export interface DeleteMemoryResult {
+	/** Whether a memory with the id is visible at the scope. */
+	found: boolean;
+	/** `"reject"`: a memory references it. Nothing was written. */
+	hasDependents: boolean;
+	/** `"restore"` / `"delete"`: a dependent is not visible. Nothing was written. */
+	hiddenDependents: boolean;
+	/** Deleted ids, by id. */
+	deletedIds: string[];
+	/** Restored ids, by id. */
+	restoredIds: string[];
+}
+
+/**
+ * Delete one memory as one statement, with its consolidation dependents
+ * handled by `input.dependents`:
+ *
+ * - `"reject"`: {@link deleteMemoriesWithDependentGuard}.
+ * - `"restore"`: one `WITH` that clears `superseded_by` on the direct
+ *   dependents and deletes the memory. The `NO ACTION` foreign key is
+ *   checked at the end of the statement, after the update.
+ * - `"delete"`: a recursive `WITH` that collects the memory and everything
+ *   consolidated into it, directly or through another, and deletes them
+ *   together.
+ *
+ * A dependent that is not visible at the scope blocks the write. A dependent
+ * added by a concurrent consolidation fails the foreign key, which the store
+ * maps to `"CONFLICT"`.
+ */
 export async function deleteMemory(
 	db: SqlExecutor,
-	visibility: StoreVisibility,
-	memoryId: string,
+	input: DeleteMemoryInput,
 	signal?: AbortSignal,
-): Promise<GuardedDeleteResult> {
+): Promise<DeleteMemoryResult> {
 	const params = createSqlParams();
-	const conditions = `${visibilityConditions(params, visibility)} AND id = ${params.uuid(memoryId)}`;
-	return deleteMemoriesWithDependentGuard(db, conditions, params, {
-		allowSelectedDependents: false,
-		...(signal ? { signal } : {}),
-	});
+	const target = `${visibilityConditions(params, input.visibility)} AND id = ${params.uuid(input.memoryId)}`;
+	if (input.dependents === "reject") {
+		const result = await deleteMemoriesWithDependentGuard(db, target, params, {
+			allowSelectedDependents: false,
+			...(signal ? { signal } : {}),
+		});
+		return {
+			found: result.matchedCount > 0,
+			hasDependents: result.hasDependents,
+			hiddenDependents: false,
+			deletedIds: result.deletedCount > 0 ? [input.memoryId] : [],
+			restoredIds: [],
+		};
+	}
+	const visible = visibilityConditions(params, input.visibility, "member");
+	const ctes =
+		input.dependents === "restore"
+			? `target AS MATERIALIZED (
+			SELECT id
+			FROM mnemocyte_memories
+			WHERE ${target}
+		),
+		members AS MATERIALIZED (
+			SELECT member.id, (${visible}) AS visible
+			FROM mnemocyte_memories AS member
+			INNER JOIN target ON member.superseded_by = target.id
+		),
+		blocked AS MATERIALIZED (
+			SELECT EXISTS (SELECT 1 FROM members WHERE NOT visible) AS hidden
+		),
+		restored AS (
+			UPDATE mnemocyte_memories AS memory
+			SET superseded_by = NULL, superseded_at = NULL,
+				updated_at = ${params.timestamp(input.now)}
+			FROM members
+			WHERE memory.id = members.id
+				AND NOT (SELECT hidden FROM blocked)
+			RETURNING memory.id
+		),
+		deleted AS (
+			DELETE FROM mnemocyte_memories
+			WHERE id IN (SELECT id FROM target)
+				AND NOT (SELECT hidden FROM blocked)
+			RETURNING id
+		)`
+			: `target AS MATERIALIZED (
+			SELECT id
+			FROM mnemocyte_memories
+			WHERE ${target}
+		),
+		tree (id) AS (
+			SELECT id FROM target
+			UNION
+			SELECT dependent.id
+			FROM mnemocyte_memories AS dependent
+			INNER JOIN tree ON dependent.superseded_by = tree.id
+		),
+		members AS MATERIALIZED (
+			SELECT member.id, (${visible}) AS visible
+			FROM mnemocyte_memories AS member
+			WHERE member.id IN (SELECT id FROM tree)
+		),
+		blocked AS MATERIALIZED (
+			SELECT EXISTS (SELECT 1 FROM members WHERE NOT visible) AS hidden
+		),
+		restored AS (
+			SELECT NULL::uuid AS id WHERE false
+		),
+		deleted AS (
+			DELETE FROM mnemocyte_memories
+			WHERE id IN (SELECT id FROM members)
+				AND NOT (SELECT hidden FROM blocked)
+			RETURNING id
+		)`;
+	const rows = await db.query<{
+		found: boolean;
+		hidden: boolean;
+		deletedIds: string;
+		restoredIds: string;
+	}>(
+		`WITH RECURSIVE ${ctes}
+		SELECT
+			EXISTS (SELECT 1 FROM target) AS "found",
+			(SELECT hidden FROM blocked) AS "hidden",
+			COALESCE(
+				(SELECT jsonb_agg(id::text ORDER BY id) FROM deleted),
+				'[]'::jsonb
+			)::text AS "deletedIds",
+			COALESCE(
+				(SELECT jsonb_agg(id::text ORDER BY id) FROM restored),
+				'[]'::jsonb
+			)::text AS "restoredIds"`,
+		params.values,
+		signal ? { signal } : undefined,
+	);
+	const row = rows[0];
+	return {
+		found: row?.found === true,
+		hasDependents: false,
+		hiddenDependents: row?.hidden === true,
+		// Both columns are a `jsonb_agg` of text ids, read back as text.
+		deletedIds: row ? (JSON.parse(row.deletedIds) as string[]) : [],
+		restoredIds: row ? (JSON.parse(row.restoredIds) as string[]) : [],
+	};
 }
 
 /**
@@ -614,6 +753,11 @@ export async function countPruneMatches(
 	return Number(rows[0]?.count ?? 0);
 }
 
+/**
+ * Delete the matching memories in one statement. A survivor is deleted when
+ * every memory that references it is deleted too; one outside the matches
+ * blocks the whole prune.
+ */
 export async function pruneMemories(
 	db: SqlExecutor,
 	filter: PruneFilter,
@@ -622,7 +766,7 @@ export async function pruneMemories(
 	const params = createSqlParams();
 	const conditions = pruneConditions(params, filter);
 	return deleteMemoriesWithDependentGuard(db, conditions, params, {
-		allowSelectedDependents: false,
+		allowSelectedDependents: true,
 		...(signal ? { signal } : {}),
 	});
 }
@@ -735,58 +879,111 @@ export interface DuplicateSearchInput {
 	visibility: StoreVisibility;
 	threshold: number;
 	limit: number;
+	neighbors: number;
 	kinds?: readonly string[];
 	tags?: readonly string[];
 	includeSuperseded?: boolean;
 	includeExpired?: boolean;
 }
 
+/** The duplicate-search filters for one side of a pair, `a` or `b`. */
+function duplicateFilters(
+	params: SqlParams,
+	input: DuplicateSearchInput,
+	table: "a" | "b",
+): string {
+	const clauses: string[] = [
+		visibilityConditions(params, input.visibility, table),
+		`${table}.embedding IS NOT NULL`,
+	];
+	if (!input.includeSuperseded) {
+		clauses.push(`${table}.superseded_by IS NULL`);
+	}
+	if (!input.includeExpired) {
+		clauses.push(
+			`(${table}.expires_at IS NULL OR ${table}.expires_at > now())`,
+		);
+	}
+	if (input.kinds && input.kinds.length > 0) {
+		clauses.push(`${table}.kind IN (${params.list(input.kinds)})`);
+	}
+	if (input.tags && input.tags.length > 0) {
+		clauses.push(`${table}.tags @> ${params.textArray(input.tags)}`);
+	}
+	return clauses.join("\n\t\t\t\t\tAND ");
+}
+
+/**
+ * Duplicate pairs from a k-nearest-neighbor join: for each memory `a` that
+ * passes the filters, a `LATERAL` subquery takes the `neighbors` nearest
+ * memories `b` that pass them too, ordered by cosine distance, which the
+ * HNSW index can answer once per `a` instead of comparing every pair. Pairs
+ * at or above the threshold are keyed by their ordered ids, so a pair found
+ * from both sides counts once, and the top `limit` are joined back to their
+ * rows.
+ *
+ * Like {@link vectorSearch}, it runs after `hnsw.iterative_scan =
+ * strict_order` and `hnsw.ef_search` for `neighbors + 1` rows (the memory
+ * itself is filtered out), set for its transaction only, so a selective
+ * scope does not leave a memory with fewer neighbors than exist.
+ */
 export async function findDuplicatePairs(
 	db: SqlExecutor,
 	input: DuplicateSearchInput,
 	signal?: AbortSignal,
 ): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
 	const params = createSqlParams();
-	const clauses: string[] = [
-		visibilityConditions(params, input.visibility, "a"),
-		visibilityConditions(params, input.visibility, "b"),
-	];
-	if (!input.includeSuperseded) {
-		clauses.push("a.superseded_by IS NULL AND b.superseded_by IS NULL");
-	}
-	if (!input.includeExpired) {
-		clauses.push(
-			"(a.expires_at IS NULL OR a.expires_at > now()) AND (b.expires_at IS NULL OR b.expires_at > now())",
-		);
-	}
-	if (input.kinds && input.kinds.length > 0) {
-		const kinds = params.list(input.kinds);
-		clauses.push(`a.kind IN (${kinds}) AND b.kind IN (${kinds})`);
-	}
-	if (input.tags && input.tags.length > 0) {
-		const tags = params.textArray(input.tags);
-		clauses.push(`a.tags @> ${tags} AND b.tags @> ${tags}`);
-	}
-	clauses.push(
-		`1 - (a.embedding <=> b.embedding) >= ${params.add(input.threshold)}`,
-	);
-	const rows = await db.query<Record<string, unknown>>(
-		`SELECT
+	const outer = duplicateFilters(params, input, "a");
+	const inner = duplicateFilters(params, input, "b");
+	const text = `WITH pairs AS (
+			SELECT
+				LEAST(a.id, neighbor.id) AS a_id,
+				GREATEST(a.id, neighbor.id) AS b_id,
+				1 - neighbor.distance AS similarity
+			FROM mnemocyte_memories AS a
+			CROSS JOIN LATERAL (
+				SELECT b.id, b.embedding <=> a.embedding AS distance
+				FROM mnemocyte_memories AS b
+				WHERE ${inner}
+					AND b.id <> a.id
+				ORDER BY distance
+				LIMIT ${params.add(input.neighbors)}
+			) AS neighbor
+			WHERE ${outer}
+		),
+		unique_pairs AS (
+			SELECT a_id, b_id, max(similarity) AS similarity
+			FROM pairs
+			WHERE similarity >= ${params.add(input.threshold)}
+			GROUP BY a_id, b_id
+		),
+		top AS MATERIALIZED (
+			SELECT a_id, b_id, similarity
+			FROM unique_pairs
+			ORDER BY similarity DESC, a_id, b_id
+			LIMIT ${params.add(input.limit)}
+		)
+		SELECT
 			${selectMemoryColumns({ table: "a", prefix: "a" })},
 			${selectMemoryColumns({ table: "b", prefix: "b" })},
-			1 - (a.embedding <=> b.embedding) AS "similarity"
-		FROM mnemocyte_memories a
-		JOIN mnemocyte_memories b
-			ON a.id < b.id
-			AND a.embedding IS NOT NULL
-			AND b.embedding IS NOT NULL
-		WHERE ${clauses.join("\n\t\t\tAND ")}
-		ORDER BY "similarity" DESC
-		LIMIT ${params.add(input.limit)}`,
-		params.values,
+			top.similarity AS "similarity"
+		FROM top
+		INNER JOIN mnemocyte_memories AS a ON a.id = top.a_id
+		INNER JOIN mnemocyte_memories AS b ON b.id = top.b_id
+		ORDER BY top.similarity DESC, top.a_id, top.b_id`;
+	const [, found = []] = await runAtomically(
+		db,
+		[
+			{
+				sql: `SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+				set_config('hnsw.ef_search', $1, true)`,
+				params: [String(hnswEfSearch(input.neighbors + 1))],
+			},
+			{ sql: text, params: params.values },
+		],
 		signal ? { signal } : undefined,
 	);
-	return rows.map((row) => ({
+	return found.map((row) => ({
 		a: toMemoryRow(extractPrefixedMemoryRow(row, "a")),
 		b: toMemoryRow(extractPrefixedMemoryRow(row, "b")),
 		similarity: Number(row.similarity) || 0,

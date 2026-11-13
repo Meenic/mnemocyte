@@ -80,7 +80,8 @@ Both layers attach the client internals (store and embedder, under the
 bound client. A bound client holds nothing else, so `for()` per request
 costs one validation and two small objects.
 
-Types: `MemoryClient`, `ExperimentalMemoryClient` and every input with a
+Types: `MemoryClient`, `ExperimentalMemoryClient` (whose only member is the
+deprecated `consolidate` alias) and every input with a
 scope take `DefaultNamespace extends boolean = false`. `ScopeInput<true>` is
 `OptionalNamespaceScope` and `ScopeSelectorInput<true>` is
 `OptionalNamespaceSelector`; with `false` they are `MemoryScope` and

@@ -33,7 +33,7 @@ export async function verifyAuditCursorPagination(
 	const survivor = expectDefined(memories[0]);
 	const losers = memories.slice(1);
 	await new Promise((resolve) => setTimeout(resolve, 5));
-	await client.experimental.consolidate({
+	await client.consolidate({
 		scope: testScope(entityId),
 		survivorId: survivor.id,
 		supersededIds: losers.map((memory) => memory.id),

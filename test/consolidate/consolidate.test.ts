@@ -37,7 +37,7 @@ describe("consolidate", () => {
 				content: "coffee",
 			});
 			await expectError("VALIDATION", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: survivor.id,
 					supersededIds: [],
@@ -53,7 +53,7 @@ describe("consolidate", () => {
 				content: "coffee",
 			});
 			await expectError("VALIDATION", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: survivor.id,
 					supersededIds: [survivor.id],
@@ -69,7 +69,7 @@ describe("consolidate", () => {
 				content: "x",
 			});
 			await expectError("NOT_FOUND", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: "mem_nope",
 					supersededIds: [other.id],
@@ -89,14 +89,14 @@ describe("consolidate", () => {
 				content: "b",
 			});
 			await expectError("NOT_FOUND", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: aliceMem.id,
 					supersededIds: ["mem_nope"],
 				}),
 			);
 			await expectError("NOT_FOUND", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: aliceMem.id,
 					supersededIds: [bobMem.id],
@@ -117,7 +117,7 @@ describe("consolidate", () => {
 			});
 			expect(survivor.supersededAt).toBe(null);
 			expect(loser.supersededAt).toBe(null);
-			const result = await client.experimental.consolidate({
+			const result = await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
@@ -162,7 +162,7 @@ describe("consolidate", () => {
 				content: "coffee 2",
 				tags: ["drink", "morning"],
 			});
-			await client.experimental.consolidate({
+			await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
@@ -190,7 +190,7 @@ describe("consolidate", () => {
 				content: "tea 2",
 				tags: ["evening"],
 			});
-			await client.experimental.consolidate({
+			await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor2.id,
 				supersededIds: [loser2.id],
@@ -218,13 +218,13 @@ describe("consolidate", () => {
 				scope: testScope("alice"),
 				content: "b",
 			});
-			const first = await client.experimental.consolidate({
+			const first = await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
 			});
 			expect(first.supersededCount).toBe(1);
-			const second = await client.experimental.consolidate({
+			const second = await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
@@ -248,14 +248,14 @@ describe("consolidate", () => {
 				scope: testScope("alice"),
 				content: "newest",
 			});
-			await client.experimental.consolidate({
+			await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: winner.id,
 				supersededIds: [middle.id],
 			});
 			// middle is now superseded → cannot be used as survivor.
 			await expectError("VALIDATION", () =>
-				client.experimental.consolidate({
+				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: middle.id,
 					supersededIds: [newest.id],
@@ -289,7 +289,7 @@ describe("consolidate", () => {
 				scope: testScope("alice"),
 				content: "b",
 			});
-			const result = await client.experimental.consolidate({
+			const result = await client.consolidate({
 				scope: testScope("alice"),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],

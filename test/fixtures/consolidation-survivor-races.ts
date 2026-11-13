@@ -101,7 +101,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		const definedSurvivor = expectDefined(survivor);
 		const definedLoser = expectDefined(loser);
 		const gate = pauseNext();
-		const pending = client.experimental.consolidate({
+		const pending = client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
@@ -143,7 +143,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		const definedSurvivor = expectDefined(survivor);
 		const definedLoser = expectDefined(loser);
 		const gate = pauseNext();
-		const pending = client.experimental.consolidate({
+		const pending = client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedLoser.id],
@@ -151,7 +151,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 
 		await gate.entered;
 		try {
-			await mutator.experimental.consolidate({
+			await mutator.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedWinner.id,
 				supersededIds: [definedSurvivor.id],
@@ -189,12 +189,12 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		const definedSecondLoser = expectDefined(secondLoser);
 		const firstGate = pauseNext();
 		const secondGate = pauseNext();
-		const firstPending = client.experimental.consolidate({
+		const firstPending = client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedFirstLoser.id],
 		});
-		const secondPending = client.experimental.consolidate({
+		const secondPending = client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivor.id,
 			supersededIds: [definedSecondLoser.id],

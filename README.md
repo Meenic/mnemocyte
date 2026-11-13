@@ -98,7 +98,7 @@ with `psql` instead, and upgrades are in the
 - `prune`: delete memories in a scope by expiry, age, access, kind, tags or
   importance.
 - `findDuplicates`: list pairs of near-identical memories.
-- `experimental.consolidate`: mark duplicates as replaced by one memory.
+- `consolidate`: mark duplicates as replaced by one memory.
 - `listAuditLog`: read the optional audit log.
 - `stats`: count memories in a scope or the whole installation.
 

@@ -197,6 +197,27 @@ describe("memoryTools", () => {
 		});
 	});
 
+	test("forgets a consolidated memory with the duplicates merged into it", async () => {
+		const memory = createClient();
+		const user = memory.for({ entityId: "user_1" });
+		const tools = memoryTools({ memory: user });
+		const [survivor, duplicate] = await user.addMany({
+			memories: [
+				{ content: "Prefers tea over coffee." },
+				{ content: "Likes tea more than coffee." },
+			],
+		});
+		const survivorId = expectDefined(survivor).id;
+		const duplicateId = expectDefined(duplicate).id;
+		await user.consolidate({ survivorId, supersededIds: [duplicateId] });
+
+		expect(await execute(tools.forgetMemory, { id: survivorId })).toEqual({
+			forgotten: true,
+		});
+		expect(await user.get({ id: survivorId })).toBeNull();
+		expect(await user.get({ id: duplicateId })).toBeNull();
+	});
+
 	test("searches with a default limit of 5", async () => {
 		const user = createClient().for({ entityId: "user_1" });
 		await user.addMany({

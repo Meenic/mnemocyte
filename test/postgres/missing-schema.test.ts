@@ -61,7 +61,8 @@ function expectMigrateHint(error: MnemocyteError, sqlstate: string): void {
 	expect(causeCode(error)).toBe(sqlstate);
 }
 
-describe("missing-schema errors on PGlite", () => {
+// Each test boots its own PGlite, which can take seconds under parallel load.
+describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 	test("an empty database names migrate({ memory }) and the guide", async () => {
 		const { memory, embedded } = setup(await emptyDatabase());
 

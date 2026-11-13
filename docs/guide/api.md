@@ -110,7 +110,7 @@ out `agentId` makes the memory shared by every agent; leaving out
 `sessionId` keeps it outside any session.
 
 **Reads** (`search`, `get`, `list`, `context`, `findDuplicates`) and changes
-by id (`update`, `delete`, `experimental.consolidate`) see the scope plus
+by id (`update`, `delete`, `consolidate`) see the scope plus
 shared memories:
 
 | Scope of the call | Sees memories with |
@@ -403,8 +403,24 @@ const { deletedCount } = await memory.deleteScope({
 ```
 
 `delete` removes one memory visible at the scope and throws `"NOT_FOUND"`
-when there is none. It throws `"CONFLICT"` and deletes nothing while another
-memory's `supersededBy` points at it; delete the superseded memories first.
+when there is none. When the memory is a consolidation survivor (other
+memories' `supersededBy` points at it), `dependents` decides what happens to
+those memories:
+
+| `dependents` | Effect |
+|---|---|
+| `"reject"` (default) | Throws `"CONFLICT"` and deletes nothing. |
+| `"restore"` | Deletes the survivor and makes the memories consolidated into it active again (`supersededBy` and `supersededAt` back to `null`). |
+| `"delete"` | Deletes the survivor and every memory consolidated into it, including memories consolidated into those. |
+
+```ts
+await memory.delete({ scope, id: survivor.id, dependents: "delete" });
+```
+
+With `"restore"` or `"delete"`, a dependent that is not visible at the
+call's scope (for example one agent's memory consolidated into a memory
+shared by all agents, deleted at the entity scope) makes the call throw
+`"CONFLICT"` and change nothing. Each call is one statement on Postgres.
 
 `deleteScope` deletes every memory the scope selects, and the audit events
 recorded for it, in one statement. An omitted `agentId` or `sessionId`
@@ -450,9 +466,10 @@ Then at least one of these selectors, combined with AND:
 a selector throws `"VALIDATION"` and deletes nothing; to delete a whole
 scope, use `deleteScope`. `dryRun: true` only counts.
 
-A prune that would delete a consolidation survivor throws `"CONFLICT"` and
-deletes nothing, including the other matches. A dry run reports such rows
-without failing. With audit enabled, each affected entity gets one
+A prune that matches a consolidation survivor together with every memory
+consolidated into it deletes them all. One that would leave such a memory
+behind throws `"CONFLICT"` and deletes nothing, including the other matches.
+A dry run reports such rows without failing. With audit enabled, each affected entity gets one
 `memory.pruned` event.
 
 ## `findDuplicates`
@@ -466,15 +483,21 @@ for (const { a, b, similarity } of pairs) {
 
 Returns pairs of memories visible at the scope whose cosine similarity is at
 least `threshold` (default 0.95), most similar first, up to `limit` (default
-100). It accepts `kinds`, `tags`, `includeSuperseded`, `includeExpired`,
-`exactAgent` and `exactSession`, and modifies nothing. It compares every
-pair, so cost grows with the square of the scope's memory count; the
-in-memory backend slows down noticeably past a few thousand memories.
+100). Each memory is compared with its `neighbors` nearest memories
+(default 10, at most 100), so a pair is found when one of the two is among
+the other's nearest. It accepts `kinds`, `tags`, `includeSuperseded`,
+`includeExpired`, `exactAgent` and `exactSession`, and modifies nothing.
 
-## `experimental.consolidate`
+On Postgres the neighbors come from the HNSW index when the scope is a large
+part of the table. HNSW search is approximate, so a pair can occasionally be
+missed; run `findDuplicates` again after consolidating to catch the rest.
+The in-memory backend finds the exact nearest neighbors by comparing every
+pair, and slows down noticeably past a few thousand memories.
+
+## `consolidate`
 
 ```ts
-const result = await memory.experimental.consolidate({
+const result = await memory.consolidate({
   scope,
   survivorId: survivor.id,
   supersededIds: [duplicate.id],
@@ -495,10 +518,12 @@ search, list, context and duplicate search unless `includeSuperseded` is set.
   throw `"CONFLICT"`.
 - The call is all-or-nothing: on any conflict no memory, tag or audit event
   changes. Concurrent calls are safe.
-- While a memory points to the survivor, `delete` and `prune` cannot delete
-  the survivor (see [`delete`](#delete-and-deletescope)).
+- While a memory points to the survivor, `delete` keeps the survivor unless
+  you pass `dependents` (see [`delete`](#delete-and-deletescope)).
 
-Anything under `experimental` may change in a minor release.
+`consolidate` graduated from `experimental` in 0.8.
+`experimental.consolidate` still works as a deprecated alias and is removed
+in 1.0.
 
 ## `listAuditLog`
 
@@ -510,7 +535,10 @@ const memory = createMemory({ embedder, audit: { enabled: true } });
 
 Mnemocyte then records `memory.created`, `memory.updated`, `memory.deleted`,
 `memory.pruned` (one per affected entity) and `memory.superseded`. Each event
-carries the `scope` it belongs to.
+carries the `scope` it belongs to. A `delete` records one `memory.deleted`
+per deleted memory; dependents deleted with it carry `deletedWith`, and the
+survivor's event lists `restoredIds` when `dependents: "restore"` restored
+any.
 
 ```ts
 const entity = { namespace: "my-app", entityId: "user_123" };

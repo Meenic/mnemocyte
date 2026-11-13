@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { MockEmbeddingModelV4 } from "ai/test";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
 import type {
@@ -63,6 +64,12 @@ import {
 	ProviderError,
 	type ProviderErrorInput,
 } from "mnemocyte";
+import {
+	type AiSdkEmbedderOptions,
+	type AiSdkProviderOptions,
+	type AiSdkPurposeOptions,
+	aiSdkEmbedder,
+} from "mnemocyte/ai-sdk";
 import {
 	type OpenAICompatibleEmbedderOptions,
 	type OpenAIEmbedderOptions,
@@ -438,6 +445,31 @@ const providerErrorInput: ProviderErrorInput = {
 };
 const providerError = new ProviderError(providerErrorInput);
 const providerStatus: number = providerError.status;
+const gatewayEmbedder: Embedder = aiSdkEmbedder({
+	model: "openai/text-embedding-3-small",
+});
+const aiSdkProviderOptions: AiSdkProviderOptions = {
+	google: { outputDimensionality: 768 },
+};
+const aiSdkPurposes: AiSdkPurposeOptions = {
+	query: { google: { taskType: "RETRIEVAL_QUERY" } },
+	document: { google: { taskType: "RETRIEVAL_DOCUMENT" } },
+};
+const aiSdkOptions: AiSdkEmbedderOptions = {
+	model: new MockEmbeddingModelV4({ modelId: "gemini-embedding-001" }),
+	dimensions: 768,
+	maxBatch: 50,
+	providerOptions: aiSdkProviderOptions,
+	purposes: aiSdkPurposes,
+};
+const modelEmbedder: Embedder = aiSdkEmbedder(aiSdkOptions);
+// @ts-expect-error model is required
+aiSdkEmbedder({ dimensions: 2 });
+aiSdkEmbedder({
+	model: "openai/text-embedding-3-small",
+	// @ts-expect-error provider options are objects keyed by provider
+	providerOptions: { google: "x" },
+});
 const providerRetryAfter: number | undefined = providerError.retryAfterMs;
 const providerAsMnemocyte: MnemocyteError = providerError;
 
@@ -547,3 +579,5 @@ void boundStats;
 void boundErased;
 void boundMigrate;
 void batchOnlyExecutor;
+void gatewayEmbedder;
+void modelEmbedder;

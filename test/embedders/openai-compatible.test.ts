@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	MAX_ERROR_BODY_LENGTH,
 	parseRetryAfterMs,
-} from "../../src/http-embedder.js";
+} from "../../src/provider-error.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const BASE = {

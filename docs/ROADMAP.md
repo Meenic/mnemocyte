@@ -140,7 +140,7 @@ it.
   `openaiCompatibleEmbedder`; retries with jitter and `Retry-After`;
   replace the message-substring retry heuristic (it retries any message
   containing "500"); keep provider error bodies as the error `cause`.
-- [ ] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
+- [x] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
   `aiSdkEmbedder({ model })` takes an AI SDK embedding model or a
   `"provider/model"` string, which the AI SDK resolves through its global
   provider (the AI Gateway by default). `dimensions` comes from a table of

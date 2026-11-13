@@ -23,8 +23,9 @@ Feature areas:
 - [features/maintenance.md](./features/maintenance.md): delete, prune,
   duplicates, consolidation, audit log, stats.
 - [features/embedders.md](./features/embedders.md): the `Embedder` contract
-  (`purpose`, `maxBatch`), `openaiEmbedder` and `openaiCompatibleEmbedder`,
-  `ProviderError`, retries, timeouts, cancellation, observability.
+  (`purpose`, `maxBatch`), `openaiEmbedder`, `openaiCompatibleEmbedder` and
+  `aiSdkEmbedder`, `ProviderError`, retries, timeouts, cancellation,
+  observability.
 
 ## Setup
 
@@ -50,9 +51,11 @@ src/
   client.ts             createMemory: config checks, store (resolveStore | in-memory), overloads for namespace
   migrate.ts            migrate(): validates input, resolves { memory } or { store } (resolveStore), calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
+  ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder (the only file that imports `ai`)
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
-  http-embedder.ts      createHttpEmbedder behind both shipped embedders, Retry-After parsing
+  http-embedder.ts      createHttpEmbedder behind openaiEmbedder and openaiCompatibleEmbedder
+  provider-error.ts     createProviderError, error body parsing, Retry-After parsing
   observability.ts      onEvent lifecycle (start / success / error)
   resilience.ts         provider timeout, retry rule, jittered backoff, abort
   memory/
@@ -98,13 +101,16 @@ test/                   unit, package, integration, fixtures, benchmarks
 ```
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
-`src/index.ts`, `src/postgres.ts`, `src/embedders/*.ts` and
-`src/stores/*.ts`. The package has no runtime dependencies. `postgres`, `pg`,
-`@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies at
-the versions the tests run; source files import at most their types
+`src/index.ts`, `src/ai-sdk.ts`, `src/postgres.ts`, `src/embedders/*.ts`
+and `src/stores/*.ts`. The package has no runtime dependencies. `postgres`,
+`pg`, `@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies
+at the versions the tests run; source files import at most their types
 (`postgres` and `drizzle-orm` only), so no built entry imports a driver (a
 package test checks this). They are also dev dependencies, with `@types/pg`
-and `@electric-sql/pglite-pgvector`.
+and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
+(`^7.0.135`) and a dev dependency (it brings `zod`, its peer, into the
+lockfile); `src/ai-sdk.ts` imports it at runtime, and a package test follows
+the static imports of every other entry to check that none reaches it.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
 Node 22.18 fully supports. `isolatedDeclarations` is on for `src/`, so every
@@ -170,6 +176,9 @@ Exports:
   `mnemocyte/embedders/openai` and `mnemocyte/embedders/openai-compatible`
   export one each. `ProviderError`, `EmbedOptions` and `EmbeddingPurpose`
   come from the root.
+- `mnemocyte/ai-sdk`: `aiSdkEmbedder` and its `AiSdkEmbedderOptions`,
+  `AiSdkProviderOptions` and `AiSdkPurposeOptions` types; needs the `ai`
+  peer.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
   `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
   `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
@@ -234,12 +243,20 @@ Vitest has three projects (`vitest.config.ts`):
   test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
   negative cases fail with TS2578 if they stop being errors.
 - The package tests pack the tarball and install it into a temporary
-  consumer with `drizzle-orm` and `postgres` absent. They extract with the
-  system `tar` using relative paths, so GNU tar, bsdtar and Windows'
-  `tar.exe` all work. The consumer runs an in-memory client from ESM and,
-  through `require()`, a client with a `SqlExecutor` as `store`, which
-  loads the Postgres chunk lazily; `require()` would throw if any module
-  used top-level `await`.
+  consumer with `drizzle-orm`, `postgres`, `pg`, PGlite and `ai` absent.
+  They extract with the system `tar` using relative paths, so GNU tar,
+  bsdtar and Windows' `tar.exe` all work. The consumer runs an in-memory
+  client from ESM and, through `require()`, a client with a `SqlExecutor`
+  as `store`, which loads the Postgres chunk lazily; `require()` would throw
+  if any module used top-level `await`. Then it links the dev `ai` into its
+  `node_modules` (a directory junction, which Windows allows without
+  symlink rights) and embeds through `mnemocyte/ai-sdk` with an AI SDK mock
+  model, checking that an `APICallError` comes out as the root entry's
+  `ProviderError`.
+- `test/embedders/ai-sdk.test.ts` drives `aiSdkEmbedder` with the AI SDK's
+  `MockEmbeddingModelV4` and `customProvider` (as the global provider for
+  string ids), and with a real `createGateway` provider over a mocked
+  `fetch`, which checks the gateway request body and its error mapping.
 - `pnpm lint:package` builds, packs once into a temporary folder and runs
   publint `--strict` and attw on that tarball. attw uses the `node16`
   profile, which skips node10 resolution (it cannot see subpath `exports`),

@@ -420,6 +420,19 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 }
 
 export {
+	type MemoryFinishReason,
+	type MemoryLanguageModel,
+	type MemoryMiddlewareContextOptions,
+	type MemoryMiddlewareError,
+	type MemoryMiddlewareOptions,
+	type MemoryPrompt,
+	type MemoryTurn,
+	type MemoryWrappedModel,
+	memoryMiddleware,
+	type WithMemoryOptions,
+	withMemory,
+} from "./ai-sdk-middleware.js";
+export {
 	type ForgetMemoryInput,
 	type ForgetMemoryOutput,
 	type FoundMemory,

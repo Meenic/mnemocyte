@@ -9,7 +9,8 @@ export interface BuildContextOptions {
 
 /**
  * Render the best-ranked memories that fit `maxTokens`: a binary search on the
- * number of memories, so the result always fits the budget.
+ * number of memories, so the result always fits the budget. No matching
+ * memory renders as `""`, so callers can tell there is nothing to add.
  */
 export async function buildContext(
 	options: BuildContextOptions,
@@ -18,6 +19,9 @@ export async function buildContext(
 	const maxTokens = options.input.maxTokens ?? 1200;
 	const tokenCounter = options.input.tokenCounter ?? heuristicTokenCounter;
 	const memories = await options.search(options.input);
+	if (memories.length === 0) {
+		return "";
+	}
 	let low = 0;
 	let high = memories.length;
 	let bestContext = "";
@@ -32,7 +36,7 @@ export async function buildContext(
 			high = mid - 1;
 		}
 	}
-	if (bestContext || memories.length === 0) {
+	if (bestContext) {
 		return bestContext;
 	}
 	return trimToTokenBudget(

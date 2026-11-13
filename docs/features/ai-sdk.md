@@ -1,12 +1,13 @@
 # AI SDK integration
 
 `mnemocyte/ai-sdk` (`src/ai-sdk.ts`) is the only entry that imports `ai`,
-an optional peer at `^7.0.135`; `src/ai-sdk.ts` and `src/ai-sdk-tools.ts`
-are the only source files that do. It exports `aiSdkEmbedder` (see
-[embedders.md](./embedders.md#aisdkembedder)) and `memoryTools`
-(`src/ai-sdk-tools.ts`). The user guide is
-[guide/ai-sdk.md](../guide/ai-sdk.md); decision 26 in
-[ARCHITECTURE.md](../ARCHITECTURE.md#decisions) records the choices below.
+an optional peer at `^7.0.135`; `src/ai-sdk.ts`, `src/ai-sdk-tools.ts` and
+`src/ai-sdk-middleware.ts` are the only source files that do. It exports
+`aiSdkEmbedder` (see [embedders.md](./embedders.md#aisdkembedder)),
+`memoryTools` (`src/ai-sdk-tools.ts`), and `memoryMiddleware` and
+`withMemory` (`src/ai-sdk-middleware.ts`). The user guide is
+[guide/ai-sdk.md](../guide/ai-sdk.md); decisions 26 and 27 in
+[ARCHITECTURE.md](../ARCHITECTURE.md#decisions) record the choices below.
 
 ## Memory tools
 
@@ -69,7 +70,93 @@ configured with `toolApproval` on `generateText` / `streamText`, so the
 tools set nothing and the guide shows `toolApproval: { forgetMemory:
 "user-approval" }`.
 
+## Memory middleware
+
+`memoryMiddleware(options)` returns a `LanguageModelMiddleware` (the `ai`
+type: `LanguageModelV4Middleware` without `specificationVersion`, which
+`wrapLanguageModel` fills in). `withMemory({ model, ...options })` returns
+`wrapLanguageModel({ model, middleware })`. Both validate their options
+eagerly and throw `"CONFIG"` for: a missing options object; a value without
+an object `scope` and a `context` method (the unbound client has no
+`scope`); a `placement` other than `"user"` or `"system"`; a non-object
+`context` or one with `query`, `signal`, `scope` or `allNamespaces`; and a
+`query`, `save` or `onError` that is not a function. `withMemory` also
+rejects a string or non-object `model`: `wrapLanguageModel` only accepts
+model objects, and resolving strings ourselves would copy the AI SDK's
+internal global-provider lookup. The `context` options are copied
+shallowly at creation; their values are validated by `context()` on each
+call.
+
+Types come from `ai` alone (`@ai-sdk/provider` is not a dependency):
+`MemoryPrompt` is `transformParams`'s `params.prompt`, `MemoryFinishReason`
+is the generate result's `finishReason.unified`, and `MemoryLanguageModel`
+and `MemoryWrappedModel` are `wrapLanguageModel`'s parameter and return
+types.
+
+### Context
+
+`transformParams` runs before every model call, `generate` or `stream`,
+and in a multi-step call once per step:
+
+1. The query is `options.query({ prompt })`, by default the text parts of
+   the last user message joined with newlines, cut to its last 32,000
+   characters (`MAX_CONTENT_LENGTH`, the `context()` query limit).
+   `undefined` or a blank string returns `params` unchanged.
+2. `memory.context({ ...options.context, query, signal })`, with
+   `params.abortSignal` as `signal`. The last successful result is cached
+   by query string in the middleware's closure, so the steps of one tool
+   loop embed once. Failures are not cached.
+3. `""` (no memory matched; see
+   [retrieval.md](./retrieval.md#context)) returns `params` unchanged.
+   Otherwise the block is a fixed preamble line, a blank line and the
+   context.
+4. `"user"` placement copies the last user message with the block as its
+   first text part; a prompt with no user message falls back to
+   `"system"`. `"system"` placement inserts `{ role: "system" }` after the
+   leading run of system messages, since Anthropic and Google reject system
+   messages later in the prompt.
+
+The returned params are a new object; the original prompt is kept in a
+`WeakMap` keyed by it, which the save hook reads. Nothing changes the
+caller's messages.
+
+If the query callback or `context()` throws, the error is rethrown when
+`params.abortSignal` is aborted or it is an `"ABORTED"` `MnemocyteError`;
+anything else goes to `onError({ phase: "context", error })` and `params`
+are returned unchanged (fail open). The client's own `onEvent` already
+reports the failed `"context"` operation. `onError` is called in a
+`try`/`catch`, so a throwing handler cannot fail the call.
+
+### Save hook
+
+Without `save` the middleware has only `transformParams`. With it,
+`wrapGenerate` awaits `doGenerate()` and `wrapStream` pipes the stream
+through a pass-through `TransformStream` that joins `text-delta` parts,
+records the `finish` part's reason and notes any `error` part; its
+`flush()` fires the hook. The hook fires when the reason is not
+`"tool-calls"`, `"error"` or `"interrupted"`, and for a stream only when a
+`finish` part arrived and no `error` part did, so a tool loop's
+intermediate steps and failed or aborted calls never save.
+
+The hook gets `{ memory, prompt, text, finishReason }`, where `prompt` is
+the original prompt from the `WeakMap` (or `params.prompt` when nothing
+was added). It is started without being awaited: a synchronous throw and a
+rejected promise both go to `onError({ phase: "save", error })`.
+
 ## Tests
+
+`test/ai-sdk/middleware.test.ts` runs on the in-memory backend with
+`MockLanguageModelV4`: the `"CONFIG"` checks; `"user"` placement through
+`generateText` with `instructions` and history; `"system"` placement after
+two leading system messages; `context` options (`format: "xml"`) and an
+unchanged prompt for an entity with no memories; the `query` option and a
+`query` that returns `undefined`; one query embedding with a signal across
+a three-step tool loop; fail-open with `onError` (and a throwing
+`onError`); an abort that throws without calling the model; an invalid
+`maxTokens` reaching `onError` as `"VALIDATION"`; the save hook once after
+a tool loop with the original prompt, after `streamText` finishes, not
+after a tool-call step or an errored stream, and failing hooks reported
+without affecting the response.
 
 `test/ai-sdk/tools.test.ts` runs on the in-memory backend: schemas and
 descriptions, the `"CONFIG"` checks, save, search and forget at the bound
@@ -81,7 +168,10 @@ searches, and a model that sends `entityId`, which ends as a `tool-error`.
 A third aborts `generateText` while a tool is embedding.
 
 `test/package/exports.test.ts` checks the built entry,
-`test/package/lazy-postgres.test.ts` runs `searchMemories` from the packed
-tarball with `ai` linked in, and `test/package/exports-types.test-d.ts`
-checks the exported types, `ToolSet` assignability, and that the unbound
-client, a `key` and a scope field are type errors.
+`test/package/lazy-postgres.test.ts` runs `searchMemories` and a
+`withMemory` `generateText` call from the packed tarball with `ai` linked
+in, and `test/package/exports-types.test-d.ts` checks the exported types,
+`ToolSet` assignability, that the middleware fits `wrapLanguageModel` and
+`withMemory`'s result is a `LanguageModel`, and that the unbound client, a
+`key`, a scope field, a string model, `context.query` and an unknown
+placement are type errors.

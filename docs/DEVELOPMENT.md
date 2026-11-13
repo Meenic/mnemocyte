@@ -28,7 +28,7 @@ Feature areas:
   `aiSdkEmbedder`, `ProviderError`, retries, timeouts, cancellation,
   observability.
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
-  validation and scope boundary.
+  validation and scope boundary; `memoryMiddleware` and `withMemory`.
 
 ## Setup
 
@@ -56,6 +56,7 @@ src/
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
   ai-sdk-tools.ts       memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
+  ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   http-embedder.ts      createHttpEmbedder behind openaiEmbedder and openaiCompatibleEmbedder
@@ -113,8 +114,9 @@ at the versions the tests run; source files import at most their types
 package test checks this). They are also dev dependencies, with `@types/pg`
 and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
 (`^7.0.135`) and a dev dependency (it brings `zod`, its peer, into the
-lockfile); `src/ai-sdk.ts` and `src/ai-sdk-tools.ts` import it at runtime,
-the only source files that do, and a package test follows
+lockfile); `src/ai-sdk.ts`, `src/ai-sdk-tools.ts` and
+`src/ai-sdk-middleware.ts` import it at runtime, the only source files that
+do, and a package test follows
 the static imports of every other entry to check that none reaches it.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
@@ -186,7 +188,11 @@ Exports:
   its `MemoryToolsOptions`, `MemoryTools`, `SearchMemoriesInput`,
   `SearchMemoriesOutput`, `FoundMemory`, `SaveMemoryInput`,
   `SaveMemoryOutput`, `ForgetMemoryInput` and `ForgetMemoryOutput` types;
-  needs the `ai` peer.
+  `memoryMiddleware`, `withMemory` and their `MemoryMiddlewareOptions`,
+  `WithMemoryOptions`, `MemoryMiddlewareContextOptions`, `MemoryTurn`,
+  `MemoryMiddlewareError`, `MemoryPrompt`, `MemoryFinishReason`,
+  `MemoryLanguageModel` and `MemoryWrappedModel` types; needs the `ai`
+  peer.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
   `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
   `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
@@ -260,7 +266,9 @@ Vitest has three projects (`vitest.config.ts`):
   `node_modules` (a directory junction, which Windows allows without
   symlink rights) and embeds through `mnemocyte/ai-sdk` with an AI SDK mock
   model, checking that an `APICallError` comes out as the root entry's
-  `ProviderError`, and runs `searchMemories` from `memoryTools`.
+  `ProviderError`, runs `searchMemories` from `memoryTools`, and calls
+  `generateText` on a `withMemory` mock model to check the context
+  reaches the prompt.
 - `test/embedders/ai-sdk.test.ts` drives `aiSdkEmbedder` with the AI SDK's
   `MockEmbeddingModelV4` and `customProvider` (as the global provider for
   string ids), and with a real `createGateway` provider over a mocked

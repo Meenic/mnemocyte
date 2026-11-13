@@ -147,7 +147,8 @@ client right after a tracked search and checks that the write landed.
 ## `context`
 
 `context` runs the same search (with its `signal`) and renders the results.
-The query is not echoed: it is already in the caller's prompt, and echoing
+When the search returns nothing it returns `""` without rendering a header,
+so the AI SDK middleware (and any caller) can skip an empty block. The query is not echoed: it is already in the caller's prompt, and echoing
 it put caller text inside the memory block.
 
 - `markdown` (default): heading, then each memory as a metadata line

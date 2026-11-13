@@ -378,8 +378,8 @@ const context = await memory.context({
 });
 ```
 
-Runs a search and renders the results as a string to put in a prompt. It
-accepts search's `limit`, `minScore`, `kinds`, `tags`, `includeSuperseded`,
+Runs a search and renders the results as a string to put in a prompt, or
+returns `""` when no memory matches. It accepts search's `limit`, `minScore`, `kinds`, `tags`, `includeSuperseded`,
 `includeExpired`, `exactAgent`, `exactSession` and `trackAccess`, plus:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content

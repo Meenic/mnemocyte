@@ -149,7 +149,7 @@ it.
   `searchMemories`, `saveMemory` and `forgetMemory` over a bound client;
   the model supplies no scope field, and the call's abort signal is
   forwarded.
-- [ ] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook,
+- [x] `feat/ai-sdk-middleware`: context middleware with an opt-in save hook,
   plus `withMemory({ model, memory })`, which returns the model wrapped
   with `wrapLanguageModel` and the middleware in one call.
 - [ ] `feat/ai-sdk-extraction`: an opt-in `save: { model }` on the

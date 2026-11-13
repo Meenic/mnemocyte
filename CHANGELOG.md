@@ -57,6 +57,19 @@ behavioural changes documented in their entries.
   `source: "saveMemory"`; `forgetMemory` deletes by id and returns
   `forgotten: false` when there is no such memory. The call's abort signal
   cancels a running tool. Passing the unbound client throws `"CONFIG"`.
+- **AI SDK memory middleware.** `withMemory({ model, memory })` from
+  `mnemocyte/ai-sdk`, with `memory.for(scope)`, wraps a language model so
+  each call recalls memories for the last user message with `context()`
+  and adds them to the prompt; `memoryMiddleware` is the same middleware
+  for `wrapLanguageModel`. The context goes into the last user message, or
+  a system message with `placement: "system"`, and never into your stored
+  messages; nothing is added when no memory matches. `context` sets
+  `context()`'s options, `query` replaces the query, and the call's abort
+  signal cancels the recall. A failed recall goes to `onError` and the
+  call runs without memory. An opt-in `save` hook runs after the final
+  response of each call with the prompt and response text; the response
+  does not wait for it. `withMemory` takes a model object (use
+  `gateway("provider/model")` for a gateway id).
 
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle
@@ -71,6 +84,10 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **`context()` returns `""` when no memory matches.** It used to return
+  the format's header with no memories in it (`# Memory Context` and
+  `## Relevant Memories` in Markdown). Check for an empty string instead of
+  parsing the header.
 - **Embedder calls are retried twice by default, with jitter and
   `Retry-After`.** `provider.retries` now defaults to 2 (was 0),
   `baseDelayMs` to 500 (was 100) and `maxDelayMs` to 8000 (was 2000), as in

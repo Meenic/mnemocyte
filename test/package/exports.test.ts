@@ -4,7 +4,12 @@ import {
 	migrate,
 	ProviderError,
 } from "mnemocyte";
-import { aiSdkEmbedder, memoryTools } from "mnemocyte/ai-sdk";
+import {
+	aiSdkEmbedder,
+	memoryMiddleware,
+	memoryTools,
+	withMemory,
+} from "mnemocyte/ai-sdk";
 import { openaiCompatibleEmbedder, openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
@@ -44,6 +49,12 @@ describe("package exports", () => {
 		expect(() => memoryTools({ memory: undefined as never })).toThrow(
 			MnemocyteError,
 		);
+		expect(() => memoryMiddleware({ memory: undefined as never })).toThrow(
+			MnemocyteError,
+		);
+		expect(() =>
+			withMemory({ model: undefined as never, memory: undefined as never }),
+		).toThrow(MnemocyteError);
 
 		const client = createMemory({
 			embedder: {

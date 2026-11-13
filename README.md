@@ -141,7 +141,7 @@ Failed calls are retried twice with backoff and `Retry-After`. Retries,
 timeouts and provider errors are in the
 [embedders guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md).
 
-## AI SDK tools
+## AI SDK
 
 `memoryTools` gives a model `searchMemories`, `saveMemory` and
 `forgetMemory` tools for one user. The scope is bound on your server, so
@@ -152,14 +152,31 @@ import { generateText, stepCountIs } from "ai";
 import { memoryTools } from "mnemocyte/ai-sdk";
 
 const { text } = await generateText({
-  model: "openai/gpt-5",
+  model: "openai/gpt-6.1-sol",
   tools: memoryTools({ memory: memory.for({ entityId: userId }) }),
   stopWhen: stepCountIs(5),
   prompt,
 });
 ```
 
-Inputs, outputs and approval are in the
+To put relevant memories in every prompt instead, wrap the model with
+`withMemory`. Before each call it runs `context()` on the user's last
+message and adds the result to the prompt:
+
+```ts
+import { streamText } from "ai";
+import { withMemory } from "mnemocyte/ai-sdk";
+
+const result = streamText({
+  model: withMemory({
+    model: openai("gpt-6.1-sol"),
+    memory: memory.for({ entityId: userId }),
+  }),
+  messages,
+});
+```
+
+Inputs, outputs, approval, placement and the save hook are in the
 [AI SDK guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md).
 
 ## Documentation

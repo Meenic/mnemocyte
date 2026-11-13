@@ -4,6 +4,7 @@ import {
 	migrate,
 	ProviderError,
 } from "mnemocyte";
+import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
 import { openaiCompatibleEmbedder, openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
@@ -33,6 +34,13 @@ describe("package exports", () => {
 				dimensions: 1,
 			}),
 		).toThrow(MnemocyteError);
+		// So does the AI SDK entry.
+		expect(() => aiSdkEmbedder({ model: "unknown/model" })).toThrow(
+			MnemocyteError,
+		);
+		expect(
+			aiSdkEmbedder({ model: "openai/text-embedding-3-small" }),
+		).toMatchObject({ model: "text-embedding-3-small", dimensions: 1536 });
 
 		const client = createMemory({
 			embedder: {

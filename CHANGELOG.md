@@ -34,6 +34,19 @@ behavioural changes documented in their entries.
   so the provider's explanation (such as OpenAI's `rate_limit_exceeded`) is
   no longer lost. It reaches the caller as it is instead of being wrapped
   in `"Failed to embed text."`. Custom embedders can throw it too.
+- **`aiSdkEmbedder`.** Any AI SDK embedding model as an embedder, from
+  `mnemocyte/ai-sdk`: `aiSdkEmbedder({ model })` takes a model object such
+  as `openai.embedding("text-embedding-3-small")` or a `"provider/model"`
+  string, which the AI SDK resolves through its global provider (the AI
+  Gateway by default). `ai` 7.0.135 or newer is an optional peer
+  dependency; `import "mnemocyte"` does not load it. Known models
+  (OpenAI, Gemini, Cohere `embed-v4.0`, Mistral, Titan v2) have a default
+  `dimensions`, and any other model requires it. Google, Cohere and Voyage
+  models get query and document hints (`taskType`, `inputType`) by default;
+  `purposes` replaces them and `providerOptions` is sent with every call.
+  The AI SDK's own retries are off, so the client's `provider` settings
+  apply, and AI SDK errors with an HTTP status become a `ProviderError`
+  with `retryAfterMs` from the response headers.
 
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle

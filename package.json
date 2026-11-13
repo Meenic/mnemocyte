@@ -14,6 +14,10 @@
 			"types": "./dist/index.d.mts",
 			"default": "./dist/index.mjs"
 		},
+		"./ai-sdk": {
+			"types": "./dist/ai-sdk.d.mts",
+			"default": "./dist/ai-sdk.mjs"
+		},
 		"./embedders": {
 			"types": "./dist/embedders/index.d.mts",
 			"default": "./dist/embedders/index.mjs"
@@ -96,12 +100,16 @@
 	},
 	"peerDependencies": {
 		"@electric-sql/pglite": "^0.5.16",
+		"ai": "^7.0.135",
 		"drizzle-orm": "^0.45.4",
 		"pg": "^8.23.1",
 		"postgres": "^3.4.9 || ^4"
 	},
 	"peerDependenciesMeta": {
 		"@electric-sql/pglite": {
+			"optional": true
+		},
+		"ai": {
 			"optional": true
 		},
 		"drizzle-orm": {
@@ -121,6 +129,7 @@
 		"@electric-sql/pglite-pgvector": "^0.0.17",
 		"@types/node": "^22.20.5",
 		"@types/pg": "^8.23.1",
+		"ai": "^7.0.170",
 		"drizzle-kit": "^0.31.11",
 		"drizzle-orm": "^0.45.4",
 		"pg": "^8.23.1",

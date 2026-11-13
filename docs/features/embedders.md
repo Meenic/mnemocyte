@@ -48,8 +48,11 @@ caller as it is. Any other error is wrapped in an `"EMBEDDING"` error
 
 ## Shipped embedders
 
-Both build on `createHttpEmbedder` in `src/http-embedder.ts`, which sits
-outside `src/embedders/` so it is not a build entry. It calls
+`openaiEmbedder` and `openaiCompatibleEmbedder` build on
+`createHttpEmbedder` in `src/http-embedder.ts`, which sits outside
+`src/embedders/` so it is not a build entry; `aiSdkEmbedder` (below) calls
+the AI SDK instead. All three build their `ProviderError`s with
+`createProviderError` in `src/provider-error.ts`. It calls
 `POST {baseUrl}/embeddings` with `fetch` (no SDK), checks and snapshots its
 options when the embedder is created (`"CONFIG"`), and validates the
 response: exactly one array embedding per input with unique, in-range
@@ -93,9 +96,88 @@ is `createHttpEmbedder` with OpenAI's defaults:
 - `baseUrl` defaults to `https://api.openai.com/v1`; `maxBatch` is passed
   through. There are no purpose hints: OpenAI models are symmetric.
 
+### `aiSdkEmbedder`
+
+`mnemocyte/ai-sdk` (`src/ai-sdk.ts`, its own build entry) wraps an AI SDK
+embedding model in an `Embedder` through `embedMany`. `ai` is an optional
+peer (`^7.0.135`, the first 7.x whose `embedMany` takes `dimensions`) and a
+dev dependency; only this entry imports it, and a package test follows the
+static imports of every other entry to check that none reaches `ai`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `model` | required | A model object (`specificationVersion` `v2`–`v4`, `provider`, `modelId`, `doEmbed`) or a non-empty string. |
+| `dimensions` | from the table | Required for unknown models. |
+| `maxBatch` | unset (100) | Passed through to the `Embedder`. |
+| `providerOptions` | none | Sent with every call. |
+| `purposes` | built-in hints | `{ query?, document? }`, each provider options. |
+
+Options are checked when the embedder is created (`"CONFIG"`);
+`providerOptions` and `purposes` must be objects of objects and are
+snapshotted with a JSON round trip.
+
+**Model id and provider.** A string's first `/` splits it into provider
+and id (`openai/text-embedding-3-small`); a string without one has no
+provider. A model object's provider is `model.provider` up to the first dot
+(`google.generative-ai` → `google`, `google.vertex.embedding` → `google`,
+`cohere.textEmbedding` → `cohere`), and its id is `modelId`, except for a
+gateway model (`provider` `gateway`), whose `modelId` is split like a
+string. `Embedder.model` is the id, so the gateway string, a direct model
+object and `openaiEmbedder` report the same model and can share an
+installation. The string itself is passed to `embedMany` unresolved, so
+the AI SDK resolves it through `globalThis.AI_SDK_DEFAULT_PROVIDER` (the
+AI Gateway when unset) on every call.
+
+**Dimensions.** The known-models table (`KNOWN_MODELS`) holds the default
+sizes the AI SDK provider docs state: OpenAI `text-embedding-3-small`
+(1536), `text-embedding-3-large` (3072), `text-embedding-ada-002` (1536),
+Google `gemini-embedding-001` (3072), Cohere `embed-v4.0` (1536), Mistral
+`mistral-embed` (1024) and `codestral-embed` (1536), and Titan Text
+Embeddings v2 under both its Bedrock id (`amazon.titan-embed-text-v2:0`) and
+its gateway id (`titan-embed-text-v2`), 1024. Voyage and the other gateway
+models are left out because the docs state no default. A `dimensions` that
+differs from a known model's is sent as `embedMany`'s `dimensions`;
+`text-embedding-ada-002` rejects one (`"CONFIG"`). For unknown models
+`dimensions` is never sent.
+
+**Purposes.** Without `purposes`, the provider picks built-in hints:
+Google `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT` under `google`
+(Vertex reads `googleVertex`, then `vertex`, then `google`), Cohere
+`inputType` `search_query` / `search_document` under `cohere`, Voyage
+`inputType` `query` / `document` under `voyage`. Cohere's API defaults to
+`search_query`, so stored documents would otherwise be embedded as queries.
+The AI Gateway forwards `providerOptions` to the upstream provider under the
+same keys. `purposes` replaces the hints entirely. The hint for the call's
+purpose is merged over `providerOptions` one provider key at a time, and
+each call gets a `structuredClone` of the result.
+
+**Calls.** `embedMany` runs with `maxRetries: 0`, `maxParallelCalls: 1` and
+the call's signal as `abortSignal`. Mnemocyte's chunks already go one at a
+time, and the AI SDK splits a chunk further when the model's
+`maxEmbeddingsPerCall` is lower (Cohere: 96); with one call at a time those
+sub-calls run in order too. A failed sub-call fails the chunk, and a retry
+embeds the whole chunk again. `maxRetries: 0` leaves retries to
+`withResilience`: the AI SDK's own (2 retries from 2 s, `Retry-After` up to
+60 s) would otherwise run inside each of Mnemocyte's attempts, and its
+backoff does not follow `config.provider`. With `maxRetries: 0`, `embedMany`
+throws the provider's error unchanged, not a `RetryError`.
+
+**Errors.** An `APICallError` with a `statusCode` becomes a `ProviderError`
+(`"AI SDK embeddings request failed with status 429 (rate_limit_exceeded)."`)
+with `retryAfterMs` read from `responseHeaders` by `parseRetryAfterMs`, and
+as `cause` the provider's parsed error (`data`), else the response body
+parsed like the HTTP embedders', else the `APICallError` itself. AI Gateway
+errors (`GatewayError`, recognised by the `Symbol.for("vercel.ai.gateway.error")`
+marker, since `ai` does not export the class) keep their `statusCode` and
+read headers and body from the `APICallError` they wrap in `cause`. An
+`APICallError` without a status (a network failure) and every other error
+are thrown unchanged, so the core wraps them as `"EMBEDDING"`; a network
+code along the `cause` chain still retries.
+
 ### Errors
 
-A non-2xx response throws a `ProviderError` (exported from `mnemocyte`): a
+In the HTTP embedders, a non-2xx response throws a `ProviderError`
+(exported from `mnemocyte`; `aiSdkEmbedder`'s mapping is above): a
 `MnemocyteError` with code `"EMBEDDING"`, `status`, `retryAfterMs` and the
 response body as `cause` (parsed JSON, or text; bodies over 8,192
 characters are cut and kept as text; an empty body leaves `cause`

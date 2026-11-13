@@ -4,8 +4,10 @@ import {
 	mkdir,
 	mkdtemp,
 	readFile,
+	realpath,
 	rename,
 	rm,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,6 +50,25 @@ async function packPackage(tarball: string): Promise<void> {
 	await execFileAsync("pnpm", ["pack", "--out", tarball], options);
 }
 
+/** Every file reached from `entry` through relative static imports. */
+async function staticImportGraph(entry: string): Promise<Set<string>> {
+	const reached = new Set<string>();
+	const pending = [entry];
+	for (let file = pending.pop(); file; file = pending.pop()) {
+		if (reached.has(file)) {
+			continue;
+		}
+		reached.add(file);
+		const source = await readFile(file, "utf8");
+		for (const match of source.matchAll(
+			/^import\s+(?:[^"']+\s+from\s+)?["'](\.{1,2}\/[^"']+)["'];?\s*$/gm,
+		)) {
+			pending.push(resolve(dirname(file), match[1] ?? ""));
+		}
+	}
+	return reached;
+}
+
 describe("lazy Postgres package loading", () => {
 	test("declares no runtime dependencies and marks database packages as optional peers", async () => {
 		const manifest = JSON.parse(
@@ -55,7 +76,13 @@ describe("lazy Postgres package loading", () => {
 		);
 
 		expect(manifest.dependencies).toBeUndefined();
-		const peers = ["@electric-sql/pglite", "drizzle-orm", "pg", "postgres"];
+		const peers = [
+			"@electric-sql/pglite",
+			"ai",
+			"drizzle-orm",
+			"pg",
+			"postgres",
+		];
 		expect(Object.keys(manifest.peerDependencies).sort()).toEqual(peers);
 		for (const peer of peers) {
 			expect(manifest.peerDependenciesMeta[peer].optional).toBe(true);
@@ -73,25 +100,31 @@ describe("lazy Postgres package loading", () => {
 		},
 	);
 
+	test.each([
+		"dist/index.mjs",
+		"dist/postgres.mjs",
+		"dist/embedders/index.mjs",
+		"dist/stores/drizzle.mjs",
+	])("keeps ai out of the static import graph of %s", async (entry) => {
+		for (const file of await staticImportGraph(resolve(entry))) {
+			const source = await readFile(file, "utf8");
+			expect(source, file).not.toMatch(
+				/^import\s+(?:[^"']+\s+from\s+)?["']ai(?:\/[^"']*)?["'];?\s*$/m,
+			);
+		}
+	});
+
+	test("imports ai statically from the ai-sdk entry only", async () => {
+		const source = await readFile(resolve("dist/ai-sdk.mjs"), "utf8");
+		expect(source).toMatch(/^import\s+[^"']+\s+from\s+["']ai["'];?\s*$/m);
+	});
+
 	test("keeps the Postgres backend out of the root entry's static imports", async () => {
 		// Follow every relative static import from dist/index.mjs. The backend
 		// (queries, migration runner, driver adapters) must only be reachable
 		// through the dynamic import() that createMemory({ store: client })
 		// runs on first use.
-		const reached = new Set<string>();
-		const pending = [resolve("dist/index.mjs")];
-		for (let file = pending.pop(); file; file = pending.pop()) {
-			if (reached.has(file)) {
-				continue;
-			}
-			reached.add(file);
-			const source = await readFile(file, "utf8");
-			for (const match of source.matchAll(
-				/^import\s+(?:[^"']+\s+from\s+)?["'](\.{1,2}\/[^"']+)["'];?\s*$/gm,
-			)) {
-				pending.push(resolve(dirname(file), match[1] ?? ""));
-			}
-		}
+		const reached = await staticImportGraph(resolve("dist/index.mjs"));
 		const root = await readFile(resolve("dist/index.mjs"), "utf8");
 		expect(root).toMatch(
 			/\bimport\(["']\.\/postgres-backend-[^"']+\.mjs["']\)/,
@@ -135,7 +168,7 @@ describe("lazy Postgres package loading", () => {
 			]);
 			expect(packedFreshInstall).toEqual(sourceFreshInstall);
 
-			const drivers = ["drizzle-orm", "postgres", "pg", "@electric-sql"];
+			const drivers = ["drizzle-orm", "postgres", "pg", "@electric-sql", "ai"];
 			await Promise.all(
 				drivers.flatMap((driver) => [
 					expectPathMissing(join(nodeModules, driver)),
@@ -237,6 +270,70 @@ describe("lazy Postgres package loading", () => {
 				windowsHide: true,
 			});
 			expect(cjs.stdout).toBe("packed-client-store-ok");
+
+			// With the ai peer installed, the subpath embeds through an AI SDK
+			// model and throws the root entry's error classes. A junction needs
+			// no symlink rights on Windows; ai resolves its own dependencies
+			// from its real path.
+			await symlink(
+				await realpath(resolve("node_modules", "ai")),
+				join(nodeModules, "ai"),
+				"junction",
+			);
+			const aiSdkScript = join(consumer, "ai-sdk.mjs");
+			await writeFile(
+				aiSdkScript,
+				`
+						import { APICallError } from "ai";
+						import { MockEmbeddingModelV4 } from "ai/test";
+						import { createMemory, ProviderError } from "mnemocyte";
+						import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+
+						const model = new MockEmbeddingModelV4({
+							modelId: "packed-model",
+							maxEmbeddingsPerCall: null,
+							doEmbed: async ({ values }) => ({
+								embeddings: values.map((value) => [value.length, 1]),
+								warnings: [],
+							}),
+						});
+						const memory = createMemory({
+							embedder: aiSdkEmbedder({ model, dimensions: 2 }),
+						});
+						await memory.add({
+							scope: { namespace: "packed", entityId: "ai-sdk" },
+							content: "Embedded through the AI SDK.",
+						});
+						const failing = aiSdkEmbedder({
+							model: new MockEmbeddingModelV4({
+								modelId: "packed-model",
+								doEmbed: async () => {
+									throw new APICallError({
+										message: "busy",
+										url: "https://provider.test",
+										requestBodyValues: {},
+										statusCode: 503,
+									});
+								},
+							}),
+							dimensions: 2,
+						});
+						const error = await failing
+							.embed(["x"], { purpose: "query" })
+							.catch((caught) => caught);
+						if (!(error instanceof ProviderError) || error.status !== 503) {
+							throw new Error("The AI SDK error did not become the root ProviderError.");
+						}
+						process.stdout.write("packed-ai-sdk-ok");
+					`,
+				"utf8",
+			);
+			const aiSdk = await execFileAsync(process.execPath, [aiSdkScript], {
+				cwd: consumer,
+				env: { ...process.env, NODE_PATH: "" },
+				windowsHide: true,
+			});
+			expect(aiSdk.stdout).toBe("packed-ai-sdk-ok");
 		} finally {
 			await rm(temporaryRoot, { recursive: true, force: true });
 		}

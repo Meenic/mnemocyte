@@ -1,16 +1,11 @@
-import { MnemocyteError, ProviderError } from "./errors.js";
+import { MnemocyteError, type ProviderError } from "./errors.js";
+import { createProviderError, parseErrorBody } from "./provider-error.js";
 import type {
 	Embedder,
 	EmbeddingPurpose,
 	EmbedOptions,
 	JsonObject,
 } from "./types.js";
-
-/**
- * Longest error body kept as a {@link ProviderError} `cause`, in UTF-16
- * code units. Longer bodies are cut to this length and kept as text.
- */
-export const MAX_ERROR_BODY_LENGTH = 8192;
 
 /** Request fields an embedder owns; a purpose `body` may not set them. */
 const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([
@@ -19,9 +14,6 @@ const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([
 	"encoding_format",
 	"dimensions",
 ]);
-
-/** Provider error codes short and plain enough to quote in a message. */
-const ERROR_CODE_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /** How an embedder marks texts for one {@link EmbeddingPurpose}. */
 export interface PurposeHint {
@@ -182,90 +174,21 @@ function resolvePurposes(
 	};
 }
 
-/**
- * Parse the wait a response asks for, in milliseconds: `retry-after-ms`
- * (OpenAI, Azure), then `Retry-After` as delay-seconds or an HTTP-date
- * (RFC 9110, section 10.2.3). Returns `undefined` when neither header holds
- * a valid value. A date in the past means no wait.
- */
-export function parseRetryAfterMs(
-	headers: Headers,
-	now: number = Date.now(),
-): number | undefined {
-	const milliseconds = headers.get("retry-after-ms")?.trim();
-	if (milliseconds !== undefined && /^\d+(\.\d+)?$/.test(milliseconds)) {
-		return Number(milliseconds);
-	}
-	const value = headers.get("retry-after")?.trim();
-	if (value === undefined || value.length === 0) {
-		return undefined;
-	}
-	if (/^\d+(\.\d+)?$/.test(value)) {
-		return Number(value) * 1000;
-	}
-	// Every HTTP-date form names a weekday and a month; without letters,
-	// `Date.parse` would also read values such as "-5" as a year.
-	if (!/[A-Za-z]/.test(value)) {
-		return undefined;
-	}
-	const date = Date.parse(value);
-	return Number.isNaN(date) ? undefined : Math.max(0, date - now);
-}
-
-async function readErrorBody(response: Response): Promise<unknown> {
+async function providerErrorFromResponse(
+	response: Response,
+	provider: string,
+): Promise<ProviderError> {
 	let text: string;
 	try {
 		text = await response.text();
 	} catch {
-		return undefined;
+		text = "";
 	}
-	if (text.length === 0) {
-		return undefined;
-	}
-	if (text.length > MAX_ERROR_BODY_LENGTH) {
-		return text.slice(0, MAX_ERROR_BODY_LENGTH);
-	}
-	try {
-		return JSON.parse(text) as unknown;
-	} catch {
-		return text;
-	}
-}
-
-/**
- * A short, safe label from an error body: the `code` or `type` of an
- * OpenAI-shaped `{ error: { … } }` or a top-level one (vLLM). The free-text
- * `message` is left out because it can echo part of a credential.
- */
-function errorLabel(body: unknown): string | undefined {
-	const candidates = isRecord(body)
-		? [
-				isRecord(body.error) ? body.error.code : undefined,
-				isRecord(body.error) ? body.error.type : undefined,
-				body.code,
-				body.type,
-			]
-		: [];
-	for (const candidate of candidates) {
-		if (typeof candidate === "string" && ERROR_CODE_PATTERN.test(candidate)) {
-			return candidate;
-		}
-	}
-	return undefined;
-}
-
-export async function providerErrorFromResponse(
-	response: Response,
-	provider: string,
-): Promise<ProviderError> {
-	const retryAfterMs = parseRetryAfterMs(response.headers);
-	const body = await readErrorBody(response);
-	const label = errorLabel(body);
-	return new ProviderError({
-		message: `${provider} embeddings request failed with status ${response.status}${label === undefined ? "" : ` (${label})`}.`,
+	return createProviderError({
+		provider,
 		status: response.status,
-		...(retryAfterMs === undefined ? {} : { retryAfterMs }),
-		...(body === undefined ? {} : { body }),
+		headers: response.headers,
+		body: parseErrorBody(text),
 	});
 }
 

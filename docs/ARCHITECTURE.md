@@ -133,32 +133,30 @@ formats and the token-budget guarantee and no longer echoes the query; see
 
 The contract with `purpose` and `maxBatch`, `openaiCompatibleEmbedder`,
 `ProviderError` with the provider's body as `cause`, and status-based
-retries with jitter and `Retry-After` have landed (decision 25); see
+retries with jitter and `Retry-After` have landed (decision 25), and so has
+the AI SDK embedder, `aiSdkEmbedder`; see
 [features/embedders.md](./features/embedders.md). Still to come: fetch-only
 Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
-(Voyage and Cohere `input_type`, Google `taskType`), and the AI SDK
-embedder below.
+(Voyage and Cohere `input_type`, Google `taskType`).
 
 ## AI SDK integration
 
-`mnemocyte/ai-sdk`, with `ai` as an optional peer dependency:
+`mnemocyte/ai-sdk`, with `ai` as an optional peer dependency, ships
+`aiSdkEmbedder` today (see
+[features/embedders.md](./features/embedders.md#aisdkembedder)). Still to
+come in the same entry:
 
-1. `aiSdkEmbedder({ model })`: any AI SDK embedding model as an
-   `Embedder`, through `embedMany`. `model` is a model object or a
-   `"provider/model"` string, which the AI SDK resolves through its global
-   provider (the AI Gateway by default). `dimensions` comes from a table of
-   known models and is required for any other.
-2. `memoryTools({ memory })`: `searchMemories`, `saveMemory`,
+1. `memoryTools({ memory })`: `searchMemories`, `saveMemory`,
    `forgetMemory` built with `tool()`, from a bound client
    (`memory.for(scope)`). The scope is bound on the server when the tools are
    created; the model never supplies `entityId`, so a prompt injection cannot
    reach another user's memories.
-3. `memoryMiddleware({ memory })`: from a bound client, a language model
+2. `memoryMiddleware({ memory })`: from a bound client, a language model
    middleware for `wrapLanguageModel` whose `transformParams` adds
    `context()` output to the prompt. `withMemory({ model, memory })`
    returns `wrapLanguageModel({ model, middleware })` in one call, the
    shape of Supermemory's `withSupermemory`.
-4. Saving (decision 24): an opt-in hook the app controls, and an opt-in
+3. Saving (decision 24): an opt-in hook the app controls, and an opt-in
    `save: { model }` that has the user's own AI SDK model extract memories
    from the turn into the bound scope after the response. Nothing is
    extracted unless configured, the response never waits for it, and
@@ -418,3 +416,18 @@ Dated 2026-10-26 unless noted.
     a `ProviderError` (code `"EMBEDDING"`, `status`, `retryAfterMs`, the
     body as `cause`) that the core passes through unwrapped; its message
     leaves out the provider's free text, which can echo part of a key.
+    (2026-11-13, landed) `aiSdkEmbedder` follows the same rules. `ai` is
+    an optional peer at `^7.0.135` only: 7.0.135 is the first release whose
+    `embedMany` takes `dimensions`, and supporting 6.x as well would need a
+    second test run on another major without that option. It calls
+    `embedMany` with `maxRetries: 0`, so one retry layer (the client's
+    `provider` settings) applies instead of up to nine attempts per chunk.
+    An `APICallError` or AI Gateway error with an HTTP status becomes a
+    `ProviderError` (`retryAfterMs` from the response headers, the parsed
+    error body as `cause`); other errors pass through. Google, Cohere and
+    Voyage models get query and document hints by default (`taskType`,
+    `inputType`), because Cohere's API embeds everything as a query unless
+    told otherwise; `purposes` replaces them. Known-model dimensions are
+    those the AI SDK provider docs state, and `Embedder.model` is the model
+    id without the gateway's `provider/` prefix, so `openaiEmbedder`, a
+    direct model object and a gateway string can share an installation.

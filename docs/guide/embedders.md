@@ -122,9 +122,117 @@ other hints compare poorly with new queries, and nothing detects the change.
 `body` may not set `model`, `input`, `encoding_format` or `dimensions`.
 It is also available as `mnemocyte/embedders/openai-compatible`.
 
+## `aiSdkEmbedder`
+
+For apps that use the [AI SDK](https://ai-sdk.dev): any AI SDK embedding
+model becomes an embedder. Install `ai` (7.0.135 or newer) next to
+Mnemocyte; it is an optional peer dependency, and `import "mnemocyte"` does
+not load it.
+
+```ts
+import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+
+// A "provider/model" string goes through the AI Gateway
+// (AI_GATEWAY_API_KEY, or OIDC on Vercel).
+const embedder = aiSdkEmbedder({ model: "openai/text-embedding-3-small" });
+```
+
+```ts
+import { google } from "@ai-sdk/google";
+import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+
+// A model object calls the provider directly.
+const embedder = aiSdkEmbedder({
+  model: google.embedding("gemini-embedding-001"),
+  dimensions: 768,
+});
+```
+
+A string is resolved by the AI SDK's global provider on every call: the AI
+Gateway, or the provider in `globalThis.AI_SDK_DEFAULT_PROVIDER` if you set
+one.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `model` | required | An AI SDK embedding model, or a `"provider/model"` string. |
+| `dimensions` | the model's | Required for models not in the table below. |
+| `maxBatch` | 100 | Most texts per call. |
+| `providerOptions` | none | AI SDK `providerOptions`, sent with every call. |
+| `purposes` | built in | `{ query?, document? }`, each a `providerOptions` object. |
+
+Known models, by id with or without the gateway's `provider/` prefix:
+
+| Model | `dimensions` |
+|---|---|
+| `text-embedding-3-small` | 1536 |
+| `text-embedding-3-large` | 3072 |
+| `text-embedding-ada-002` | 1536 |
+| `gemini-embedding-001` | 3072 |
+| `embed-v4.0` (Cohere) | 1536 |
+| `mistral-embed` | 1024 |
+| `codestral-embed` | 1536 |
+| `amazon.titan-embed-text-v2:0`, gateway `amazon/titan-embed-text-v2` | 1024 |
+
+For a known model, a smaller `dimensions` is sent to the provider, which
+shortens the vectors (`text-embedding-ada-002` cannot, and throws
+`"CONFIG"`). For any other model, `dimensions` only states the length the
+model returns; to shorten its vectors, set the provider's option in
+`providerOptions` too.
+
+The embedder's `model` is the model id without the provider prefix, so
+`openaiEmbedder({ model: "text-embedding-3-small" })`,
+`openai.embedding("text-embedding-3-small")` and
+`"openai/text-embedding-3-small"` all report `text-embedding-3-small`, and you
+can switch between them on an existing Postgres installation.
+
+### Queries and documents
+
+Google, Cohere and Voyage models embed queries and documents differently.
+For them, `aiSdkEmbedder` sends the matching option by default:
+
+| Provider | Query | Document |
+|---|---|---|
+| Google, Vertex | `google: { taskType: "RETRIEVAL_QUERY" }` | `google: { taskType: "RETRIEVAL_DOCUMENT" }` |
+| Cohere | `cohere: { inputType: "search_query" }` | `cohere: { inputType: "search_document" }` |
+| Voyage | `voyage: { inputType: "query" }` | `voyage: { inputType: "document" }` |
+
+The provider is read from the string's prefix (`google/…`) or the model
+object (`google.embedding(…)`). Other providers get nothing; OpenAI and
+Mistral models embed both the same way. Through the AI Gateway these options
+reach the upstream provider under the same keys.
+
+`purposes` replaces the built-in hints; a purpose it leaves out gets none,
+and `purposes: {}` turns them off. Each purpose's options are merged over
+`providerOptions`, one provider key at a time:
+
+```ts
+const embedder = aiSdkEmbedder({
+  model: cohere.embedding("embed-v4.0"),
+  providerOptions: { cohere: { truncate: "END" } },
+  purposes: {
+    query: { cohere: { inputType: "search_query" } },
+    document: { cohere: { inputType: "search_document" } },
+  },
+});
+```
+
+Keep the hints fixed for an installation, as with `openaiCompatibleEmbedder`.
+
+### Retries and errors
+
+`aiSdkEmbedder` turns the AI SDK's own retries off (`maxRetries: 0`), so
+only the client's `provider` settings below retry, as for the other
+embedders; two retry layers would multiply the attempts. An AI SDK `APICallError` or AI Gateway
+error with an HTTP status becomes a `ProviderError` with that `status`,
+`retryAfterMs` from the response's `Retry-After` or `retry-after-ms`, and
+the provider's error body as `cause` (or the AI SDK error itself when there
+is no body). Errors without a status, such as a network failure or an
+unknown model id, are wrapped in an `"EMBEDDING"` error with the AI SDK
+error as `cause`.
+
 ## Provider errors
 
-When a provider answers with an error status, both helpers throw a
+When a provider answers with an error status, the shipped embedders throw a
 `ProviderError`. Custom embedders can throw one too, to get the same retry
 handling:
 

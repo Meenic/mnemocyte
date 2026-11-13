@@ -128,9 +128,17 @@ const embedder = {
 
 `mnemocyte/embedders` has two that use `fetch`: `openaiEmbedder` for OpenAI
 and `openaiCompatibleEmbedder` for Ollama, LM Studio, vLLM, Mistral and other
-servers with an OpenAI-shaped `/embeddings`. Failed calls are retried twice
-with backoff and `Retry-After`. Retries, timeouts and provider errors are in
-the
+servers with an OpenAI-shaped `/embeddings`. With the AI SDK installed,
+`mnemocyte/ai-sdk` turns any AI SDK embedding model into an embedder:
+
+```ts
+import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+
+const embedder = aiSdkEmbedder({ model: "openai/text-embedding-3-small" });
+```
+
+Failed calls are retried twice with backoff and `Retry-After`. Retries,
+timeouts and provider errors are in the
 [embedders guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md).
 
 ## Documentation

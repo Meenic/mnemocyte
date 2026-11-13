@@ -24,6 +24,12 @@ behavioural changes documented in their entries.
   memory is compared with (default 10, at most 100).
 - **`observability.onError`.** Receives `{ error, event }` when `onEvent`
   throws or rejects.
+- **`pruneAuditLog`.** Deletes audit events older than `before` for a scope
+  selector or `allNamespaces: true`, with `dryRun` to count first. On
+  Postgres it deletes `batchSize` events per statement (default 1,000), so
+  a large backlog never runs as one long transaction; an abort keeps the
+  batches already deleted. Bound clients have it too. The API guide has
+  retention guidance for a scheduled job.
 
 ### Changed
 

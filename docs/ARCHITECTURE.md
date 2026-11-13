@@ -115,12 +115,11 @@ formats and the token-budget guarantee and no longer echoes the query; see
 
 ## Maintenance
 
-`prune` requiring a scope or `allNamespaces: true`, survivor-aware deletes,
-the k-nearest-neighbor `findDuplicates` and `consolidate` on the stable
-client have landed (decision 30; see
-[features/maintenance.md](./features/maintenance.md)). Still to come:
-
-- Audit events get a retention option.
+This has landed: `prune` requiring a scope or `allNamespaces: true`,
+survivor-aware deletes, the k-nearest-neighbor `findDuplicates`,
+`consolidate` on the stable client (decision 30) and audit retention
+through `pruneAuditLog` (decision 32); see
+[features/maintenance.md](./features/maintenance.md).
 
 ## Embedders
 
@@ -596,3 +595,26 @@ Dated 2026-10-26 unless noted.
     runs, and serverless platforms may cut off un-awaited work, so apps
     flush their exporter themselves. The AI SDK middleware and tools only
     call client methods, so they inherit this.
+32. **Audit retention as a method** (2026-11-13, landed): the roadmap
+    asked for a retention option; it became an explicit method,
+    `pruneAuditLog({ scope | allNamespaces, before, batchSize, dryRun })`,
+    which apps call from a scheduled job. Retention applied automatically
+    needs either a timer, which decision 19 rules out, or a delete inside
+    every audited write, which would make writes pay for old history and
+    add a step to the one-statement audit `WITH` of decision 16. `before`
+    is a `Date`, the same strict filter as `listAuditLog`'s `before`, so a
+    listing previews the prune. On Postgres it deletes in batches of
+    `batchSize` (default 1,000, at most 10,000), one statement each,
+    committing one by one: a large first run never holds one long
+    transaction, and an abort keeps the batches already deleted. Batches
+    walk `mnemocyte_events_scope_time_idx` in order and each resumes after
+    the last event of the one before (keyset pagination); restarting from
+    the beginning walked the dead index entries of every earlier batch,
+    which made an all-namespaces run quadratic in the backlog (8.4 s
+    against 3.4 s for 500,000 old events on PGlite). No new index: a
+    `(timestamp)` btree sped up restarting batches (0.35 s against 0.85 s
+    on 200,000 events), but keyset batches read the scope index in order,
+    within about 12% of its buffers per batch, and it would cost 4.5 MB
+    per 200,000 events and an insert on every audited write (see
+    features/maintenance.md). The prune records no audit event, like
+    `deleteScope`; observability reports its count.

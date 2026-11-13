@@ -123,7 +123,8 @@ shared memories:
 those with no session. Another entity, another namespace or another agent is
 never visible.
 
-**Bulk operations** (`deleteScope`, `prune`, `stats`, `listAuditLog`) select
+**Bulk operations** (`deleteScope`, `prune`, `stats`, `listAuditLog`,
+`pruneAuditLog`) select
 instead: a field that is set must match exactly, and an omitted `agentId` or
 `sessionId` matches any value. So `deleteScope({ scope: { namespace,
 entityId } })` erases the entity across every agent and session.
@@ -165,8 +166,8 @@ await user.deleteScope();                                  // erase the user
 
 - Reads and changes by id follow the visibility rules above: `agent` sees
   the support agent's memories plus shared ones.
-- `deleteScope`, `prune`, `stats` and `listAuditLog` select within the
-  bound scope, where an omitted `agentId` or `sessionId` matches any
+- `deleteScope`, `prune`, `stats`, `listAuditLog` and `pruneAuditLog`
+  select within the bound scope, where an omitted `agentId` or `sessionId` matches any
   value: `user.deleteScope()` erases the user across every agent and
   session.
 - Methods whose options are all optional (`list`, `deleteScope`,
@@ -224,6 +225,7 @@ database is called, on every backend:
 | `metadata` | 64 KiB as JSON (UTF-8), nested at most 32 levels |
 | `limit` (`search`, `context`, `list`, `findDuplicates`, `listAuditLog`) | 1 to 1,000 |
 | `addMany` | 1,000 memories per call |
+| `batchSize` (`pruneAuditLog`) | 1 to 10,000 |
 
 32,000 characters is about 8,000 tokens, the input limit of common embedding
 models. The key and scope limits keep the scope + key index entry within what
@@ -564,7 +566,68 @@ lose events when used for paging.
 Events are written together with the change they record: if the audit
 write fails, the call rejects and nothing is written, neither the memory
 change nor the event. An event's `timestamp` is the time of the write.
-Events are deleted only by `deleteScope`.
+Events stay until `deleteScope` or `pruneAuditLog` deletes them.
+
+## `pruneAuditLog`
+
+```ts
+const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+
+const preview = await memory.pruneAuditLog({
+  scope: { namespace: "my-app" },
+  before: ninetyDaysAgo,
+  dryRun: true,
+});
+// { matchedCount, deletedCount: 0, dryRun: true }
+
+await memory.pruneAuditLog({ scope: { namespace: "my-app" }, before: ninetyDaysAgo });
+```
+
+Deletes the audit events strictly before `before` that a scope selector, or
+`allNamespaces: true`, selects. `before` is the same filter as
+`listAuditLog`'s, so `listAuditLog({ scope, before })` shows what would go.
+The scope selects like `prune`: `{ namespace }` covers every entity, and
+`entityId`, `agentId` and `sessionId` narrow it. Memories are not touched,
+and the call records no audit event of its own; `dryRun: true` only counts.
+
+| Option | Default | |
+|---|---|---|
+| `before` | required | Delete events strictly before this `Date`. |
+| `batchSize` | `1000` | Events per statement, 1 to 10,000. |
+| `dryRun` | `false` | Count instead of deleting. |
+| `signal` | | Checked before each batch. |
+
+On Postgres the events go in batches: each statement deletes at most
+`batchSize` events and commits on its own, so a large backlog never runs as
+one long transaction. The call is therefore not all or nothing. An abort
+stops it before the next batch and throws `"ABORTED"`, and the batches
+already deleted stay deleted; run it again to finish. The in-memory backend
+deletes everything in one step.
+
+### Retention
+
+Mnemocyte does not expire events on its own: it holds no timers, and a
+delete inside every write would make writes pay for old history. Run
+`pruneAuditLog` from a scheduled job instead, for example once a day:
+
+```ts
+// A daily job: keep 90 days of history in every namespace.
+const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+const { deletedCount } = await memory.pruneAuditLog({
+  allNamespaces: true,
+  before: cutoff,
+});
+```
+
+- Pick the window from what you need the history for (debugging, support,
+  a compliance period), and prune per namespace when tenants need
+  different windows.
+- Run it often. A daily run deletes one day of events; the first run on a
+  large backlog deletes all of it, one batch at a time.
+- Deleted rows leave dead tuples that autovacuum reclaims; the table does
+  not shrink on disk, but the space is reused by new events.
+- To erase one person, use `deleteScope`, which deletes the memories and
+  the events together.
 
 ## `stats`
 

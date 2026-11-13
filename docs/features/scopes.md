@@ -34,8 +34,8 @@ Two matching rules, both in `memory/filters.ts` (in-memory) and
   `delete`, `consolidate` and the access write.
 - **Selection** (`StoreSelector`, `selectorConditions`): bulk operations match
   each field that is set exactly and ignore the rest; a null namespace is
-  `allNamespaces: true`. Used by `deleteScope`, `prune`, `stats` and
-  `listAuditLog`. Selecting `{ namespace, entityId }` therefore reaches every
+  `allNamespaces: true`. Used by `deleteScope`, `prune`, `stats`,
+  `listAuditLog` and `pruneAuditLog`. Selecting `{ namespace, entityId }` therefore reaches every
   agent and session, which an erasure needs.
 
 Keys are unique per *exact* scope, so `get` by key and the upsert match with
@@ -65,7 +65,7 @@ client from `memory/client-core.ts`, which only ever sees full scopes:
   Each bound method checks that its input is an object (an omitted optional
   input becomes `{}`) with no `scope` and no `allNamespaces`, then calls the
   core with `{ ...input, scope }`. Selector methods (`deleteScope`,
-  `prune`, `stats`, `listAuditLog`) get the same scope, which they read as a
+  `prune`, `stats`, `listAuditLog`, `pruneAuditLog`) get the same scope, which they read as a
   selector: an omitted agent or session matches any value.
 
 A rejected bound input goes through `observe` with the bound scope's
@@ -229,7 +229,7 @@ read from the raw input (after the default namespace is filled in, or from
 the bound scope) so a malformed call still reports them. Operations
 are `add`, `addMany`, `search`, `get`, `list`, `update`, `delete`,
 `deleteScope`, `context`, `prune`, `findDuplicates`, `listAuditLog`,
-`consolidate`, `stats` and `trackAccess`.
+`pruneAuditLog`, `consolidate`, `stats` and `trackAccess`.
 
 ## Tests
 

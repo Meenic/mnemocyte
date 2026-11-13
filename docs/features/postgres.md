@@ -29,7 +29,7 @@ Indexes:
 | `mnemocyte_memories_superseded_by_idx` | partial btree `(superseded_by) WHERE superseded_by IS NOT NULL` | The foreign-key check on delete and the dependents check in the delete CTE look rows up by `superseded_by`. |
 | `mnemocyte_memories_content_tsv_idx` | GIN `(content_tsv)` | Full-text `@@` without parsing every row. |
 | `mnemocyte_memories_embedding_hnsw_idx` | HNSW `vector_cosine_ops` or `halfvec_cosine_ops` | Cosine kNN. |
-| `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages, read backwards for newest first. |
+| `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages, read backwards for newest first, and `pruneAuditLog` batches, read forwards. |
 
 Tradeoffs, measured with `EXPLAIN (ANALYZE, BUFFERS)` on Postgres 18.6 /
 pgvector 0.8.1 with 130,000 memories (1,000 entities of about 100, one of
@@ -50,7 +50,9 @@ the PR that added `0003`:
   the HNSW path does not use it at all. Not worth another index on every
   write.
 - Audit pages scan `mnemocyte_events_scope_time_idx` backwards with no sort
-  (0.08 ms on the large entity). The `ORDER BY` names the table columns,
+  (0.08 ms on the large entity). `pruneAuditLog` walks it forwards in
+  keyset batches; a separate `(timestamp)` index was measured and left out
+  (see [maintenance.md](./maintenance.md#retention)). The `ORDER BY` names the table columns,
   because the select list's `id::text AS id` would otherwise shadow `id` and
   force a sort on the text.
 

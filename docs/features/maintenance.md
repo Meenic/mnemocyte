@@ -170,7 +170,66 @@ rolls back.
 (an omitted agent or session matches any) and returns them newest first by
 `(timestamp, id)`. Use `beforeCursor` / `afterCursor` (`{ timestamp, id }`)
 for complete pagination; `before` / `after` are strict timestamp filters that
-skip events sharing the boundary timestamp. Only `deleteScope` deletes events.
+skip events sharing the boundary timestamp. `deleteScope` and
+`pruneAuditLog` delete events.
+
+### Retention
+
+`pruneAuditLog({ scope | allNamespaces: true, before, batchSize = 1000,
+dryRun })` deletes the selected events strictly before `before`
+(`validatePruneAuditLogInput`: a selector as `prune` takes it, a valid
+`before`, `batchSize` 1 to 10,000). It is an explicit method that apps
+schedule, not a config option applied on writes (ARCHITECTURE decision 32).
+It records no event of its own; observability reports the deleted count.
+`dryRun` counts with one `count(*)`.
+
+- **Postgres.** A loop of statements (`deleteEventsBatch` in
+  `src/db/queries/events.ts`), each committing on its own: a materialized
+  CTE selects up to `batchSize` events in `mnemocyte_events_scope_time_idx`
+  order, the delete joins on their primary key (`DELETE` has no `LIMIT`),
+  and the statement returns the batch's last `(namespace, entity_id,
+  timestamp, id)`. The next batch resumes after it with a row comparison
+  over the index columns that follow the selector's equalities:
+  `(timestamp, id)` in an entity, `(entity_id, timestamp, id)` in a
+  namespace, all four across namespaces. The timestamp travels as text
+  with microseconds, since a `Date` would cut it to milliseconds. The loop
+  ends at a batch that selects fewer than `batchSize` events, and checks
+  the signal before each batch, so an abort keeps what earlier batches
+  deleted. The primary key is used rather than `ctid`, which the Postgres
+  docs call safe in this pattern only because the query re-runs; events
+  are never updated, but the id needs no such argument.
+- **In-memory.** One synchronous pass over the log, so `batchSize` changes
+  nothing.
+
+Batches resume instead of starting over because a deleted row's index
+entry stays until vacuum: a batch that starts from the beginning of the
+range walks every entry the batches before it deleted, which makes a run
+quadratic in its backlog. A row comparison that starts at `namespace` next
+to `namespace = $1` did not bound the scan either, hence the narrower row.
+`EXPLAIN (ANALYZE, BUFFERS)` on PGlite (Postgres 18 in WASM, so only the
+ratios carry over), events appended in time order over 180 days across 10
+namespaces of 100 entities, `before` 90 days ago, batches of 1,000; the
+"middle batch" is measured halfway through the run and rolled back:
+
+| Events | Selection (old events) | Restarting batches | Keyset batches |
+|---|---|---|---|
+| 1,000,000 | all namespaces (500,001) | 8.4 s; middle batch reads its first row after 7.9 ms, 13,382 buffers | 3.4 s; 0.03 ms, 7,008 buffers |
+| 1,000,000 | one namespace (49,908) | 0.41 s; 2.5 ms, 8,501 buffers | 0.37 s; 0.02 ms, 7,007 buffers |
+| 1,000,000 | one entity (542) | one batch: the same statement | one batch, 3 ms |
+
+`test/contract/audit-retention.test.ts`
+checks the plan on PGlite: each scope's batches read the scope index from
+the previous position, with no sort and no sequential scan.
+
+**No `(timestamp)` index.** It was measured with 200,000 events (100,000
+old, all namespaces). With restarting batches it helped, 0.35 s against
+0.85 s, because it kept the dead entries in one place. With keyset batches
+the planner reads the scope index in order instead, which reads about 12%
+more buffers per batch than the time index did (6,850–7,000 against
+6,050–6,200), and the whole run took 0.64 s. The index would cost 4.5 MB
+per 200,000 events (12% of the heap) and one more btree insert on every
+audited write, for a job that runs once a day; a scheduled run that
+deletes one day of events is a few batches on any of these plans.
 
 ## `stats`
 

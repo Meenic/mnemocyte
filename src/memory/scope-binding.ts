@@ -17,6 +17,7 @@ import type {
 	MemoryScope,
 	MnemocyteBackend,
 	MnemocyteOperation,
+	PruneAuditLogInput,
 	PruneInput,
 	SearchInput,
 	StatsInput,
@@ -110,6 +111,10 @@ export function createScopedClient(
 		listAuditLog: (input) =>
 			core.listAuditLog(
 				withScopeNamespace(input, namespace) as ListAuditLogInput,
+			),
+		pruneAuditLog: (input) =>
+			core.pruneAuditLog(
+				withScopeNamespace(input, namespace) as PruneAuditLogInput,
 			),
 		stats: (input) =>
 			core.stats(withScopeNamespace(input, namespace) as StatsInput),
@@ -205,6 +210,10 @@ function bindScope(
 		listAuditLog: (input) =>
 			run("listAuditLog", input, true, (value) =>
 				core.listAuditLog({ ...value, scope }),
+			),
+		pruneAuditLog: (input) =>
+			run("pruneAuditLog", input, false, (value) =>
+				core.pruneAuditLog({ ...value, scope }),
 			),
 		// Takes no input; one passed from untyped code is still checked.
 		stats: (input?: object) =>

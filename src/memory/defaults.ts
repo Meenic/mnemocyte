@@ -31,5 +31,7 @@ export const DEFAULT_DUPLICATE_NEIGHBORS = 10;
 export const DEFAULT_DEPENDENTS_POLICY: DependentsPolicy = "reject";
 /** Default cap on audit-log entries returned per `listAuditLog`. */
 export const DEFAULT_AUDIT_LOG_LIMIT = 50;
+/** Default events per statement of `pruneAuditLog`. */
+export const DEFAULT_AUDIT_PRUNE_BATCH = 1000;
 /** Default page size of `list`. */
 export const DEFAULT_LIST_LIMIT = 50;

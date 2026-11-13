@@ -1,7 +1,12 @@
 import { assertSqlExecutor } from "../db/atomic.js";
 import { postgresConstraintName, postgresErrorCode } from "../db/errors.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
-import { listEvents } from "../db/queries/events.js";
+import {
+	countEventsBefore,
+	deleteEventsBatch,
+	type EventPosition,
+	listEvents,
+} from "../db/queries/events.js";
 import {
 	consolidateMemories,
 	countPruneMatches,
@@ -606,6 +611,45 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				}
 				const rows = await listEvents(client, input, options?.signal);
 				return rows.map(rowToAuditEvent);
+			});
+		},
+		async pruneAuditLog(input, options) {
+			return runPostgresOperation(async () => {
+				throwIfAborted(options?.signal);
+				const filter = { selector: input.selector, before: input.before };
+				if (input.dryRun) {
+					return {
+						matchedCount: await countEventsBefore(
+							client,
+							filter,
+							options?.signal,
+						),
+						deletedCount: 0,
+						dryRun: true,
+					};
+				}
+				// One statement per batch, each committing on its own, so a large
+				// backlog never holds one long transaction. Each batch starts
+				// after the last event of the one before; a batch that selects
+				// fewer than `batchSize` events was the last one.
+				let deletedCount = 0;
+				let after: EventPosition | null = null;
+				for (;;) {
+					throwIfAborted(options?.signal);
+					const batch = await deleteEventsBatch(
+						client,
+						filter,
+						input.batchSize,
+						after,
+						options?.signal,
+					);
+					deletedCount += batch.deletedCount;
+					if (batch.selectedCount < input.batchSize || batch.last === null) {
+						break;
+					}
+					after = batch.last;
+				}
+				return { matchedCount: deletedCount, deletedCount, dryRun: false };
 			});
 		},
 		async loadConsolidationTargets(visibility, ids, options) {

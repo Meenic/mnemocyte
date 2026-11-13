@@ -182,6 +182,7 @@ export type MnemocyteOperation =
 	| "prune"
 	| "findDuplicates"
 	| "listAuditLog"
+	| "pruneAuditLog"
 	| "consolidate"
 	| "stats"
 	| "trackAccess";
@@ -1023,6 +1024,59 @@ export interface PruneResult {
 }
 
 /**
+ * Options of {@link MemoryClient.pruneAuditLog} besides its scope.
+ */
+export interface PruneAuditLogOptions {
+	/**
+	 * Delete events strictly before this time. Same filter as
+	 * {@link ListAuditLogInput.before}, so a `listAuditLog` call with it
+	 * shows what would go.
+	 */
+	before: Date;
+	/**
+	 * Most events one statement deletes; an integer from 1 to 10,000. On
+	 * Postgres each batch is its own statement and commits on its own, so a
+	 * large backlog never runs as one long transaction.
+	 * @defaultValue `1000`
+	 */
+	batchSize?: number;
+	/** Count what would be deleted without deleting anything. @defaultValue `false` */
+	dryRun?: boolean;
+	/**
+	 * Optional cancellation signal, checked before each batch. Batches that
+	 * already committed stay deleted; the call then throws `"ABORTED"`.
+	 */
+	signal?: AbortSignal;
+}
+
+/**
+ * Input for {@link MemoryClient.pruneAuditLog}: a {@link ScopeSelector}, or
+ * `allNamespaces: true` for the whole installation, plus `before`.
+ */
+export type PruneAuditLogInput<DefaultNamespace extends boolean = false> =
+	PruneAuditLogOptions &
+		(
+			| {
+					scope: ScopeSelectorInput<DefaultNamespace>;
+					allNamespaces?: never;
+			  }
+			| { allNamespaces: true; scope?: never }
+		);
+
+/** Result returned by {@link MemoryClient.pruneAuditLog}. */
+export interface PruneAuditLogResult {
+	/**
+	 * Number of selected events older than `before`. Equals `deletedCount`
+	 * for normal runs.
+	 */
+	matchedCount: number;
+	/** Number of events deleted; `0` for `dryRun` runs. */
+	deletedCount: number;
+	/** `true` when {@link PruneAuditLogOptions.dryRun} was set. */
+	dryRun: boolean;
+}
+
+/**
  * Input for {@link MemoryClient.findDuplicates}: a nearest-neighbor
  * cosine-similarity scan of the memories visible at a scope. Read-only.
  */
@@ -1314,6 +1368,20 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	listAuditLog(
 		input: ListAuditLogInput<DefaultNamespace>,
 	): Promise<AuditEvent[]>;
+	/**
+	 * Delete audit events older than `before` that a scope selector (or
+	 * `allNamespaces: true`) selects, in batches of `batchSize`. Memories are
+	 * not touched, and the deletion records no audit event. Pass
+	 * `dryRun: true` to count without deleting.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` without a scope (or
+	 * `allNamespaces: true`), without a valid `before`, or with a
+	 * `batchSize` outside 1–10,000; `"ABORTED"` when the signal aborts
+	 * between batches, after the earlier batches committed.
+	 */
+	pruneAuditLog(
+		input: PruneAuditLogInput<DefaultNamespace>,
+	): Promise<PruneAuditLogResult>;
 	/** Count memories for a scope selector or the whole installation. */
 	stats(input: StatsInput<DefaultNamespace>): Promise<MemoryStats>;
 	/**
@@ -1382,15 +1450,17 @@ export type BoundFindDuplicatesInput = Omit<FindDuplicatesInput, "scope">;
 export type BoundListAuditLogInput = Omit<ListAuditLogInput, "scope">;
 /** Input for {@link BoundMemoryClient.consolidate}. */
 export type BoundConsolidateInput = Omit<ConsolidateInput, "scope">;
+/** Input for {@link BoundMemoryClient.pruneAuditLog}. */
+export type BoundPruneAuditLogInput = PruneAuditLogOptions;
 
 /**
  * A client bound to one scope, from {@link MemoryClient.for}. Its methods
  * take no `scope` field and reject one at runtime with `"VALIDATION"`, as
  * they reject `allNamespaces`: operations across namespaces stay on the
  * unbound client. Reads and changes by id see the bound scope plus shared
- * memories, as on the unbound client; `deleteScope`, `prune`, `stats` and
- * `listAuditLog` select within the bound scope, where an omitted `agentId`
- * or `sessionId` matches any value.
+ * memories, as on the unbound client; `deleteScope`, `prune`, `stats`,
+ * `listAuditLog` and `pruneAuditLog` select within the bound scope, where
+ * an omitted `agentId` or `sessionId` matches any value.
  */
 export interface BoundMemoryClient {
 	/** The bound scope. Frozen. */
@@ -1425,6 +1495,8 @@ export interface BoundMemoryClient {
 	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 	/** {@link MemoryClient.listAuditLog} within the bound scope. */
 	listAuditLog(input?: BoundListAuditLogInput): Promise<AuditEvent[]>;
+	/** {@link MemoryClient.pruneAuditLog} within the bound scope. */
+	pruneAuditLog(input: BoundPruneAuditLogInput): Promise<PruneAuditLogResult>;
 	/** {@link MemoryClient.stats} within the bound scope. */
 	stats(): Promise<MemoryStats>;
 	/**

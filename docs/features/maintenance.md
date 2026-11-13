@@ -72,13 +72,19 @@ the filters, a `LATERAL` subquery orders the memories `b` that pass them by
 `b.embedding <=> a.embedding` and takes `neighbors`. Pairs are keyed by
 `LEAST`/`GREATEST` of their ids, merged, cut to `limit`, and joined back to
 their rows. It runs after `set_config` of `hnsw.iterative_scan =
-strict_order` and `hnsw.ef_search` for `neighbors + 1` rows, in one `batch`
-or transaction, like recall. Postgres picks the plan per scope:
+relaxed_order` and `hnsw.ef_search` for `neighbors + 1` rows, in one
+`batch` or transaction, like recall. A relaxed scan can return a memory's
+neighbors slightly out of order; no CTE sorts them again, because the pairs
+are thresholded, grouped and sorted afterwards. Postgres picks the plan per
+scope:
 
 - When the scope is a large part of the table, each `a` gets one HNSW index
   scan (`Index Scan using mnemocyte_memories_embedding_hnsw_idx`,
   `Order By: (embedding <=> a.embedding)`). HNSW is approximate, so a pair
-  can be missed.
+  can be missed. The scope filter runs after each index scan, so the
+  iterative scan reads on until it has `neighbors` rows of the scope.
+  `strict_order` drops rows a later pass finds closer than rows it already
+  returned; `relaxed_order` keeps them.
 - For a small scope, it reads the scope's rows through the scope btree and
   keeps the nearest with a top-N sort, which is exact.
 
@@ -92,7 +98,8 @@ in ten a near-copy of another, default settings with 128 MB of
 |---|---|---|---|
 | 100 memories | scope btree + top-N sort per memory | 50 ms | 10 (10) |
 | 2,000 memories | scope btree + top-N sort per memory | 29 s, 26M buffer hits | 200 (200) |
-| 2,000 memories, scope index dropped | HNSW per memory | 52 s, 8.1M buffers read from disk | 189 (200) |
+| 2,000 memories, scope index dropped, `strict_order` | HNSW per memory | 30.1 s, 8.5M buffers read from disk | 187 (200) |
+| 2,000 memories, scope index dropped, `relaxed_order` (default) | HNSW per memory | 21.2 s, 5.9M buffers read from disk | 200 (200) |
 | 30,000 memories | HNSW per memory | 149 s, 25M buffers read from disk | not measured |
 | 2,000 of 42,000 at 3,072 dimensions | scope btree + top-N sort per memory | 29 s | 200 (200) |
 
@@ -106,6 +113,16 @@ the index would be faster; on any server `findDuplicates` over a large scope
 is a background job of minutes, not a request-time call. On PGlite (WASM,
 6,000 memories) the 2,000-memory scope took the HNSW path (7.4 s), which is
 why the plan test there forces a large share of the table.
+
+The two scope-index-dropped rows are one run on the same index build (median
+of 3 after a warm-up; slowest runs 30.1 s and 21.4 s). Both orderings got
+the same plan with the same cost estimates, since pgvector's cost estimate
+does not read `iterative_scan`. Each memory's HNSW scan took 12 ms instead
+of 17 ms and filtered out about as many rows (752 against 755 per scan).
+With the scope index, where the setting does nothing, both orderings found
+200 of 200 pairs in 15.3 s. The other rows of the table come from an earlier
+run and were taken under `strict_order`; the 30,000-memory scope was not
+measured under `relaxed_order`.
 `test/contract/knn-duplicates-plan.test.ts` checks the HNSW plan on PGlite.
 
 In-memory computes the exact `neighbors` nearest for each memory, ties by

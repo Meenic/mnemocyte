@@ -65,8 +65,12 @@ behavioural changes documented in their entries.
   exact nearest memories come back under a selective filter: 95.8% instead
   of 82.7% on a 30,000-memory entity at 1,536 dimensions, 80.7% instead of
   61.7% with a `kinds` filter, with the same plans and a lower p90.
-  Results are still in distance order. `findDuplicates` keeps
-  `strict_order`.
+  Results are still in distance order.
+- **More duplicate pairs on Postgres.** `findDuplicates` uses
+  `hnsw.iterative_scan = relaxed_order` too. Where the planner uses the
+  HNSW index for each memory, it found 200 of 200 near-copy pairs instead
+  of 187 on a 2,000-memory entity, in 21 s instead of 30 s, with the same
+  plan. Pairs are still sorted by similarity.
 
 ### Deprecated
 

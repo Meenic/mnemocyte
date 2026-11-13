@@ -187,12 +187,10 @@ it.
   with a materialized CTE that re-sorts, against `strict_order`; the search
   vector query adopted it (82.7% → 95.8% of the exact rows at 1,536
   dimensions, 61.7% → 80.7% with `kinds`, same plans) (decision 34).
-- [ ] `fix/duplicates-relaxed-order`: measure `relaxed_order` for
-  `findDuplicates` on its HNSW path. The benchmark's 2,000-memory entity
-  reads the scope index, so both orderings found 200 of 200 pairs; with the
-  scope index dropped, `strict_order` found 195. Add both orderings to the
-  `no scope index (HNSW path)` case and adopt it under decision 34's bar
-  (no CTE needed: pairs are thresholded, grouped and sorted afterwards).
+- [x] `fix/duplicates-relaxed-order`: measured `relaxed_order` for
+  `findDuplicates` on its HNSW path (scope index dropped) against
+  `strict_order`, and adopted it without a CTE: 187 → 200 of 200 pairs,
+  30.1 → 21.2 s, same plan (decision 34).
 - [ ] `feat/duplicates-chunks`: `findDuplicates` over a large scope in
   chunks (a cursor over the memories it compares, or a time budget), since
   a 30,000-memory scope takes minutes on one statement and cannot be

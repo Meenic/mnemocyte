@@ -663,3 +663,10 @@ Dated 2026-10-26 unless noted.
     the benchmark's 2,000-memory entity the planner reads the scope index,
     where the setting does nothing (200 of 200 pairs for both), so nothing
     was measured on its HNSW path; that is a roadmap item.
+    (2026-11-14, landed) `findDuplicates` moved to `relaxed_order` under the
+    same bar, without a CTE: its pairs are thresholded, grouped and sorted
+    afterwards, so the order of a memory's neighbors does not matter. On
+    the same entity with the scope index dropped (HNSW per memory, same
+    index build, median of 3 after a warm-up): 187 → 200 of 200 pairs,
+    30.1 → 21.2 s (slowest 30.1 → 21.4 s), the same plan with the same cost
+    estimates.

@@ -395,7 +395,10 @@ Vitest has three projects (`vitest.config.ts`):
   200, 300 and 400, each under `relaxed_order` (the library's statement)
   and `strict_order` (the query inside its CTE), and reports per row the
   median and p90 time, mean buffers, recall and the plans used.
-  `findDuplicates` on the mid entity is measured under both orderings too. Results go to
+  `findDuplicates` on the mid entity is measured under both orderings too,
+  with the scope index and without it (its HNSW path, one warm-up and 3
+  runs per ordering, since each run takes about 30 s). Warm rows report the
+  slowest run next to the median. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the
   full scale (`MNEMOCYTE_BENCH_SCALE=1`) the run fails when a plan stops

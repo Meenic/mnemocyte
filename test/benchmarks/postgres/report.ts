@@ -46,7 +46,10 @@ function timeText(m: Measurement): string {
 	if (m.jitMs > 0) {
 		extras.push(`JIT ${formatMs(m.jitMs)}`);
 	}
-	const median = m.runs > 1 ? `median of ${m.runs}` : "1 run";
+	const median =
+		m.runs > 1
+			? `median of ${m.runs}, slowest ${formatMs(m.slowestMs)}`
+			: "1 run";
 	return `${formatMs(m.executionMs)} (${median}${extras.length > 0 ? `; ${extras.join(", ")}` : ""})`;
 }
 

@@ -1052,12 +1052,13 @@ function duplicateFilters(
  * from both sides counts once, and the top `limit` are joined back to their
  * rows.
  *
- * It runs after `hnsw.iterative_scan = strict_order` and `hnsw.ef_search`
+ * It runs after `hnsw.iterative_scan = relaxed_order` and `hnsw.ef_search`
  * for `neighbors + 1` rows (the memory itself is filtered out), set for its
  * transaction only, so a selective scope does not leave a memory with fewer
- * neighbors than exist. {@link vectorSearch} moved to `relaxed_order`; this
- * query stays on `strict_order` until it is measured on the HNSW path
- * (decision 34).
+ * neighbors than exist. A relaxed scan can return a memory's neighbors
+ * slightly out of order; unlike {@link vectorSearch} it needs no CTE that
+ * sorts them again, because the pairs are thresholded, grouped and sorted
+ * afterwards (decision 34).
  */
 export async function findDuplicatePairs(
 	db: SqlExecutor,
@@ -1107,7 +1108,7 @@ export async function findDuplicatePairs(
 		db,
 		[
 			{
-				sql: `SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+				sql: `SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true),
 				set_config('hnsw.ef_search', $1, true)`,
 				params: [String(hnswEfSearch(input.neighbors + 1))],
 			},

@@ -343,7 +343,7 @@ describe("vector search through batch", () => {
 		const [batch = []] = recorded.batches;
 		expect(batch).toHaveLength(2);
 		expect(batch[0]?.sql).toContain(
-			"set_config('hnsw.iterative_scan', 'strict_order', true)",
+			"set_config('hnsw.iterative_scan', 'relaxed_order', true)",
 		);
 		expect(batch[0]?.params).toEqual(["150"]);
 		expect(batch[1]?.sql).toContain('ORDER BY "vectorDistance"');

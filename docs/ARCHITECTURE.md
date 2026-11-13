@@ -642,4 +642,24 @@ Dated 2026-10-26 unless noted.
     fixed value is safe, and a per-client option would ask users to
     re-measure their own table. The default stays, with the numbers in
     features/postgres.md. `hnsw.iterative_scan = relaxed_order`, which the
-    cost estimate does not read, is the next lever to measure.
+    cost estimate does not read, was the next lever (decision 34).
+34. **`relaxed_order` for the search vector query** (2026-11-14, landed):
+    the maintainer chose to adopt it if recall rose, the planner kept HNSW
+    and latency stayed within the noise (median and p90 within the larger
+    of 10% and 1 ms), and to give `findDuplicates` the same bar. A
+    `strict_order` scan drops rows that a later pass finds closer than rows
+    it already returned; `relaxed_order` keeps them, out of order, so the
+    query runs in a materialized CTE and is sorted again
+    (`ORDER BY "vectorDistance" + 0`, since Postgres 17+ otherwise treats
+    the CTE's output as already sorted). Measured with both orderings on
+    the same index build (Postgres 18.6, pgvector 0.8.7, `ef_search` 40, 20
+    queries): 82.7% → 95.8% of the exact rows at 1,536 dimensions, 61.7% →
+    80.7% with a `kinds` filter and 89.8% → 91.8% at 3,072, every query on
+    HNSW in both, medians within 0.3 ms or faster and p90 lower (24 → 5 ms,
+    122 → 35 ms, 10.7 → 2.5 ms). With a `kinds` filter at 3,072 the planner
+    chose a sequential scan for both (100%, 44 and 46 ms). At every other
+    `ef_search` the plans matched `strict_order`'s, so the CTE leaves the
+    planner's choice alone. `findDuplicates` stays on `strict_order`: on
+    the benchmark's 2,000-memory entity the planner reads the scope index,
+    where the setting does nothing (200 of 200 pairs for both), so nothing
+    was measured on its HNSW path; that is a roadmap item.

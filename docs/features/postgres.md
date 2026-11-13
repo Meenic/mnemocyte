@@ -369,59 +369,79 @@ statements that run in one transaction (see
 [atomic statements](#atomic-statements)):
 
 ```sql
-SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true),
        set_config('hnsw.ef_search', $1, true);
-SELECT …, embedding <=> $q::vector AS "vectorDistance"
-FROM mnemocyte_memories
-WHERE <scope and filters> AND embedding IS NOT NULL
-ORDER BY "vectorDistance"
-LIMIT $n;
+WITH nearest AS MATERIALIZED (
+  SELECT …, embedding <=> $q::vector AS "vectorDistance"
+  FROM mnemocyte_memories
+  WHERE <scope and filters> AND embedding IS NOT NULL
+  ORDER BY "vectorDistance"
+  LIMIT $n
+)
+SELECT * FROM nearest ORDER BY "vectorDistance" + 0;
 ```
 
 - `set_config(…, true)` is `SET LOCAL`: the settings end with the
   transaction. Inside a caller's transaction they last until that
   transaction ends.
-- `strict_order` (pgvector 0.8+) makes the scan continue past the first
-  candidates, in exact distance order, until `LIMIT` rows pass the filters or
-  `hnsw.max_scan_tuples` (20,000 by default) tuples were visited. Mnemocyte
-  leaves `max_scan_tuples` and `scan_mem_multiplier` at the server's values.
-  `relaxed_order` needs a materialized CTE to re-sort; the pgvector README
-  says it gives better recall, which is not measured here yet (see
-  `ROADMAP.md`).
+- An iterative scan (pgvector 0.8+) continues past the first candidates
+  until `LIMIT` rows pass the filters or `hnsw.max_scan_tuples` (20,000 by
+  default) tuples were visited. Mnemocyte leaves `max_scan_tuples` and
+  `scan_mem_multiplier` at the server's values. With `strict_order` a later
+  pass drops rows closer than ones already returned; `relaxed_order` keeps
+  them, so more of the exact nearest rows come back, slightly out of order
+  (decision 34).
+- The materialized CTE puts them back in distance order. The outer sort
+  reads at most `limit` rows. `+ 0` is needed on Postgres 17+, which would
+  otherwise take the CTE's output as already sorted and skip the sort (the
+  pgvector README's iterative index scans section). The query inside the
+  CTE is planned as before, and pgvector's cost estimate does not read
+  `iterative_scan`, so the planner's choice of HNSW does not change.
 - `ef_search` is `max(40, limit)`, capped at pgvector's maximum of 1,000, so
   one HNSW pass can fill the request. The floor stays at pgvector's default
   because a higher one changes the plan (below).
-- Recall depends on how much of the table the filters keep, and a higher
-  `ef_search` is not a safe fix. Measured with `pnpm bench:postgres` (see
+- Measured with `pnpm bench:postgres` (see
   [indexes measured](#indexes-measured)): a `search` with `limit: 10` (30
   vector rows) on the large entity, over 20 query vectors, against the same
-  statement with index scans off. Time is the median over the queries of
-  each query's median of five warm runs. "Exact" is the share of the exact
-  rows returned.
+  statement with index scans off, both orderings on the same index build.
+  Time is the median over the queries of each query's median of five warm
+  runs. "Exact" is the share of the exact rows returned; buffers are the
+  mean per query.
 
-  | `ef_search` | 1,536 dims (entity 23% of the table) | same, `kinds` keeping a tenth | 3,072 dims, `halfvec` (entity 71%) |
+  | `ef_search` 40 | 1,536 dims (entity 23% of the table) | same, `kinds` keeping a tenth | 3,072 dims, `halfvec` (entity 71%) | same, `kinds` |
+  |---|---|---|---|---|
+  | `strict_order` | HNSW, 3.2 ms (p90 24 ms), 2,687 buffers, 82.7% exact | HNSW, 31 ms (p90 122 ms), 13,471 buffers, 61.7% | HNSW, 1.6 ms (p90 10.7 ms), 1,291 buffers, 89.8% | seq scan + sort, 44 ms, 100% |
+  | `relaxed_order` + CTE | HNSW, 3.3 ms (p90 5.1 ms), 1,385 buffers, 95.8% | HNSW, 23 ms (p90 35 ms), 10,319 buffers, 80.7% | HNSW, 1.9 ms (p90 2.5 ms), 717 buffers, 91.8% | seq scan + sort, 46 ms, 100% |
+
+  The returned rows are closer too: at 1,536 dimensions 16.2% farther on
+  average than the exact rows with `strict_order`, 3.6% with
+  `relaxed_order`. The p90 falls because the relaxed scan fills the
+  `LIMIT` after visiting fewer tuples.
+- A higher `ef_search` is not a safe way to raise recall further. With
+  `strict_order` (`relaxed_order` got the same plan at every value):
+
+  | `ef_search` | 1,536 dims | same, `kinds` | 3,072 dims, `halfvec` |
   |---|---|---|---|
-  | 40 (default) | HNSW, 3.3 ms (p90 52 ms), 87.8% exact | HNSW, 28 ms (p90 130 ms), 60.5% | HNSW, 1.3 ms, 94.8% |
-  | 100 | HNSW, 3.4 ms, 89.2% | scope index + sort, 51 ms, 100% | seq scan + sort, 144 ms, 100% |
-  | 200 | HNSW, 3.1 ms (p90 4.9 ms), 99.2% | scope index + sort, 46 ms, 100% | seq scan + sort, 143 ms, 100% |
-  | 300 | scope index + sort, 340 ms, 100% | scope index + sort, 46 ms, 100% | HNSW, 4.3 ms, 100% |
-  | 400 | scope index + sort, 317 ms, 100% | scope index + sort, 45 ms, 100% | HNSW, 4.7 ms, 100% |
+  | 40 (default) | HNSW, 3.2 ms, 82.7% | HNSW, 31 ms, 61.7% | HNSW, 1.6 ms, 89.8% |
+  | 100 | HNSW, 2.5 ms, 99.3% | scope index + sort, 41 ms, 100% | seq scan + sort, 308 ms, 100% |
+  | 200 | HNSW, 2.4 ms, 99.3% | scope index + sort, 49 ms, 100% | seq scan + sort, 353 ms, 100% |
+  | 300 | scope index + sort, 346 ms, 100% | scope index + sort, 51 ms, 100% | HNSW, 5.1 ms, 100% |
+  | 400 | scope index + sort, 342 ms, 100% | scope index + sort, 46 ms, 100% | HNSW, 6.8 ms, 100% |
 
   Where HNSW is kept, a higher `ef_search` costs nothing and returns
-  closer rows (at 1,536 dimensions the default's rows are 11% farther on
-  average, 200's 0.01%). But pgvector's `hnswcostestimate` sets the HNSW
-  scan's startup cost to its total cost times a fraction that grows with
+  closer rows. But pgvector's `hnswcostestimate` sets the HNSW scan's
+  startup cost to its total cost times a fraction that grows with
   `ef_search`, and under a `LIMIT` a higher startup cost makes reading the
   scope and sorting look cheaper. Every query at a given value got the
-  same plan, and where the planner switches depends on the table: 200 is
-  the best value at 1,536 dimensions and the worst at 3,072. No fixed
+  same plan, and where the planner switches depends on the table: 100–200
+  are the best values at 1,536 dimensions and the worst at 3,072. No fixed
   value above 40 kept HNSW on both datasets, so the default stays
-  (decision 33). With the `kinds` filter the switch is a gain: exact rows
-  at a better p90 than HNSW at 40, whose iterative scan visits far more
-  tuples (13,700 buffers on average). The default's recall varies between
-  builds of the same data (92.8% and 87.8% at 1,536 dimensions, 99.8% and
-  94.8% at 3,072, in two runs), since a parallel HNSW build is not
-  deterministic.
+  (decision 33). With the `kinds` filter the switch is a gain over
+  `strict_order` (exact rows at a better p90), less so over
+  `relaxed_order`. Recall at the default varies between builds of the same
+  data (92.8%, 87.8% and 82.7% at 1,536 dimensions, 99.8%, 94.8% and 89.8%
+  at 3,072, with `strict_order` in three runs), since a parallel HNSW build
+  is not deterministic; compare orderings within one run.
 - The distance is computed once per row. `ORDER BY` names the selected
   column, and the planner still matches it to the index's ordering operator
   (pgvector needs `ORDER BY` to be a bare distance operator, ascending). The
@@ -432,9 +452,13 @@ LIMIT $n;
 - The planner does not always pick HNSW: for a small scope it reads the scope
   index and sorts, which is exact. `test/integration/filtered-vector-search.test.ts`
   drops the scope index in a rolled-back transaction to force the HNSW path,
-  checks the plan with `EXPLAIN (ANALYZE, BUFFERS)` (an HNSW index scan, no
-  sort) for `vector` and `halfvec`, and checks that the same statement with
-  `iterative_scan = off` finds none of the filtered rows.
+  checks the plan with `EXPLAIN (ANALYZE, BUFFERS)` (an HNSW index scan and
+  one sort, the outer one on `"vectorDistance" + 0`) for `vector` and
+  `halfvec`, and checks that the same statement with `iterative_scan = off`
+  finds none of the filtered rows.
+- `findDuplicates` keeps `strict_order` without a CTE (see
+  [maintenance.md](./maintenance.md)); measuring `relaxed_order` on its
+  HNSW path is a roadmap item.
 
 Before the first vector search each store reads `pg_extension.extversion`
 once and rejects pgvector before 0.8.0 with `"MIGRATION"`. Without the check,

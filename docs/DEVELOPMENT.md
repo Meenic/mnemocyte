@@ -390,9 +390,12 @@ Vitest has three projects (`vitest.config.ts`):
   counterfactuals drop a default index or create a rejected one inside that
   transaction. Recall compares HNSW results with the same statement under
   `SET LOCAL enable_indexscan = off`. The search sweep (`searchSweep`) runs
-  the large entity's vector search for 20 query vectors at the library's
-  `hnsw.ef_search` and at 40, 100, 150, 200, 300 and 400, and reports per
-  value the median and p90 time, mean buffers, recall and the plans used. Results go to
+  the large entity's vector search, with and without a `kinds` filter, for
+  20 query vectors at the library's `hnsw.ef_search` and at 40, 100, 150,
+  200, 300 and 400, each under `relaxed_order` (the library's statement)
+  and `strict_order` (the query inside its CTE), and reports per row the
+  median and p90 time, mean buffers, recall and the plans used.
+  `findDuplicates` on the mid entity is measured under both orderings too. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the
   full scale (`MNEMOCYTE_BENCH_SCALE=1`) the run fails when a plan stops

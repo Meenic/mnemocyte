@@ -251,6 +251,50 @@ const EXACT: SqlStatement = {
 /** `hnsw.ef_search` values the search sweep compares with the library's. */
 const EF_SEARCH_SWEEP = [40, 100, 150, 200, 300, 400] as const;
 
+type IterativeScan = "strict_order" | "relaxed_order";
+const ITERATIVE_SCANS: readonly IterativeScan[] = [
+	"strict_order",
+	"relaxed_order",
+];
+
+/** The library's settings statement with another `hnsw.iterative_scan`. */
+function withIterativeScan(
+	settings: SqlStatement,
+	iterativeScan: IterativeScan,
+): SqlStatement {
+	const pattern = /'(strict|relaxed)_order'/;
+	if (!pattern.test(settings.sql)) {
+		throw new Error(`No iterative_scan value in: ${settings.sql}`);
+	}
+	return {
+		sql: settings.sql.replace(pattern, `'${iterativeScan}'`),
+		params: settings.params,
+	};
+}
+
+/** The library's search vector statement: a query re-sorted outside its CTE. */
+const RELAXED_SEARCH =
+	/^WITH nearest AS MATERIALIZED \(([\s\S]*)\)\s*SELECT \* FROM nearest ORDER BY "vectorDistance" \+ 0$/;
+
+/**
+ * The search vector statement for `iterative_scan`: as the library sends it
+ * for `relaxed_order` (in a materialized CTE whose rows are sorted again,
+ * since a relaxed scan can return them slightly out of order); for
+ * `strict_order` the query inside the CTE alone, as before decision 34.
+ */
+function vectorStatementFor(
+	vector: SqlStatement,
+	iterativeScan: IterativeScan,
+): SqlStatement {
+	const inner = RELAXED_SEARCH.exec(vector.sql.trim())?.[1];
+	if (inner === undefined) {
+		throw new Error(`Unexpected search vector statement: ${vector.sql}`);
+	}
+	return iterativeScan === "relaxed_order"
+		? vector
+		: { sql: inner.trim(), params: vector.params };
+}
+
 type SearchRow = { id: string; vectorDistance: number | string };
 
 function sumDistance(rows: readonly SearchRow[]): number {
@@ -265,8 +309,9 @@ function percentile(values: readonly number[], p: number): number {
 }
 
 /**
- * Latency and recall of the search vector query per `hnsw.ef_search`, over
- * `queries` query vectors near stored memories of the entity. For each value
+ * Latency and recall of the search vector query per `hnsw.iterative_scan`
+ * and `hnsw.ef_search`, over `queries` query vectors near stored memories of
+ * the entity. For each ordering ({@link vectorStatementFor}) and each value
  * (the library's own first, then {@link EF_SEARCH_SWEEP}) one row: the
  * median and p90 over the queries of each query's median execution time
  * (`measure`, warm), the mean buffers, the share of the exact nearest rows
@@ -302,14 +347,19 @@ async function searchSweep(
 		cases.push({ settings, vector, exact });
 	}
 	const library = cases[0]?.settings.params[0];
-	const values = [
-		{ variant: `library (ef_search ${String(library)})`, efSearch: undefined },
+	const values = ITERATIVE_SCANS.flatMap((iterativeScan) => [
+		{
+			variant: `${iterativeScan}, library (ef_search ${String(library)})`,
+			iterativeScan,
+			efSearch: undefined,
+		},
 		...EF_SEARCH_SWEEP.map((efSearch) => ({
-			variant: `ef_search ${efSearch}`,
+			variant: `${iterativeScan}, ef_search ${efSearch}`,
+			iterativeScan,
 			efSearch,
 		})),
-	];
-	for (const { variant, efSearch } of values) {
+	]);
+	for (const { variant, iterativeScan, efSearch } of values) {
 		const times: number[] = [];
 		const plans = new Map<string, number>();
 		let buffers = 0;
@@ -317,11 +367,13 @@ async function searchSweep(
 		let wanted = 0;
 		let approximateDistance = 0;
 		let exactDistance = 0;
-		for (const { settings: own, vector, exact } of cases) {
+		for (const { settings: own, vector: recorded, exact } of cases) {
+			const ordered = withIterativeScan(own, iterativeScan);
 			const settings =
 				efSearch === undefined
-					? own
-					: { sql: own.sql, params: [String(efSearch)] };
+					? ordered
+					: { sql: ordered.sql, params: [String(efSearch)] };
+			const vector = vectorStatementFor(recorded, iterativeScan);
 			const m = await measure(ctx.db, vector, {
 				prelude: [settings],
 				runs: ctx.runs,
@@ -386,13 +438,26 @@ async function duplicates(
 	if (options.recall) {
 		const count = async (prelude: SqlStatement[]) =>
 			(await runRolledBack(ctx.db, pairs, prelude)).length;
-		const approximate = await count([settings]);
 		const exact = await count([settings, EXACT]);
-		ctx.report.add(section, {
-			case: `findDuplicates, ${entityId}`,
-			variant: "recall",
-			note: `${approximate} pairs; exact (index scans off): ${exact}`,
-		});
+		for (const iterativeScan of ITERATIVE_SCANS) {
+			const ordered = withIterativeScan(settings, iterativeScan);
+			// Neighbors may come out of order under relaxed_order; the pairs
+			// are thresholded, grouped and sorted afterwards, so no CTE.
+			ctx.report.add(section, {
+				case: `findDuplicates, ${entityId}`,
+				variant: iterativeScan,
+				measurement: await measure(ctx.db, pairs, {
+					prelude: [ordered],
+					runs: options.runs,
+				}),
+			});
+			const approximate = await count([ordered]);
+			ctx.report.add(section, {
+				case: `findDuplicates, ${entityId}`,
+				variant: `${iterativeScan}, recall`,
+				note: `${approximate} pairs; exact (index scans off): ${exact}`,
+			});
+		}
 	}
 	return m;
 }
@@ -429,6 +494,10 @@ export async function halfvecPhase(ctx: BenchContext): Promise<void> {
 		}),
 	});
 	await searchSweep(ctx, client, section, LARGE, { queries: 20 });
+	await searchSweep(ctx, client, section, LARGE, {
+		queries: 20,
+		kinds: ["instruction"],
+	});
 	await duplicates(ctx, client, section, MID, { runs: ctx.runs, recall: true });
 }
 

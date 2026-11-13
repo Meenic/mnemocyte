@@ -54,6 +54,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   up to pgvector's `hnsw.max_scan_tuples` (20,000 by default). A filter that
   matches fewer memories than requested on a large entity scans that many
   rows, and memories beyond that limit are not returned.
+- **Vector search on a large entity is approximate on Postgres.** When the
+  HNSW index is used, it can miss some of the nearest memories: on a test
+  server with 132,000 memories at 1,536 dimensions, a 30,000-memory entity's
+  search returned about 88% of the exact nearest rows, and about 60% with a
+  `kinds` filter. Entities of a few hundred memories are searched exactly.
 - **Access writes can be lost.** With `trackAccess` on, search does not wait
   for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so

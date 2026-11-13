@@ -180,12 +180,16 @@ it.
   guidance.
 - [x] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
-- [ ] `fix/filtered-ef-search`: a higher `hnsw.ef_search` for filtered
-  vector search. With `max(40, limit)`, a search on an entity that is 23%
-  of the table returned 87.5% of the exact rows (10% farther on average);
-  `ef_search` 200 returned 98.7%. Measure the latency cost with
-  `pnpm bench:postgres`, then pick a default (or one scaled by `limit`) and
-  decide whether it is configurable.
+- [x] `fix/filtered-ef-search`: measured `hnsw.ef_search` 40–400 for
+  filtered vector search; the default stays `max(40, limit)` because a
+  higher value makes the planner leave HNSW on some tables (decision 33).
+- [ ] `fix/relaxed-order`: measure `hnsw.iterative_scan = relaxed_order`
+  with a materialized CTE that re-sorts, against `strict_order`, with the
+  `pnpm bench:postgres` search sweep. `strict_order` at `ef_search` 40
+  returned 87.8% of the exact rows on a 1,536-dimension entity that is 23%
+  of the table, and 60.5% with a `kinds` filter. Adopt it if recall rises
+  without the planner leaving HNSW and without a latency cost beyond the
+  noise.
 - [ ] `feat/duplicates-chunks`: `findDuplicates` over a large scope in
   chunks (a cursor over the memories it compares, or a time budget), since
   a 30,000-memory scope takes minutes on one statement and cannot be

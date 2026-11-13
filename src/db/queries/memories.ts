@@ -1348,6 +1348,13 @@ const HNSW_MAX_EF_SEARCH = 1000;
 /**
  * `hnsw.ef_search` for a vector search returning `limit` rows: at least the
  * row count, so one HNSW pass can fill it, within pgvector's 1–1000 range.
+ *
+ * The floor stays at pgvector's default. A higher one raises recall where
+ * HNSW is used, but pgvector's cost estimate grows the HNSW scan's startup
+ * cost with `ef_search`, so the planner can switch to a sequential or
+ * scope-index scan and sort, which is exact but about 100 times slower; the
+ * value at which it switches depends on the table (decision 33,
+ * docs/features/postgres.md#filtered-vector-search).
  */
 export function hnswEfSearch(limit: number): number {
 	return Math.min(

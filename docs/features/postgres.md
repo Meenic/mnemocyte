@@ -385,21 +385,43 @@ LIMIT $n;
   candidates, in exact distance order, until `LIMIT` rows pass the filters or
   `hnsw.max_scan_tuples` (20,000 by default) tuples were visited. Mnemocyte
   leaves `max_scan_tuples` and `scan_mem_multiplier` at the server's values.
-  `relaxed_order` would need a materialized CTE to re-sort and gains little
-  at search's small limits.
+  `relaxed_order` needs a materialized CTE to re-sort; the pgvector README
+  says it gives better recall, which is not measured here yet (see
+  `ROADMAP.md`).
 - `ef_search` is `max(40, limit)`, capped at pgvector's maximum of 1,000, so
-  one HNSW pass can fill the request.
-- Recall depends on how much of the table the filters keep. Measured with
-  `pnpm bench:postgres` (see [indexes measured](#indexes-measured)): a
-  `search` with `limit: 10` (30 vector rows, `ef_search` 40) on the large
-  entity, against the same statement with index scans off, over 20 queries.
-  At 1,536 dimensions, where the entity is 23% of the table, it returned
-  87.5% of the exact rows (72.3% in a first run), and the rows it returned
-  were 10% farther on average; with `ef_search` 200 it returned 98.7%, 0.02%
-  farther. At 3,072 dimensions, where the entity is 71% of the table, it
-  returned 99.8% at `ef_search` 40. A `kinds` filter that keeps a tenth of
-  the entity made the scan visit far more tuples: 102 ms and 22,700 buffers,
-  most of them read from disk, against 11 ms without it.
+  one HNSW pass can fill the request. The floor stays at pgvector's default
+  because a higher one changes the plan (below).
+- Recall depends on how much of the table the filters keep, and a higher
+  `ef_search` is not a safe fix. Measured with `pnpm bench:postgres` (see
+  [indexes measured](#indexes-measured)): a `search` with `limit: 10` (30
+  vector rows) on the large entity, over 20 query vectors, against the same
+  statement with index scans off. Time is the median over the queries of
+  each query's median of five warm runs. "Exact" is the share of the exact
+  rows returned.
+
+  | `ef_search` | 1,536 dims (entity 23% of the table) | same, `kinds` keeping a tenth | 3,072 dims, `halfvec` (entity 71%) |
+  |---|---|---|---|
+  | 40 (default) | HNSW, 3.3 ms (p90 52 ms), 87.8% exact | HNSW, 28 ms (p90 130 ms), 60.5% | HNSW, 1.3 ms, 94.8% |
+  | 100 | HNSW, 3.4 ms, 89.2% | scope index + sort, 51 ms, 100% | seq scan + sort, 144 ms, 100% |
+  | 200 | HNSW, 3.1 ms (p90 4.9 ms), 99.2% | scope index + sort, 46 ms, 100% | seq scan + sort, 143 ms, 100% |
+  | 300 | scope index + sort, 340 ms, 100% | scope index + sort, 46 ms, 100% | HNSW, 4.3 ms, 100% |
+  | 400 | scope index + sort, 317 ms, 100% | scope index + sort, 45 ms, 100% | HNSW, 4.7 ms, 100% |
+
+  Where HNSW is kept, a higher `ef_search` costs nothing and returns
+  closer rows (at 1,536 dimensions the default's rows are 11% farther on
+  average, 200's 0.01%). But pgvector's `hnswcostestimate` sets the HNSW
+  scan's startup cost to its total cost times a fraction that grows with
+  `ef_search`, and under a `LIMIT` a higher startup cost makes reading the
+  scope and sorting look cheaper. Every query at a given value got the
+  same plan, and where the planner switches depends on the table: 200 is
+  the best value at 1,536 dimensions and the worst at 3,072. No fixed
+  value above 40 kept HNSW on both datasets, so the default stays
+  (decision 33). With the `kinds` filter the switch is a gain: exact rows
+  at a better p90 than HNSW at 40, whose iterative scan visits far more
+  tuples (13,700 buffers on average). The default's recall varies between
+  builds of the same data (92.8% and 87.8% at 1,536 dimensions, 99.8% and
+  94.8% at 3,072, in two runs), since a parallel HNSW build is not
+  deterministic.
 - The distance is computed once per row. `ORDER BY` names the selected
   column, and the planner still matches it to the index's ordering operator
   (pgvector needs `ORDER BY` to be a bare distance operator, ascending). The

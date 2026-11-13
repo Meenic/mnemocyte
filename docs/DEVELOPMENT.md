@@ -389,7 +389,10 @@ Vitest has three projects (`vitest.config.ts`):
   `MNEMOCYTE_BENCH_RUNS` (5) runs in savepoints, reporting the median. Index
   counterfactuals drop a default index or create a rejected one inside that
   transaction. Recall compares HNSW results with the same statement under
-  `SET LOCAL enable_indexscan = off`. Results go to
+  `SET LOCAL enable_indexscan = off`. The search sweep (`searchSweep`) runs
+  the large entity's vector search for 20 query vectors at the library's
+  `hnsw.ef_search` and at 40, 100, 150, 200, 300 and 400, and reports per
+  value the median and p90 time, mean buffers, recall and the plans used. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the
   full scale (`MNEMOCYTE_BENCH_SCALE=1`) the run fails when a plan stops

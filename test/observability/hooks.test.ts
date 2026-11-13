@@ -1,3 +1,5 @@
+import { generateText } from "ai";
+import { MockLanguageModelV4 } from "ai/test";
 import {
 	type AddInput,
 	type AddManyInput,
@@ -8,6 +10,7 @@ import {
 	type MnemocyteOperation,
 	type NewMemory,
 } from "mnemocyte";
+import { withMemory } from "mnemocyte/ai-sdk";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
@@ -221,5 +224,121 @@ describe("observability hooks", () => {
 			"VALIDATION",
 			{ namespace: "test", count: 1 },
 		);
+	});
+
+	const embedder = {
+		model: "observability-non-blocking",
+		dimensions: 2,
+		async embed(texts: readonly string[]) {
+			return texts.map((text) => [text.length, 1]);
+		},
+	};
+
+	test("a hook that never settles does not delay calls", async () => {
+		const events: MnemocyteObservation[] = [];
+		const client = createMemory({
+			embedder,
+			observability: {
+				onEvent(event) {
+					events.push(event);
+					return new Promise<void>(() => undefined);
+				},
+			},
+		});
+		const scope = testScope("hanging_hook");
+
+		const memory = await client.add({ scope, content: "Slow hook." });
+		await client.search({ scope, query: "slow", limit: 1 });
+		await client.delete({ scope, id: memory.id });
+
+		const add = events.filter((event) => event.operation === "add");
+		expect(add.map((event) => event.phase)).toEqual(["start", "success"]);
+	});
+
+	test("a throwing or rejecting hook fails nothing and goes to onError", async () => {
+		const reported: { error: unknown; event: MnemocyteObservation }[] = [];
+		const boom = new Error("hook failed");
+		let rejectNext = false;
+		const client = createMemory({
+			embedder,
+			observability: {
+				onEvent(event) {
+					if (event.operation !== "add") {
+						return undefined;
+					}
+					rejectNext = !rejectNext;
+					if (rejectNext) {
+						throw boom;
+					}
+					return Promise.reject(boom);
+				},
+				onError(info) {
+					reported.push(info);
+					throw new Error("onError failed too");
+				},
+			},
+		});
+
+		const memory = await client.add({
+			scope: testScope("throwing_hook"),
+			content: "Hooks may fail.",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(memory.content).toBe("Hooks may fail.");
+		expect(reported.map((info) => info.event.phase)).toEqual([
+			"start",
+			"success",
+		]);
+		expect(reported.every((info) => info.error === boom)).toBe(true);
+	});
+
+	test("a rejecting hook without onError is not an unhandled rejection", async () => {
+		const unhandled: unknown[] = [];
+		const listener = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", listener);
+		try {
+			const client = createMemory({
+				embedder,
+				observability: { onEvent: () => Promise.reject(new Error("nope")) },
+			});
+			await client.add({ scope: testScope("silent_hook"), content: "x" });
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", listener);
+		}
+	});
+
+	test("a slow hook does not delay the AI SDK middleware", async () => {
+		const client = createMemory({
+			embedder,
+			observability: { onEvent: () => new Promise<void>(() => undefined) },
+		});
+		const alice = client.for({ namespace: "test", entityId: "mw_hook" });
+		await alice.add({ content: "Prefers green tea." });
+		const model = new MockLanguageModelV4({
+			doGenerate: {
+				content: [{ type: "text", text: "Hi." }],
+				finishReason: { unified: "stop", raw: undefined },
+				usage: {
+					inputTokens: {
+						total: 1,
+						noCache: 1,
+						cacheRead: undefined,
+						cacheWrite: undefined,
+					},
+					outputTokens: { total: 1, text: 1, reasoning: undefined },
+				},
+				warnings: [],
+			},
+		});
+
+		const result = await generateText({
+			model: withMemory({ model, memory: alice }),
+			prompt: "What tea?",
+		});
+
+		expect(result.text).toBe("Hi.");
 	});
 });

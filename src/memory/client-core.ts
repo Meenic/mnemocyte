@@ -410,8 +410,8 @@ export function createMemoryClient(
 		if (memoryIds.length === 0) {
 			return;
 		}
-		// Settled into a value at once, so a failure that lands while the
-		// start event is still being emitted is never an unhandled rejection.
+		// Settled into a value at once, so a failure that lands before the
+		// observed action awaits it is never an unhandled rejection.
 		const outcome = store.markMemoriesAccessed(visibility, memoryIds).then(
 			() => ({ ok: true as const }),
 			(error: unknown) => ({ ok: false as const, error }),

@@ -170,7 +170,8 @@ it.
 
 - [x] `feat/consolidate-stable`: graduate `consolidate`; survivor-aware
   deletes; kNN-based `findDuplicates`.
-- [ ] `fix/observability-non-blocking`: hooks no longer awaited.
+- [x] `fix/observability-non-blocking`: hooks no longer awaited; failures go
+  to an optional `observability.onError`.
 - [ ] `fix/audit-atomic`: audit events in the same statement or transaction
   as the write they record, for every write path (`add`, `addMany`,
   `update`, `delete`, `prune`, `consolidate`); today they are written

@@ -8,6 +8,8 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-13
+
 ### Added
 
 - **`openaiCompatibleEmbedder`.** A `fetch`-based embedder for any server
@@ -103,7 +105,6 @@ behavioural changes documented in their entries.
   never delays or fails the response, and reports failures to `onError`.
   `extractMemories({ model, memory, prompt, text })` runs the same
   extraction from your own code and returns the stored memories.
-
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle
   instance over one of them or a `SqlExecutor` directly, recognised by
@@ -991,7 +992,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Meenic/mnemocyte/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Meenic/mnemocyte/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/Meenic/mnemocyte/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Meenic/mnemocyte/compare/v0.4.0...v0.5.0

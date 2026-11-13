@@ -192,7 +192,7 @@ async function checkFilteredRecall(tx: Sql, dimensions: number): Promise<void> {
 	if (!query) {
 		throw new Error("Expected the recall vector query to be recorded.");
 	}
-	const recallSettings = { iterativeScan: "strict_order", efSearch: 40 };
+	const recallSettings = { iterativeScan: "relaxed_order", efSearch: 40 };
 
 	const plan = await runWithSettings<{ "QUERY PLAN": string }>(
 		tx,
@@ -202,7 +202,15 @@ async function checkFilteredRecall(tx: Sql, dimensions: number): Promise<void> {
 	);
 	const planText = plan.map((row) => row["QUERY PLAN"]).join("\n");
 	expect(planText).toContain(`Index Scan using ${HNSW_INDEX}`);
-	expect(planText).not.toMatch(/\bSort\b/);
+	// The HNSW scan orders the CTE; the only sort is the outer one that puts
+	// the relaxed scan's rows back in distance order.
+	// A node line is `Sort  (actual …)` or `->  Sort  (…)`; `Sort Key:` and
+	// `Sort Method:` lines belong to it.
+	const sortNodes = plan.filter((row) =>
+		/^\s*(?:->\s+)?Sort\s+\(/.test(row["QUERY PLAN"]),
+	);
+	expect(sortNodes).toHaveLength(1);
+	expect(planText).toMatch(/Sort Key: .*"vectorDistance" \+/);
 
 	// The same statement without an iterative scan (pgvector before 0.8, or
 	// Mnemocyte before this fix) finds none of the preferences.

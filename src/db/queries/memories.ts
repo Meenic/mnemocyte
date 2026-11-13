@@ -1052,10 +1052,12 @@ function duplicateFilters(
  * from both sides counts once, and the top `limit` are joined back to their
  * rows.
  *
- * Like {@link vectorSearch}, it runs after `hnsw.iterative_scan =
- * strict_order` and `hnsw.ef_search` for `neighbors + 1` rows (the memory
- * itself is filtered out), set for its transaction only, so a selective
- * scope does not leave a memory with fewer neighbors than exist.
+ * It runs after `hnsw.iterative_scan = strict_order` and `hnsw.ef_search`
+ * for `neighbors + 1` rows (the memory itself is filtered out), set for its
+ * transaction only, so a selective scope does not leave a memory with fewer
+ * neighbors than exist. {@link vectorSearch} moved to `relaxed_order`; this
+ * query stays on `strict_order` until it is measured on the HNSW path
+ * (decision 34).
  */
 export async function findDuplicatePairs(
 	db: SqlExecutor,
@@ -1370,11 +1372,18 @@ export function hnswEfSearch(limit: number): number {
  * so a selective filter could leave fewer rows than exist. The query runs
  * after a statement that sets, for its transaction only
  * ({@link runAtomically}: one `batch`, or a `transaction`),
- * `hnsw.iterative_scan = strict_order` (pgvector 0.8+: keep scanning the
- * index, in exact distance order, until `limit` rows pass or
- * `hnsw.max_scan_tuples` is reached) and `hnsw.ef_search` from
- * {@link hnswEfSearch}. Called inside a caller's transaction, the settings last
- * until that transaction ends.
+ * `hnsw.iterative_scan = relaxed_order` (pgvector 0.8+: keep scanning the
+ * index until `limit` rows pass or `hnsw.max_scan_tuples` is reached) and
+ * `hnsw.ef_search` from {@link hnswEfSearch}. Called inside a caller's
+ * transaction, the settings last until that transaction ends.
+ *
+ * `relaxed_order` keeps rows a later pass of the scan finds closer than
+ * rows it already returned, where `strict_order` drops them, so it returns
+ * more of the exact nearest rows (decision 34), but slightly out of order.
+ * The query therefore runs in a materialized CTE and its rows are sorted
+ * again; `+ 0` keeps Postgres 17+ from treating the CTE's output as already
+ * sorted. The CTE does not change the plan inside it, and pgvector's cost
+ * estimate does not read `iterative_scan`.
  *
  * The distance is computed once per row: `ORDER BY` names the selected
  * `<=>` column, which the planner still matches to the index's ordering
@@ -1387,15 +1396,18 @@ export async function vectorSearch(
 	const params = createSqlParams();
 	const embedding = `${params.add(formatVector(input.embedding))}::${input.vectorType}`;
 	const filters = recallFilters(params, input);
-	const text = `SELECT ${MEMORY_COLUMNS}, embedding <=> ${embedding} AS "vectorDistance"
-		FROM mnemocyte_memories
-		WHERE ${filters}
-			AND embedding IS NOT NULL
-		ORDER BY "vectorDistance"
-		LIMIT ${params.add(input.limit)}`;
+	const text = `WITH nearest AS MATERIALIZED (
+			SELECT ${MEMORY_COLUMNS}, embedding <=> ${embedding} AS "vectorDistance"
+			FROM mnemocyte_memories
+			WHERE ${filters}
+				AND embedding IS NOT NULL
+			ORDER BY "vectorDistance"
+			LIMIT ${params.add(input.limit)}
+		)
+		SELECT * FROM nearest ORDER BY "vectorDistance" + 0`;
 	const [, found = []] = await runAtomically(db, [
 		{
-			sql: `SELECT set_config('hnsw.iterative_scan', 'strict_order', true),
+			sql: `SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true),
 				set_config('hnsw.ef_search', $1, true)`,
 			params: [String(hnswEfSearch(input.limit))],
 		},

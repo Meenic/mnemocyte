@@ -85,11 +85,17 @@ describe("Postgres vector search", () => {
 		expect(transactional).toHaveLength(2);
 		const [settings, search] = transactional;
 		expect(settings?.sql).toContain(
-			"set_config('hnsw.iterative_scan', 'strict_order', true)",
+			"set_config('hnsw.iterative_scan', 'relaxed_order', true)",
 		);
 		expect(settings?.sql).toContain("set_config('hnsw.ef_search', $1, true)");
 		expect(settings?.params).toEqual(["150"]);
-		expect(search?.sql).toContain('ORDER BY "vectorDistance"');
+		// relaxed_order can return rows slightly out of order: the query runs
+		// in a materialized CTE and its rows are sorted again.
+		expect(search?.sql).toContain("WITH nearest AS MATERIALIZED (");
+		expect(search?.sql).toContain('ORDER BY "vectorDistance"\n');
+		expect(search?.sql).toMatch(
+			/SELECT \* FROM nearest ORDER BY "vectorDistance" \+ 0$/,
+		);
 		expect(search?.sql.match(/<=>/g)).toHaveLength(1);
 		expect(search?.params).toContain(150);
 	});

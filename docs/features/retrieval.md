@@ -15,8 +15,8 @@
    expired rows excluded unless asked for). A list whose fusion weight is 0
    is not searched.
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by
-     `embedding <=> $query` (HNSW when the planner chooses it, with an
-     iterative scan; see
+     `embedding <=> $query` (HNSW when the planner chooses it, with a
+     `relaxed_order` iterative scan whose rows are sorted again; see
      [postgres.md](./postgres.md#filtered-vector-search)); in-memory scans
      every row.
    - **lexical**: Postgres uses `content_tsv @@

@@ -419,6 +419,15 @@ Dated 2026-10-26 unless noted.
     those the AI SDK provider docs state, and `Embedder.model` is the model
     id without the gateway's `provider/` prefix, so `openaiEmbedder`, a
     direct model object and a gateway string can share an installation.
+    (2026-11-13, landed) `gemini-embedding-2` is a known model (3072) and,
+    from a `google` provider (Gemini API, Vertex AI or a `google/…` gateway
+    id), gets the retrieval text prefixes `googleEmbedder` sends instead of
+    `taskType`: the Gemini API guide says the model cannot take `task_type`,
+    and Vertex AI documents the same task instructions. What the API does
+    with a `taskType` it is sent is not documented and was not tested. The
+    prefixes count as built-in hints, so `purposes` replaces them too and
+    keeps one meaning. `gemini-embedding-2-preview` is left out, as in
+    `googleEmbedder`.
 26. **Memory tools** (2026-11-13, landed): `memoryTools({ memory })` takes
     only a bound client (`"CONFIG"` otherwise) and returns
     `searchMemories`, `saveMemory` and `forgetMemory`. No input has a scope

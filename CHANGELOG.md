@@ -42,7 +42,8 @@ behavioural changes documented in their entries.
   dependency; `import "mnemocyte"` does not load it. Known models
   (OpenAI, Gemini, Cohere `embed-v4.0`, Mistral, Titan v2) have a default
   `dimensions`, and any other model requires it. Google, Cohere and Voyage
-  models get query and document hints (`taskType`, `inputType`) by default;
+  models get query and document hints (`taskType`, `inputType`) by default,
+  or for `gemini-embedding-2` the text prefixes Google documents for it;
   `purposes` replaces them and `providerOptions` is sent with every call.
   The AI SDK's own retries are off, so the client's `provider` settings
   apply, and AI SDK errors with an HTTP status become a `ProviderError`

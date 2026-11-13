@@ -39,7 +39,8 @@ export interface AiSdkEmbedderOptions {
 	/**
 	 * Provider options for queries and for documents, merged over
 	 * `providerOptions`. Replaces the built-in hints for Google, Cohere and
-	 * Voyage; a purpose left out gets no hint.
+	 * Voyage, including the text prefixes for `gemini-embedding-2`; a purpose
+	 * left out gets no hint.
 	 */
 	readonly purposes?: AiSdkPurposeOptions;
 }
@@ -59,6 +60,7 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModel> = new Map([
 	["text-embedding-3-large", { dimensions: 3072 }],
 	["text-embedding-ada-002", { dimensions: 1536, fixed: true }],
 	["gemini-embedding-001", { dimensions: 3072 }],
+	["gemini-embedding-2", { dimensions: 3072 }],
 	["embed-v4.0", { dimensions: 1536 }],
 	["mistral-embed", { dimensions: 1024 }],
 	["codestral-embed", { dimensions: 1536 }],
@@ -69,7 +71,8 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModel> = new Map([
 
 /**
  * Built-in query and document hints by provider. Google (and Vertex, which
- * also reads the `google` key) takes `taskType`, Cohere and Voyage
+ * also reads the `google` key) takes `taskType`, except for the models in
+ * `DEFAULT_PREFIXES`, Cohere and Voyage
  * `inputType`. Cohere defaults to `search_query`, so documents embedded
  * without a hint would be embedded as queries.
  */
@@ -99,6 +102,30 @@ const DEFAULT_PURPOSES: ReadonlyMap<
 		},
 	],
 ]);
+
+/**
+ * Built-in text prefixes by provider and model id, for models that read the
+ * purpose from the text. The Gemini API embeddings guide says
+ * `gemini-embedding-2` cannot take `taskType` and gives these retrieval
+ * prefixes instead; Vertex AI documents the same task instructions.
+ */
+const DEFAULT_PREFIXES: ReadonlyMap<
+	string,
+	Readonly<Record<EmbeddingPurpose, string>>
+> = new Map([
+	[
+		"google/gemini-embedding-2",
+		{
+			query: "task: search result | query: ",
+			document: "title: none | text: ",
+		},
+	],
+]);
+
+const NO_PREFIXES: Readonly<Record<EmbeddingPurpose, string>> = {
+	query: "",
+	document: "",
+};
 
 const MODEL_SPECIFICATIONS: ReadonlySet<unknown> = new Set(["v2", "v3", "v4"]);
 
@@ -238,19 +265,38 @@ function mergeProviderOptions(
 	return Object.keys(merged).length === 0 ? undefined : merged;
 }
 
-function resolvePurposeOptions(
+interface PurposeHints {
+	/** Provider options for each purpose, merged over `providerOptions`. */
+	readonly options: Record<EmbeddingPurpose, AiSdkProviderOptions | undefined>;
+	/** Text put in front of every value for each purpose; `""` for none. */
+	readonly prefixes: Readonly<Record<EmbeddingPurpose, string>>;
+}
+
+function resolvePurposeHints(
 	options: AiSdkEmbedderOptions,
-	provider: string | undefined,
-): Record<EmbeddingPurpose, AiSdkProviderOptions | undefined> {
+	{ id, provider }: ModelIdentity,
+): PurposeHints {
 	const base = snapshotProviderOptions(
 		options.providerOptions,
 		"providerOptions",
 	);
+	const none = { query: {}, document: {} };
 	let hints: Readonly<Record<EmbeddingPurpose, AiSdkProviderOptions>>;
+	let prefixes = NO_PREFIXES;
 	if (options.purposes === undefined) {
-		hints = (provider === undefined
-			? undefined
-			: DEFAULT_PURPOSES.get(provider)) ?? { query: {}, document: {} };
+		const builtIn =
+			provider === undefined
+				? undefined
+				: DEFAULT_PREFIXES.get(`${provider}/${id}`);
+		if (builtIn !== undefined) {
+			// A model that reads the purpose from the text gets no option hint.
+			hints = none;
+			prefixes = builtIn;
+		} else {
+			hints =
+				(provider === undefined ? undefined : DEFAULT_PURPOSES.get(provider)) ??
+				none;
+		}
 	} else {
 		if (!isRecord(options.purposes)) {
 			throw configError("purposes must be an object.");
@@ -264,8 +310,11 @@ function resolvePurposeOptions(
 		};
 	}
 	return {
-		query: mergeProviderOptions(base, hints.query),
-		document: mergeProviderOptions(base, hints.document),
+		options: {
+			query: mergeProviderOptions(base, hints.query),
+			document: mergeProviderOptions(base, hints.document),
+		},
+		prefixes,
 	};
 }
 
@@ -352,7 +401,9 @@ function toProviderError(error: unknown): ProviderError | undefined {
  *
  * The AI SDK's own retries are off; the client's `provider` settings retry
  * instead, and AI SDK errors with an HTTP status become a `ProviderError`.
- * Google, Cohere and Voyage models get query and document hints by default.
+ * Google, Cohere and Voyage models get query and document hints by default:
+ * provider options, or for `gemini-embedding-2` the text prefixes Google
+ * documents for it.
  *
  * @example
  * ```ts
@@ -376,7 +427,7 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 		options.maxBatch === undefined
 			? undefined
 			: assertPositiveInteger(options.maxBatch, "maxBatch");
-	const purposeOptions = resolvePurposeOptions(options, identity.provider);
+	const hints = resolvePurposeHints(options, identity);
 
 	return {
 		model: identity.id,
@@ -393,11 +444,12 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 					"VALIDATION",
 				);
 			}
-			const providerOptions = purposeOptions[purpose];
+			const providerOptions = hints.options[purpose];
+			const prefix = hints.prefixes[purpose];
 			try {
 				const result = await embedMany({
 					model,
-					values: [...texts],
+					values: texts.map((text) => `${prefix}${text}`),
 					// Mnemocyte retries (client `provider` settings); retrying here
 					// too would multiply the attempts.
 					maxRetries: 0,

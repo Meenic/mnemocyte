@@ -143,20 +143,17 @@ Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
 
 `mnemocyte/ai-sdk`, with `ai` as an optional peer dependency, ships
 `aiSdkEmbedder` (see
-[features/embedders.md](./features/embedders.md#aisdkembedder)) and
-`memoryTools({ memory })` (see [features/ai-sdk.md](./features/ai-sdk.md),
-decision 26) today. Still to come in the same entry:
+[features/embedders.md](./features/embedders.md#aisdkembedder)),
+`memoryTools({ memory })` (decision 26), and `memoryMiddleware` and
+`withMemory` with an opt-in `save` hook (decision 27) today; see
+[features/ai-sdk.md](./features/ai-sdk.md). Still to come in the same
+entry:
 
-1. `memoryMiddleware({ memory })`: from a bound client, a language model
-   middleware for `wrapLanguageModel` whose `transformParams` adds
-   `context()` output to the prompt. `withMemory({ model, memory })`
-   returns `wrapLanguageModel({ model, middleware })` in one call, the
-   shape of Supermemory's `withSupermemory`.
-2. Saving (decision 24): an opt-in hook the app controls, and an opt-in
-   `save: { model }` that has the user's own AI SDK model extract memories
-   from the turn into the bound scope after the response. Nothing is
-   extracted unless configured, the response never waits for it, and
-   failures go to `onEvent`. The library makes no LLM calls of its own.
+1. Extraction (decision 24): an opt-in `save: { model }` that has the
+   user's own AI SDK model extract memories from the turn into the bound
+   scope after the response. Nothing is extracted unless configured, the
+   response never waits for it, and failures go to `onEvent`. The library
+   makes no LLM calls of its own.
 
 Hosted alternatives (mem0's provider, Supermemory's tools) do the same jobs
 through their own APIs; ours run against the app's database.
@@ -449,3 +446,31 @@ Dated 2026-10-26 unless noted.
     spreading, and approval belongs to the AI SDK's `toolApproval`
     (tool-level `needsApproval` is deprecated in AI SDK 7).
     `MemoryTools` is a type alias so it is assignable to `ToolSet`.
+27. **Memory middleware** (2026-11-13, landed): `memoryMiddleware` and
+    `withMemory({ model, memory })` take only a bound client. Before each
+    model call `transformParams` runs `context()` on the text of the last
+    user message (a `query` callback can replace it) and forwards the
+    call's `abortSignal`. The context goes, under a one-line preamble that
+    calls it background and not instructions, into the last user message
+    by default, with `placement: "system"` as the option: context that
+    changes every turn at the system position breaks providers' prefix
+    caching of the conversation, and memories can hold user-derived text
+    (including what `saveMemory` stored) that should not get system
+    authority; the AI SDK's own RAG example also uses the last user
+    message. A system message goes after the leading system messages,
+    because Anthropic and Google reject later ones. `context()` now returns
+    `""` when nothing matches, so the middleware can add nothing, instead
+    of a second search-and-format path. Defaults stay `context()`'s (1200
+    tokens, markdown) and are set through a `context` option. Because
+    `transformParams` runs per step, the last query's context is cached in
+    the middleware, which is created per request. A failed `context()`
+    goes to an `onError({ phase, error })` option and the call runs without
+    memory (fail open); aborts are thrown. The hook is
+    `save: (turn) => void | Promise<void>`, so extraction can widen it to
+    `save: { model }`; it gets `{ memory, prompt, text, finishReason }`
+    once after the final step (never after `"tool-calls"`, `"error"` or
+    `"interrupted"`, nor a stream with an `error` part), is not awaited,
+    and reports failures to `onError`, since the middleware cannot reach
+    the client's `onEvent`. `withMemory` takes model objects only:
+    `wrapLanguageModel` does, and resolving strings would copy AI SDK
+    internals; the error points to `gateway("provider/model")`.

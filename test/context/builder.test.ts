@@ -85,6 +85,26 @@ describe("context builder", () => {
 		expect(detached).toMatch(/RELEVANT MEMORIES/);
 	});
 
+	test.each(["markdown", "plain", "xml"] as const)(
+		"returns an empty %s context when no memory matches",
+		async (format) => {
+			const client = createMemory({
+				embedder: {
+					model: "empty-context-test",
+					dimensions: 1,
+					async embed(texts) {
+						return texts.map(() => [1]);
+					},
+				},
+			});
+			await client.add({ scope: testScope("other"), content: "Not yours." });
+
+			await expect(
+				client.context({ scope: testScope("nobody"), query: "x", format }),
+			).resolves.toBe("");
+		},
+	);
+
 	test("rejects invalid maxTokens while preserving omission as the default path", async () => {
 		let embedCalls = 0;
 		const client = createMemory({

@@ -285,9 +285,10 @@ describe("lazy Postgres package loading", () => {
 				aiSdkScript,
 				`
 						import { APICallError } from "ai";
-						import { MockEmbeddingModelV4 } from "ai/test";
+						import { generateText } from "ai";
+						import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 						import { createMemory, ProviderError } from "mnemocyte";
-						import { aiSdkEmbedder, memoryTools } from "mnemocyte/ai-sdk";
+						import { aiSdkEmbedder, memoryTools, withMemory } from "mnemocyte/ai-sdk";
 
 						const model = new MockEmbeddingModelV4({
 							modelId: "packed-model",
@@ -313,6 +314,28 @@ describe("lazy Postgres package loading", () => {
 						);
 						if (found.memories[0]?.content !== "Embedded through the AI SDK.") {
 							throw new Error("searchMemories did not find the memory.");
+						}
+						const languageModel = new MockLanguageModelV4({
+							doGenerate: {
+								content: [{ type: "text", text: "ok" }],
+								finishReason: { unified: "stop", raw: undefined },
+								usage: {
+									inputTokens: { total: 1, noCache: 1 },
+									outputTokens: { total: 1, text: 1 },
+								},
+								warnings: [],
+							},
+						});
+						await generateText({
+							model: withMemory({
+								model: languageModel,
+								memory: memory.for({ namespace: "packed", entityId: "ai-sdk" }),
+							}),
+							prompt: "What about the AI SDK?",
+						});
+						const sent = JSON.stringify(languageModel.doGenerateCalls[0]?.prompt);
+						if (!sent.includes("Embedded through the AI SDK.")) {
+							throw new Error("withMemory did not add the memory context.");
 						}
 						const failing = aiSdkEmbedder({
 							model: new MockEmbeddingModelV4({

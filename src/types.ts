@@ -1235,7 +1235,7 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	): Promise<DeleteScopeResult>;
 	/**
 	 * Search and render the results as a prompt-ready string within a token
-	 * budget.
+	 * budget. Returns `""` when no memory matches.
 	 */
 	context(input: ContextInput<DefaultNamespace>): Promise<string>;
 	/**

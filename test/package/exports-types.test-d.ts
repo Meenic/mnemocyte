@@ -1,6 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
-import type { InferToolInput, InferToolOutput, ToolSet } from "ai";
-import { MockEmbeddingModelV4 } from "ai/test";
+import {
+	type InferToolInput,
+	type InferToolOutput,
+	type LanguageModel,
+	type LanguageModelMiddleware,
+	type ToolSet,
+	wrapLanguageModel,
+} from "ai";
+import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
 import type {
@@ -73,13 +80,24 @@ import {
 	type ForgetMemoryInput,
 	type ForgetMemoryOutput,
 	type FoundMemory,
+	type MemoryFinishReason,
+	type MemoryLanguageModel,
+	type MemoryMiddlewareContextOptions,
+	type MemoryMiddlewareError,
+	type MemoryMiddlewareOptions,
+	type MemoryPrompt,
 	type MemoryTools,
 	type MemoryToolsOptions,
+	type MemoryTurn,
+	type MemoryWrappedModel,
+	memoryMiddleware,
 	memoryTools,
 	type SaveMemoryInput,
 	type SaveMemoryOutput,
 	type SearchMemoriesInput,
 	type SearchMemoriesOutput,
+	type WithMemoryOptions,
+	withMemory,
 } from "mnemocyte/ai-sdk";
 import {
 	type OpenAICompatibleEmbedderOptions,
@@ -611,6 +629,50 @@ const keyedSave: SaveMemoryInput = { content: "content", key: "key" };
 // @ts-expect-error searchMemories takes no scope fields.
 const scopedSearch: SearchMemoriesInput = { query: "q", entityId: "other" };
 
+// The middleware takes a bound client and fits wrapLanguageModel.
+const contextOptions: MemoryMiddlewareContextOptions = {
+	format: "xml",
+	maxTokens: 500,
+	kinds: ["preference"],
+};
+const middlewareOptions: MemoryMiddlewareOptions = {
+	memory: bound,
+	placement: "system",
+	context: contextOptions,
+	query: ({ prompt }: { readonly prompt: MemoryPrompt }) =>
+		prompt.length > 0 ? "query" : undefined,
+	save: async (turn: MemoryTurn) => {
+		const reason: MemoryFinishReason = turn.finishReason;
+		await turn.memory.add({ content: `${turn.text} ${reason}` });
+	},
+	onError: (error: MemoryMiddlewareError) => {
+		void error.phase;
+	},
+};
+const middleware: LanguageModelMiddleware = memoryMiddleware(middlewareOptions);
+const languageModel: MemoryLanguageModel = new MockLanguageModelV4();
+const wrappedByHand: LanguageModel = wrapLanguageModel({
+	model: languageModel,
+	middleware,
+});
+const withMemoryOptions: WithMemoryOptions = {
+	model: languageModel,
+	memory: bound,
+};
+const wrapped: MemoryWrappedModel = withMemory(withMemoryOptions);
+const wrappedAsModel: LanguageModel = wrapped;
+// @ts-expect-error The middleware takes a bound client, not the client itself.
+memoryMiddleware({ memory: defaulted });
+// @ts-expect-error withMemory takes a model object, not a string.
+withMemory({ model: "openai/gpt-6.1-sol", memory: bound });
+// @ts-expect-error The query comes from the call, not from context options.
+const queryInContext: MemoryMiddlewareContextOptions = { query: "q" };
+// @ts-expect-error Placement is "user" or "system".
+memoryMiddleware({ memory: bound, placement: "assistant" });
+
+void wrappedByHand;
+void wrappedAsModel;
+void queryInContext;
 void scopeInput;
 void fullScopeInput;
 void selectorInput;

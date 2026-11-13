@@ -144,16 +144,10 @@ Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
 `mnemocyte/ai-sdk`, with `ai` as an optional peer dependency, ships
 `aiSdkEmbedder` (see
 [features/embedders.md](./features/embedders.md#aisdkembedder)),
-`memoryTools({ memory })` (decision 26), and `memoryMiddleware` and
-`withMemory` with an opt-in `save` hook (decision 27) today; see
-[features/ai-sdk.md](./features/ai-sdk.md). Still to come in the same
-entry:
-
-1. Extraction (decision 24): an opt-in `save: { model }` that has the
-   user's own AI SDK model extract memories from the turn into the bound
-   scope after the response. Nothing is extracted unless configured, the
-   response never waits for it, and failures go to `onEvent`. The library
-   makes no LLM calls of its own.
+`memoryTools({ memory })` (decision 26), `memoryMiddleware` and
+`withMemory` with an opt-in `save` hook (decision 27), and extraction with
+the user's own model through `save: { model }` and `extractMemories`
+(decisions 24 and 28) today; see [features/ai-sdk.md](./features/ai-sdk.md).
 
 Hosted alternatives (mem0's provider, Supermemory's tools) do the same jobs
 through their own APIs; ours run against the app's database.
@@ -384,7 +378,8 @@ Dated 2026-10-26 unless noted.
     SDK middleware gets an opt-in `save: { model }` that runs the user's
     own model after the response and writes into the bound scope. It stays
     off by default and makes no call unless configured, so the library
-    still has no model or provider of its own.
+    still has no model or provider of its own. (2026-11-13, landed; see
+    28.)
 25. **Embedder purpose, batches and retries** (2026-11-13, landed):
     `embed(texts, { purpose, signal })` takes a required options object with
     `purpose: "query" | "document"`; the core passes `"document"` from
@@ -474,3 +469,42 @@ Dated 2026-10-26 unless noted.
     the client's `onEvent`. `withMemory` takes model objects only:
     `wrapLanguageModel` does, and resolving strings would copy AI SDK
     internals; the error points to `gateway("provider/model")`.
+28. **Extraction** (2026-11-13, landed): `save` on `memoryMiddleware` and
+    `withMemory` is a function or `{ model, instructions, maxMemories,
+    timeout, waitUntil }`, not both; a hook that wants both calls the
+    exported `extractMemories`, which runs the same extraction and returns
+    the stored memories. Facts are matched by key, not by a similarity
+    threshold: before the model call one `search` shows the model up to 20
+    memories, with the keys of earlier extractions in the exact bound
+    scope, and it reuses a key to update a fact or makes a new snake_case
+    one. Keys are stored as `extracted:<key>`, so an app key is never
+    overwritten, and one keyed `addMany` writes them; its
+    `ON CONFLICT DO UPDATE` keeps concurrent extractions of a fact in one
+    row, where a check-then-insert on a threshold would race. A threshold
+    was rejected because `search` embeds with `purpose: "query"`, whose
+    cosine to stored documents is not comparable to a document-to-document
+    one for asymmetric embedders, and because cut-offs differ between
+    embedding models. Memories without a key (app or `saveMemory`) are
+    shown but never updated. The model sees the user messages of the
+    final turn, the assistant message before them and the response, never
+    system messages or tool results (third-party text), and returns
+    `{ memories: [{ key, content, kind, importance }] }` through
+    `generateText` with `Output.object` (AI SDK 7 deprecates
+    `generateObject`) and a `jsonSchema()` with our own `validate`; every
+    property is required so OpenAI's strict mode accepts it. Kinds are
+    `fact`, `preference`, `instruction` and `backstory` (episodes and
+    session notes are not lasting facts), importance `low` to `high`
+    (`critical` stays the app's), at most 10 per turn by default (20 at
+    most). The built-in prompt can be extended with `instructions` but not
+    replaced, so its rules against storing secrets and assistant-only
+    claims stay. Failures go to `onError({ phase: "save" })`, not a new
+    `onEvent` operation: the middleware cannot reach the client's
+    `onEvent` (27), and the search and write already report there. The
+    extraction has its own `timeout` (30 s) instead of the request's
+    `abortSignal`, which has nothing left to cancel. `waitUntil` receives
+    a promise that never rejects, for serverless platforms. A
+    `"provider/model"` string is accepted, unlike `withMemory`'s `model`,
+    because `generateText` resolves it. The extraction call carries
+    `providerOptions.mnemocyte.extraction`, and the middleware passes such
+    calls through, so a model wrapped with memory given as the extraction
+    model cannot recurse.

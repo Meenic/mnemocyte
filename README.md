@@ -176,8 +176,12 @@ const result = streamText({
 });
 ```
 
-Inputs, outputs, approval, placement and the save hook are in the
-[AI SDK guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md).
+Add `save: { model: openai("gpt-6.1-mini") }` to have that model store
+lasting facts about the user after each response; facts that change are
+updated in place.
+
+Inputs, outputs, approval, placement, the save hook and extraction are in
+the [AI SDK guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md).
 
 ## Documentation
 

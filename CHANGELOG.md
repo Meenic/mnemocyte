@@ -70,6 +70,20 @@ behavioural changes documented in their entries.
   response of each call with the prompt and response text; the response
   does not wait for it. `withMemory` takes a model object (use
   `gateway("provider/model")` for a gateway id).
+- **Memory extraction with your own model.** `save: { model }` on
+  `withMemory` and `memoryMiddleware` has that model read each turn after
+  the response and store lasting facts about the user in the bound scope,
+  with structured output. It sees the user's messages of the turn, the
+  assistant message before them, the response and up to 20 stored
+  memories, never system messages or tool results. Memories get a key
+  `extracted:<name>` and `source: "extractMemories"`; a changed fact
+  updates its memory in place, and keys your app chose are never
+  overwritten. `instructions` adds guidance, `maxMemories` (default 10)
+  and `timeout` (default 30 s) limit it, and `waitUntil` receives the
+  extraction's promise for serverless platforms. It is off by default,
+  never delays or fails the response, and reports failures to `onError`.
+  `extractMemories({ model, memory, prompt, text })` runs the same
+  extraction from your own code and returns the stored memories.
 
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle

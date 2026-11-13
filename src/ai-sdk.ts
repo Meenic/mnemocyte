@@ -420,12 +420,19 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 }
 
 export {
+	type ExtractMemoriesInput,
+	type ExtractMemoriesOptions,
+	extractMemories,
+} from "./ai-sdk-extraction.js";
+export {
 	type MemoryFinishReason,
 	type MemoryLanguageModel,
 	type MemoryMiddlewareContextOptions,
 	type MemoryMiddlewareError,
 	type MemoryMiddlewareOptions,
 	type MemoryPrompt,
+	type MemorySaveHook,
+	type MemorySaveOptions,
 	type MemoryTurn,
 	type MemoryWrappedModel,
 	memoryMiddleware,

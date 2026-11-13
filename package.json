@@ -22,6 +22,10 @@
 			"types": "./dist/embedders/openai.d.mts",
 			"default": "./dist/embedders/openai.mjs"
 		},
+		"./embedders/openai-compatible": {
+			"types": "./dist/embedders/openai-compatible.d.mts",
+			"default": "./dist/embedders/openai-compatible.mjs"
+		},
 		"./postgres": {
 			"types": "./dist/postgres.d.mts",
 			"default": "./dist/postgres.mjs"

@@ -22,8 +22,9 @@ Feature areas:
   tracking, `context`.
 - [features/maintenance.md](./features/maintenance.md): delete, prune,
   duplicates, consolidation, audit log, stats.
-- [features/embedders.md](./features/embedders.md): the `Embedder` contract,
-  the OpenAI helper, retries, timeouts, cancellation, observability.
+- [features/embedders.md](./features/embedders.md): the `Embedder` contract
+  (`purpose`, `maxBatch`), `openaiEmbedder` and `openaiCompatibleEmbedder`,
+  `ProviderError`, retries, timeouts, cancellation, observability.
 
 ## Setup
 
@@ -50,9 +51,10 @@ src/
   migrate.ts            migrate(): validates input, resolves { memory } or { store } (resolveStore), calls the store's migrate
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
   types.ts              every public type
-  errors.ts             MnemocyteError and its codes
+  errors.ts             MnemocyteError and its codes, ProviderError
+  http-embedder.ts      createHttpEmbedder behind both shipped embedders, Retry-After parsing
   observability.ts      onEvent lifecycle (start / success / error)
-  resilience.ts         provider timeout, retry, abort
+  resilience.ts         provider timeout, retry rule, jittered backoff, abort
   memory/
     client-core.ts      shared orchestration for every client method
     scope-binding.ts    the default namespace layer and memory.for() bound clients
@@ -88,7 +90,7 @@ src/
     migrations/         Postgres migration runner and bundled.ts (generated)
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
-  embedders/            openaiEmbedder (fetch only)
+  embedders/            openaiEmbedder, openaiCompatibleEmbedder (fetch only)
   stores/drizzle.ts     drizzleStore(db)
 migrations/             SQL migrations, template, renderer, Drizzle journal
 scripts/                bundle-migrations.mjs, check-package.mjs
@@ -154,14 +156,20 @@ plugin in `tsdown.config.ts` strips that comment.
 Exports:
 
 - `mnemocyte`: `createMemory`, `migrate`, `MnemocyteError`,
-  `isMnemocyteError` and the public types, including `PostgresClient`.
+  `isMnemocyteError`, `ProviderError` and the public types, including
+  `PostgresClient`.
   `createMemory({ store })` and `migrate({ store })` take a store config or
   a database client; the Postgres backend loads with a dynamic `import()`
   on first use (see
   [features/postgres.md](./features/postgres.md#lazy-loading)). The root
   entry must not import the backend statically; a package test follows its
   static imports to check.
-- `mnemocyte/embedders` and `mnemocyte/embedders/openai`: `openaiEmbedder`.
+- `mnemocyte/embedders`: `openaiEmbedder`, `openaiCompatibleEmbedder` and
+  their option types (`OpenAIEmbedderOptions`,
+  `OpenAICompatibleEmbedderOptions`, `PurposeHint`, `PurposeHints`);
+  `mnemocyte/embedders/openai` and `mnemocyte/embedders/openai-compatible`
+  export one each. `ProviderError`, `EmbedOptions` and `EmbeddingPurpose`
+  come from the root.
 - `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
   `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
   `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its

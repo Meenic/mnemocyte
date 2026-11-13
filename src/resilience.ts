@@ -2,17 +2,45 @@ import { MnemocyteError } from "./errors.js";
 import type { ProviderResilienceConfig } from "./types.js";
 
 /**
- * Default per-provider-call timeout. Disabled by default so that callers
- * who do not configure {@link ProviderResilienceConfig.timeoutMs} are
- * unaffected.
+ * Default per-provider-call timeout. Disabled by default: a timeout that
+ * fits every provider and batch size does not exist.
  */
 const DEFAULT_TIMEOUT_MS = 0;
 /** Default number of retry attempts on transient provider failures. */
-const DEFAULT_RETRIES = 0;
+const DEFAULT_RETRIES = 2;
 /** Default base backoff delay used between retry attempts. */
-const DEFAULT_BASE_DELAY_MS = 100;
+const DEFAULT_BASE_DELAY_MS = 500;
 /** Default ceiling for retry backoff delay. */
-const DEFAULT_MAX_DELAY_MS = 2000;
+const DEFAULT_MAX_DELAY_MS = 8000;
+/** Default ceiling for a server-requested wait (`Retry-After`). */
+const DEFAULT_MAX_RETRY_AFTER_MS = 60_000;
+
+/**
+ * HTTP statuses retried by default: request timeout, rate limit, and the
+ * server errors that mean "try again" (not 501 Not Implemented or 505).
+ */
+const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
+	408, 429, 500, 502, 503, 504,
+]);
+
+/**
+ * Node and undici error codes for network failures that can pass on their
+ * own. `fetch` rejects with a `TypeError` whose `cause` carries the code.
+ */
+const RETRYABLE_NETWORK_CODES: ReadonlySet<string> = new Set([
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"ETIMEDOUT",
+	"EPIPE",
+	"EAI_AGAIN",
+	"UND_ERR_SOCKET",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_BODY_TIMEOUT",
+]);
+
+/** How many `cause` links {@link hasRetryableNetworkCode} follows. */
+const MAX_CAUSE_DEPTH = 4;
 
 /**
  * Throw a {@link MnemocyteError} with code `"ABORTED"` if `signal` is
@@ -28,69 +56,85 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
 	}
 }
 
-/**
- * Heuristic default for whether an error should be retried.
- *
- * Conservative by design: only retries on common transient failure
- * indicators (network errors, 5xx-ish messages, `ECONN*` etc.). Never
- * retries on validation, configuration, or {@link MnemocyteError} of
- * code `"VALIDATION"` / `"CONFIG"` / `"CONFLICT"` / `"ABORTED"`.
- */
-export function defaultShouldRetry(error: unknown): boolean {
-	if (error instanceof MnemocyteError) {
-		if (
-			error.code === "VALIDATION" ||
-			error.code === "CONFIG" ||
-			error.code === "CONFLICT" ||
-			error.code === "ABORTED"
-		) {
-			return false;
-		}
-		return true;
+function readNumberField(error: unknown, field: string): number | undefined {
+	if (typeof error !== "object" || error === null || !(field in error)) {
+		return undefined;
 	}
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"status" in error &&
-		typeof (error as { status?: unknown }).status === "number" &&
-		[429, 500, 502, 503, 504].includes((error as { status: number }).status)
+	const value = (error as Record<string, unknown>)[field];
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
+}
+
+function hasRetryableNetworkCode(error: unknown): boolean {
+	let current: unknown = error;
+	for (
+		let depth = 0;
+		depth < MAX_CAUSE_DEPTH && typeof current === "object" && current !== null;
+		depth += 1
 	) {
-		return true;
-	}
-	if (error instanceof Error) {
-		const message = error.message.toLowerCase();
-		if (
-			message.includes("econn") ||
-			message.includes("etimedout") ||
-			message.includes("network") ||
-			message.includes("timeout") ||
-			message.includes("temporarily") ||
-			message.includes("rate limit") ||
-			message.includes("503") ||
-			message.includes("502") ||
-			message.includes("504") ||
-			message.includes("500")
-		) {
+		const { code } = current as { code?: unknown };
+		if (typeof code === "string" && RETRYABLE_NETWORK_CODES.has(code)) {
 			return true;
 		}
+		current = (current as { cause?: unknown }).cause;
 	}
 	return false;
 }
 
 /**
- * Compute the backoff delay for the given retry attempt, using exponential
- * growth capped at {@link ProviderResilienceConfig.maxDelayMs}.
+ * Default rule for whether an error should be retried. Decisions rest on
+ * structured fields, never on message text:
+ *
+ * - a numeric `status` of 408, 429, 500, 502, 503 or 504 (such as a
+ *   `ProviderError`);
+ * - a transient network `code` (`ECONNRESET`, `ETIMEDOUT`, undici socket
+ *   and timeout codes…) on the error or along its `cause` chain;
+ * - a {@link MnemocyteError} with code `"TIMEOUT"`.
+ *
+ * Everything else, other {@link MnemocyteError}s included, is not retried.
+ */
+export function defaultShouldRetry(error: unknown): boolean {
+	const status = readNumberField(error, "status");
+	if (status !== undefined) {
+		return RETRYABLE_STATUSES.has(status);
+	}
+	if (error instanceof MnemocyteError) {
+		return error.code === "TIMEOUT";
+	}
+	return hasRetryableNetworkCode(error);
+}
+
+/**
+ * Compute the backoff delay for the given retry attempt: exponential growth
+ * capped at {@link ProviderResilienceConfig.maxDelayMs}, then a random
+ * 50–100% of that ("equal jitter"), so clients that failed together do not
+ * retry together.
  *
  * `attempt` is 1-indexed: the delay before the first retry uses
  * `attempt = 1`, before the second retry `attempt = 2`, etc.
  */
-function computeDelayMs(
+export function computeDelayMs(
 	attempt: number,
 	baseDelayMs: number,
 	maxDelayMs: number,
+	random: () => number = Math.random,
 ): number {
-	const exponential = baseDelayMs * 2 ** (attempt - 1);
-	return Math.max(0, Math.min(maxDelayMs, exponential));
+	const exponential = Math.max(
+		0,
+		Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1)),
+	);
+	return exponential / 2 + (random() * exponential) / 2;
+}
+
+/**
+ * The wait a failed attempt's error asks for: a non-negative, finite
+ * `retryAfterMs` field (set by `ProviderError` from `Retry-After` or
+ * `retry-after-ms`), or `undefined`.
+ */
+function readRetryAfterMs(error: unknown): number | undefined {
+	const value = readNumberField(error, "retryAfterMs");
+	return value === undefined || value < 0 ? undefined : value;
 }
 
 /**
@@ -240,8 +284,10 @@ export interface ResilienceCallOptions {
  * abort mid-retry and the in-flight attempt will cancel promptly if the
  * underlying provider honours signals.
  *
- * Errors from {@link MnemocyteError} with code `"VALIDATION"` /
- * `"CONFIG"` / `"CONFLICT"` / `"ABORTED"` are never retried.
+ * Which errors retry is decided by `shouldRetry` (default
+ * {@link defaultShouldRetry}); `"ABORTED"` never retries. An error with a
+ * `retryAfterMs` waits that long instead of the jittered backoff, or is
+ * thrown at once when it asks for more than `maxRetryAfterMs`.
  */
 export async function withResilience<T>(
 	action: (signal: AbortSignal | undefined) => Promise<T>,
@@ -255,6 +301,7 @@ export async function withResilience<T>(
 		baseDelayMs,
 		config.maxDelayMs ?? DEFAULT_MAX_DELAY_MS,
 	);
+	const maxRetryAfterMs = config.maxRetryAfterMs ?? DEFAULT_MAX_RETRY_AFTER_MS;
 	const shouldRetry = config.shouldRetry ?? defaultShouldRetry;
 	const externalSignal = options.signal;
 
@@ -277,7 +324,12 @@ export async function withResilience<T>(
 			if (!shouldRetry(error, attempt)) {
 				throw error;
 			}
-			const waitMs = computeDelayMs(attempt, baseDelayMs, maxDelayMs);
+			const retryAfterMs = readRetryAfterMs(error);
+			if (retryAfterMs !== undefined && retryAfterMs > maxRetryAfterMs) {
+				throw error;
+			}
+			const waitMs =
+				retryAfterMs ?? computeDelayMs(attempt, baseDelayMs, maxDelayMs);
 			await delay(waitMs, externalSignal);
 		}
 	}

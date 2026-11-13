@@ -2,10 +2,11 @@ import {
 	createMemory,
 	isMnemocyteError,
 	MnemocyteError,
+	ProviderError,
 	type ProviderResilienceConfig,
 } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { defaultShouldRetry } from "../../src/resilience.js";
+import { computeDelayMs, defaultShouldRetry } from "../../src/resilience.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 describe("resilience", () => {
@@ -13,6 +14,191 @@ describe("resilience", () => {
 		expect(
 			defaultShouldRetry(new MnemocyteError("has dependents", "CONFLICT")),
 		).toBe(false);
+	});
+
+	test("decides retries from status and error codes, not messages", () => {
+		const withStatus = (status: number) =>
+			Object.assign(new Error("failed"), { status });
+		for (const status of [408, 429, 500, 502, 503, 504]) {
+			expect(defaultShouldRetry(withStatus(status)), String(status)).toBe(true);
+		}
+		for (const status of [400, 401, 403, 404, 409, 422, 501, 505]) {
+			expect(defaultShouldRetry(withStatus(status)), String(status)).toBe(
+				false,
+			);
+		}
+		expect(
+			defaultShouldRetry(
+				new ProviderError({ message: "busy", status: 503, body: {} }),
+			),
+		).toBe(true);
+		expect(
+			defaultShouldRetry(new ProviderError({ message: "bad", status: 400 })),
+		).toBe(false);
+
+		// Messages no longer decide anything.
+		expect(defaultShouldRetry(new Error("got 500 tokens"))).toBe(false);
+		expect(defaultShouldRetry(new Error("network timeout"))).toBe(false);
+
+		// fetch rejects with a TypeError whose cause carries the network code.
+		const fetchFailure = (code: string) =>
+			new TypeError("fetch failed", {
+				cause: Object.assign(new Error("socket"), { code }),
+			});
+		for (const code of [
+			"ECONNRESET",
+			"ECONNREFUSED",
+			"ETIMEDOUT",
+			"EPIPE",
+			"EAI_AGAIN",
+			"UND_ERR_SOCKET",
+			"UND_ERR_CONNECT_TIMEOUT",
+			"UND_ERR_HEADERS_TIMEOUT",
+			"UND_ERR_BODY_TIMEOUT",
+		]) {
+			expect(defaultShouldRetry(fetchFailure(code)), code).toBe(true);
+		}
+		expect(defaultShouldRetry(fetchFailure("ENOTFOUND"))).toBe(false);
+		expect(
+			defaultShouldRetry(
+				Object.assign(new Error("reset"), { code: "ECONNRESET" }),
+			),
+		).toBe(true);
+
+		expect(defaultShouldRetry(new MnemocyteError("slow", "TIMEOUT"))).toBe(
+			true,
+		);
+		for (const code of ["EMBEDDING", "VALIDATION", "CONFIG", "DB"] as const) {
+			expect(defaultShouldRetry(new MnemocyteError("x", code)), code).toBe(
+				false,
+			);
+		}
+		expect(defaultShouldRetry("string error")).toBe(false);
+		expect(defaultShouldRetry(undefined)).toBe(false);
+	});
+
+	test("jitters backoff between half and all of the capped delay", () => {
+		expect(computeDelayMs(1, 500, 8000, () => 0)).toBe(250);
+		expect(computeDelayMs(1, 500, 8000, () => 1)).toBe(500);
+		expect(computeDelayMs(3, 500, 8000, () => 0.5)).toBe(1500);
+		expect(computeDelayMs(10, 500, 8000, () => 1)).toBe(8000);
+		expect(computeDelayMs(10, 500, 8000, () => 0)).toBe(4000);
+		expect(computeDelayMs(1, 0, 0, () => 1)).toBe(0);
+		for (let attempt = 1; attempt <= 6; attempt += 1) {
+			const delay = computeDelayMs(attempt, 100, 2000);
+			const cap = Math.min(2000, 100 * 2 ** (attempt - 1));
+			expect(delay).toBeGreaterThanOrEqual(cap / 2);
+			expect(delay).toBeLessThanOrEqual(cap);
+		}
+	});
+
+	test("retries twice by default and honours retryAfterMs up to its cap", async () => {
+		function failingEmbedder(errors: unknown[]) {
+			let calls = 0;
+			return {
+				get calls() {
+					return calls;
+				},
+				embedder: {
+					model: "retry-after-test",
+					dimensions: 1,
+					async embed(texts: readonly string[]) {
+						const error = errors[calls];
+						calls += 1;
+						if (error !== undefined) {
+							throw error;
+						}
+						return texts.map(() => [1]);
+					},
+				},
+			};
+		}
+		const busy = (retryAfterMs?: number) =>
+			new ProviderError({
+				message: "busy",
+				status: 503,
+				...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+			});
+
+		// Default retries: two more attempts after the first.
+		{
+			const counter = failingEmbedder([busy(), busy(), busy()]);
+			const client = createMemory({
+				embedder: counter.embedder,
+				provider: { baseDelayMs: 0 },
+			});
+			const error = await expectMnemocyteError(
+				client.add({ scope: testScope("default_retries"), content: "x" }),
+				"EMBEDDING",
+			);
+			expect(error).toBeInstanceOf(ProviderError);
+			expect(counter.calls).toBe(3);
+		}
+
+		// A server-requested wait replaces the backoff.
+		{
+			const counter = failingEmbedder([busy(30)]);
+			const client = createMemory({
+				embedder: counter.embedder,
+				provider: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
+			});
+			const started = performance.now();
+			await client.add({ scope: testScope("retry_after"), content: "x" });
+			const elapsed = performance.now() - started;
+			expect(counter.calls).toBe(2);
+			expect(elapsed).toBeGreaterThanOrEqual(25);
+			expect(elapsed).toBeLessThan(5_000);
+		}
+
+		// A wait longer than maxRetryAfterMs (default 60 s) is not retried.
+		{
+			const counter = failingEmbedder([busy(120_000)]);
+			const client = createMemory({ embedder: counter.embedder });
+			await expectMnemocyteError(
+				client.add({ scope: testScope("retry_after_cap"), content: "x" }),
+				"EMBEDDING",
+			);
+			expect(counter.calls).toBe(1);
+		}
+		{
+			const counter = failingEmbedder([busy(50)]);
+			const client = createMemory({
+				embedder: counter.embedder,
+				provider: { maxRetryAfterMs: 10 },
+			});
+			await expectMnemocyteError(
+				client.add({ scope: testScope("retry_after_low_cap"), content: "x" }),
+				"EMBEDDING",
+			);
+			expect(counter.calls).toBe(1);
+		}
+
+		// Plain errors carrying retryAfterMs count too.
+		{
+			const counter = failingEmbedder([
+				Object.assign(new Error("limited"), { status: 429, retryAfterMs: 0 }),
+			]);
+			const client = createMemory({
+				embedder: counter.embedder,
+				provider: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
+			});
+			await client.add({ scope: testScope("duck_retry_after"), content: "x" });
+			expect(counter.calls).toBe(2);
+		}
+
+		// A message mentioning 500 is not retried.
+		{
+			const counter = failingEmbedder([new Error("HTTP 500 from provider")]);
+			const client = createMemory({
+				embedder: counter.embedder,
+				provider: { baseDelayMs: 0 },
+			});
+			await expectMnemocyteError(
+				client.add({ scope: testScope("message_500"), content: "x" }),
+				"EMBEDDING",
+			);
+			expect(counter.calls).toBe(1);
+		}
 	});
 
 	test("validates provider resilience configuration at construction", async () => {
@@ -33,6 +219,8 @@ describe("resilience", () => {
 			["NaN max delay", { maxDelayMs: Number.NaN }],
 			["infinite max delay", { maxDelayMs: Number.POSITIVE_INFINITY }],
 			["negative max delay", { maxDelayMs: -1 }],
+			["NaN max Retry-After", { maxRetryAfterMs: Number.NaN }],
+			["negative max Retry-After", { maxRetryAfterMs: -1 }],
 			[
 				"non-function retry predicate",
 				{
@@ -101,7 +289,7 @@ describe("resilience", () => {
 				async embed(texts) {
 					normalizedDelayCalls += 1;
 					if (normalizedDelayCalls === 1) {
-						throw new Error("503 transient");
+						throw Object.assign(new Error("transient"), { status: 503 });
 					}
 					return texts.map(() => [1]);
 				},
@@ -150,7 +338,9 @@ describe("resilience", () => {
 						});
 					}
 					if (calls <= failures) {
-						throw new Error("503 Service Unavailable (transient)");
+						throw Object.assign(new Error("Service Unavailable"), {
+							status: 503,
+						});
 					}
 					return texts.map((text) => [text.length, 1]);
 				},
@@ -245,7 +435,7 @@ describe("resilience", () => {
 				embedder: {
 					model: "timeout-abort-test",
 					dimensions: 2,
-					async embed(_texts, options = {}) {
+					async embed(_texts, options) {
 						calls += 1;
 						return new Promise<number[][]>((_resolve, reject) => {
 							options.signal?.addEventListener(

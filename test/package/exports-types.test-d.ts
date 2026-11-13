@@ -21,6 +21,8 @@ import type {
 	ContextInput,
 	DuplicatePair,
 	Embedder,
+	EmbeddingPurpose,
+	EmbedOptions,
 	ExperimentalMemoryClient,
 	FindDuplicatesInput,
 	JsonObject,
@@ -54,15 +56,28 @@ import type {
 	TokenCounter,
 	UpdateInput,
 } from "mnemocyte";
-import { createMemory, MnemocyteError, migrate } from "mnemocyte";
 import {
+	createMemory,
+	MnemocyteError,
+	migrate,
+	ProviderError,
+	type ProviderErrorInput,
+} from "mnemocyte";
+import {
+	type OpenAICompatibleEmbedderOptions,
 	type OpenAIEmbedderOptions,
+	openaiCompatibleEmbedder,
 	openaiEmbedder,
+	type PurposeHints,
 } from "mnemocyte/embedders";
 import {
 	type OpenAIEmbedderOptions as DirectOpenAIEmbedderOptions,
 	openaiEmbedder as directOpenAIEmbedder,
 } from "mnemocyte/embedders/openai";
+import {
+	openaiCompatibleEmbedder as directOpenAICompatibleEmbedder,
+	type PurposeHint,
+} from "mnemocyte/embedders/openai-compatible";
 import {
 	type DrizzleClient,
 	type NodePostgresPool,
@@ -393,6 +408,38 @@ const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 	model: "text-embedding-3-small",
 };
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
+const passage: PurposeHint = { body: { input_type: "passage" } };
+const hints: PurposeHints = {
+	query: { prefix: "search_query: " },
+	document: passage,
+};
+const compatibleOptions: OpenAICompatibleEmbedderOptions = {
+	baseUrl: "http://localhost:11434/v1",
+	model: "nomic-embed-text",
+	dimensions: 768,
+	maxBatch: 64,
+	purposes: hints,
+};
+const compatible: Embedder = openaiCompatibleEmbedder(compatibleOptions);
+const directCompatible: Embedder =
+	directOpenAICompatibleEmbedder(compatibleOptions);
+const purpose: EmbeddingPurpose = "query";
+const embedOptions: EmbedOptions = { purpose };
+void compatible.embed(["x"], embedOptions);
+// @ts-expect-error purpose is required
+void compatible.embed(["x"], {});
+// @ts-expect-error options are required
+void compatible.embed(["x"]);
+const providerErrorInput: ProviderErrorInput = {
+	message: "busy",
+	status: 503,
+	retryAfterMs: 1000,
+	body: { error: { code: "overloaded" } },
+};
+const providerError = new ProviderError(providerErrorInput);
+const providerStatus: number = providerError.status;
+const providerRetryAfter: number | undefined = providerError.retryAfterMs;
+const providerAsMnemocyte: MnemocyteError = providerError;
 
 void client;
 void migrated;
@@ -433,6 +480,10 @@ void experimental;
 void MnemocyteError;
 void openai;
 void directOpenai;
+void directCompatible;
+void providerStatus;
+void providerRetryAfter;
+void providerAsMnemocyte;
 void batched;
 
 // A default namespace makes the scope's namespace optional; without one it

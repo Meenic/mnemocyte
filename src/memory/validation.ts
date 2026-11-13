@@ -234,6 +234,15 @@ export function assertEmbedder(embedder: Embedder): void {
 			"CONFIG",
 		);
 	}
+	if (
+		embedder.maxBatch !== undefined &&
+		(!Number.isInteger(embedder.maxBatch) || embedder.maxBatch < 1)
+	) {
+		throw new MnemocyteError(
+			"embedder.maxBatch must be a positive integer.",
+			"CONFIG",
+		);
+	}
 }
 
 function assertPositiveFiniteConfigValue(value: number, field: string): void {
@@ -320,6 +329,7 @@ export function validateProviderResilienceConfig(
 		["provider.timeoutMs", config.timeoutMs],
 		["provider.baseDelayMs", config.baseDelayMs],
 		["provider.maxDelayMs", config.maxDelayMs],
+		["provider.maxRetryAfterMs", config.maxRetryAfterMs],
 	] as const) {
 		if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
 			throw new MnemocyteError(

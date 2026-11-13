@@ -82,21 +82,20 @@ breaking change.
 
 ## Write path
 
-Size caps, chunked embedding outside any transaction and chunked inserts in
+Size caps, chunked embedding outside any transaction (chunks follow the
+embedder's `maxBatch` and pass `purpose: "document"`) and chunked inserts in
 one transaction have landed (see
 [features/postgres.md](./features/postgres.md#chunked-inserts) and
 [features/embedders.md](./features/embedders.md)). Still to come:
 
-- Embedding chunks follow the embedder's `maxBatch` and pass
-  `purpose: "document"` (`feat/embedder-purpose`); today the chunk size is a
-  fixed 100.
 - Audit events in the same transaction (or statement) as the write they
   record, when audit is on. Today they are written best-effort after the
   write commits, for every write path (`fix/audit-atomic`).
 
 ## Recall
 
-1. Embed the query as a query.
+1. Embed the query as a query (`purpose: "query"`). This has landed; see
+   [features/embedders.md](./features/embedders.md).
 2. One `searchCandidates` call returns two ranked lists: vector (k nearest)
    and lexical (full-text), each with the same scope and filters.
 3. Reciprocal rank fusion with recency and importance boosts, then `limit`.
@@ -132,21 +131,13 @@ formats and the token-budget guarantee and no longer echoes the query; see
 
 ## Embedders
 
-```ts
-interface Embedder {
-  readonly model: string;
-  readonly dimensions: number;
-  readonly maxBatch?: number;
-  embed(texts: readonly string[], options: { purpose: "query" | "document"; signal?: AbortSignal }): Promise<number[][]>;
-}
-```
-
-`purpose` maps to each provider's asymmetric mode (Voyage `input_type`,
-Cohere `input_type`, Google `taskType`); retrieval quality depends on it.
-Shipped embedders are fetch-only: `openaiCompatible` (OpenAI, Mistral, local
-servers with an OpenAI-shaped `/embeddings`), then Voyage, Cohere and Google.
-Retries add jitter and honor `Retry-After`; provider error bodies are kept as
-the `cause`.
+The contract with `purpose` and `maxBatch`, `openaiCompatibleEmbedder`,
+`ProviderError` with the provider's body as `cause`, and status-based
+retries with jitter and `Retry-After` have landed (decision 25); see
+[features/embedders.md](./features/embedders.md). Still to come: fetch-only
+Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
+(Voyage and Cohere `input_type`, Google `taskType`), and the AI SDK
+embedder below.
 
 ## AI SDK integration
 
@@ -403,3 +394,27 @@ Dated 2026-10-26 unless noted.
     own model after the response and writes into the bound scope. It stays
     off by default and makes no call unless configured, so the library
     still has no model or provider of its own.
+25. **Embedder purpose, batches and retries** (2026-11-13, landed):
+    `embed(texts, { purpose, signal })` takes a required options object with
+    `purpose: "query" | "document"`; the core passes `"document"` from
+    `add`, `addMany` and `update` and `"query"` from `search` and
+    `context`. Embedders that ignore options keep compiling; code that calls
+    `embed` directly must pass a purpose. `maxBatch` is optional and
+    defaults to 100 in the core and in both shipped embedders: it counts
+    texts, and OpenAI's 300,000-token request cap makes a larger default
+    risky for long contents. The OpenAI-shaped embedder is named
+    `openaiCompatibleEmbedder`, after `openaiEmbedder` and `aiSdkEmbedder`,
+    and `openaiEmbedder` is a thin wrapper over the same code. Query and
+    document hints differ by server (NIM `input_type`, Jina `task`, nomic
+    and E5 text prefixes; Ollama, LM Studio, vLLM and Mistral have no
+    field), so it takes per-purpose `prefix` and `body` and sends nothing
+    by default; `dimensions` is sent only with `sendDimensions`, because
+    vLLM rejects it for fixed-size models. Retries follow the OpenAI Node
+    SDK: 2 retries, 500 ms doubling to 8 s, server waits honoured up to
+    60 s (`maxRetryAfterMs`), with equal jitter (50–100% of the delay). The
+    default rule reads `status` (408, 429, 500, 502, 503, 504) and network
+    error codes along the `cause` chain, never messages; other
+    `MnemocyteError`s than `"TIMEOUT"` no longer retry. Provider errors are
+    a `ProviderError` (code `"EMBEDDING"`, `status`, `retryAfterMs`, the
+    body as `cause`) that the core passes through unwrapped; its message
+    leaves out the provider's free text, which can echo part of a key.

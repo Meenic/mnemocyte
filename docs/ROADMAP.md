@@ -136,10 +136,10 @@ it.
   break `require()`. Bundle sizes with and without the lazy load in the PR.
   README, the getting-started guide and the Postgres guide use
   `store: sql`.
-- [ ] `feat/embedder-purpose`: `purpose` and `maxBatch` on `Embedder`;
-  `openaiCompatible`; retries with jitter and `Retry-After`; replace the
-  message-substring retry heuristic (it retries any message containing
-  "500"); keep provider error bodies as the error `cause`.
+- [x] `feat/embedder-purpose`: `purpose` and `maxBatch` on `Embedder`;
+  `openaiCompatibleEmbedder`; retries with jitter and `Retry-After`;
+  replace the message-substring retry heuristic (it retries any message
+  containing "500"); keep provider error bodies as the error `cause`.
 - [ ] `feat/ai-sdk-embedder`: `mnemocyte/ai-sdk` with `ai` as optional peer.
   `aiSdkEmbedder({ model })` takes an AI SDK embedding model or a
   `"provider/model"` string, which the AI SDK resolves through its global

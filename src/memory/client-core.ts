@@ -20,6 +20,7 @@ import type {
 	AuditEvent,
 	ConsolidateResult,
 	DuplicatePair,
+	EmbeddingPurpose,
 	JsonObject,
 	Memory,
 	MemoryClient,
@@ -89,9 +90,11 @@ import {
 
 function providerOptions(
 	config: MemoryConfig,
+	purpose: EmbeddingPurpose,
 	signal: AbortSignal | undefined,
 ) {
 	return {
+		purpose,
 		...(signal === undefined ? {} : { signal }),
 		...(config.provider === undefined ? {} : { resilience: config.provider }),
 	};
@@ -449,7 +452,7 @@ export function createMemoryClient(
 				const embedding = await embedOne(
 					config.embedder,
 					memory.content,
-					providerOptions(config, signal),
+					providerOptions(config, "document", signal),
 				);
 				const stored = [
 					createStoredMemory(config, scope, memory, embedding, new Date()),
@@ -510,7 +513,7 @@ export function createMemoryClient(
 				const embeddings = await embedMany(
 					config.embedder,
 					memories.map((memory) => memory.content),
-					providerOptions(config, signal),
+					providerOptions(config, "document", signal),
 				);
 				const now = new Date();
 				const stored = memories.map((memory, index) =>
@@ -553,7 +556,7 @@ export function createMemoryClient(
 				const queryEmbedding = await embedOne(
 					config.embedder,
 					input.query,
-					providerOptions(config, input.signal),
+					providerOptions(config, "query", input.signal),
 				);
 				const candidateMultiplier =
 					config.retrieval?.candidateMultiplier ?? DEFAULT_CANDIDATE_MULTIPLIER;
@@ -731,7 +734,7 @@ export function createMemoryClient(
 						embedding = await embedOne(
 							config.embedder,
 							fields.content,
-							providerOptions(config, input.signal),
+							providerOptions(config, "document", input.signal),
 						);
 					}
 					throwIfAborted(input.signal);

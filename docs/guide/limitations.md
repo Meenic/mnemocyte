@@ -85,8 +85,13 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 
 - **Timeouts need the embedder's help.** A timeout aborts the attempt's
   signal; the request stops only if your embedder forwards that signal.
-- **Retries have no jitter and ignore `Retry-After`.** The built-in retry
-  rule also retries any error whose message contains "500". Planned:
-  `feat/embedder-purpose`.
+- **`maxBatch` counts texts, not tokens.** `addMany` sends up to
+  `maxBatch` (default 100) texts per request; long contents can pass a
+  provider's per-request token limit (OpenAI: 300,000) and fail with a 400.
+  Lower `maxBatch` when memories are long.
+- **Purpose hints are not part of the installation check.** Postgres checks
+  the embedder's `model` and `dimensions`, not its `purposes`; changing the
+  prefixes or body fields after memories are stored makes old and new
+  vectors compare poorly, without an error.
 - **The observability hook is awaited.** A slow `onEvent` slows every
   operation. Planned: `fix/observability-non-blocking`.

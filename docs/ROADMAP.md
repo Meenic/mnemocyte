@@ -178,8 +178,18 @@ it.
   fails the call instead of being swallowed.
 - [x] `feat/audit-retention`: `pruneAuditLog` (decision 32) and pruning
   guidance.
-- [ ] `chore/benchmarks`: Postgres benchmarks with
+- [x] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.
+- [ ] `fix/filtered-ef-search`: a higher `hnsw.ef_search` for filtered
+  vector search. With `max(40, limit)`, a search on an entity that is 23%
+  of the table returned 87.5% of the exact rows (10% farther on average);
+  `ef_search` 200 returned 98.7%. Measure the latency cost with
+  `pnpm bench:postgres`, then pick a default (or one scaled by `limit`) and
+  decide whether it is configurable.
+- [ ] `feat/duplicates-chunks`: `findDuplicates` over a large scope in
+  chunks (a cursor over the memories it compares, or a time budget), since
+  a 30,000-memory scope takes minutes on one statement and cannot be
+  resumed (features/maintenance.md).
 - [ ] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
   `lib/`, `src/`, `src/lib/` or `--config`) for its store and embedder.
   `migrate` asks before enabling pgvector (`--yes` for CI) and supports

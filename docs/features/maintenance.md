@@ -82,19 +82,31 @@ or transaction, like recall. Postgres picks the plan per scope:
 - For a small scope, it reads the scope's rows through the scope btree and
   keeps the nearest with a top-N sort, which is exact.
 
-`EXPLAIN (ANALYZE, BUFFERS)` on PGlite (Postgres 18, pgvector 0.8.7, WASM,
-so only the ratios carry over), 6,000 memories of 1,536 dimensions, one
-memory in ten a near-copy of another:
+`EXPLAIN (ANALYZE, BUFFERS)` on a Postgres 18.6 / pgvector 0.8.7 server
+with `pnpm bench:postgres` (the dataset and server are in
+[postgres.md](./postgres.md#indexes-measured): 132,000 memories, one memory
+in ten a near-copy of another, default settings with 128 MB of
+`shared_buffers`). "Exact" runs the same statement with index scans off:
 
-| Scope | Pairwise self-join (before) | kNN join | Pairs found |
+| Scope (of 132,000) | Plan | Time | Pairs found (exact) |
 |---|---|---|---|
-| 2,000 memories | 32.8 s, 12.0M buffer hits | 7.4 s, 2.6M buffer hits (HNSW) | 200 of 200 |
-| 100 memories | 70 ms | 152 ms (btree + top-N sort) | 10 of 10 |
+| 100 memories | scope btree + top-N sort per memory | 50 ms | 10 (10) |
+| 2,000 memories | scope btree + top-N sort per memory | 29 s, 26M buffer hits | 200 (200) |
+| 2,000 memories, scope index dropped | HNSW per memory | 52 s, 8.1M buffers read from disk | 189 (200) |
+| 30,000 memories | HNSW per memory | 149 s, 25M buffers read from disk | not measured |
+| 2,000 of 42,000 at 3,072 dimensions | scope btree + top-N sort per memory | 29 s | 200 (200) |
 
-The small scope is slower because every one of its 100 memories reads the
-scope's rows again; it stays O(n²) in the scope size, at a size where that
-is cheap. `test/contract/knn-duplicates-plan.test.ts` checks the HNSW plan
-on PGlite. Numbers on a Postgres server are part of `chore/benchmarks`.
+Below a few thousand memories the planner reads the scope's rows for every
+memory, which is exact and O(n²): at 2,000 memories that is 4 million
+distances, each over a vector read from TOAST. Forcing HNSW there was slower
+and missed pairs, so the planner's choice is right. For the large scope each
+memory gets an HNSW scan; the 1 GB index does not fit in 128 MB of
+`shared_buffers`, so most of the 149 s is reads. A server whose cache holds
+the index would be faster; on any server `findDuplicates` over a large scope
+is a background job of minutes, not a request-time call. On PGlite (WASM,
+6,000 memories) the 2,000-memory scope took the HNSW path (7.4 s), which is
+why the plan test there forces a large share of the table.
+`test/contract/knn-duplicates-plan.test.ts` checks the HNSW plan on PGlite.
 
 In-memory computes the exact `neighbors` nearest for each memory, ties by
 id, so both backends follow the same rules; HNSW recall is the only
@@ -206,29 +218,43 @@ entry stays until vacuum: a batch that starts from the beginning of the
 range walks every entry the batches before it deleted, which makes a run
 quadratic in its backlog. A row comparison that starts at `namespace` next
 to `namespace = $1` did not bound the scan either, hence the narrower row.
-`EXPLAIN (ANALYZE, BUFFERS)` on PGlite (Postgres 18 in WASM, so only the
-ratios carry over), events appended in time order over 180 days across 10
-namespaces of 100 entities, `before` 90 days ago, batches of 1,000; the
-"middle batch" is measured halfway through the run and rolled back:
+Measured with `pnpm bench:postgres` on a Postgres 18.6 server (see
+[postgres.md](./postgres.md#indexes-measured)): 1,000,000 events appended
+in time order over 180 days across 10 namespaces of 100 entities, `before`
+90 days ago, batches of 1,000. The middle batch is measured with
+`EXPLAIN (ANALYZE, BUFFERS)` in a rolled-back transaction just before it
+runs, so it sees the dead index entries of the batches before it:
 
-| Events | Selection (old events) | Restarting batches | Keyset batches |
-|---|---|---|---|
-| 1,000,000 | all namespaces (500,001) | 8.4 s; middle batch reads its first row after 7.9 ms, 13,382 buffers | 3.4 s; 0.03 ms, 7,008 buffers |
-| 1,000,000 | one namespace (49,908) | 0.41 s; 2.5 ms, 8,501 buffers | 0.37 s; 0.02 ms, 7,007 buffers |
-| 1,000,000 | one entity (542) | one batch: the same statement | one batch, 3 ms |
+| Selection (old events) | Whole run | Middle batch |
+|---|---|---|
+| all namespaces (500,000) | 7.9 s, 500 batches | 7.9 ms, 7,033 buffers |
+| one namespace (50,000) | 1.0 s, 51 batches | 5.7 ms, 7,032 buffers |
+| one entity (500) | 0.08 s, 1 batch | 2.8 ms, 3,511 buffers |
 
-`test/contract/audit-retention.test.ts`
-checks the plan on PGlite: each scope's batches read the scope index from
-the previous position, with no sort and no sequential scan.
+Every batch is one `Index Only Scan` of `mnemocyte_events_scope_time_idx`
+with `Index Searches: 1`: one descent to the previous batch's last event,
+then 1,000 entries in order, with no sort (1.5 ms). Most of a batch is the
+delete: 1,000 primary-key lookups and heap deletes (about 5 ms, 6,000 of the
+7,033 buffers). The run takes about 16 ms per batch with the round trip and
+the commit of each batch. The only sort in the plan picks the batch's last
+row out of its 1,000.
 
-**No `(timestamp)` index.** It was measured with 200,000 events (100,000
-old, all namespaces). With restarting batches it helped, 0.35 s against
-0.85 s, because it kept the dead entries in one place. With keyset batches
-the planner reads the scope index in order instead, which reads about 12%
-more buffers per batch than the time index did (6,850–7,000 against
-6,050–6,200), and the whole run took 0.64 s. The index would cost 4.5 MB
-per 200,000 events (12% of the heap) and one more btree insert on every
-audited write, for a job that runs once a day; a scheduled run that
+The restarting design was measured on PGlite only (Postgres 18 in WASM, so
+only the ratios carry over): with all namespaces selected it took 8.4 s
+against 3.4 s for keyset batches, and its middle batch read its first row
+after 7.9 ms against 0.03 ms, because it walked the dead entries of every
+earlier batch. `test/contract/audit-retention.test.ts` checks the plan on
+PGlite: each scope's batches read the scope index from the previous
+position, with no sort and no sequential scan.
+
+**No `(timestamp)` index.** On the server, with one, the planner still reads
+the scope index for keyset batches (the same plan, 6.4 ms for the middle
+batch), and the whole all-namespaces run took 8.7 s against 7.9 s without
+it, within the noise. On PGlite with 200,000 events it helped only the
+restarting design (0.35 s against 0.85 s), and keyset batches read about
+12% more buffers per batch than the time index would. The index would cost
+4.5 MB per 200,000 events (12% of the heap) and one more btree insert on
+every audited write, for a job that runs once a day; a scheduled run that
 deletes one day of events is a few batches on any of these plans.
 
 ## `stats`

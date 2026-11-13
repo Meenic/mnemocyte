@@ -76,8 +76,10 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   `findDuplicates` takes each memory's nearest neighbors from the HNSW
   index when the scope is a large part of the table, and HNSW can miss a
   neighbor. For a small scope it reads the scope's rows for every memory,
-  so its cost still grows with the square of the scope's size. The
-  in-memory backend is exact but compares every pair.
+  so its cost still grows with the square of the scope's size: on a test
+  server, a 2,000-memory scope took 29 s and a 30,000-memory scope 149 s,
+  in one statement that cannot be resumed. Run it from a background job.
+  The in-memory backend is exact but compares every pair.
 - **Audit events stay until you prune them.** Nothing expires them on its
   own; schedule `pruneAuditLog` (see
   [retention](./api.md#retention)). On Postgres it deletes in batches that

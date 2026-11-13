@@ -362,7 +362,40 @@ Vitest has three projects (`vitest.config.ts`):
   the project's `include`. Each size is seeded before timing, then
   `bench.compare` samples one `search` per iteration with tinybench and
   prints mean and percentile latencies per size. Postgres sizes run only when
-  `DATABASE_URL` is set. It is not part of CI.
+  `DATABASE_URL` is set; they apply the schema with `migrate()` (without
+  `createExtension`) and give every memory its own seeded vector. It is not
+  part of CI.
+- `pnpm bench:postgres` runs `test/benchmarks/postgres-plans.bench.ts` in the
+  `integration (bench)` project, from `src/`. It is the `EXPLAIN (ANALYZE,
+  BUFFERS)` evidence for every default index, and it **drops and recreates
+  the Mnemocyte tables**: it skips without `DATABASE_URL`, never loads
+  `.env`, and refuses to start without `MNEMOCYTE_BENCH_DISPOSABLE=1`. The
+  role must be able to create the `vector` extension (it migrates with
+  `createExtension: true`). The documented numbers come from:
+
+  ```bash
+  docker run -d --name mnemocyte-bench --shm-size=2g -e POSTGRES_PASSWORD=postgres -p 5433:5432 pgvector/pgvector:0.8.7-pg18
+  DATABASE_URL=postgres://postgres:postgres@localhost:5433/postgres MNEMOCYTE_BENCH_DISPOSABLE=1 pnpm bench:postgres
+  ```
+
+  `--shm-size` must exceed the 1 GB `maintenance_work_mem` the HNSW build
+  uses, or parallel builds fail. Three phases (`MNEMOCYTE_BENCH_PHASES`,
+  default `halfvec,vector,audit`) seed with SQL (`test/benchmarks/postgres/seed.ts`): rows of all
+  entities interleaved in time order, vectors from 256 random cluster centers
+  plus noise, one memory in ten a near-copy and one in ten superseded, and
+  the HNSW index rebuilt after the load. A recording executor captures the
+  statements the library sends (writes are stopped before they run), and
+  each is measured in a transaction that rolls back: one warm-up and
+  `MNEMOCYTE_BENCH_RUNS` (5) runs in savepoints, reporting the median. Index
+  counterfactuals drop a default index or create a rejected one inside that
+  transaction. Recall compares HNSW results with the same statement under
+  `SET LOCAL enable_indexscan = off`. Results go to
+  `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
+  (ignored by git); Vitest hides a passing test's console output. At the
+  full scale (`MNEMOCYTE_BENCH_SCALE=1`) the run fails when a plan stops
+  using the index the docs name. It takes about an hour and is not part of
+  CI. The numbers are in [features/postgres.md](./features/postgres.md#indexes-measured)
+  and [features/maintenance.md](./features/maintenance.md).
 - Benchmarking `dist/` avoids most of the export getters Vite's module runner
   adds to `src/` cross-module calls. One call between tsdown's shared chunks
   still goes through a getter, so Vitest prints a getter warning; the

@@ -31,30 +31,87 @@ Indexes:
 | `mnemocyte_memories_embedding_hnsw_idx` | HNSW `vector_cosine_ops` or `halfvec_cosine_ops` | Cosine kNN. |
 | `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages, read backwards for newest first, and `pruneAuditLog` batches, read forwards. |
 
-Tradeoffs, measured with `EXPLAIN (ANALYZE, BUFFERS)` on Postgres 18.6 /
-pgvector 0.8.1 with 130,000 memories (1,000 entities of about 100, one of
-30,000), 13,000 superseded rows and 130,000 audit events; the numbers are in
-the PR that added `0003`:
+The `ORDER BY` of audit pages and `pruneAuditLog` batches names the table
+columns, because the select list's `id::text AS id` would otherwise shadow
+`id` and force a sort on the text.
 
-- `superseded_by` index: deleting one memory goes from about 32 ms to
-  0.3 ms, because the foreign-key check on each deleted row becomes an index
-  lookup instead of a table scan. Without it, pruning 3,000 rows would run
-  3,000 such scans. It costs one more btree entry per superseded row only.
-- `content_tsv` + GIN: keyword search on the 30,000-memory entity takes
-  5 ms, against 7.5 ms without the GIN and 209 ms when `to_tsvector` runs
-  per row as before. The stored column is most of the gain; the GIN cuts
-  buffer reads from about 3,000 to 880 for large entities. On a 100-memory
-  entity the planner uses the scope index alone (0.2 ms).
-- No `(namespace, entity_id, kind)` index: with one, a `kinds` filter saves
-  under 1 ms (0.26 → 0.19 ms per entity, 4.6 → 3.9 ms on the large one), and
-  the HNSW path does not use it at all. Not worth another index on every
-  write.
-- Audit pages scan `mnemocyte_events_scope_time_idx` backwards with no sort
-  (0.08 ms on the large entity). `pruneAuditLog` walks it forwards in
-  keyset batches; a separate `(timestamp)` index was measured and left out
-  (see [maintenance.md](./maintenance.md#retention)). The `ORDER BY` names the table columns,
-  because the select list's `id::text AS id` would otherwise shadow `id` and
-  force a sort on the text.
+### Indexes measured
+
+`pnpm bench:postgres` (see [DEVELOPMENT.md](../DEVELOPMENT.md#testing))
+measures every default index with `EXPLAIN (ANALYZE, BUFFERS)`, with the
+index and without it (dropped inside a transaction that rolls back), on the
+statements the library sends. Numbers from 2026-11-13: Postgres 18.6 and
+pgvector 0.8.7 in Docker (`pgvector/pgvector:0.8.7-pg18`, default settings:
+`shared_buffers` 128 MB, `work_mem` 4 MB, JIT on), on a Windows laptop
+(WSL 2). Times are the median of five warm runs; run-to-run noise is about
+±25% for the slower cases, so only differences well beyond that count.
+
+The main dataset is 132,000 memories at 1,536 dimensions (`vector`) in one
+namespace: one entity of 30,000 ("large"), one of 2,000 ("mid") and 1,000 of
+100 ("small"), written over a year with all entities interleaved in the
+heap, 13,200 superseded and 132,000 audit events. Embeddings are 256 random
+cluster centers plus noise, and one memory in ten is a near-copy of another.
+The table is 1.09 GB (vectors are stored in TOAST), the HNSW index 1.01 GB,
+the GIN 9.1 MB, the scope index 968 kB.
+
+| Index | Query | With | Without |
+|---|---|---|---|
+| HNSW | vector search, large entity | 2–11 ms, 1,200–6,400 buffers (two query vectors) | 322 ms, 111,000 buffers (reads and sorts the entity) |
+| scope | vector search, small entity | 1.5 ms, 440 buffers | 65 ms, 9,600 buffers (table scan) |
+| GIN | keyword search, large entity | 8.0 ms, 1,900 buffers | 24 ms, 8,900 buffers |
+| `superseded_by` | delete one memory | 0.4 ms | 80 ms (30 ms of it the foreign-key check, the rest the dependents check) |
+| `superseded_by` | prune 3,000 superseded memories of the large entity | 159 ms | 96 s (3,000 foreign-key checks, each a table scan) |
+| events scope | audit page, large entity | 0.08 ms | 31 ms (table scan and sort) |
+| primary key | `get` by id | 0.05 ms, 4 buffers | (needed by the foreign key) |
+| scope + key | keyed `add` | 2.6 ms, the `ON CONFLICT` arbiter | (needed for correctness) |
+
+What each index costs a write, measured on one 250-row `addMany` chunk
+inserted into the large entity:
+
+| Indexes present | Time |
+|---|---|
+| All (default) | 268 ms |
+| All but HNSW | 22 ms |
+| Only the primary key and the scope + key index | 13 ms |
+
+HNSW is about 1 ms per inserted memory at this size: each insert searches
+the graph for the new vector's neighbors. Dropping the GIN, the scope index
+or the `superseded_by` index alone changes the chunk by less than the noise
+(219–283 ms). The other indexes together cost about 9 ms per 250 rows.
+
+How the planner uses them:
+
+- A small entity's vector search reads its 100 rows through the scope index
+  and sorts them, which is exact (1.5 ms); a mid entity's 2,000 rows take
+  23 ms the same way. The large entity's search uses HNSW (see
+  [filtered vector search](#filtered-vector-search) for recall).
+- A small entity's keyword search for a common word combines the scope
+  index with the GIN (`BitmapAnd`), whose bitmap covers every row in the
+  table with the word: 1.2 ms, against 0.3 ms with the scope index alone.
+  The planner's choice; the loss is under a millisecond.
+- `prune` of a large entity hashes the candidates and scans the table
+  twice, once for dependents outside the selection and once for the delete
+  (159 ms for 3,000 rows); the foreign-key checks still use the
+  `superseded_by` index.
+- `content_tsv` as a stored column was most of the gain over 0.x, which ran
+  `to_tsvector` per row: 209 ms for the large entity's keyword search when
+  `0003` was measured.
+
+No `(namespace, entity_id, kind)` index. With one, keyword search with a
+`kinds` filter takes 0.12 ms instead of 1.2 ms on a small entity and 1.9 ms
+instead of 6.4 ms on the large one; the HNSW path does not use it, and its
+write cost is lost in HNSW's. The saving is a few milliseconds on one kind of
+query, so it stays out until an application shows a `kinds`-heavy workload.
+
+Audit pages read `mnemocyte_events_scope_time_idx` backwards with no sort
+(0.08–0.17 ms). `pruneAuditLog` reads it forwards in keyset batches; a
+separate `(timestamp)` index was measured and left out (see
+[maintenance.md](./maintenance.md#retention)).
+
+At 3,072 dimensions (`halfvec`, 42,000 memories: the large and mid entities
+and 100 small ones) the HNSW index is 328 MB next to a 355 MB table and
+builds in 23 s; a large-entity search takes 2.6 ms against 303 ms without
+it, and a small entity's 1.4 ms through the scope index.
 
 `kind` and `importance` are plain `text` with no `CHECK` constraint; the
 library validates them before writing.
@@ -332,6 +389,17 @@ LIMIT $n;
   at search's small limits.
 - `ef_search` is `max(40, limit)`, capped at pgvector's maximum of 1,000, so
   one HNSW pass can fill the request.
+- Recall depends on how much of the table the filters keep. Measured with
+  `pnpm bench:postgres` (see [indexes measured](#indexes-measured)): a
+  `search` with `limit: 10` (30 vector rows, `ef_search` 40) on the large
+  entity, against the same statement with index scans off, over 20 queries.
+  At 1,536 dimensions, where the entity is 23% of the table, it returned
+  87.5% of the exact rows (72.3% in a first run), and the rows it returned
+  were 10% farther on average; with `ef_search` 200 it returned 98.7%, 0.02%
+  farther. At 3,072 dimensions, where the entity is 71% of the table, it
+  returned 99.8% at `ef_search` 40. A `kinds` filter that keeps a tenth of
+  the entity made the scan visit far more tuples: 102 ms and 22,700 buffers,
+  most of them read from disk, against 11 ms without it.
 - The distance is computed once per row. `ORDER BY` names the selected
   column, and the planner still matches it to the index's ordering operator
   (pgvector needs `ORDER BY` to be a bare distance operator, ascending). The

@@ -580,7 +580,13 @@ Dated 2026-10-26 unless noted.
     Postgres; an exact mode was left out, since a later run after
     consolidating finds what one missed. The index plan was measured on
     PGlite (see features/maintenance.md); server numbers come with
-    `chore/benchmarks`.
+    `chore/benchmarks`. (2026-11-13) On a Postgres 18.6 server the planner
+    takes the HNSW path only for large scopes: a 2,000-memory scope of
+    132,000 reads its rows once per memory (exact, 29 s), and forcing HNSW
+    there was slower (52 s) and found 189 of 200 pairs; a 30,000-memory
+    scope takes 149 s through HNSW with an index larger than the cache. The
+    design stands, but `findDuplicates` over a large scope is a background
+    job of minutes.
 31. **Non-blocking observability** (2026-11-13, landed): `onEvent` is called
     synchronously and never awaited, so a slow async hook cannot delay or
     fail a call. Failures (a throw, or a rejection caught on the returned
@@ -617,4 +623,8 @@ Dated 2026-10-26 unless noted.
     within about 12% of its buffers per batch, and it would cost 4.5 MB
     per 200,000 events and an insert on every audited write (see
     features/maintenance.md). The prune records no audit event, like
-    `deleteScope`; observability reports its count.
+    `deleteScope`; observability reports its count. (2026-11-13) Confirmed
+    on a Postgres 18.6 server with 1,000,000 events: every batch is one
+    index descent and 1,000 entries in order (7.9 s for 500,000 events
+    across namespaces), and with a `(timestamp)` index the planner keeps
+    the same plan (8.7 s), so it stays out.

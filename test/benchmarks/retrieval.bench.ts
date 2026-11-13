@@ -1,6 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { createMemory, type MemoryClient, type NewMemory } from "mnemocyte";
+import {
+	createMemory,
+	type MemoryClient,
+	migrate,
+	type NewMemory,
+} from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
@@ -35,9 +38,11 @@ function createEntityId(backend: string, memoryCount: number) {
 	return `retrieval_bench_${backend}_${memoryCount}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+// Contents are distinct so the Postgres embedder gives every memory its own
+// vector; many equal vectors can leave parts of an HNSW graph unreachable.
 function createInputs(count: number): NewMemory[] {
 	return Array.from({ length: count }, (_, index) => ({
-		content: cycle(contents, index),
+		content: `${cycle(contents, index)} (${index})`,
 		kind: index % 2 === 0 ? "preference" : "fact",
 		importance: index % 5 === 0 ? "high" : "normal",
 		confidence: 0.8 + (index % 3) * 0.05,
@@ -45,11 +50,15 @@ function createInputs(count: number): NewMemory[] {
 }
 
 // Seeding happens before any bench is registered, so only search is timed.
+// `addMany` takes at most 1,000 memories per call.
 async function seed({ client, entityId, memoryCount }: SeededClient) {
-	await client.addMany({
-		scope: testScope(entityId),
-		memories: createInputs(memoryCount),
-	});
+	const inputs = createInputs(memoryCount);
+	for (let start = 0; start < inputs.length; start += 1000) {
+		await client.addMany({
+			scope: testScope(entityId),
+			memories: inputs.slice(start, start + 1000),
+		});
+	}
 	const results = await client.search({
 		scope: testScope(entityId),
 		query: cycle(queries, 0),
@@ -70,55 +79,29 @@ function searchTask({ client, entityId }: SeededClient) {
 	};
 }
 
-function createPostgresEmbedding(seed: string) {
-	const values = Array.from({ length: 1536 }, () => 0);
-	for (const char of seed.toLowerCase()) {
-		const index = char.charCodeAt(0) % values.length;
-		values[index] = (values[index] ?? 0) + 1;
+/** A seeded pseudo-random vector per text (FNV-1a, then mulberry32). */
+function createPostgresEmbedding(text: string) {
+	let state = 2166136261;
+	for (const char of text) {
+		state = Math.imul(state ^ (char.codePointAt(0) ?? 0), 16777619);
 	}
-	return values;
+	return Array.from({ length: 1536 }, () => {
+		state = (state + 0x6d2b79f5) | 0;
+		let t = Math.imul(state ^ (state >>> 15), 1 | state);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296 - 0.5;
+	});
 }
 
+// The model name of the Postgres plan benchmark, so both can share a
+// disposable database.
 const postgresEmbedder = {
-	model: "retrieval-bench-postgres",
+	model: "mnemocyte-bench",
 	dimensions: 1536,
 	async embed(texts: readonly string[]) {
 		return texts.map(createPostgresEmbedding);
 	},
 };
-
-async function applyMigration(
-	sql: ReturnType<typeof postgres>,
-	filename: string,
-) {
-	const migration = await readFile(resolve("migrations", filename), "utf8");
-	try {
-		await sql.unsafe(migration);
-	} catch (error) {
-		if (
-			!(
-				error &&
-				typeof error === "object" &&
-				"code" in error &&
-				(error.code === "42P07" || error.code === "42701")
-			)
-		) {
-			throw error;
-		}
-	}
-}
-
-async function ensureMigrations(sql: ReturnType<typeof postgres>) {
-	await applyMigration(sql, "0000_initial.sql");
-	await applyMigration(sql, "0001_add_mnemocyte_meta.sql");
-	await applyMigration(sql, "0002_add_embedding_model.sql");
-	await applyMigration(sql, "0003_schema_v2.sql");
-	await sql`
-		INSERT INTO mnemocyte_meta (key, embedding_dimensions)
-		VALUES ('installation', 1536)
-		ON CONFLICT (key) DO NOTHING
-	`;
-}
 
 async function deleteEntity(
 	sql: ReturnType<typeof postgres>,
@@ -171,7 +154,7 @@ describe("retrieval benchmarks", () => {
 			const storeSql = postgres(url, { max: 5 });
 			const seeded: SeededClient[] = [];
 			try {
-				await ensureMigrations(sql);
+				await migrate({ store: sql, dimensions: 1536 });
 				for (const memoryCount of POSTGRES_SIZES) {
 					const entry = {
 						client: createMemory({

@@ -117,6 +117,11 @@ export interface StoreUpdateInput {
 	readonly id: string;
 	readonly patch: StoreMemoryPatch;
 	readonly now: Date;
+	/**
+	 * Records `memory.updated` in the same write, listing these fields, when
+	 * set.
+	 */
+	readonly audit?: { readonly fields: readonly string[] };
 }
 
 export interface StoreDuplicateInput {
@@ -137,16 +142,6 @@ export interface StoreDuplicatePair {
 	similarity: number;
 }
 
-export interface StorePruneEntityDeletion {
-	namespace: string;
-	entityId: string;
-	deletedCount: number;
-}
-
-export interface StorePruneResult extends PruneResult {
-	deletedByEntity: readonly StorePruneEntityDeletion[];
-}
-
 export interface StoreAuditLogInput {
 	readonly selector: StoreEntitySelector;
 	readonly limit: number;
@@ -160,8 +155,10 @@ export interface StoreDeleteInput {
 	readonly visibility: StoreVisibility;
 	readonly memoryId: string;
 	readonly dependents: DependentsPolicy;
-	/** `updatedAt` of restored dependents. */
+	/** `updatedAt` of restored dependents and the audit events' timestamp. */
 	readonly now: Date;
+	/** Records one `memory.deleted` per deleted memory in the same write. */
+	readonly audit: boolean;
 }
 
 export interface StoreDeleteResult {
@@ -192,6 +189,21 @@ export interface StoreConsolidateResult {
 
 export interface StoreOperationOptions {
 	signal?: AbortSignal;
+}
+
+export interface StoreInsertOptions extends StoreOperationOptions {
+	/**
+	 * Records `memory.created` or `memory.updated` per row in the same write,
+	 * timestamped with the row's `updatedAt`.
+	 */
+	audit?: boolean;
+}
+
+export interface StorePruneInput extends ValidatedPruneFilter {
+	/** Expiry reference and the audit events' timestamp. */
+	readonly now: Date;
+	/** Records one `memory.pruned` per affected entity in the same write. */
+	readonly audit: boolean;
 }
 
 export interface StoreMigrateInput {
@@ -281,11 +293,12 @@ export interface MemoryStore {
 	 * key for keyed rows.
 	 *
 	 * All or nothing: when any row fails, none is written. A backend may
-	 * split the rows into several statements, but they commit together.
+	 * split the rows into several statements, but they commit together, and
+	 * so do their audit events.
 	 */
 	insertMemories(
 		memories: readonly StoredMemory[],
-		options?: StoreOperationOptions,
+		options?: StoreInsertOptions,
 	): Promise<Memory[]>;
 	/**
 	 * Up to `input.limit` candidates that pass the filter and
@@ -335,7 +348,8 @@ export interface MemoryStore {
 	 * Applies the patch to the visible memory with this id in one atomic write
 	 * and returns it, or `null` when no such memory exists. Sets `updatedAt`.
 	 * Rejects with `"CONFLICT"` when the new key is already used in the
-	 * memory's scope.
+	 * memory's scope. The audit event, when requested, is written in the
+	 * same atomic write.
 	 */
 	updateMemory(input: StoreUpdateInput): Promise<Memory | null>;
 	/**
@@ -346,7 +360,8 @@ export interface MemoryStore {
 	 * `supersededBy` and `supersededAt`; `"delete"` deletes them and,
 	 * transitively, their own dependents. With `"restore"` a direct
 	 * dependent, and with `"delete"` any deleted one, that is not visible
-	 * throws `"CONFLICT"`. Nothing changes on a conflict.
+	 * throws `"CONFLICT"`. Nothing changes on a conflict. Audit events, when
+	 * requested, are written atomically with the delete.
 	 */
 	deleteMemory(
 		input: StoreDeleteInput,
@@ -362,10 +377,14 @@ export interface MemoryStore {
 		selector: StoreEntitySelector,
 		options?: StoreOperationOptions,
 	): Promise<number>;
+	/**
+	 * Deletes the matching memories, or counts them on a dry run. Audit
+	 * events, when requested, are written atomically with the delete.
+	 */
 	prune(
-		input: ValidatedPruneFilter,
+		input: StorePruneInput,
 		options?: StoreOperationOptions,
-	): Promise<StorePruneResult>;
+	): Promise<PruneResult>;
 	/**
 	 * Unordered pairs of visible memories meeting the similarity threshold
 	 * where one is among the other's `neighbors` nearest (approximate on an
@@ -378,11 +397,6 @@ export interface MemoryStore {
 		options?: StoreOperationOptions,
 	): Promise<StoreDuplicatePair[]>;
 
-	/**
-	 * Persists copies of audit events. Best-effort at the caller; a rejection
-	 * may leave part of the batch written.
-	 */
-	addAuditEvents(events: readonly AuditEvent[]): Promise<void>;
 	/**
 	 * Selected events in strict descending `(timestamp, id)` order, up to the
 	 * limit. `before` / `after` are strict timestamp filters; the cursors are

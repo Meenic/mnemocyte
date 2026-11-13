@@ -86,11 +86,9 @@ Size caps, chunked embedding outside any transaction (chunks follow the
 embedder's `maxBatch` and pass `purpose: "document"`) and chunked inserts in
 one transaction have landed (see
 [features/postgres.md](./features/postgres.md#chunked-inserts) and
-[features/embedders.md](./features/embedders.md)). Still to come:
-
-- Audit events in the same transaction (or statement) as the write they
-  record, when audit is on. Today they are written best-effort after the
-  write commits, for every write path (`fix/audit-atomic`).
+[features/embedders.md](./features/embedders.md)), and so have audit events
+written in the same statement as the write they record (see
+[features/maintenance.md](./features/maintenance.md#audit-log)).
 
 ## Recall
 
@@ -287,7 +285,16 @@ Dated 2026-10-26 unless noted.
     pipelining inside `sql.begin` (`BEGIN`, the statements, `COMMIT`).
     Inside a transaction it keeps the savepoint, because a failed
     `sql.batch` there aborts the outer transaction; 3.x and 4.0 keep
-    `sql.begin`.
+    `sql.begin`. (2026-11-13, landed) Audit events join their write's
+    statement as a data-modifying `WITH` step that reads the write's
+    `RETURNING`, on every write path, instead of a second statement or a
+    transaction: what an event says (created or updated, which ids a delete
+    removed or restored, per-entity prune counts) is only known from the
+    write, and a `batch` cannot pass one statement's result to the next.
+    `addMany` puts each chunk's events in that chunk's statement, so they
+    commit with the chunks. A failed audit insert fails the call on both
+    backends; the in-memory store adds its events in the same synchronous
+    step as the change.
 
 17. **`agentId`** (2026-10-27): a nullable column next to `entityId`, added
     in the first scope migration (`0003`). `entityId` is who a memory is
@@ -301,6 +308,10 @@ Dated 2026-10-26 unless noted.
     has `uuidv7()` only from 18. Time-ordered ids keep primary-key inserts
     at the right edge of the btree; UUIDv4 would scatter them. Old text ids
     convert with `md5(id)::uuid` so applications can map stored ids.
+    (2026-11-13) Audit events of a `delete` or `prune` are the exception:
+    the statement does not know how many it writes, so it builds UUIDv7s
+    in SQL from the event time and `gen_random_uuid()` (`sqlUuidV7` in
+    `src/db/sql.ts`). Every other id is still generated in JavaScript.
 19. **No `close()`** (2026-10-27): the client created by `createMemory` has
     no `close()`. Since `SqlExecutor` the caller owns the database client and
     Mnemocyte holds no connections or timers, so on Postgres `close()` closes

@@ -1,7 +1,7 @@
 import { assertSqlExecutor } from "../db/atomic.js";
 import { postgresConstraintName, postgresErrorCode } from "../db/errors.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
-import { insertEvents, listEvents } from "../db/queries/events.js";
+import { listEvents } from "../db/queries/events.js";
 import {
 	consolidateMemories,
 	countPruneMatches,
@@ -39,7 +39,6 @@ import type { Embedder, ImportanceLevel, MemoryConfig } from "../types.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
 import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
-import { cloneJsonObject } from "./json.js";
 import { rowToAuditEvent, rowToMemory } from "./postgres-records.js";
 import { createEventId, isUuid, type StoredMemory } from "./records.js";
 import {
@@ -389,6 +388,9 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					memories.map(toMemoryRow),
 					await getVectorType(),
 					options?.signal,
+					options?.audit === true
+						? memories.map(() => createEventId())
+						: undefined,
 				);
 				return rows.map(rowToMemory);
 			});
@@ -482,6 +484,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					vectorType:
 						patch.embedding === undefined ? "vector" : await getVectorType(),
 					...patch,
+					...(input.audit === undefined
+						? {}
+						: {
+								audit: {
+									eventId: createEventId(),
+									fields: input.audit.fields,
+								},
+							}),
 				});
 				return row ? rowToMemory(row) : null;
 			} catch (error) {
@@ -549,10 +559,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 						),
 						deletedCount: 0,
 						dryRun: true,
-						deletedByEntity: [],
 					};
 				}
-				const result = await pruneMemories(client, filter, options?.signal);
+				const result = await pruneMemories(
+					client,
+					filter,
+					input.audit ? { now: input.now } : undefined,
+					options?.signal,
+				);
 				if (result.hasDependents) {
 					throw memoryHasDependentsError();
 				}
@@ -560,7 +574,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					matchedCount: result.matchedCount,
 					deletedCount: result.deletedCount,
 					dryRun: false,
-					deletedByEntity: result.deletedByEntity,
 				};
 			});
 		},
@@ -578,20 +591,6 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 							b: rowToMemory(row.b),
 							similarity: Math.max(0, Math.min(1, row.similarity)),
 						}) satisfies StoreDuplicatePair,
-				);
-			});
-		},
-		async addAuditEvents(events) {
-			return runPostgresOperation(async () => {
-				await insertEvents(
-					client,
-					events.map((event) => ({
-						id: event.id,
-						scope: event.scope,
-						description: event.description,
-						metadata: cloneJsonObject(event.metadata),
-						timestamp: event.timestamp,
-					})),
 				);
 			});
 		},

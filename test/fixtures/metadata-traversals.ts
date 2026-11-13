@@ -71,7 +71,9 @@ export async function verifyMetadataTraversalCounts(
 		singleLog = await client.listAuditLog({ scope: testScope(singleEntity) });
 	});
 	expect(single.probes.get("single")).toBe(2);
-	expect(single.audit).toBe(2);
+	// Audit metadata is built by the store with the write, so it is only
+	// cloned on the way out of listAuditLog.
+	expect(single.audit).toBe(1);
 	if (!singleMemory || !singleLog) {
 		throw new Error("Expected single traversal results.");
 	}
@@ -114,7 +116,7 @@ export async function verifyMetadataTraversalCounts(
 	});
 	expect(batch.probes.get("batch-one")).toBe(2);
 	expect(batch.probes.get("batch-two")).toBe(2);
-	expect(batch.audit).toBe(4);
+	expect(batch.audit).toBe(2);
 	expect(batchMemories?.map((memory) => memory.metadata[PROBE_KEY])).toEqual([
 		"batch-one",
 		"batch-two",

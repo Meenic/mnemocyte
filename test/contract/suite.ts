@@ -10,6 +10,10 @@ import { type PostgresClient, postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
+import {
+	verifyAuditFailureRollsBack,
+	verifyAuditPayloads,
+} from "../fixtures/atomic-audit.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
@@ -381,6 +385,51 @@ export function describeStoreContract(
 				entityId,
 				...extra,
 			}));
+		});
+
+		test("audit payloads match the in-memory backend", async () => {
+			const { memory, namespace } = client("audit", { audit: true });
+			await verifyAuditPayloads(memory, (entityId, extra = {}) => ({
+				namespace,
+				entityId,
+				...extra,
+			}));
+		});
+
+		test("a failed audit write rolls back every write path", async () => {
+			const { memory, namespace } = client("auditfail", { audit: true });
+			// Fails only this namespace's audit inserts, so other suites
+			// sharing the database are not affected. The namespace is
+			// generated from [a-z0-9_], so it is a safe identifier.
+			const name = `fail_${namespace}`;
+			await verifyAuditFailureRollsBack(
+				memory,
+				(entityId, extra = {}) => ({ namespace, entityId, ...extra }),
+				async (failing) => {
+					if (failing) {
+						await db().query(
+							`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$
+							BEGIN
+								RAISE EXCEPTION 'audit write refused';
+							END
+							$$`,
+							[],
+						);
+						await db().query(
+							`CREATE TRIGGER ${name} BEFORE INSERT ON mnemocyte_events
+							FOR EACH ROW WHEN (NEW.namespace = '${namespace}')
+							EXECUTE FUNCTION ${name}()`,
+							[],
+						);
+						return;
+					}
+					await db().query(
+						`DROP TRIGGER IF EXISTS ${name} ON mnemocyte_events`,
+						[],
+					);
+					await db().query(`DROP FUNCTION IF EXISTS ${name}()`, []);
+				},
+			);
 		});
 
 		describe("cross-scope isolation", () => {

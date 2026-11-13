@@ -104,6 +104,7 @@ describe("Postgres single-statement writes", () => {
 				memoryId: "mem_legacy",
 				dependents: "reject",
 				now: new Date(),
+				audit: false,
 			}),
 		).toBeNull();
 

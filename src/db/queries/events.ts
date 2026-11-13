@@ -1,7 +1,6 @@
-import type { StoreEntitySelector, StoreScope } from "../../memory/store.js";
+import type { StoreEntitySelector } from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
-import type { AuditLogCursor, JsonObject } from "../../types.js";
-import { chunk, INSERT_CHUNK_ROWS, runAtomically } from "../atomic.js";
+import type { AuditLogCursor } from "../../types.js";
 import {
 	EVENT_COLUMNS,
 	type EventRow,
@@ -18,51 +17,6 @@ export interface EventFilter {
 	after?: Date;
 	beforeCursor?: AuditLogCursor;
 	afterCursor?: AuditLogCursor;
-}
-
-export interface NewEventRow {
-	id: string;
-	scope: StoreScope;
-	description: string;
-	metadata: JsonObject;
-	timestamp: Date;
-}
-
-/**
- * Insert audit events with one multi-row `INSERT` per
- * {@link INSERT_CHUNK_ROWS} events, all or nothing.
- */
-export async function insertEvents(
-	db: SqlExecutor,
-	rows: readonly NewEventRow[],
-): Promise<void> {
-	if (rows.length === 0) {
-		return;
-	}
-	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part) => {
-		const params = createSqlParams();
-		const tuples = part.map(
-			(row) => `(
-				${params.uuid(row.id)},
-				${params.add(row.scope.namespace)},
-				${params.add(row.scope.entityId)},
-				${params.add(row.scope.agentId)}::text,
-				${params.add(row.scope.sessionId)}::text,
-				${params.add(row.description)},
-				${params.json(row.metadata)},
-				${params.timestamp(row.timestamp)}
-			)`,
-		);
-		return {
-			sql: `INSERT INTO mnemocyte_events (
-				id, namespace, entity_id, agent_id, session_id, description, metadata,
-				timestamp
-			)
-			VALUES ${tuples.join(",\n")}`,
-			params: params.values,
-		};
-	});
-	await runAtomically(db, statements);
 }
 
 export async function listEvents(

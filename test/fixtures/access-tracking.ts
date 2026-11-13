@@ -197,6 +197,7 @@ export async function verifyAccessTrackingSkipsDeletedRows(
 					memoryId: gone,
 					dependents: "reject",
 					now: new Date(),
+					audit: false,
 				});
 			}
 			return store.markMemoriesAccessed(visibility, memoryIds);

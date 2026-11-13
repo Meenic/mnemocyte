@@ -43,6 +43,13 @@ behavioural changes documented in their entries.
 - **`forgetMemory` forgets merged duplicates.** The AI SDK tool deletes
   with `dependents: "delete"`, so the model can forget a memory that
   duplicates were consolidated into instead of getting `"CONFLICT"`.
+- **Audit events are written with their change.** With audit enabled,
+  `add`, `addMany`, `update`, `delete` and `prune` write their events in
+  the same statement as the change, as `consolidate` already did. A failed
+  audit write now fails the call (`"DB"` on Postgres) and changes nothing;
+  before, it was ignored and the change kept. Event timestamps are the
+  write's own time, which for `add`, `addMany` and `update` equals the
+  memory's `updatedAt`.
 - **`delete` audit events.** Each memory a `delete` removes gets its own
   `memory.deleted` event; dependents carry `deletedWith`, and the
   survivor's event lists `restoredIds` after a restore.

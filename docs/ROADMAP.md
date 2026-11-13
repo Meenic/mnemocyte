@@ -172,10 +172,10 @@ it.
   deletes; kNN-based `findDuplicates`.
 - [x] `fix/observability-non-blocking`: hooks no longer awaited; failures go
   to an optional `observability.onError`.
-- [ ] `fix/audit-atomic`: audit events in the same statement or transaction
+- [x] `fix/audit-atomic`: audit events in the same statement or transaction
   as the write they record, for every write path (`add`, `addMany`,
-  `update`, `delete`, `prune`, `consolidate`); today they are written
-  best-effort after the write and a failed audit write is swallowed.
+  `update`, `delete`, `prune`, `consolidate`), so a failed audit write
+  fails the call instead of being swallowed.
 - [ ] `feat/audit-retention`: retention option and pruning guidance.
 - [ ] `chore/benchmarks`: Postgres benchmarks with
   `EXPLAIN (ANALYZE, BUFFERS)` evidence for every default index.

@@ -136,9 +136,35 @@ With `audit: { enabled: true }`, Mnemocyte records `memory.created`,
 scope it belongs to. `delete` records one `memory.deleted` per deleted
 memory: `{ memoryId }` for the one asked for, with `restoredIds` when
 `dependents: "restore"` restored any, and `{ memoryId, deletedWith }` for
-each dependent deleted with it. Writes are best-effort: a failed audit insert does not
-fail the operation, except consolidation, where the same statement writes the
-events.
+each dependent deleted with it.
+
+Events are written atomically with the write they record, for every write
+path: a failed audit write fails the call (`"DB"` on Postgres) and leaves
+no memory changed and no event written. Each event's timestamp is the
+write's own time, which for `add`, `addMany` and `update` equals the
+memory's `updatedAt`.
+
+- **Postgres.** Each write is one statement whose `WITH` adds an `audit`
+  step: an `INSERT INTO mnemocyte_events … SELECT` over the write's
+  `RETURNING` (`written`, `updated`, `deleted`, `restored`, `superseded`).
+  Steps of one `WITH` share a snapshot and always run to completion, and
+  `RETURNING` is how one passes rows to another, so the events describe
+  exactly the rows written. A keyed `add` is `memory.created` when the
+  returned id is the one generated for the row and `memory.updated` when
+  the upsert kept an existing memory's id (Postgres 17 has no
+  `RETURNING OLD`). `addMany` writes each chunk's events in that chunk's
+  statement, and the chunks commit together. With audit off the
+  statements have no `audit` step. See
+  [postgres.md](./postgres.md#ids) for event ids.
+- **In-memory.** The store builds every event (`src/memory/audit.ts`)
+  after its checks and adds them in the same synchronous step as the
+  change, with no `await` in between.
+
+The payload builders in `src/memory/audit.ts` and the SQL in
+`src/db/queries/memories.ts` must agree; the `atomic-audit` fixture runs
+every path on both backends and compares the events, and the Postgres
+contract makes audit inserts fail with a trigger to check that every path
+rolls back.
 
 `listAuditLog({ scope, limit = 50 })` selects events like a bulk operation
 (an omitted agent or session matches any) and returns them newest first by

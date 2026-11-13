@@ -1,3 +1,4 @@
+import { MnemocyteError } from "../../errors.js";
 import type {
 	StoreListPosition,
 	StoreScope,
@@ -21,7 +22,7 @@ import {
 	toMemoryRow,
 	type VectorType,
 } from "../rows.js";
-import { createSqlParams, type SqlParams } from "../sql.js";
+import { createSqlParams, type SqlParams, sqlUuidV7 } from "../sql.js";
 import { formatVector } from "../vector.js";
 
 export interface MemoryFilter {
@@ -56,11 +57,6 @@ export interface GuardedDeleteResult {
 	matchedCount: number;
 	deletedCount: number;
 	hasDependents: boolean;
-	deletedByEntity: Array<{
-		namespace: string;
-		entityId: string;
-		deletedCount: number;
-	}>;
 }
 
 export interface GlobalMemoryStatsCounts extends MemoryStatsCounts {
@@ -96,6 +92,10 @@ export interface NewMemoryRow {
 }
 
 const MEMORY_COLUMNS = selectMemoryColumns();
+
+/** The columns an audit `INSERT INTO mnemocyte_events` names, in order. */
+const EVENT_INSERT_COLUMNS =
+	"id, namespace, entity_id, agent_id, session_id, description, metadata, timestamp";
 
 function nullableTimestamp(params: SqlParams, value: Date | null): string {
 	return value === null
@@ -265,12 +265,23 @@ export async function insertMemories(
 	rows: readonly NewMemoryRow[],
 	vectorType: VectorType,
 	signal?: AbortSignal,
+	auditEventIds?: readonly string[],
 ): Promise<MemoryRow[]> {
 	if (rows.length === 0) {
 		return [];
 	}
-	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part) =>
-		insertMemoriesStatement(part, vectorType),
+	if (auditEventIds !== undefined && auditEventIds.length !== rows.length) {
+		throw new MnemocyteError(
+			"insertMemories needs one audit event id per row.",
+			"DB",
+		);
+	}
+	const eventIdChunks =
+		auditEventIds === undefined
+			? undefined
+			: chunk(auditEventIds, INSERT_CHUNK_ROWS);
+	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part, index) =>
+		insertMemoriesStatement(part, vectorType, eventIdChunks?.[index]),
 	);
 	const results = await runAtomically(
 		db,
@@ -281,9 +292,17 @@ export async function insertMemories(
 	return results.flat().map((row) => toMemoryRow(row as RawMemoryRow));
 }
 
+/**
+ * One chunk's `INSERT … ON CONFLICT`. With `eventIds` (one per row), a
+ * data-modifying `WITH` also writes each row's audit event from the insert's
+ * `RETURNING`, in the same statement: `memory.created` when the returned id
+ * is the row's own, `memory.updated` when a keyed row updated an existing
+ * memory, which keeps that memory's id (Postgres 17 has no `RETURNING OLD`).
+ */
 function insertMemoriesStatement(
 	rows: readonly NewMemoryRow[],
 	vectorType: VectorType,
+	eventIds?: readonly string[],
 ): SqlStatement {
 	const params = createSqlParams();
 	const tuples = rows.map(
@@ -316,8 +335,7 @@ function insertMemoriesStatement(
 	const replaced = UPSERT_REPLACED_COLUMNS.map(
 		(name) => `${name} = EXCLUDED.${name}`,
 	).join(", ");
-	return {
-		sql: `INSERT INTO mnemocyte_memories (
+	const insert = `INSERT INTO mnemocyte_memories (
 			id, namespace, entity_id, agent_id, session_id, key, content, kind,
 			importance, tags, source, metadata, confidence, embedding,
 			embedding_model, embedding_dimensions, superseded_by, superseded_at,
@@ -327,7 +345,46 @@ function insertMemoriesStatement(
 		ON CONFLICT (namespace, entity_id, agent_id, session_id, key)
 			WHERE key IS NOT NULL
 			DO UPDATE SET ${replaced}
-		RETURNING ${MEMORY_COLUMNS}`,
+		RETURNING ${MEMORY_COLUMNS}`;
+	if (eventIds === undefined) {
+		return { sql: insert, params: params.values };
+	}
+	const prepared = params.json(
+		rows.map((row, index) => ({
+			id: row.id,
+			key: row.key,
+			event_id: eventIds[index],
+		})),
+	);
+	return {
+		sql: `WITH written AS (
+			${insert}
+		),
+		audit AS (
+			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			SELECT
+				prepared.event_id,
+				written.namespace,
+				written."entityId",
+				written."agentId",
+				written."sessionId",
+				CASE WHEN written.id = prepared.id
+					THEN 'memory.created' ELSE 'memory.updated' END,
+				jsonb_build_object(
+					'memoryId', written.id,
+					'kind', written.kind,
+					'importance', written.importance
+				) || CASE WHEN written.key IS NULL
+					THEN '{}'::jsonb
+					ELSE jsonb_build_object('key', written.key) END,
+				written."updatedAt"
+			FROM written
+			INNER JOIN jsonb_to_recordset(${prepared})
+				AS prepared(id text, key text, event_id uuid)
+				ON written.id = prepared.id
+					OR (written.key IS NOT NULL AND written.key = prepared.key)
+		)
+		SELECT * FROM written`,
 		params: params.values,
 	};
 }
@@ -428,6 +485,8 @@ export interface UpdateMemoryInput {
 	metadata?: JsonObject;
 	confidence?: number;
 	expiresAt?: Date | null;
+	/** Writes `memory.updated` with this id and field list in the same statement. */
+	audit?: { eventId: string; fields: readonly string[] };
 }
 
 /** Whether a driver error is a key collision on the scope + key index. */
@@ -444,7 +503,9 @@ export function isScopeKeyViolation(error: unknown): boolean {
 /**
  * Update one visible memory in one statement and return it, or `null` when
  * no visible row has the id. A new key that collides in the row's scope
- * fails with a unique violation on {@link SCOPE_KEY_INDEX}.
+ * fails with a unique violation on {@link SCOPE_KEY_INDEX}. With `audit`, a
+ * data-modifying `WITH` writes the event from the update's `RETURNING`, in
+ * the row's own scope, so it commits or fails with the update.
  */
 export async function updateMemory(
 	db: SqlExecutor,
@@ -498,12 +559,34 @@ export async function updateMemory(
 		set("expires_at", nullableTimestamp(params, input.expiresAt));
 	}
 	set("updated_at", params.timestamp(input.now));
-	const rows = await db.query<RawMemoryRow>(
-		`UPDATE mnemocyte_memories
+	const update = `UPDATE mnemocyte_memories
 		SET ${assignments.join(", ")}
 		WHERE ${visibilityConditions(params, input.visibility)}
 			AND id = ${params.uuid(input.id)}
-		RETURNING ${MEMORY_COLUMNS}`,
+		RETURNING ${MEMORY_COLUMNS}`;
+	const rows = await db.query<RawMemoryRow>(
+		input.audit === undefined
+			? update
+			: `WITH updated AS (
+			${update}
+		),
+		audit AS (
+			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			SELECT
+				${params.uuid(input.audit.eventId)},
+				updated.namespace,
+				updated."entityId",
+				updated."agentId",
+				updated."sessionId",
+				'memory.updated',
+				jsonb_build_object(
+					'memoryId', updated.id,
+					'fields', ${params.json(input.audit.fields)}
+				),
+				updated."updatedAt"
+			FROM updated
+		)
+		SELECT * FROM updated`,
 		params.values,
 	);
 	const row = rows[0];
@@ -532,6 +615,8 @@ export interface DeleteMemoryInput {
 	memoryId: string;
 	dependents: DependentsPolicy;
 	now: Date;
+	/** Writes one `memory.deleted` per deleted memory in the same statement. */
+	audit: boolean;
 }
 
 export interface DeleteMemoryResult {
@@ -561,7 +646,8 @@ export interface DeleteMemoryResult {
  *
  * A dependent that is not visible at the scope blocks the write. A dependent
  * added by a concurrent consolidation fails the foreign key, which the store
- * maps to `"CONFLICT"`.
+ * maps to `"CONFLICT"`. With `audit`, the same statement writes the
+ * `memory.deleted` events (see {@link deletedEventsCte}).
  */
 export async function deleteMemory(
 	db: SqlExecutor,
@@ -573,6 +659,9 @@ export async function deleteMemory(
 	if (input.dependents === "reject") {
 		const result = await deleteMemoriesWithDependentGuard(db, target, params, {
 			allowSelectedDependents: false,
+			...(input.audit
+				? { auditCte: deletedEventsCte(params, input, false) }
+				: {}),
 			...(signal ? { signal } : {}),
 		});
 		return {
@@ -643,13 +732,16 @@ export async function deleteMemory(
 				AND NOT (SELECT hidden FROM blocked)
 			RETURNING id
 		)`;
+	const audit = input.audit
+		? `,\n\t\t${deletedEventsCte(params, input, true)}`
+		: "";
 	const rows = await db.query<{
 		found: boolean;
 		hidden: boolean;
 		deletedIds: string;
 		restoredIds: string;
 	}>(
-		`WITH RECURSIVE ${ctes}
+		`WITH RECURSIVE ${ctes}${audit}
 		SELECT
 			EXISTS (SELECT 1 FROM target) AS "found",
 			(SELECT hidden FROM blocked) AS "hidden",
@@ -673,6 +765,49 @@ export async function deleteMemory(
 		deletedIds: row ? (JSON.parse(row.deletedIds) as string[]) : [],
 		restoredIds: row ? (JSON.parse(row.restoredIds) as string[]) : [],
 	};
+}
+
+/**
+ * The `audit` step of a delete: one `memory.deleted` per row of `deleted`,
+ * in the caller's scope, with the payloads of `deletedEvents` in
+ * `memory/audit.ts`. The memory asked for gets `{ memoryId }` plus
+ * `restoredIds` (by id) when `restored` restored any; each dependent gets
+ * `{ memoryId, deletedWith }`. The number of rows is unknown before the
+ * statement runs, so event ids are built in SQL ({@link sqlUuidV7}).
+ */
+function deletedEventsCte(
+	params: SqlParams,
+	input: DeleteMemoryInput,
+	hasRestored: boolean,
+): string {
+	const { scope } = input.visibility;
+	const now = params.timestamp(input.now);
+	const restoredIds = hasRestored
+		? ` || CASE WHEN EXISTS (SELECT 1 FROM restored)
+						THEN jsonb_build_object(
+							'restoredIds',
+							(SELECT jsonb_agg(id::text ORDER BY id) FROM restored)
+						)
+						ELSE '{}'::jsonb END`
+		: "";
+	return `audit AS (
+			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			SELECT
+				${sqlUuidV7(now)},
+				${params.add(scope.namespace)},
+				${params.add(scope.entityId)},
+				${params.add(scope.agentId)}::text,
+				${params.add(scope.sessionId)}::text,
+				'memory.deleted',
+				CASE WHEN deleted.id = ${params.uuid(input.memoryId)}
+					THEN jsonb_build_object('memoryId', ${params.add(input.memoryId)}::text)${restoredIds}
+					ELSE jsonb_build_object(
+						'memoryId', deleted.id::text,
+						'deletedWith', ${params.add(input.memoryId)}::text
+					) END,
+				${now}
+			FROM deleted
+		)`;
 }
 
 /**
@@ -756,17 +891,39 @@ export async function countPruneMatches(
 /**
  * Delete the matching memories in one statement. A survivor is deleted when
  * every memory that references it is deleted too; one outside the matches
- * blocks the whole prune.
+ * blocks the whole prune. With `audit`, the same statement writes one
+ * `memory.pruned` per affected `(namespace, entity_id)`, at the selector's
+ * agent and session, with ids built in SQL ({@link sqlUuidV7}).
  */
 export async function pruneMemories(
 	db: SqlExecutor,
 	filter: PruneFilter,
+	audit?: { now: Date },
 	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
 	const params = createSqlParams();
 	const conditions = pruneConditions(params, filter);
+	let auditCte: string | undefined;
+	if (audit !== undefined) {
+		const now = params.timestamp(audit.now);
+		auditCte = `audit AS (
+			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			SELECT
+				${sqlUuidV7(now)},
+				namespace,
+				entity_id,
+				${params.add(filter.selector.agentId ?? null)}::text,
+				${params.add(filter.selector.sessionId ?? null)}::text,
+				'memory.pruned',
+				jsonb_build_object('count', count(*)::int),
+				${now}
+			FROM deleted
+			GROUP BY namespace, entity_id
+		)`;
+	}
 	return deleteMemoriesWithDependentGuard(db, conditions, params, {
 		allowSelectedDependents: true,
+		...(auditCte === undefined ? {} : { auditCte }),
 		...(signal ? { signal } : {}),
 	});
 }
@@ -779,6 +936,8 @@ interface DependentGuardOptions {
 	allowSelectedDependents: boolean;
 	/** Audit events to delete in the same statement, when set. */
 	eventConditions?: string;
+	/** An `audit AS (…)` step that reads `deleted`, when set. */
+	auditCte?: string;
 	signal?: AbortSignal;
 }
 
@@ -806,13 +965,12 @@ async function deleteMemoriesWithDependentGuard(
 			WHERE ${options.eventConditions}
 				AND NOT EXISTS (SELECT 1 FROM dependents)
 		)`;
+	const audit =
+		options.auditCte === undefined ? "" : `,\n\t\t${options.auditCte}`;
 	const rows = await db.query<{
 		matchedCount: number | string;
 		deletedCount: number | string;
 		hasDependents: boolean;
-		namespace: string | null;
-		entityId: string | null;
-		entityDeletedCount: number | string | null;
 	}>(
 		`WITH candidates AS MATERIALIZED (
 			SELECT id, namespace, entity_id
@@ -831,28 +989,11 @@ async function deleteMemoriesWithDependentGuard(
 			WHERE id IN (SELECT id FROM candidates)
 				AND NOT EXISTS (SELECT 1 FROM dependents)
 			RETURNING id, namespace, entity_id
-		)${deleteEvents},
-		deleted_counts AS (
-			SELECT namespace, entity_id, count(*)::int AS deleted_count
-			FROM deleted
-			GROUP BY namespace, entity_id
-		),
-		summary AS (
-			SELECT
-				(SELECT count(*)::int FROM candidates) AS matched_count,
-				(SELECT count(*)::int FROM deleted) AS deleted_count,
-				EXISTS (SELECT 1 FROM dependents) AS has_dependents
-		)
+		)${deleteEvents}${audit}
 		SELECT
-			summary.matched_count AS "matchedCount",
-			summary.deleted_count AS "deletedCount",
-			summary.has_dependents AS "hasDependents",
-			deleted_counts.namespace AS "namespace",
-			deleted_counts.entity_id AS "entityId",
-			deleted_counts.deleted_count AS "entityDeletedCount"
-		FROM summary
-		LEFT JOIN deleted_counts ON true
-		ORDER BY deleted_counts.namespace, deleted_counts.entity_id`,
+			(SELECT count(*)::int FROM candidates) AS "matchedCount",
+			(SELECT count(*)::int FROM deleted) AS "deletedCount",
+			EXISTS (SELECT 1 FROM dependents) AS "hasDependents"`,
 		params.values,
 		options.signal ? { signal: options.signal } : undefined,
 	);
@@ -861,17 +1002,6 @@ async function deleteMemoriesWithDependentGuard(
 		matchedCount: Number(row?.matchedCount ?? 0),
 		deletedCount: Number(row?.deletedCount ?? 0),
 		hasDependents: row?.hasDependents === true,
-		deletedByEntity: rows.flatMap((detail) =>
-			detail.entityId === null || detail.namespace === null
-				? []
-				: [
-						{
-							namespace: detail.namespace,
-							entityId: detail.entityId,
-							deletedCount: Number(detail.entityDeletedCount ?? 0),
-						},
-					],
-		),
 	};
 }
 

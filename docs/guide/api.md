@@ -561,9 +561,10 @@ which include events that share a timestamp. `before` and `after` are strict
 timestamp filters and skip every event at the boundary timestamp, so they can
 lose events when used for paging.
 
-Audit writes are best-effort: a failed audit write does not fail the
-operation. Consolidation is the exception; its events commit or roll back
-with it. Events are deleted only by `deleteScope`.
+Events are written together with the change they record: if the audit
+write fails, the call rejects and nothing is written, neither the memory
+change nor the event. An event's `timestamp` is the time of the write.
+Events are deleted only by `deleteScope`.
 
 ## `stats`
 

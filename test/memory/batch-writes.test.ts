@@ -85,6 +85,56 @@ describe("addMany embedding chunks", () => {
 			client.stats({ scope: testScope("alice") }),
 		).resolves.toMatchObject({ memoryCount: 0 });
 	});
+
+	test("follows the embedder's maxBatch", async () => {
+		const { embedder, calls } = recordingEmbedder();
+		const client = createMemory({ embedder: { ...embedder, maxBatch: 40 } });
+
+		await client.addMany({ scope: testScope("alice"), memories: memories(90) });
+
+		expect(calls.map((call) => call.length)).toEqual([40, 40, 10]);
+	});
+
+	test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		"rejects maxBatch %s with CONFIG",
+		(maxBatch) => {
+			const { embedder } = recordingEmbedder();
+			expect(() =>
+				createMemory({ embedder: { ...embedder, maxBatch } }),
+			).toThrow(expect.objectContaining({ code: "CONFIG" }));
+		},
+	);
+});
+
+describe("embedding purpose", () => {
+	test("passes document for writes and query for search and context", async () => {
+		const purposes: string[] = [];
+		const client = createMemory({
+			embedder: {
+				model: "purpose-test",
+				dimensions: 2,
+				async embed(texts, options) {
+					purposes.push(options.purpose);
+					return texts.map(() => [1, 1]);
+				},
+			},
+		});
+		const scope = testScope("alice");
+
+		const added = await client.add({ scope, content: "one" });
+		purposes.push("|");
+		await client.addMany({ scope, memories: memories(2) });
+		purposes.push("|");
+		await client.update({ scope, id: added.id, content: "changed" });
+		purposes.push("|");
+		await client.search({ scope, query: "one" });
+		purposes.push("|");
+		await client.context({ scope, query: "one" });
+
+		expect(purposes.join(" ")).toBe(
+			"document | document | document | query | query",
+		);
+	});
 });
 
 describe("input caps", () => {

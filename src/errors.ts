@@ -60,6 +60,45 @@ export class MnemocyteError extends Error {
 	}
 }
 
+/** Input accepted by the {@link ProviderError} constructor. */
+export interface ProviderErrorInput {
+	/** Human-readable error message. */
+	readonly message: string;
+	/** HTTP status of the failed response. */
+	readonly status: number;
+	/**
+	 * Wait the server asked for, in milliseconds, from a `Retry-After` or
+	 * `retry-after-ms` header.
+	 */
+	readonly retryAfterMs?: number;
+	/** The provider's response body: parsed JSON, or text when not JSON. */
+	readonly body?: unknown;
+}
+
+/**
+ * A provider answered an embedding request with a non-2xx status. Thrown by
+ * the shipped embedders; custom embedders may throw it too. The code is
+ * `"EMBEDDING"`, and `cause` is the provider's response body, which often
+ * says what went wrong.
+ *
+ * Mnemocyte's retries read {@link ProviderError.status} and
+ * {@link ProviderError.retryAfterMs}; any error with numeric `status` and
+ * `retryAfterMs` fields is treated the same way.
+ */
+export class ProviderError extends MnemocyteError {
+	/** HTTP status of the failed response. */
+	readonly status: number;
+	/** Wait the server asked for, in milliseconds, if it sent one. */
+	readonly retryAfterMs: number | undefined;
+
+	constructor(input: ProviderErrorInput) {
+		super(input.message, "EMBEDDING", input.body);
+		this.name = "ProviderError";
+		this.status = input.status;
+		this.retryAfterMs = input.retryAfterMs;
+	}
+}
+
 /**
  * Type guard for {@link MnemocyteError}.
  *

@@ -110,20 +110,27 @@ Errors are `MnemocyteError` with a stable `code`. Every option is in the
 
 ## Embedders
 
-Any object with `model`, `dimensions` and `embed(texts)` works:
+Any object with `model`, `dimensions` and `embed(texts, options)` works.
+`options.purpose` says whether the texts are queries or documents:
 
 ```ts
 const embedder = {
   model: "my-model",
   dimensions: 768,
   async embed(texts, options) {
-    return embedWithYourProvider(texts, { signal: options?.signal });
+    return embedWithYourProvider(texts, {
+      inputType: options.purpose,
+      signal: options.signal,
+    });
   },
 };
 ```
 
-`openaiEmbedder` from `mnemocyte/embedders` calls OpenAI or any compatible
-endpoint with `fetch`. Retries, timeouts and cancellation are in the
+`mnemocyte/embedders` has two that use `fetch`: `openaiEmbedder` for OpenAI
+and `openaiCompatibleEmbedder` for Ollama, LM Studio, vLLM, Mistral and other
+servers with an OpenAI-shaped `/embeddings`. Failed calls are retried twice
+with backoff and `Retry-After`. Retries, timeouts and provider errors are in
+the
 [embedders guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md).
 
 ## Documentation

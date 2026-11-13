@@ -242,8 +242,8 @@ export interface ObservabilityConfig {
  * Production-hardening knobs applied to outbound provider calls
  * (currently the {@link Embedder}). Mnemocyte applies a timeout, retries
  * on transient failures, and forwards `AbortSignal` cancellation to each
- * attempt. Every field is optional; the defaults disable retries and
- * timeouts.
+ * attempt. Every field is optional; by default there is no timeout and a
+ * failed call is retried twice.
  */
 export interface ProviderResilienceConfig {
 	/**
@@ -255,27 +255,36 @@ export interface ProviderResilienceConfig {
 	timeoutMs?: number;
 	/**
 	 * Maximum number of retry attempts after the initial call. Must be a
-	 * non-negative integer. `0` disables retries (default).
+	 * non-negative integer. `0` disables retries. Defaults to `2`.
 	 */
 	retries?: number;
 	/**
-	 * Base backoff delay (ms) used before the first retry. Must be a
-	 * non-negative finite number. Defaults to `100`.
+	 * Base backoff delay (ms) used before the first retry; it doubles for
+	 * each later retry, and each wait is a random 50–100% of it. Must be a
+	 * non-negative finite number. Defaults to `500`.
 	 */
 	baseDelayMs?: number;
 	/**
 	 * Maximum backoff delay (ms) used between retries. Must be a non-negative
 	 * finite number. Values below `baseDelayMs` are normalized up to the base
-	 * delay. Defaults to `2000`.
+	 * delay. Defaults to `8000`.
 	 */
 	maxDelayMs?: number;
 	/**
+	 * Longest server-requested wait (ms) Mnemocyte honours. An error with a
+	 * `retryAfterMs` (from a `Retry-After` or `retry-after-ms` header) waits
+	 * that long instead of the backoff; when it asks for more than this, the
+	 * error is thrown without retrying. Must be a non-negative finite number.
+	 * Defaults to `60000`.
+	 */
+	maxRetryAfterMs?: number;
+	/**
 	 * Optional predicate deciding whether `error` should trigger a retry.
 	 * Receives the thrown value and the 1-indexed `attempt` number that
-	 * just failed. When omitted, a conservative built-in heuristic is used
-	 * that retries on common transient indicators (network errors, 5xx
-	 * responses, rate-limit hints) and never retries `"VALIDATION"`,
-	 * `"CONFIG"`, or `"ABORTED"` {@link MnemocyteError}s.
+	 * just failed. When omitted, the built-in rule retries errors with an
+	 * HTTP `status` of 408, 429, 500, 502, 503 or 504, network errors with a
+	 * transient `code` (such as `ECONNRESET`) on the error or its `cause`,
+	 * and `"TIMEOUT"` errors.
 	 */
 	shouldRetry?: (error: unknown, attempt: number) => boolean;
 }
@@ -458,18 +467,36 @@ export interface Embedder {
 	/** Dimensionality of vectors returned by {@link Embedder.embed}. */
 	readonly dimensions: number;
 	/**
+	 * Most texts Mnemocyte passes to one {@link Embedder.embed} call. Must be a
+	 * positive integer. Defaults to `100`.
+	 */
+	readonly maxBatch?: number;
+	/**
 	 * Embed one or more texts. Implementations MUST return one vector per
 	 * input, in the same order, each of length {@link Embedder.dimensions} and
 	 * containing only finite numeric values.
 	 *
+	 * `options.purpose` says whether the texts are search queries or stored
+	 * documents, for providers with separate modes for each.
 	 * `options.signal` is the caller's `signal` (or Mnemocyte's provider
 	 * timeout). Implementations that call `fetch` should forward it so
 	 * requests can be cancelled promptly.
 	 */
-	embed(
-		texts: readonly string[],
-		options?: { signal?: AbortSignal },
-	): Promise<number[][]>;
+	embed(texts: readonly string[], options: EmbedOptions): Promise<number[][]>;
+}
+
+/**
+ * What texts passed to {@link Embedder.embed} are for: `"query"` for search
+ * queries, `"document"` for memory contents being stored.
+ */
+export type EmbeddingPurpose = "query" | "document";
+
+/** Options Mnemocyte passes to every {@link Embedder.embed} call. */
+export interface EmbedOptions {
+	/** Whether the texts are search queries or stored documents. */
+	readonly purpose: EmbeddingPurpose;
+	/** Cancels the call; forward it to `fetch`. */
+	readonly signal?: AbortSignal;
 }
 
 /**

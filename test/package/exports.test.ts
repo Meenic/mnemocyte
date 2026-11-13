@@ -1,6 +1,12 @@
-import { createMemory, MnemocyteError, migrate } from "mnemocyte";
-import { openaiEmbedder } from "mnemocyte/embedders";
+import {
+	createMemory,
+	MnemocyteError,
+	migrate,
+	ProviderError,
+} from "mnemocyte";
+import { openaiCompatibleEmbedder, openaiEmbedder } from "mnemocyte/embedders";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
+import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
@@ -16,6 +22,17 @@ describe("package exports", () => {
 		expect(typeof postgresStore).toBe("function");
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
+		expect(openaiCompatibleEmbedder).toBe(directOpenAICompatibleEmbedder);
+
+		expect(typeof ProviderError).toBe("function");
+		// The embedders entry shares the root's error class.
+		expect(() =>
+			directOpenAICompatibleEmbedder({
+				baseUrl: "",
+				model: "m",
+				dimensions: 1,
+			}),
+		).toThrow(MnemocyteError);
 
 		const client = createMemory({
 			embedder: {

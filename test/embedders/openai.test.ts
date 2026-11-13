@@ -1,4 +1,4 @@
-import { MnemocyteError } from "mnemocyte";
+import { MnemocyteError, ProviderError } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders/openai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -43,7 +43,7 @@ describe("openaiEmbedder", () => {
 			model: "text-embedding-3-large",
 			dimensions: 1,
 		});
-		await embedder.embed(["hello"]);
+		await embedder.embed(["hello"], { purpose: "document" });
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			"https://api.openai.com/v1/embeddings",
@@ -83,6 +83,7 @@ describe("openaiEmbedder", () => {
 			baseUrl: "https://example.test/v1",
 		});
 		const embeddings = await embedder.embed(["first", "second"], {
+			purpose: "document",
 			signal: controller.signal,
 		});
 
@@ -119,7 +120,9 @@ describe("openaiEmbedder", () => {
 			model: "text-embedding-3-small",
 		});
 
-		await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
+		await expect(
+			embedder.embed(["first", "second"], { purpose: "document" }),
+		).rejects.toMatchObject({
 			code: "EMBEDDING",
 		});
 	});
@@ -179,7 +182,9 @@ describe("openaiEmbedder", () => {
 				model: "text-embedding-3-small",
 			});
 
-			await expect(embedder.embed(["first", "second"])).rejects.toMatchObject({
+			await expect(
+				embedder.embed(["first", "second"], { purpose: "document" }),
+			).rejects.toMatchObject({
 				code: "EMBEDDING",
 			});
 		},
@@ -202,7 +207,7 @@ describe("openaiEmbedder", () => {
 		});
 		expect(embedder.dimensions).toBe(3);
 
-		await embedder.embed(["custom dimensions"]);
+		await embedder.embed(["custom dimensions"], { purpose: "document" });
 
 		const [, init] = fetchMock.mock.calls.at(-1) ?? [];
 		expect(JSON.parse(String(init?.body))).toEqual({
@@ -239,16 +244,63 @@ describe("openaiEmbedder", () => {
 		).toThrow(MnemocyteError);
 	});
 
-	test("surfaces failed HTTP statuses for provider retry handling", async () => {
+	test("throws ProviderError with status, Retry-After and the body as cause", async () => {
 		vi.stubEnv("OPENAI_API_KEY", "env-key");
+		const body = {
+			error: {
+				message: "Rate limit reached for requests",
+				type: "requests",
+				param: null,
+				code: "rate_limit_exceeded",
+			},
+		};
 		fetchMock.mockResolvedValueOnce(
-			new Response("rate limited", { status: 429 }),
+			new Response(JSON.stringify(body), {
+				status: 429,
+				headers: { "retry-after": "2" },
+			}),
 		);
 
 		const embedder = openaiEmbedder({ model: "text-embedding-3-small" });
+		const error = await embedder.embed(["hello"], { purpose: "document" }).then(
+			() => undefined,
+			(caught: unknown) => caught,
+		);
 
-		await expect(embedder.embed(["hello"])).rejects.toMatchObject({
+		expect(error).toBeInstanceOf(ProviderError);
+		expect(error).toBeInstanceOf(MnemocyteError);
+		expect(error).toMatchObject({
+			code: "EMBEDDING",
 			status: 429,
+			retryAfterMs: 2000,
+			cause: body,
+			message:
+				"OpenAI embeddings request failed with status 429 (rate_limit_exceeded).",
+		});
+	});
+
+	test("sends maxBatch through and ignores purpose", async () => {
+		const embedder = openaiEmbedder({
+			apiKey: "test-key",
+			model: "text-embedding-3-small",
+			maxBatch: 16,
+		});
+		expect(embedder.maxBatch).toBe(16);
+		expect(() =>
+			openaiEmbedder({
+				apiKey: "test-key",
+				model: "text-embedding-3-small",
+				maxBatch: 0,
+			}),
+		).toThrow(expect.objectContaining({ code: "CONFIG" }));
+
+		mockEmbeddingResponse([{ index: 0, embedding: [1] }]);
+		await embedder.embed(["question"], { purpose: "query" });
+		const [, init] = fetchMock.mock.calls.at(-1) ?? [];
+		expect(JSON.parse(String(init?.body))).toEqual({
+			model: "text-embedding-3-small",
+			input: ["question"],
+			encoding_format: "float",
 		});
 	});
 });

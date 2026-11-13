@@ -10,6 +10,31 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **`openaiCompatibleEmbedder`.** A `fetch`-based embedder for any server
+  with an OpenAI-shaped `/embeddings`: Ollama, LM Studio, vLLM, Mistral,
+  Together, Azure OpenAI. `baseUrl`, `model` and `dimensions` are required;
+  `apiKey` is optional, so local servers need no placeholder key. `headers`
+  adds request headers, and `sendDimensions: true` sends `dimensions` for
+  models that can shorten their vectors. `purposes` marks queries and
+  documents for models that embed them differently, with a text `prefix`
+  (nomic `search_query: `, E5 `query: `) or request `body` fields (NVIDIA
+  NIM `input_type`, Jina `task`); the stored content is unchanged. From
+  `mnemocyte/embedders` and `mnemocyte/embedders/openai-compatible`.
+- **Query and document embeddings.** `embed(texts, options)` now receives
+  `options.purpose`: `"document"` from `add`, `addMany` and `update`,
+  `"query"` from `search` and `context`. `EmbedOptions` and
+  `EmbeddingPurpose` are exported types.
+- **`maxBatch`.** An embedder may set `maxBatch`, the most texts `addMany`
+  sends per call (default 100, as before); `openaiEmbedder` and
+  `openaiCompatibleEmbedder` take it as an option. Lower it when memories
+  are long enough to pass a provider's per-request token limit.
+- **`ProviderError`.** When a provider answers with an error status, both
+  shipped embedders throw a `ProviderError`: a `MnemocyteError` with code
+  `"EMBEDDING"`, `status`, `retryAfterMs` and the response body as `cause`,
+  so the provider's explanation (such as OpenAI's `rate_limit_exceeded`) is
+  no longer lost. It reaches the caller as it is instead of being wrapped
+  in `"Failed to embed text."`. Custom embedders can throw it too.
+
 - **Pass your database client as `store`.** `createMemory({ store: sql })`
   takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a Drizzle
   instance over one of them or a `SqlExecutor` directly, recognised by
@@ -23,6 +48,30 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **Embedder calls are retried twice by default, with jitter and
+  `Retry-After`.** `provider.retries` now defaults to 2 (was 0),
+  `baseDelayMs` to 500 (was 100) and `maxDelayMs` to 8000 (was 2000), as in
+  the OpenAI SDK. Each wait is a random 50–100% of the backoff delay. A
+  provider's `Retry-After` or `retry-after-ms` replaces the backoff; a wait
+  longer than the new `provider.maxRetryAfterMs` (default 60000) fails at
+  once. Set `retries: 0` for the old behaviour.
+- **Retries are decided by status, not message text.** The built-in rule
+  retries HTTP 408, 429, 500, 502, 503 and 504 (`error.status`), network
+  errors with a transient `code` such as `ECONNRESET` on the error or its
+  `cause`, and `"TIMEOUT"`. It no longer retries errors whose message
+  contains "500", "network", "timeout" or similar words, nor `"EMBEDDING"`
+  and `"DB"` `MnemocyteError`s. A custom embedder that relied on message
+  text should throw an error with `status`, or a `ProviderError`.
+- **`Embedder.embed` takes a required options object.** Its type is
+  `embed(texts, options: { purpose; signal? })`. Embedders that ignore the
+  options keep compiling, but a parameter default such as `options = {}`
+  no longer type-checks (drop the default), and code that calls
+  `embed(texts)` directly must pass `{ purpose: "query" }` or
+  `{ purpose: "document" }`.
+- **`openaiEmbedder` errors.** A failed request throws `ProviderError`
+  instead of a plain `Error` with `status`, and a non-JSON success body
+  throws `"EMBEDDING"`. `openaiEmbedder` now shares its code with
+  `openaiCompatibleEmbedder`; requests are unchanged.
 - **Missing-schema errors name the fix.** A Postgres call that needs a
   missing Mnemocyte table or column still throws `"MIGRATION"`, but the
   message now says to run `migrate({ memory })`, links the Postgres guide

@@ -12,7 +12,7 @@ describe("addMany cancellation", () => {
 			embedder: {
 				model: "batch-cancellation-test",
 				dimensions: 1,
-				async embed(_texts, options = {}) {
+				async embed(_texts, options) {
 					markProviderStarted?.();
 					if (!options.signal) {
 						throw new Error("Expected a batch signal.");
@@ -55,7 +55,7 @@ describe("addMany cancellation", () => {
 			embedder: {
 				model: "batch-signal-ownership-test",
 				dimensions: 1,
-				async embed(texts, options = {}) {
+				async embed(texts, options) {
 					providerSignal = options.signal;
 					return texts.map(() => [1]);
 				},

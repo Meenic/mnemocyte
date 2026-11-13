@@ -252,7 +252,8 @@ const added = await memory.addMany({
 
 Input is validated before the embedder is called. `addMany` stores up to
 1,000 memories in one scope and returns the records in input order. It calls
-the embedder with at most 100 texts at a time, one call after another, then
+the embedder with at most `maxBatch` texts at a time (100 unless the
+embedder sets it), one call after another, then
 writes every memory in one transaction: when an embedder call or a write
 fails, nothing is stored. Its `signal` covers the whole batch.
 
@@ -620,7 +621,7 @@ try {
 |---|---|
 | `CONFIG` | Invalid client configuration (including `namespace`), or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
 | `VALIDATION` | Invalid method input, including a missing or malformed scope. Nothing was embedded or stored. |
-| `EMBEDDING` | The embedder threw or returned invalid vectors. |
+| `EMBEDDING` | The embedder threw or returned invalid vectors. A provider's error status throws a `ProviderError` with `status` and the response body as `cause` (see [embedders.md](./embedders.md#provider-errors)). |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
 | `ABORTED` | The caller's `AbortSignal` fired. |
 | `NOT_FOUND` | A referenced memory is not visible at the scope. |

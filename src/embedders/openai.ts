@@ -1,4 +1,5 @@
 import { MnemocyteError } from "../errors.js";
+import { createHttpEmbedder } from "../http-embedder.js";
 import type { Embedder } from "../types.js";
 
 const KNOWN_MODEL_DIMENSIONS: Record<string, number> = {
@@ -27,75 +28,13 @@ export interface OpenAIEmbedderOptions {
 	 */
 	readonly dimensions?: number;
 	/**
-	 * Override the OpenAI API base URL. Intended for tests and compatible
-	 * deployments; defaults to `https://api.openai.com/v1`.
+	 * Override the OpenAI API base URL; defaults to
+	 * `https://api.openai.com/v1`. For other providers, use
+	 * `openaiCompatibleEmbedder`.
 	 */
 	readonly baseUrl?: string;
-}
-
-interface OpenAIEmbeddingItem {
-	readonly embedding: number[];
-	readonly index: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function validateEmbeddingResponse(
-	body: unknown,
-	expectedCount: number,
-): OpenAIEmbeddingItem[] {
-	if (!isRecord(body) || !Array.isArray(body.data)) {
-		throw new MnemocyteError(
-			"OpenAI returned malformed embedding response data.",
-			"EMBEDDING",
-		);
-	}
-	if (body.data.length !== expectedCount) {
-		throw new MnemocyteError(
-			"OpenAI returned an unexpected number of embeddings.",
-			"EMBEDDING",
-		);
-	}
-
-	const indices = new Set<number>();
-	const items: OpenAIEmbeddingItem[] = [];
-	for (const item of body.data) {
-		if (!isRecord(item)) {
-			throw new MnemocyteError(
-				"OpenAI returned a malformed embedding item.",
-				"EMBEDDING",
-			);
-		}
-		const { embedding, index } = item;
-		if (
-			typeof index !== "number" ||
-			!Number.isInteger(index) ||
-			index < 0 ||
-			index >= expectedCount
-		) {
-			throw new MnemocyteError(
-				"OpenAI returned an embedding with an invalid index.",
-				"EMBEDDING",
-			);
-		}
-		if (indices.has(index)) {
-			throw new MnemocyteError(
-				"OpenAI returned a duplicate embedding index.",
-				"EMBEDDING",
-			);
-		}
-		if (!Array.isArray(embedding)) {
-			throw new MnemocyteError(
-				"OpenAI returned an embedding that is not an array.",
-				"EMBEDDING",
-			);
-		}
-		indices.add(index);
-		items.push({ embedding: embedding as number[], index });
-	}
-	return items;
+	/** Most texts per request. Defaults to `100`. */
+	readonly maxBatch?: number;
 }
 
 function assertDimensions(dimensions: number): void {
@@ -161,51 +100,22 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
 /**
  * Create an OpenAI-backed {@link Embedder}. This adapter uses `fetch`
  * directly so provider SDKs never become part of Mnemocyte's dependency graph.
+ * It is `openaiCompatibleEmbedder` with OpenAI's base URL, `OPENAI_API_KEY`
+ * and known model sizes.
  */
 export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 	const apiKey = resolveApiKey(options.apiKey);
 	const { embedderDimensions, requestDimensions } = resolveDimensions(options);
-	const baseUrl = options.baseUrl ?? "https://api.openai.com/v1";
-
-	return {
+	return createHttpEmbedder({
+		name: "openaiEmbedder",
+		provider: "OpenAI",
+		baseUrl: options.baseUrl ?? "https://api.openai.com/v1",
 		model: options.model,
 		dimensions: embedderDimensions,
-		async embed(texts, embedOptions) {
-			const response = await fetch(`${baseUrl}/embeddings`, {
-				method: "POST",
-				headers: {
-					authorization: `Bearer ${apiKey}`,
-					"content-type": "application/json",
-				},
-				body: JSON.stringify({
-					model: options.model,
-					input: [...texts],
-					encoding_format: "float",
-					...(requestDimensions === undefined
-						? {}
-						: { dimensions: requestDimensions }),
-				}),
-				...(embedOptions?.signal === undefined
-					? {}
-					: { signal: embedOptions.signal }),
-			});
-
-			if (!response.ok) {
-				throw Object.assign(
-					new Error(
-						`OpenAI embeddings request failed with status ${response.status}.`,
-					),
-					{ status: response.status },
-				);
-			}
-
-			const items = validateEmbeddingResponse(
-				await response.json(),
-				texts.length,
-			);
-			return items
-				.sort((left, right) => left.index - right.index)
-				.map((item) => item.embedding);
-		},
-	};
+		apiKey,
+		headers: undefined,
+		maxBatch: options.maxBatch,
+		sendDimensions: requestDimensions !== undefined,
+		purposes: undefined,
+	});
 }

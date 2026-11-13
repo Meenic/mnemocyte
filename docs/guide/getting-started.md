@@ -114,15 +114,21 @@ export async function closeDatabase() {
 
 ### Use Ollama instead of OpenAI
 
-`openaiEmbedder` calls any OpenAI-compatible endpoint. For a local
-[Ollama](https://ollama.com) with `ollama pull nomic-embed-text`:
+`openaiCompatibleEmbedder` calls any OpenAI-compatible endpoint. For a
+local [Ollama](https://ollama.com) with `ollama pull nomic-embed-text`:
 
 ```ts
-embedder: openaiEmbedder({
+import { openaiCompatibleEmbedder } from "mnemocyte/embedders";
+
+embedder: openaiCompatibleEmbedder({
+  baseUrl: "http://localhost:11434/v1",
   model: "nomic-embed-text",
   dimensions: 768,
-  baseUrl: "http://localhost:11434/v1",
-  apiKey: "ollama", // Ollama ignores the key, but one is required
+  // nomic-embed-text expects these prefixes on queries and documents
+  purposes: {
+    query: { prefix: "search_query: " },
+    document: { prefix: "search_document: " },
+  },
 }),
 ```
 

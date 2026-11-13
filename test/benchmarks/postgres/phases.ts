@@ -248,55 +248,108 @@ const EXACT: SqlStatement = {
 	params: [],
 };
 
+/** `hnsw.ef_search` values the search sweep compares with the library's. */
+const EF_SEARCH_SWEEP = [40, 100, 150, 200, 300, 400] as const;
+
+type SearchRow = { id: string; vectorDistance: number | string };
+
+function sumDistance(rows: readonly SearchRow[]): number {
+	return rows.reduce((sum, row) => sum + Number(row.vectorDistance), 0);
+}
+
+function percentile(values: readonly number[], p: number): number {
+	const sorted = [...values].sort((a, b) => a - b);
+	return (
+		sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] ?? 0
+	);
+}
+
 /**
- * HNSW recall of the search vector query: the share of the exact nearest
- * rows (index scans off, so the scope's rows are read and sorted) that the
- * index returns, over `queries` queries near stored memories of the entity,
- * and how much farther the returned rows are on average (the mean distance
- * of the returned rows over that of the exact ones). `efSearch` replaces the
- * library's `hnsw.ef_search` when set.
+ * Latency and recall of the search vector query per `hnsw.ef_search`, over
+ * `queries` query vectors near stored memories of the entity. For each value
+ * (the library's own first, then {@link EF_SEARCH_SWEEP}) one row: the
+ * median and p90 over the queries of each query's median execution time
+ * (`measure`, warm), the mean buffers, the share of the exact nearest rows
+ * (index scans off, so the scope's rows are read and sorted) the index
+ * returned, and how much farther the returned rows are on average (the mean
+ * distance of the returned rows over that of the exact ones).
  */
-async function searchRecall(
+async function searchSweep(
 	ctx: BenchContext,
 	client: Client,
+	section: string,
 	entityId: string,
-	queries: number,
-	efSearch?: number,
-): Promise<string> {
-	let found = 0;
-	let wanted = 0;
-	let approximateDistance = 0;
-	let exactDistance = 0;
-	for (let n = 0; n < queries; n += 1) {
+	options: { queries: number; kinds?: ["instruction"] },
+): Promise<void> {
+	const label = options.kinds ? `${entityId}, kinds: instruction` : entityId;
+	const extra = options.kinds ? { kinds: options.kinds } : {};
+	const cases: Array<{
+		settings: SqlStatement;
+		vector: SqlStatement;
+		exact: SearchRow[];
+	}> = [];
+	for (let n = 0; n < options.queries; n += 1) {
 		client.setBase(await storedVector(ctx.db, entityId, n * 97));
-		const statements = await searchStatements(client, entityId);
-		const { vector } = statements;
-		const settings =
-			efSearch === undefined
-				? statements.settings
-				: { sql: statements.settings.sql, params: [String(efSearch)] };
-		const rows = (prelude: SqlStatement[]) =>
-			runRolledBack<{ id: string; vectorDistance: number | string }>(
-				ctx.db,
-				vector,
-				prelude,
-			);
-		const approximate = await rows([settings]);
-		const exact = await rows([settings, EXACT]);
-		const ids = new Set(approximate.map((row) => row.id));
-		wanted += exact.length;
-		found += exact.filter((row) => ids.has(row.id)).length;
-		approximateDistance += approximate.reduce(
-			(sum, row) => sum + Number(row.vectorDistance),
-			0,
+		const { settings, vector } = await searchStatements(
+			client,
+			entityId,
+			extra,
 		);
-		exactDistance += exact.reduce(
-			(sum, row) => sum + Number(row.vectorDistance),
-			0,
-		);
+		const exact = await runRolledBack<SearchRow>(ctx.db, vector, [
+			settings,
+			EXACT,
+		]);
+		cases.push({ settings, vector, exact });
 	}
-	const gap = (approximateDistance / Math.max(1e-9, exactDistance) - 1) * 100;
-	return `${found} of ${wanted} exact neighbors returned (${((found / Math.max(1, wanted)) * 100).toFixed(1)}%) over ${queries} queries; returned rows ${gap.toFixed(2)}% farther on average`;
+	const library = cases[0]?.settings.params[0];
+	const values = [
+		{ variant: `library (ef_search ${String(library)})`, efSearch: undefined },
+		...EF_SEARCH_SWEEP.map((efSearch) => ({
+			variant: `ef_search ${efSearch}`,
+			efSearch,
+		})),
+	];
+	for (const { variant, efSearch } of values) {
+		const times: number[] = [];
+		const plans = new Map<string, number>();
+		let buffers = 0;
+		let found = 0;
+		let wanted = 0;
+		let approximateDistance = 0;
+		let exactDistance = 0;
+		for (const { settings: own, vector, exact } of cases) {
+			const settings =
+				efSearch === undefined
+					? own
+					: { sql: own.sql, params: [String(efSearch)] };
+			const m = await measure(ctx.db, vector, {
+				prelude: [settings],
+				runs: ctx.runs,
+			});
+			times.push(m.executionMs);
+			const plan = [...m.scans, ...m.sorts].join(", ");
+			plans.set(plan, (plans.get(plan) ?? 0) + 1);
+			buffers += m.hit + m.read;
+			const approximate = await runRolledBack<SearchRow>(ctx.db, vector, [
+				settings,
+			]);
+			const ids = new Set(approximate.map((row) => row.id));
+			wanted += exact.length;
+			found += exact.filter((row) => ids.has(row.id)).length;
+			approximateDistance += sumDistance(approximate);
+			exactDistance += sumDistance(exact);
+		}
+		const gap = (approximateDistance / Math.max(1e-9, exactDistance) - 1) * 100;
+		ctx.report.add(section, {
+			case: `sweep, ${label}`,
+			variant,
+			note: `median ${percentile(times, 0.5).toFixed(2)} ms, p90 ${percentile(times, 0.9).toFixed(2)} ms, mean ${Math.round(buffers / cases.length)} buffers; ${found} of ${wanted} exact rows (${((found / Math.max(1, wanted)) * 100).toFixed(1)}%), ${gap.toFixed(2)}% farther; ${cases.length} queries; plans: ${[
+				...plans,
+			]
+				.map(([plan, count]) => `${plan} ×${count}`)
+				.join("; ")}`,
+		});
+	}
 }
 
 async function duplicateStatements(
@@ -375,11 +428,7 @@ export async function halfvecPhase(ctx: BenchContext): Promise<void> {
 			runs: ctx.runs,
 		}),
 	});
-	ctx.report.add(section, {
-		case: `vector search recall, ${LARGE}`,
-		variant: "HNSW",
-		note: await searchRecall(ctx, client, LARGE, 20),
-	});
+	await searchSweep(ctx, client, section, LARGE, { queries: 20 });
 	await duplicates(ctx, client, section, MID, { runs: ctx.runs, recall: true });
 }
 
@@ -440,15 +489,10 @@ export async function vectorPhase(ctx: BenchContext): Promise<void> {
 				runs,
 			}),
 		});
-		ctx.report.add(section, {
-			case: `recall, ${LARGE}`,
-			variant: "HNSW",
-			note: await searchRecall(ctx, client, LARGE, 20),
-		});
-		ctx.report.add(section, {
-			case: `recall, ${LARGE}`,
-			variant: "HNSW, ef_search 200",
-			note: await searchRecall(ctx, client, LARGE, 20, 200),
+		await searchSweep(ctx, client, section, LARGE, { queries: 20 });
+		await searchSweep(ctx, client, section, LARGE, {
+			queries: 20,
+			kinds: ["instruction"],
 		});
 	}
 

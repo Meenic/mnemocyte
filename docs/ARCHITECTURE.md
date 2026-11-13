@@ -628,3 +628,18 @@ Dated 2026-10-26 unless noted.
     index descent and 1,000 entries in order (7.9 s for 500,000 events
     across namespaces), and with a `(timestamp)` index the planner keeps
     the same plan (8.7 s), so it stays out.
+33. **`hnsw.ef_search` stays at pgvector's default** (2026-11-14, landed):
+    the roadmap asked for a higher floor than `max(40, limit)` for
+    filtered vector search, and the maintainer chose a fixed floor, not
+    configurable. Measured on Postgres 18.6 and pgvector 0.8.7, a higher
+    value raises recall only while the planner keeps the HNSW scan:
+    pgvector's cost estimate grows the scan's startup cost with
+    `ef_search`, and under a `LIMIT` the planner then reads the scope and
+    sorts, exact but 45–340 ms instead of 1–5 ms. 200 kept HNSW at 1,536
+    dimensions (99.2% of the exact rows against 87.8%) and switched the
+    3,072-dimension dataset to a 143 ms sequential scan; 300 did the
+    reverse. The switch point depends on each table's statistics, so no
+    fixed value is safe, and a per-client option would ask users to
+    re-measure their own table. The default stays, with the numbers in
+    features/postgres.md. `hnsw.iterative_scan = relaxed_order`, which the
+    cost estimate does not read, is the next lever to measure.

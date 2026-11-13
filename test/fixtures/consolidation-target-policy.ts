@@ -48,7 +48,7 @@ export async function exerciseConsolidationTargetPolicy(
 		const definedLoser = expectDefined(loser);
 
 		await expect(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivor.id,
 				supersededIds: [definedLoser.id],
@@ -59,7 +59,7 @@ export async function exerciseConsolidationTargetPolicy(
 			supersededIds: [definedLoser.id],
 		});
 		await expect(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivor.id,
 				supersededIds: [definedLoser.id],
@@ -82,13 +82,13 @@ export async function exerciseConsolidationTargetPolicy(
 		const definedSurvivorB = expectDefined(survivorB);
 		const definedLoser = expectDefined(loser);
 
-		await client.experimental.consolidate({
+		await client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivorA.id,
 			supersededIds: [definedLoser.id],
 		});
 		await expectMnemocyteError(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivorB.id,
 				supersededIds: [definedLoser.id],
@@ -119,12 +119,12 @@ export async function exerciseConsolidationTargetPolicy(
 		const definedConflictLoser = expectDefined(conflictLoser);
 		const definedActiveLoser = expectDefined(activeLoser);
 
-		await client.experimental.consolidate({
+		await client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivorA.id,
 			supersededIds: [definedSameLoser.id],
 		});
-		await client.experimental.consolidate({
+		await client.consolidate({
 			scope: testScope(entityId),
 			survivorId: definedSurvivorB.id,
 			supersededIds: [definedConflictLoser.id],
@@ -140,7 +140,7 @@ export async function exerciseConsolidationTargetPolicy(
 		).filter((event) => event.description === "memory.superseded").length;
 
 		await expectMnemocyteError(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivorA.id,
 				supersededIds: [
@@ -188,12 +188,12 @@ export async function exerciseConsolidationTargetPolicy(
 		const definedLoser = expectDefined(loser);
 
 		const results = await Promise.all([
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivor.id,
 				supersededIds: [definedLoser.id],
 			}),
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivor.id,
 				supersededIds: [definedLoser.id],
@@ -219,12 +219,12 @@ export async function exerciseConsolidationTargetPolicy(
 		const definedLoser = expectDefined(loser);
 
 		const results = await Promise.allSettled([
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivorA.id,
 				supersededIds: [definedLoser.id],
 			}),
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: definedSurvivorB.id,
 				supersededIds: [definedLoser.id],
@@ -257,7 +257,7 @@ export async function exerciseConsolidationTargetPolicy(
 				.supersededBy,
 		).toBe(success.value.survivorId);
 		await expect(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: success.value.survivorId,
 				supersededIds: [definedLoser.id],

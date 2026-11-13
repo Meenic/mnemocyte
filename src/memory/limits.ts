@@ -34,6 +34,13 @@ export const MAX_METADATA_DEPTH = 32;
 export const MAX_KEY_BYTES = 512;
 export const MAX_SCOPE_FIELD_BYTES = 256;
 
+/**
+ * `neighbors` of `findDuplicates`: nearest neighbors compared per memory.
+ * Each is one HNSW probe on Postgres, whose `hnsw.ef_search` tops out at
+ * 1,000.
+ */
+export const MAX_DUPLICATE_NEIGHBORS = 100;
+
 /** Memories in one `addMany` call; they are written in one transaction. */
 export const MAX_ADD_MANY = 1000;
 

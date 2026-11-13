@@ -52,7 +52,7 @@ describe("in-memory public results", () => {
 		}
 
 		const loser = expectDefined(remembered[0]);
-		await client.experimental.consolidate({
+		await client.consolidate({
 			scope: testScope("alice"),
 			survivorId: alpha.id,
 			supersededIds: [loser.id],

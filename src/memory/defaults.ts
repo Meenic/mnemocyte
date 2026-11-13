@@ -1,4 +1,8 @@
-import type { ImportanceLevel, MemoryKind } from "../types.js";
+import type {
+	DependentsPolicy,
+	ImportanceLevel,
+	MemoryKind,
+} from "../types.js";
 
 export const DEFAULT_LIMIT = 10;
 export const DEFAULT_MIN_SCORE = 0;
@@ -21,6 +25,10 @@ export const IMPORTANCE_RANK: Record<ImportanceLevel, number> = {
 export const DEFAULT_DUPLICATE_THRESHOLD = 0.95;
 /** Default cap on the number of duplicate pairs returned. */
 export const DEFAULT_DUPLICATE_LIMIT = 100;
+/** Default nearest neighbors compared per memory by `findDuplicates`. */
+export const DEFAULT_DUPLICATE_NEIGHBORS = 10;
+/** Default `dependents` policy of `delete`. */
+export const DEFAULT_DEPENDENTS_POLICY: DependentsPolicy = "reject";
 /** Default cap on audit-log entries returned per `listAuditLog`. */
 export const DEFAULT_AUDIT_LOG_LIMIT = 50;
 /** Default page size of `list`. */

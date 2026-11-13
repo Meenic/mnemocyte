@@ -168,7 +168,7 @@ it.
 
 ## Phase 3: operations (0.8)
 
-- [ ] `feat/consolidate-stable`: graduate `consolidate`; survivor-aware
+- [x] `feat/consolidate-stable`: graduate `consolidate`; survivor-aware
   deletes; kNN-based `findDuplicates`.
 - [ ] `fix/observability-non-blocking`: hooks no longer awaited.
 - [ ] `fix/audit-atomic`: audit events in the same statement or transaction
@@ -202,8 +202,7 @@ it.
 
 ## Cut first if time runs short
 
-Voyage/Cohere/Google embedders, the AI SDK middleware, kNN duplicates,
-audit retention, `mnemocyte init`.
+Audit retention, `mnemocyte init`.
 
 ## After 1.0
 

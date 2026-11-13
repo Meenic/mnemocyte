@@ -216,10 +216,10 @@ uses top-level `await`, so `dist/` must not.
 
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
-`listAuditLog`, `stats`, `for` and `experimental.consolidate`. There is no
-`close()`. `for(scope)` returns a `BoundMemoryClient` with the same
-methods minus `scope`, `allNamespaces` and `for`, plus a read-only
-`scope`.
+`listAuditLog`, `stats`, `consolidate`, `for` and the deprecated
+`experimental.consolidate` alias (removed in 1.0). There is no `close()`.
+`for(scope)` returns a `BoundMemoryClient` with the same methods minus
+`scope`, `allNamespaces` and `for`, plus a read-only `scope`.
 
 Design rules for the public surface:
 
@@ -303,9 +303,12 @@ Vitest has three projects (`vitest.config.ts`):
   `describeStoreContract`) runs the same checks through every driver:
   migrate, transactions and savepoints, value round trips, chunked
   `addMany`, search and context, the scoped-API and bound-scope fixtures,
-  and cross-scope isolation for search, id lookups, prune, duplicates,
-  consolidation, `deleteScope` and stats. The `contract` project runs it on
-  PGlite, direct and through Drizzle: an in-process Postgres 18 with
+  survivor-aware deletes and nearest-neighbor duplicates (fixtures shared
+  with the in-memory unit tests), and cross-scope isolation for search, id
+  lookups, prune, duplicates, consolidation, `deleteScope` and stats.
+  `test/contract/knn-duplicates-plan.test.ts` checks with `EXPLAIN` that
+  `findDuplicates` uses the HNSW index per memory. The `contract` project
+  runs the suite on PGlite, direct and through Drizzle: an in-process Postgres 18 with
   pgvector 0.8.7, so no service is needed and every Node job in CI runs it
   (about 20 s). Those runs go through `postgresStore`; another passes the
   PGlite instance itself as `store` (`directClient`), which covers

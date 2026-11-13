@@ -192,7 +192,12 @@ export async function verifyAccessTrackingSkipsDeletedRows(
 		async markMemoriesAccessed(visibility, memoryIds) {
 			const [gone] = memoryIds;
 			if (gone !== undefined) {
-				await store.deleteMemory(visibility, gone);
+				await store.deleteMemory({
+					visibility,
+					memoryId: gone,
+					dependents: "reject",
+					now: new Date(),
+				});
 			}
 			return store.markMemoriesAccessed(visibility, memoryIds);
 		},

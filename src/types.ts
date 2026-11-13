@@ -535,8 +535,7 @@ export interface Memory {
 	supersededBy: string | null;
 	/**
 	 * When this memory was superseded, or `null`. Set together with
-	 * {@link Memory.supersededBy} by
-	 * {@link ExperimentalMemoryClient.consolidate}.
+	 * {@link Memory.supersededBy} by {@link MemoryClient.consolidate}.
 	 */
 	supersededAt: Date | null;
 	/** Optional expiry; expired memories are filtered out by default. */
@@ -857,9 +856,30 @@ export interface DeleteInput<DefaultNamespace extends boolean = false> {
 	scope: ScopeInput<DefaultNamespace>;
 	/** Id of the memory to delete. */
 	id: string;
+	/**
+	 * What to do when the memory is a consolidation survivor, so other
+	 * memories' `supersededBy` points at it. See {@link DependentsPolicy}.
+	 * @defaultValue `"reject"`
+	 */
+	dependents?: DependentsPolicy;
 	/** Optional cancellation signal. */
 	signal?: AbortSignal;
 }
+
+/**
+ * What {@link MemoryClient.delete} does with the memories that were
+ * consolidated into the one it deletes (its dependents):
+ *
+ * - `"reject"`: throw `"CONFLICT"` and delete nothing.
+ * - `"restore"`: clear their `supersededBy` and `supersededAt`, so they are
+ *   active again and show up in search.
+ * - `"delete"`: delete them too, and whatever was consolidated into them, in
+ *   the same statement.
+ *
+ * With `"restore"` or `"delete"`, a dependent that is not visible at the
+ * call's scope makes the call throw `"CONFLICT"` and delete nothing.
+ */
+export type DependentsPolicy = "reject" | "restore" | "delete";
 
 /**
  * Input for {@link MemoryClient.deleteScope}. Here an omitted `agentId` or
@@ -993,8 +1013,8 @@ export interface PruneResult {
 }
 
 /**
- * Input for {@link MemoryClient.findDuplicates}: a pairwise cosine-similarity
- * scan of the memories visible at a scope. Read-only.
+ * Input for {@link MemoryClient.findDuplicates}: a nearest-neighbor
+ * cosine-similarity scan of the memories visible at a scope. Read-only.
  */
 export interface FindDuplicatesInput<DefaultNamespace extends boolean = false>
 	extends ScopedReadOptions {
@@ -1010,6 +1030,13 @@ export interface FindDuplicatesInput<DefaultNamespace extends boolean = false>
 	 * similarity. @defaultValue `100`
 	 */
 	limit?: number;
+	/**
+	 * Nearest neighbors compared per memory, 1 to 100. A pair is found when
+	 * either memory is among the other's `neighbors` nearest. On Postgres the
+	 * neighbors come from the HNSW index, which is approximate, so a pair can
+	 * be missed. @defaultValue `10`
+	 */
+	neighbors?: number;
 	/** Restrict the scan to these kinds. */
 	kinds?: readonly MemoryKind[];
 	/** Require both memories in the pair to include all of these tags. */
@@ -1103,7 +1130,7 @@ export interface ListAuditLogInput<DefaultNamespace extends boolean = false> {
 }
 
 /**
- * Input for {@link ExperimentalMemoryClient.consolidate}: mark each memory in
+ * Input for {@link MemoryClient.consolidate}: mark each memory in
  * `supersededIds` as superseded by `survivorId`, optionally merging their
  * tags into the survivor.
  */
@@ -1136,7 +1163,7 @@ export interface ConsolidateInput<DefaultNamespace extends boolean = false> {
 }
 
 /**
- * Result returned by {@link ExperimentalMemoryClient.consolidate}.
+ * Result returned by {@link MemoryClient.consolidate}.
  */
 export interface ConsolidateResult {
 	/** Echoes {@link ConsolidateInput.survivorId}. */
@@ -1215,11 +1242,13 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 */
 	update(input: UpdateInput<DefaultNamespace>): Promise<Memory>;
 	/**
-	 * Delete one memory.
+	 * Delete one memory. When it is a consolidation survivor, `dependents`
+	 * says what happens to the memories consolidated into it.
 	 *
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
-	 * visible at the scope; `"CONFLICT"` while another memory references it as
-	 * its consolidation survivor.
+	 * visible at the scope; `"CONFLICT"` when it is a consolidation survivor
+	 * and `dependents` is `"reject"` (the default), or a dependent is not
+	 * visible at the scope. Nothing is deleted on any error.
 	 */
 	delete(input: DeleteInput<DefaultNamespace>): Promise<void>;
 	/**
@@ -1250,11 +1279,27 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	prune(input: PruneInput<DefaultNamespace>): Promise<PruneResult>;
 	/**
 	 * Return pairs of near-identical memories visible at the scope, most
-	 * similar first. Read-only.
+	 * similar first. Each memory is compared with its nearest neighbors.
+	 * Read-only.
 	 */
 	findDuplicates(
 		input: FindDuplicatesInput<DefaultNamespace>,
 	): Promise<DuplicatePair[]>;
+	/**
+	 * Mark likely duplicates as superseded by one survivor, optionally merging
+	 * their tags into it. Idempotent for memories that already point to the
+	 * survivor. Emits one `"memory.superseded"` audit event per newly
+	 * superseded memory when audit is enabled.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` for empty or duplicate
+	 * `supersededIds`, a `survivorId` inside `supersededIds`, or a survivor
+	 * that is itself superseded; `"NOT_FOUND"` if a memory is not visible at
+	 * the scope; `"CONFLICT"` if a memory points to a different survivor or
+	 * the survivor changed before the write. Nothing is written on any error.
+	 */
+	consolidate(
+		input: ConsolidateInput<DefaultNamespace>,
+	): Promise<ConsolidateResult>;
 	/** Return audit-log events for a scope, newest first. */
 	listAuditLog(
 		input: ListAuditLogInput<DefaultNamespace>,
@@ -1296,16 +1341,9 @@ export interface ExperimentalMemoryClient<
 	DefaultNamespace extends boolean = false,
 > {
 	/**
-	 * Mark likely duplicates as superseded by one survivor, optionally merging
-	 * their tags into it. Idempotent for memories that already point to the
-	 * survivor. Emits one `"memory.superseded"` audit event per newly
-	 * superseded memory when audit is enabled.
+	 * Same as {@link MemoryClient.consolidate}.
 	 *
-	 * @throws {MnemocyteError} `"VALIDATION"` for empty or duplicate
-	 * `supersededIds`, a `survivorId` inside `supersededIds`, or a survivor
-	 * that is itself superseded; `"NOT_FOUND"` if a memory is not visible at
-	 * the scope; `"CONFLICT"` if a memory points to a different survivor or
-	 * the survivor changed before the write. Nothing is written on any error.
+	 * @deprecated Use {@link MemoryClient.consolidate}. Removed in 1.0.
 	 */
 	consolidate(
 		input: ConsolidateInput<DefaultNamespace>,
@@ -1332,7 +1370,7 @@ export type BoundContextInput = Omit<ContextInput, "scope">;
 export type BoundFindDuplicatesInput = Omit<FindDuplicatesInput, "scope">;
 /** Input for {@link BoundMemoryClient.listAuditLog}. */
 export type BoundListAuditLogInput = Omit<ListAuditLogInput, "scope">;
-/** Input for {@link BoundExperimentalMemoryClient.consolidate}. */
+/** Input for {@link BoundMemoryClient.consolidate}. */
 export type BoundConsolidateInput = Omit<ConsolidateInput, "scope">;
 
 /**
@@ -1373,6 +1411,8 @@ export interface BoundMemoryClient {
 	prune(input: PruneSelectors): Promise<PruneResult>;
 	/** {@link MemoryClient.findDuplicates} at the bound scope. */
 	findDuplicates(input?: BoundFindDuplicatesInput): Promise<DuplicatePair[]>;
+	/** {@link MemoryClient.consolidate} at the bound scope. */
+	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 	/** {@link MemoryClient.listAuditLog} within the bound scope. */
 	listAuditLog(input?: BoundListAuditLogInput): Promise<AuditEvent[]>;
 	/** {@link MemoryClient.stats} within the bound scope. */
@@ -1390,6 +1430,10 @@ export interface BoundMemoryClient {
  * @experimental Members may change or be removed in a minor release.
  */
 export interface BoundExperimentalMemoryClient {
-	/** {@link ExperimentalMemoryClient.consolidate} at the bound scope. */
+	/**
+	 * Same as {@link BoundMemoryClient.consolidate}.
+	 *
+	 * @deprecated Use {@link BoundMemoryClient.consolidate}. Removed in 1.0.
+	 */
 	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 }

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
+import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
@@ -18,6 +19,7 @@ import {
 	verifyScopeVisibility,
 	verifyUpdate,
 } from "../fixtures/scoped-api.js";
+import { verifySurvivorDeletes } from "../fixtures/survivor-deletes.js";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
 /**
@@ -363,6 +365,24 @@ export function describeStoreContract(
 			});
 		});
 
+		test("survivor-aware deletes", async () => {
+			const { memory, namespace } = client("survivors");
+			await verifySurvivorDeletes(memory, (entityId, extra = {}) => ({
+				namespace,
+				entityId,
+				...extra,
+			}));
+		});
+
+		test("nearest-neighbor duplicates", async () => {
+			const { memory, namespace } = client("knn");
+			await verifyKnnDuplicates(memory, (entityId, extra = {}) => ({
+				namespace,
+				entityId,
+				...extra,
+			}));
+		});
+
 		describe("cross-scope isolation", () => {
 			/**
 			 * The same content in the scope under test and in three neighbours:
@@ -510,7 +530,7 @@ export function describeStoreContract(
 					ids.otherNamespace[0],
 				]) {
 					await expectMnemocyteError(
-						memory.experimental.consolidate({
+						memory.consolidate({
 							scope: scopes.own,
 							survivorId: expectDefined(survivor),
 							supersededIds: [expectDefined(local), expectDefined(foreign)],
@@ -523,7 +543,7 @@ export function describeStoreContract(
 					true,
 				);
 				await expect(
-					memory.experimental.consolidate({
+					memory.consolidate({
 						scope: scopes.own,
 						survivorId: expectDefined(survivor),
 						supersededIds: [expectDefined(local)],

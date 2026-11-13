@@ -225,7 +225,7 @@ async function runCancellationScenario(databaseUrl: string) {
 			"ABORTED",
 		);
 		await expectMnemocyteError(
-			client.experimental.consolidate({
+			client.consolidate({
 				scope: testScope(entityId),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],
@@ -269,7 +269,7 @@ async function runCancellationScenario(databaseUrl: string) {
 		await consolidateLock.locked;
 		try {
 			const controller = new AbortController();
-			const pending = client.experimental.consolidate({
+			const pending = client.consolidate({
 				scope: testScope(entityId),
 				survivorId: survivor.id,
 				supersededIds: [loser.id],

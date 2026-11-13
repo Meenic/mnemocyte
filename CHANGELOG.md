@@ -8,6 +8,44 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **`consolidate` is stable.** `memory.consolidate` and
+  `boundClient.consolidate` replace `experimental.consolidate`, with the
+  same input, result and one-statement locking.
+- **Survivor-aware `delete`.** `delete({ scope, id, dependents })` decides
+  what happens to the memories consolidated into the one deleted:
+  `"reject"` (the default, as before) throws `"CONFLICT"`, `"restore"`
+  makes them active again, and `"delete"` deletes them too, including
+  memories consolidated into those. A dependent that is not visible at the
+  call's scope makes it throw `"CONFLICT"` and change nothing. The
+  `DependentsPolicy` type is exported.
+- **`neighbors` on `findDuplicates`.** How many nearest memories each
+  memory is compared with (default 10, at most 100).
+
+### Changed
+
+- **`findDuplicates` uses nearest neighbors.** Each memory is compared
+  with its `neighbors` nearest instead of every other memory. On Postgres a
+  large scope uses the HNSW index once per memory (7.4 s instead of 32.8 s
+  for 2,000 memories on PGlite), which is approximate, so a pair can be
+  missed. Pairs now always have the smaller id as `a` and tie-break by id.
+- **`prune` deletes a survivor with its dependents.** A prune that selects
+  a consolidation survivor and every memory consolidated into it deletes
+  them all, as `deleteScope` does; before, it threw `"CONFLICT"`. A
+  dependent left outside the selection still makes it throw.
+- **`forgetMemory` forgets merged duplicates.** The AI SDK tool deletes
+  with `dependents: "delete"`, so the model can forget a memory that
+  duplicates were consolidated into instead of getting `"CONFLICT"`.
+- **`delete` audit events.** Each memory a `delete` removes gets its own
+  `memory.deleted` event; dependents carry `deletedWith`, and the
+  survivor's event lists `restoredIds` after a restore.
+
+### Deprecated
+
+- **`experimental.consolidate`** on unbound and bound clients. It calls
+  `consolidate` and is removed in 1.0.
+
 ## [0.7.0] - 2026-11-13
 
 ### Added

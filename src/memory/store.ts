@@ -2,6 +2,7 @@ import { MnemocyteError } from "../errors.js";
 import type {
 	AuditEvent,
 	AuditLogCursor,
+	DependentsPolicy,
 	Embedder,
 	ImportanceLevel,
 	JsonObject,
@@ -122,6 +123,8 @@ export interface StoreDuplicateInput {
 	readonly visibility: StoreVisibility;
 	readonly threshold: number;
 	readonly limit: number;
+	/** Nearest neighbors compared per memory. */
+	readonly neighbors: number;
 	readonly kinds?: readonly MemoryKind[];
 	readonly tags?: readonly string[];
 	readonly includeSuperseded?: boolean;
@@ -151,6 +154,21 @@ export interface StoreAuditLogInput {
 	readonly after?: Date;
 	readonly beforeCursor?: AuditLogCursor;
 	readonly afterCursor?: AuditLogCursor;
+}
+
+export interface StoreDeleteInput {
+	readonly visibility: StoreVisibility;
+	readonly memoryId: string;
+	readonly dependents: DependentsPolicy;
+	/** `updatedAt` of restored dependents. */
+	readonly now: Date;
+}
+
+export interface StoreDeleteResult {
+	/** The memory, then the dependents deleted with it (`"delete"`). */
+	readonly deletedIds: readonly string[];
+	/** Dependents made active again (`"restore"`). */
+	readonly restoredIds: readonly string[];
 }
 
 export interface StoreConsolidationTarget {
@@ -321,15 +339,19 @@ export interface MemoryStore {
 	 */
 	updateMemory(input: StoreUpdateInput): Promise<Memory | null>;
 	/**
-	 * Deletes the visible memory with this id: `false` when there is none,
-	 * `"CONFLICT"` without deleting when another memory references it through
-	 * `supersededBy`.
+	 * Deletes the visible memory with this id in one atomic write, or returns
+	 * `null` when there is none. Its dependents (memories whose
+	 * `supersededBy` points at it) follow `dependents`: `"reject"` throws
+	 * `"CONFLICT"` when there is any; `"restore"` clears their
+	 * `supersededBy` and `supersededAt`; `"delete"` deletes them and,
+	 * transitively, their own dependents. With `"restore"` a direct
+	 * dependent, and with `"delete"` any deleted one, that is not visible
+	 * throws `"CONFLICT"`. Nothing changes on a conflict.
 	 */
 	deleteMemory(
-		visibility: StoreVisibility,
-		memoryId: string,
+		input: StoreDeleteInput,
 		options?: StoreOperationOptions,
-	): Promise<boolean>;
+	): Promise<StoreDeleteResult | null>;
 	/**
 	 * Deletes every selected memory and the selected audit events, atomically,
 	 * and returns the number of memories deleted. Rejects with `"CONFLICT"`
@@ -345,8 +367,10 @@ export interface MemoryStore {
 		options?: StoreOperationOptions,
 	): Promise<StorePruneResult>;
 	/**
-	 * Unordered pairs of visible memories meeting the similarity threshold, by
-	 * decreasing similarity, up to the limit. Similarities are clamped to
+	 * Unordered pairs of visible memories meeting the similarity threshold
+	 * where one is among the other's `neighbors` nearest (approximate on an
+	 * HNSW index), by decreasing similarity, then `a.id`, then `b.id`, up to
+	 * the limit. `a.id` is the smaller id. Similarities are clamped to
 	 * `[0, 1]`.
 	 */
 	findDuplicatePairs(

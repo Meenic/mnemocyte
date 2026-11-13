@@ -260,8 +260,8 @@ async function main(databaseUrl: string) {
 		expect(pairIds).toEqual([memory.id, dup.id].sort());
 		expect(pair.similarity).toBeGreaterThanOrEqual(0.99);
 
-		// 6. experimental.consolidate collapses the duplicate.
-		const consolidated = await client.experimental.consolidate({
+		// 6. consolidate collapses the duplicate.
+		const consolidated = await client.consolidate({
 			scope: testScope(entityId),
 			survivorId: memory.id,
 			supersededIds: [dup.id],

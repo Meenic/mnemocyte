@@ -113,13 +113,14 @@ export function createScopedClient(
 			),
 		stats: (input) =>
 			core.stats(withScopeNamespace(input, namespace) as StatsInput),
+		consolidate: (input) =>
+			core.consolidate(
+				withScopeNamespace(input, namespace) as ConsolidateInput,
+			),
 		for: (scope) =>
 			bindScope(core, validateScope(withNamespace(scope, namespace)), context),
 		experimental: {
-			consolidate: (input) =>
-				core.experimental.consolidate(
-					withScopeNamespace(input, namespace) as ConsolidateInput,
-				),
+			consolidate: (input) => client.consolidate(input),
 		},
 	};
 	return attachMemoryClientInternals(client, context.internals);
@@ -208,11 +209,12 @@ function bindScope(
 		// Takes no input; one passed from untyped code is still checked.
 		stats: (input?: object) =>
 			run("stats", input, true, () => core.stats({ scope })),
+		consolidate: (input) =>
+			run("consolidate", input, false, (value) =>
+				core.consolidate({ ...value, scope }),
+			),
 		experimental: {
-			consolidate: (input) =>
-				run("consolidate", input, false, (value) =>
-					core.experimental.consolidate({ ...value, scope }),
-				),
+			consolidate: (input) => bound.consolidate(input),
 		},
 	};
 	return attachMemoryClientInternals(bound, context.internals);

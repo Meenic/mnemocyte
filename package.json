@@ -22,6 +22,14 @@
 			"types": "./dist/embedders/index.d.mts",
 			"default": "./dist/embedders/index.mjs"
 		},
+		"./embedders/cohere": {
+			"types": "./dist/embedders/cohere.d.mts",
+			"default": "./dist/embedders/cohere.mjs"
+		},
+		"./embedders/google": {
+			"types": "./dist/embedders/google.d.mts",
+			"default": "./dist/embedders/google.mjs"
+		},
 		"./embedders/openai": {
 			"types": "./dist/embedders/openai.d.mts",
 			"default": "./dist/embedders/openai.mjs"
@@ -29,6 +37,10 @@
 		"./embedders/openai-compatible": {
 			"types": "./dist/embedders/openai-compatible.d.mts",
 			"default": "./dist/embedders/openai-compatible.mjs"
+		},
+		"./embedders/voyage": {
+			"types": "./dist/embedders/voyage.d.mts",
+			"default": "./dist/embedders/voyage.mjs"
 		},
 		"./postgres": {
 			"types": "./dist/postgres.d.mts",

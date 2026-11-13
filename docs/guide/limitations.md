@@ -58,9 +58,6 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so
   `accessCount` can undercount.
-- **Queries and documents are embedded the same way.** The embedder is not
-  told which one it is embedding, so providers with separate query and
-  document modes cannot use them. Planned: `feat/embedder-purpose`.
 
 ## Deleting
 
@@ -124,6 +121,18 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   `maxBatch` (default 100) texts per request; long contents can pass a
   provider's per-request token limit (OpenAI: 300,000) and fail with a 400.
   Lower `maxBatch` when memories are long.
+- **Long texts are cut by default.** `voyageEmbedder`, `cohereEmbedder` and
+  `googleEmbedder` send `truncate: true` unless you set it to `false`, so a
+  memory longer than the model's context (512 tokens for Cohere's v3
+  models, 2,048 for `gemini-embedding-001`) is embedded from its start
+  only, and search cannot match the rest. With `truncate: false` the
+  request fails with a 400 instead.
+- **No Vertex AI.** `googleEmbedder` calls the Gemini API with an API key.
+  Vertex AI needs OAuth access tokens and another request shape; use
+  `aiSdkEmbedder` with `@ai-sdk/google-vertex` for it.
+- **Voyage, Cohere and Gemini waits are not read.** None of them documents
+  a `Retry-After` header, so a 429 waits for the client's backoff, not for
+  the provider's quota window.
 - **Purpose hints are not part of the installation check.** Postgres checks
   the embedder's `model` and `dimensions`, not its `purposes`; changing the
   prefixes or body fields after memories are stored makes old and new

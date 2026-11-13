@@ -65,14 +65,18 @@ export function parseErrorBody(text: string): unknown {
 
 /**
  * A short, safe label from an error body: the `code` or `type` of an
- * OpenAI-shaped `{ error: { … } }` or a top-level one (vLLM). The free-text
- * `message` is left out because it can echo part of a credential.
+ * OpenAI-shaped `{ error: { … } }`, the canonical `status` of a Google one
+ * (`RESOURCE_EXHAUSTED`; its `code` is the numeric HTTP status), or a
+ * top-level `code` or `type` (vLLM). The free-text `message` (Voyage's
+ * `detail`, Cohere's `message`) is left out because it can echo part of a
+ * credential.
  */
 function errorLabel(body: unknown): string | undefined {
 	const candidates = isRecord(body)
 		? [
 				isRecord(body.error) ? body.error.code : undefined,
 				isRecord(body.error) ? body.error.type : undefined,
+				isRecord(body.error) ? body.error.status : undefined,
 				body.code,
 				body.type,
 			]

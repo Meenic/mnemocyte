@@ -105,12 +105,20 @@ import {
 	withMemory,
 } from "mnemocyte/ai-sdk";
 import {
+	type CohereEmbedderOptions,
+	cohereEmbedder,
+	type GoogleEmbedderOptions,
+	googleEmbedder,
 	type OpenAICompatibleEmbedderOptions,
 	type OpenAIEmbedderOptions,
 	openaiCompatibleEmbedder,
 	openaiEmbedder,
 	type PurposeHints,
+	type VoyageEmbedderOptions,
+	voyageEmbedder,
 } from "mnemocyte/embedders";
+import { cohereEmbedder as directCohereEmbedder } from "mnemocyte/embedders/cohere";
+import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/google";
 import {
 	type OpenAIEmbedderOptions as DirectOpenAIEmbedderOptions,
 	openaiEmbedder as directOpenAIEmbedder,
@@ -119,6 +127,7 @@ import {
 	openaiCompatibleEmbedder as directOpenAICompatibleEmbedder,
 	type PurposeHint,
 } from "mnemocyte/embedders/openai-compatible";
+import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
 import {
 	type DrizzleClient,
 	type NodePostgresPool,
@@ -464,6 +473,32 @@ const compatibleOptions: OpenAICompatibleEmbedderOptions = {
 const compatible: Embedder = openaiCompatibleEmbedder(compatibleOptions);
 const directCompatible: Embedder =
 	directOpenAICompatibleEmbedder(compatibleOptions);
+const voyageOptions: VoyageEmbedderOptions = {
+	model: "voyage-4",
+	dimensions: 512,
+	truncate: false,
+};
+const voyage: Embedder = voyageEmbedder(voyageOptions);
+const directVoyage: Embedder = directVoyageEmbedder({ model: "voyage-4" });
+const cohereOptions: CohereEmbedderOptions = {
+	model: "embed-v4.0",
+	maxBatch: 48,
+};
+const cohere: Embedder = cohereEmbedder(cohereOptions);
+const directCohere: Embedder = directCohereEmbedder({ model: "embed-v4.0" });
+const googleOptions: GoogleEmbedderOptions = {
+	model: "gemini-embedding-001",
+	dimensions: 768,
+	baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+};
+const google: Embedder = googleEmbedder(googleOptions);
+const directGoogle: Embedder = directGoogleEmbedder({
+	model: "gemini-embedding-2",
+});
+// @ts-expect-error model is required
+voyageEmbedder({ dimensions: 1024 });
+// @ts-expect-error truncate is a boolean
+cohereEmbedder({ model: "embed-v4.0", truncate: "END" });
 const purpose: EmbeddingPurpose = "query";
 const embedOptions: EmbedOptions = { purpose };
 void compatible.embed(["x"], embedOptions);
@@ -547,6 +582,12 @@ void MnemocyteError;
 void openai;
 void directOpenai;
 void directCompatible;
+void voyage;
+void directVoyage;
+void cohere;
+void directCohere;
+void google;
+void directGoogle;
 void providerStatus;
 void providerRetryAfter;
 void providerAsMnemocyte;

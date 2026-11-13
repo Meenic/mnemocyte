@@ -126,9 +126,18 @@ const embedder = {
 };
 ```
 
-`mnemocyte/embedders` has two that use `fetch`: `openaiEmbedder` for OpenAI
-and `openaiCompatibleEmbedder` for Ollama, LM Studio, vLLM, Mistral and other
-servers with an OpenAI-shaped `/embeddings`. With the AI SDK installed,
+`mnemocyte/embedders` has five that use `fetch`: `openaiEmbedder`,
+`voyageEmbedder`, `cohereEmbedder` and `googleEmbedder` (the Gemini API) for
+those providers, and `openaiCompatibleEmbedder` for Ollama, LM Studio, vLLM,
+Mistral and other servers with an OpenAI-shaped `/embeddings`:
+
+```ts
+import { voyageEmbedder } from "mnemocyte/embedders";
+
+const embedder = voyageEmbedder({ model: "voyage-4" }); // VOYAGE_API_KEY
+```
+
+With the AI SDK installed,
 `mnemocyte/ai-sdk` turns any AI SDK embedding model into an embedder:
 
 ```ts

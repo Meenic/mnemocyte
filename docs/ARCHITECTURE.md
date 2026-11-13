@@ -133,11 +133,10 @@ formats and the token-budget guarantee and no longer echoes the query; see
 
 The contract with `purpose` and `maxBatch`, `openaiCompatibleEmbedder`,
 `ProviderError` with the provider's body as `cause`, and status-based
-retries with jitter and `Retry-After` have landed (decision 25), and so has
-the AI SDK embedder, `aiSdkEmbedder`; see
-[features/embedders.md](./features/embedders.md). Still to come: fetch-only
-Voyage, Cohere and Google embedders, each mapping `purpose` to its own field
-(Voyage and Cohere `input_type`, Google `taskType`).
+retries with jitter and `Retry-After` have landed (decision 25), and so
+have the AI SDK embedder, `aiSdkEmbedder`, and fetch-only Voyage, Cohere
+and Gemini API embedders (decision 29); see
+[features/embedders.md](./features/embedders.md).
 
 ## AI SDK integration
 
@@ -259,7 +258,8 @@ Dated 2026-10-26 unless noted.
 9. **Migrations:** an exported `migrate()` runner; the SQL files keep
    shipping.
 10. **Embedders:** OpenAI-compatible and AI SDK in 1.0; Voyage, Cohere and
-    Google in 1.x as demand shows.
+    Google in 1.x as demand shows. (Voyage, Cohere and Google landed
+    before 1.0; see 29.)
 11. **AI SDK saving:** an opt-in hook only for 1.0; no LLM extraction in the
     library. Extraction with the user's own AI SDK model is planned after
     1.0. (Superseded by 24.)
@@ -508,3 +508,42 @@ Dated 2026-10-26 unless noted.
     `providerOptions.mnemocyte.extraction`, and the middleware passes such
     calls through, so a model wrapped with memory given as the extraction
     model cannot recurse.
+29. **Voyage, Cohere and Gemini embedders** (2026-11-13, landed):
+    `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder` in
+    `mnemocyte/embedders/voyage`, `/cohere` and `/google` share one
+    `fetch` core with `openaiCompatibleEmbedder` (`createFetchEmbedder`:
+    purpose check, signal, `ProviderError`, response checks), so retries,
+    timeouts and `maxBatch` work as for the others. The core is shared
+    instead of the OpenAI-shaped request because Voyage rejects
+    `encoding_format: "float"` and none of the three takes `dimensions`.
+    The name is `google`, after the roadmap and the AI SDK provider key,
+    and it calls the Gemini API (`generativelanguage.googleapis.com`, key
+    in the `x-goog-api-key` header so it never sits in a URL). Vertex AI is
+    left out: it needs hourly OAuth access tokens, a `:predict` shape and
+    one text per request for `gemini-embedding-001`; `aiSdkEmbedder`
+    covers it. Keys default to `VOYAGE_API_KEY`, `COHERE_API_KEY` and
+    `GEMINI_API_KEY`, one name each. Known models come from each
+    provider's docs: a model that can shorten its vectors accepts the
+    sizes listed (Voyage 256 to 2048, Cohere's v4 and v5 lists, Gemini 128
+    to 3072), which are then sent; a fixed-size model accepts only its own
+    size; an unknown model requires `dimensions`, which is not sent,
+    because a fixed-size model would reject it. Gemini vectors shorter
+    than 3072 are not normalized: storage compares by cosine, which
+    ignores length. `gemini-embedding-2` does not take `taskType`, so it
+    gets the retrieval prefixes Google gives for it; other Gemini models
+    get `taskType`. `truncate` defaults to `true` and is always sent: the
+    32,000-character content cap passes Cohere v3's 512-token and
+    `gemini-embedding-001`'s 2,048-token contexts, truncating is Voyage's
+    and Cohere's default, and Gemini documents none. `maxBatch` stays
+    unset (100) for Voyage, whose 1,000-input cap is not the binding limit
+    (120K tokens per request for the large models); it is 96 for Cohere,
+    its documented limit, which larger values may not pass; and 100 for
+    Gemini, whose `batchEmbedContents` has no documented limit (100 is the
+    deprecated `batchEmbedText`'s). Cohere's `embedding_types: ["float"]`
+    is always sent because its docs disagree on whether it is required.
+    Gemini fields go in `embedContentConfig`; the top-level `taskType`,
+    `title` and `outputDimensionality` are deprecated in the v1beta
+    discovery document. A Google error's canonical `status` labels the
+    `ProviderError` message (its `code` is numeric); Voyage's `detail` and
+    Cohere's `message` are free text and stay out. No provider documents
+    `Retry-After` or `RetryInfo`, so none is read.

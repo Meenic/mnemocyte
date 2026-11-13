@@ -159,7 +159,15 @@ it.
   output. Off by default, never delays or fails the response (errors go to
   `onError`), and extracted facts that already exist update in place by
   key (`extracted:` prefix) instead of duplicating.
-- [ ] `feat/embedders-voyage-cohere-google`: fetch-based embedders.
+- [x] `feat/embedders-voyage-cohere-google`: fetch-based embedders
+  (decision 29).
+- [ ] `fix/ai-sdk-gemini-embedding-2`: `aiSdkEmbedder` sends `taskType`
+  for every Google model, but the Gemini API guide says
+  `gemini-embedding-2` does not take it and reads the purpose from a text
+  prefix (`task: search result | query: `, `title: none | text: `), as
+  `googleEmbedder` does. Check what the API does with it, then send the
+  prefixes for that model instead, and add `gemini-embedding-2` (3072) to
+  the known models.
 
 ## Phase 3: operations (0.8)
 

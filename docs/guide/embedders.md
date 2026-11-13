@@ -122,6 +122,91 @@ other hints compare poorly with new queries, and nothing detects the change.
 `body` may not set `model`, `input`, `encoding_format` or `dimensions`.
 It is also available as `mnemocyte/embedders/openai-compatible`.
 
+## `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder`
+
+For Voyage AI, Cohere and the Gemini API (Google AI Studio). Each calls the
+provider's own embeddings endpoint with `fetch` (there is no SDK
+dependency), reads its API key from the environment, and tells the model
+whether it is embedding a query or a document.
+
+```ts
+import {
+  cohereEmbedder,
+  googleEmbedder,
+  voyageEmbedder,
+} from "mnemocyte/embedders";
+
+const voyage = voyageEmbedder({ model: "voyage-4" });
+const cohere = cohereEmbedder({ model: "embed-v4.0" });
+const google = googleEmbedder({
+  model: "gemini-embedding-001",
+  dimensions: 768,
+});
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `model` | required | Embedding model id. |
+| `apiKey` | `VOYAGE_API_KEY`, `COHERE_API_KEY` or `GEMINI_API_KEY` | A missing key throws `"CONFIG"`. |
+| `dimensions` | the model's | A smaller size, for models that offer one (below). Required for models the helper does not know. |
+| `truncate` | `true` | Cut texts longer than the model's context instead of failing the request. |
+| `baseUrl` | the provider's API | Another endpoint, such as a proxy. |
+| `maxBatch` | 100 (Cohere: 96) | Most texts per request. Cohere accepts at most 96. |
+
+Known models:
+
+| Provider | Model | `dimensions` | Other sizes |
+|---|---|---|---|
+| Voyage | `voyage-4-large`, `voyage-4`, `voyage-4-lite`, `voyage-3-large`, `voyage-3.5`, `voyage-3.5-lite`, `voyage-code-3` | 1024 | 256, 512, 2048 |
+| Voyage | `voyage-finance-2`, `voyage-law-2` | 1024 | none |
+| Cohere | `embed-v4.0` | 1536 | 256, 512, 1024 |
+| Cohere | `embed-v5.0-pro`, `embed-v5.0-fast` | 2048 | 256, 512, 768, 1024, 1536 |
+| Cohere | `embed-english-v3.0`, `embed-multilingual-v3.0` | 1024 | none |
+| Cohere | `embed-english-light-v3.0`, `embed-multilingual-light-v3.0` | 384 | none |
+| Google | `gemini-embedding-001`, `gemini-embedding-2` | 3072 | 128 to 3072; Google recommends 768 or 1536 |
+
+A size other than the default is sent to the provider, which returns
+vectors of that length. For any other model, `dimensions` only states the
+length the model returns and is not sent. `googleEmbedder` also accepts
+`models/gemini-embedding-001`; its `model` is the id without `models/`, as
+for `aiSdkEmbedder`, so you can switch between them on an existing Postgres
+installation.
+
+### Queries and documents
+
+| Embedder | Query | Document |
+|---|---|---|
+| `voyageEmbedder` | `input_type: "query"` | `input_type: "document"` |
+| `cohereEmbedder` | `input_type: "search_query"` | `input_type: "search_document"` |
+| `googleEmbedder` | `taskType: "RETRIEVAL_QUERY"` | `taskType: "RETRIEVAL_DOCUMENT"` |
+| `googleEmbedder` with `gemini-embedding-2` | text prefix `task: search result \| query: ` | text prefix `title: none \| text: ` |
+
+`gemini-embedding-2` does not take `taskType`; Google's guide marks its
+texts with these prefixes instead. The prefix is only sent to the provider;
+the stored `content` stays as you wrote it. Models the helper does not know
+get `taskType`.
+
+### Limits
+
+- **Batches.** Cohere takes at most 96 texts per request, and a larger
+  `maxBatch` throws `"CONFIG"`. Voyage takes up to 1,000 texts but also caps
+  the tokens per request (120,000 for `voyage-4-large`, `voyage-3-large` and
+  `voyage-code-3`), so lower `maxBatch` when memories are long. Google
+  documents no limit for its batch endpoint; 100 is the helper's default.
+- **Long texts.** With `truncate: true`, a text longer than the model's
+  context (512 tokens for Cohere's v3 models, 2,048 for
+  `gemini-embedding-001`) is embedded from its start only. With `false`,
+  the request fails with a 400 `ProviderError`.
+- **Vertex AI.** `googleEmbedder` calls the Gemini API with an API key, not
+  Vertex AI. For Vertex, use `aiSdkEmbedder` with `@ai-sdk/google-vertex`.
+- **Errors.** A provider error becomes a `ProviderError` (below). For the
+  Gemini API its message also names Google's status, such as
+  `RESOURCE_EXHAUSTED`. None of the three sends `Retry-After`, so retries
+  wait for the client's backoff.
+
+They are also available as `mnemocyte/embedders/voyage`,
+`mnemocyte/embedders/cohere` and `mnemocyte/embedders/google`.
+
 ## `aiSdkEmbedder`
 
 For apps that use the [AI SDK](https://ai-sdk.dev): any AI SDK embedding

@@ -24,7 +24,8 @@ Feature areas:
 - [features/maintenance.md](./features/maintenance.md): delete, prune,
   duplicates, consolidation, audit log, stats.
 - [features/embedders.md](./features/embedders.md): the `Embedder` contract
-  (`purpose`, `maxBatch`), `openaiEmbedder`, `openaiCompatibleEmbedder` and
+  (`purpose`, `maxBatch`), `openaiEmbedder`, `openaiCompatibleEmbedder`,
+  `voyageEmbedder`, `cohereEmbedder`, `googleEmbedder` and
   `aiSdkEmbedder`, `ProviderError`, retries, timeouts, cancellation,
   observability.
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
@@ -61,7 +62,7 @@ src/
   ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
-  http-embedder.ts      createHttpEmbedder behind openaiEmbedder and openaiCompatibleEmbedder
+  http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
   provider-error.ts     createProviderError, error body parsing, Retry-After parsing
   observability.ts      onEvent lifecycle (start / success / error)
   resilience.ts         provider timeout, retry rule, jittered backoff, abort
@@ -100,7 +101,7 @@ src/
     migrations/         Postgres migration runner and bundled.ts (generated)
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
-  embedders/            openaiEmbedder, openaiCompatibleEmbedder (fetch only)
+  embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
   stores/drizzle.ts     drizzleStore(db)
 migrations/             SQL migrations, template, renderer, Drizzle journal
 scripts/                bundle-migrations.mjs, check-package.mjs
@@ -179,11 +180,13 @@ Exports:
   [features/postgres.md](./features/postgres.md#lazy-loading)). The root
   entry must not import the backend statically; a package test follows its
   static imports to check.
-- `mnemocyte/embedders`: `openaiEmbedder`, `openaiCompatibleEmbedder` and
-  their option types (`OpenAIEmbedderOptions`,
-  `OpenAICompatibleEmbedderOptions`, `PurposeHint`, `PurposeHints`);
-  `mnemocyte/embedders/openai` and `mnemocyte/embedders/openai-compatible`
-  export one each. `ProviderError`, `EmbedOptions` and `EmbeddingPurpose`
+- `mnemocyte/embedders`: `openaiEmbedder`, `openaiCompatibleEmbedder`,
+  `voyageEmbedder`, `cohereEmbedder`, `googleEmbedder` and their option
+  types (`OpenAIEmbedderOptions`, `OpenAICompatibleEmbedderOptions`,
+  `PurposeHint`, `PurposeHints`, `VoyageEmbedderOptions`,
+  `CohereEmbedderOptions`, `GoogleEmbedderOptions`);
+  `mnemocyte/embedders/openai`, `/openai-compatible`, `/voyage`, `/cohere`
+  and `/google` export one each. `ProviderError`, `EmbedOptions` and `EmbeddingPurpose`
   come from the root.
 - `mnemocyte/ai-sdk`: `aiSdkEmbedder` and its `AiSdkEmbedderOptions`,
   `AiSdkProviderOptions` and `AiSdkPurposeOptions` types; `memoryTools` and
@@ -274,6 +277,11 @@ Vitest has three projects (`vitest.config.ts`):
   `generateText` on a `withMemory` mock model to check the context
   reaches the prompt, and `extractMemories` with a mock model to check it
   stores a keyed memory.
+- `test/embedders/voyage.test.ts`, `cohere.test.ts` and `google.test.ts`
+  stub `fetch` (helpers in `fetch-mock.ts`) and check each request's URL,
+  headers and body per purpose, the dimension rules, response checks and
+  error mapping against the error bodies the provider docs show. No test
+  calls a provider.
 - `test/embedders/ai-sdk.test.ts` drives `aiSdkEmbedder` with the AI SDK's
   `MockEmbeddingModelV4` and `customProvider` (as the global provider for
   string ids), and with a real `createGateway` provider over a mocked

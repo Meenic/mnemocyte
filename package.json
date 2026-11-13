@@ -73,6 +73,7 @@
 		"test:context": "vitest run --project unit test/context/builder.test.ts",
 		"test:integration": "vitest run --project integration",
 		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
+		"bench:postgres": "vitest bench --project \"integration (bench)\" test/benchmarks/postgres-plans.bench.ts",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
 		"lint:package": "pnpm build && node scripts/check-package.mjs",

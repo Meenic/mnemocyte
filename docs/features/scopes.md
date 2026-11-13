@@ -168,20 +168,29 @@ LIMIT $limit + 1
 - Ids converted from 0.x text ids are md5 hashes, not time-ordered, which is
   why the order uses `created_at` first rather than the UUIDv7 id alone.
 
-No index serves the order. Measured with `EXPLAIN (ANALYZE, BUFFERS)` on
-Postgres 18 / pgvector 0.8.7, 130,000 memories (1,000 entities of 100 and one
-of 30,000):
+No index serves the order. Measured with `pnpm bench:postgres` on Postgres
+18.6 / pgvector 0.8.7 (dataset in
+[postgres.md](./postgres.md#indexes-measured): 132,000 memories, one entity of
+30,000, rows of all entities interleaved in the heap), pages of 50:
 
 | Page | Plan | Time |
 |---|---|---|
-| 100-memory entity, first page | scope index scan, quicksort | 0.8 ms, 102 buffers |
-| 30,000-memory entity, first page | bitmap scan on the scope index, top-N heapsort | 9.0 ms, 914 buffers |
-| 30,000-memory entity, page at row 15,000 | same, half the rows filtered by the cursor | 8.3 ms, 846 buffers |
+| 100-memory entity, first page | scope index scan, quicksort | 0.26 ms, 102 buffers |
+| 30,000-memory entity, first page | bitmap scan on the scope index, top-N heapsort | 37 ms, 8,975 buffers |
+| 30,000-memory entity, page at row 15,000 | same, half the rows filtered by the cursor | 29 ms, 8,903 buffers |
 
-A `(namespace, entity_id, agent_id, session_id, created_at, id)` index would
-turn the large-entity pages into index scans, but every write would pay for
-it, and listing is an administrative read. Not worth it until a benchmark
-shows otherwise.
+The large entity's 30,000 rows lie on about 8,900 heap pages, because an
+application writes for every user at once; the bitmap scan reads all of
+them. (An earlier measurement found 914 buffers on data loaded one entity
+at a time, which kept each entity's rows together.)
+
+No index can serve this order as written: `date_trunc` on a `timestamptz`
+depends on the session time zone, so Postgres does not accept it in an
+index, and a `(…, created_at, id)` index does not match
+`date_trunc('milliseconds', created_at)`. Serving large-entity pages from an
+index would mean ordering by the raw `created_at` and a cursor with
+microseconds; listing is an administrative read, so that waits until an
+application needs faster pages over very large entities.
 
 ## `update`
 

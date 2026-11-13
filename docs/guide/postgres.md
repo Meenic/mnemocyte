@@ -426,6 +426,14 @@ adds cost to every write. The scope and filters such as `kinds` and `tags`
 are applied after the index scan; pgvector's iterative scan keeps reading
 the index until enough rows pass (see [limitations](./limitations.md)).
 
+For scale, measured on Postgres 18 with 132,000 memories at 1,536
+dimensions and default server settings: the HNSW index was about as large
+as the table (1 GB each), searching a 30,000-memory user took 2–11 ms
+against 320 ms without it, and it made inserts about ten times slower
+(roughly 1 ms per memory). Users with a few hundred memories are searched
+exactly, without HNSW. `findDuplicates` is slower still (see
+[limitations](./limitations.md)).
+
 There is no tag index. Benchmark against representative data before adding
 indexes of your own. IVFFlat can suit large, steady-state tables, but needs
 tuning once the table holds representative vectors.

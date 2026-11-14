@@ -219,12 +219,12 @@ Dated 2026-10-26 unless noted.
    Postgres backend has no dependencies of its own (the user brings the
    driver), and the lazy `import()` of decision 23 already keeps it out of
    in-memory bundles, so a split would remove no dependency and no bundled
-   code.
-   First-party backends that run on the user's client ship as subpaths;
-   a package is split out only when it needs dependencies of its own or
-   its own release cadence (`@mnemocyte/mcp` first, with `mnemocyte` as a
-   peer). If first-party code ever splits, `mnemocyte` stays an umbrella
-   that re-exports every current import path, so the split is non-breaking.
+   code. First-party backends that run on the user's client ship as
+   subpaths; a package is split out only when it needs dependencies of its
+   own or its own release cadence (`@mnemocyte/mcp` first, with `mnemocyte`
+   as a peer). If first-party code ever splits, `mnemocyte` stays an
+   umbrella that re-exports every current import path, so the split is
+   non-breaking.
    Details and the public `MemoryStore` plan are in ROADMAP.md "After 1.0".
 2. **Backend order:** Postgres (postgres.js, Drizzle, PGlite, node-postgres)
    → 1.0 → libSQL → SQLite + sqlite-vec when it reaches a stable release

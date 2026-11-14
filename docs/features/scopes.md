@@ -19,8 +19,8 @@ interface MemoryScope {
 ```
 
 `entityId` is who a memory is about and `agentId` who holds it (ARCHITECTURE
-decision 17). `validateScope` (`memory/validation.ts`) checks each field is a
-non-empty string and returns a detached `StoreScope` with `null` for an
+decision 17). `validateScope` (`memory/validation.ts`) rejects a key other than the four
+fields, checks each field is a non-empty string and returns a detached `StoreScope` with `null` for an
 omitted agent or session. Records carry that `scope` (`MemoryRecordScope`).
 
 Two matching rules, both in `memory/filters.ts` (in-memory) and
@@ -64,7 +64,8 @@ client from `memory/client-core.ts`, which only ever sees full scopes:
   `for()`) and keeps a frozen `MemoryScope`, exposed as `bound.scope`.
   Each bound method checks that its input is an object (an omitted optional
   input becomes `{}`) with no `scope` and no `allNamespaces`, then calls the
-  core with `{ ...input, scope }`. Selector methods (`deleteScope`,
+  core with `{ ...input, scope }`, whose key check then rejects an unknown
+  key (`stats()`, which takes no input, rejects any). Selector methods (`deleteScope`,
   `prune`, `stats`, `listAuditLog`, `pruneAuditLog`) get the same scope, which they read as a
   selector: an omitted agent or session matches any value.
 
@@ -248,7 +249,10 @@ visibility and selection across agents, sessions, entities and namespaces;
 keyed adds, including mixed batches and five concurrent adds with one key;
 the created/updated audit events; list paging, filters, deletes between
 pages and malformed cursors; updates with and without re-embedding and key
-collisions; `get` and scope validation on every method. The Postgres file
+collisions; `get` and scope validation on every method.
+`test/memory/strict-inputs.test.ts` checks unknown keys on every method of
+the plain, default-namespace and bound clients, in scopes, in `addMany`
+memories and on `migrate`. The Postgres file
 adds microsecond `created_at` paging and the audit-event deletion of
 `deleteScope`.
 

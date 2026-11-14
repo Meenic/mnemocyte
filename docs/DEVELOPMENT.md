@@ -153,7 +153,12 @@ plugin in `tsdown.config.ts` strips that comment.
   reject unknown keys through `assertKnownKeys` (`src/options.ts`), so a
   new option must be added to its list; an object that carries free-form
   JSON (`providerOptions`, `purposes[*].body`, `headers`) is not checked
-  inside.
+  inside. Method inputs, their `scope` and each `addMany` memory reject
+  unknown keys with `"VALIDATION"` through `assertInputKeys`
+  (`memory/validation.ts`), first, before any other check. Its lists are
+  built with `inputKeys<T>()`, whose record type makes `tsc` fail when a
+  list and its input type disagree, so a new input key is added there.
+  `metadata` and `tokenCounter` are not checked inside.
 - Input sizes are capped in `memory/limits.ts`, the same on every backend:
   `limit` 1–1,000, `content` and `query` 32,000 characters, 64 tags of 128
   characters, metadata 64 KiB as UTF-8 JSON and 32 levels deep (checked

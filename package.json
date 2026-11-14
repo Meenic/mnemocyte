@@ -52,6 +52,9 @@
 		}
 	},
 	"types": "./dist/index.d.mts",
+	"bin": {
+		"mnemocyte": "./dist/cli.mjs"
+	},
 	"scripts": {
 		"build": "tsdown",
 		"dev": "tsdown --watch",

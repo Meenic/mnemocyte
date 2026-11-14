@@ -170,44 +170,25 @@ Setup stays explicit (see decision 20): nothing is created when a client is
 built, and every step that touches the schema is a call or command the user
 runs.
 
-The target flow is three steps: install, export `memory` from a
-`memory.ts`, run `npx mnemocyte migrate`. No `migrate` call sits in app code.
+The flow is three steps: install, export `memory` from a `memory.ts`, run
+`npx mnemocyte migrate`. No `migrate` call sits in app code.
 
 - **`migrate` options.** Landed: `migrate({ memory })`, `createExtension`
   and `dryRun` are described in
   [features/postgres.md](./features/postgres.md#the-migrate-runner).
-- **CLI.** A `mnemocyte` bin. It loads the app's own `memory.ts` from the
-  project root, `lib/`, `src/` or `src/lib/` (or `--config <path>`) and
-  uses its exported `memory`, so the CLI and the app share one client and
-  one embedder. Node 22.18, the minimum, strips TypeScript types by default,
-  so the file loads with `import()`; a `module.register` resolve hook adds
-  the extensionless relative imports and tsconfig `paths` that type
-  stripping does not resolve, without a loader dependency.
-  - `migrate` applies what is missing. When pgvector is not enabled it asks
-    before running `createExtension`, and on No prints the
-    `CREATE EXTENSION` line for an admin; `--yes` answers for CI and
-    `--dry-run` maps to `dryRun`.
-  - `check` reports the pgvector version (0.8.0 or later is required), the
-    applied migrations and the installed dimensions, and exits non-zero on
-    a problem.
-  - `sql` prints the fresh-install schema without a database.
-  - Without a memory file, `--dimensions <n>` and `DATABASE_URL` with the
-    optional `postgres` peer; without the peer the CLI exits with an
-    install hint. Arguments are parsed with `node:util` `parseArgs`.
-  - PGlite opens its data folder from one process at a time, so the CLI
-    cannot migrate it while the app runs; PGlite users call
-    `migrate({ memory })` from code instead.
-  - `init` writes a `memory.ts` for the driver found in `package.json`
-    and adds `OPENAI_API_KEY=` to `.env` when it is missing. It never
-    overwrites a file and prints every change; `--dry-run` only prints.
+- **CLI.** Landed: the `mnemocyte` bin with `migrate`, `check` and `sql`
+  loads the app's own memory file, or connects to `DATABASE_URL` without
+  one (decision 36); see [features/cli.md](./features/cli.md).
+- **`init`.** Still to come: `mnemocyte init` writes a `memory.ts` for the
+  driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env` when
+  it is missing. It never overwrites a file and prints every change;
+  `--dry-run` only prints.
 - **Missing-schema errors.** Landed: the `"MIGRATION"` error for a missing
-  table or column names `migrate({ memory })` and links the Postgres
+  table or column names `npx mnemocyte migrate` and links the Postgres
   guide, as described in [features/postgres.md](./features/postgres.md#errors).
-  The CLI changes the named command to `npx mnemocyte migrate`.
 - **Getting started.** Landed as
-  [guide/getting-started.md](./guide/getting-started.md), with a
-  `migrate.ts` script that calls `migrate({ memory })`; `feat/cli` replaces
-  that script with `npx mnemocyte migrate`.
+  [guide/getting-started.md](./guide/getting-started.md), which creates the
+  schema with `npx mnemocyte migrate`.
 
 After 1.0:
 
@@ -690,3 +671,34 @@ Dated 2026-10-26 unless noted.
     52 pages of 500 at 1.33 s each (slowest 1.46 s), 68.7 s in all
     against 51.3 s for one statement, every pair once and the best 1,000
     equal to one `findDuplicates` call's; the re-check costs 5% of a page.
+36. **The CLI loads the app's memory file with Node alone** (2026-11-14,
+    landed): the maintainer chose type stripping plus a resolve hook over
+    requiring a build, the names `migrate`, `check` and `sql` with
+    `--config`, loading `./.env` when present, and a `check` that fails
+    on anything that makes the app throw. The hook is
+    `module.registerHooks` (synchronous, in the current thread, from Node
+    22.15), not the `module.register` this document first named: Node
+    26 deprecates `module.register` at run time (DEP0205) and prints a
+    warning on every run, and CI runs Node 26. The hook asks Node to
+    resolve first and acts only when that fails, so it cannot change how
+    an installed package resolves; it adds extensionless and
+    `.js`-for-`.ts` relative imports, folder index files and tsconfig
+    `paths`. Syntax that needs a compiler (enums, parameter properties,
+    `.tsx`) is not supported and fails with a message that points to
+    `--config <built .js>`: transforming it would need a TypeScript
+    compiler as a dependency. The bin reads `.env` itself because the
+    memory file reads `process.env` while it loads and `npx` gives no
+    place for Node's own `--env-file`; a variable that is already set
+    wins. Node also reads `--env-file` from a script's arguments, so a
+    missing file is reported by Node (exit 9) before the bin runs; the
+    flag keeps the name users know from Node. Without a memory file the
+    bin resolves the app's `postgres` package at run time and imports it
+    by path, so the build has no driver import and the package keeps zero
+    dependencies. `check` reads through a new internal
+    `MemoryStore.inspectInstallation`, which reuses the runner's own
+    catalog reads, so `check` and `migrate` cannot disagree about a
+    schema; a database it cannot read exits 2, a problem exits 1. The bin
+    ends with `process.exit`, since it cannot close the app's client.
+    `registerHooks` is "active development" on Node 22 and type stripping
+    a release candidate there; both are covered by a package test that
+    runs the built bin on every CI Node version.

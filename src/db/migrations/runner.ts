@@ -50,7 +50,7 @@ type Inspection =
 	| { kind: "untracked"; trackingTable: boolean; installed: number }
 	| { kind: "tracked"; versions: number[] };
 
-interface CatalogState {
+export interface CatalogState {
 	memories: boolean;
 	events: boolean;
 	meta: boolean;
@@ -102,7 +102,7 @@ export function installedVersion(state: CatalogState): number {
 	);
 }
 
-async function readCatalogState(
+export async function readCatalogState(
 	tx: SqlExecutor,
 	options: SqlQueryOptions,
 ): Promise<CatalogState> {
@@ -156,7 +156,7 @@ async function readInstalledDimensions(
 }
 
 /** Applied versions in order, or null when the tracking table is missing. */
-async function readAppliedVersions(
+export async function readAppliedVersions(
 	tx: SqlExecutor,
 	options: SqlQueryOptions,
 ): Promise<number[] | null> {
@@ -230,7 +230,7 @@ async function runStatements(
 	}
 }
 
-function assertContiguous(versions: readonly number[]): void {
+export function assertContiguous(versions: readonly number[]): void {
 	versions.forEach((version, index) => {
 		if (version !== index) {
 			throw new MnemocyteError(

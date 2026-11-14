@@ -23,12 +23,31 @@ in-memory backend needs none of this.
   none of them.
 
 Mnemocyte never creates extensions, tables or indexes when a client is
-created. You create the schema with `migrate()`, which can also enable
-pgvector when you ask it to, or by applying the bundled SQL files yourself.
+created. You create the schema with the `mnemocyte migrate` command or the
+`migrate()` function, which can also enable pgvector when you ask, or by
+applying the bundled SQL files yourself.
 
 ## Install the schema
 
-Run `migrate` with the client your app uses, for example in a deploy step:
+Run the command that ships with the package, in your project:
+
+```bash
+npx mnemocyte migrate
+```
+
+It loads the `memory.ts` where your app creates its client (the root,
+`lib/`, `src/` or `src/lib/`, or `--config <path>`), so it migrates the
+database your app uses at your embedder's size, and it asks before enabling
+pgvector. The same command upgrades an existing installation; run it in
+every deploy (`--yes` answers the question in CI). `npx mnemocyte check`
+reports the pgvector version, the applied migrations and the dimensions,
+and exits 1 when something is wrong. Every flag is in the
+[CLI guide](./cli.md).
+
+### Migrate from code
+
+`migrate()` is the function behind the command, for a deploy script of your
+own, for PGlite, or for a memory file the command cannot load:
 
 ```ts
 import { createMemory, migrate } from "mnemocyte";
@@ -51,22 +70,23 @@ installation.
 Until the schema is installed or upgraded, a call that needs a missing
 Mnemocyte table or column throws `"MIGRATION"`. The message repeats the
 driver's text (for example `relation "mnemocyte_memories" does not exist`),
-says to run `migrate({ memory })` and links here; the driver error is the
+says to run `npx mnemocyte migrate` and links here; the driver error is the
 `cause`.
 
 ### Enabling pgvector
 
-pgvector has to be enabled in each database before the first install.
-`createExtension: true` makes `migrate` run `CREATE EXTENSION IF NOT EXISTS
-vector` when it is missing, in the same transaction as the schema, so a
+pgvector has to be enabled in each database before the first install. The
+command asks first and then does what `createExtension: true` does in
+code: `migrate` runs `CREATE EXTENSION IF NOT EXISTS vector` when it is
+missing, in the same transaction as the schema, so a
 failed install leaves neither behind. pgvector is not a trusted extension,
 so this needs a superuser or the admin role your provider gives you
 (`rds_superuser` on RDS, `neon_superuser` on Neon, `postgres` on Supabase).
 A role without it gets `"MIGRATION"` with a message saying so, and a server
 without pgvector installed gets `"MIGRATION"` too.
 
-When the app's role may not create extensions, leave the option off and
-have an admin enable pgvector once:
+When the app's role may not create extensions, leave the option off (answer
+no to the command) and have an admin enable pgvector once:
 
 ```bash
 psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
@@ -74,6 +94,7 @@ psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 
 ### Check a deploy with `dryRun`
 
+`npx mnemocyte migrate --dry-run` prints what a run would apply. In code,
 `dryRun: true` reads the database in one read-only transaction and returns
 the `applied`, `adopted` and `extensionCreated` a real run would return,
 without changing anything:
@@ -135,17 +156,17 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mne
 
 `fresh-install.sql` creates the schema for 1536-dimension embeddings
 (OpenAI's `text-embedding-3-small`, for example). Use it only on a database
-that has no Mnemocyte tables yet. For a different embedding size, render the
-initial migration from the bundled template and apply the rendered file
-instead:
+that has no Mnemocyte tables yet. For a different embedding size, print the
+schema with `mnemocyte sql` and apply that file instead:
 
 ```bash
-node node_modules/mnemocyte/migrations/render-initial.mjs --dimensions 768 --out migrations/0000_initial.768.sql
+npx mnemocyte sql --dimensions 768 --out migrations/0000_initial.768.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_initial.768.sql
 ```
 
-The rendered file is a complete schema; do not also apply the numbered
-migrations. If you switch to `migrate` later, it adopts a schema installed
+`sql` needs no database; without `--dimensions` it takes the size from
+your memory file's embedder. The rendered file is a complete schema; do not
+also apply the numbered migrations. If you switch to `migrate` later, it adopts a schema installed
 this way.
 
 ## Connect
@@ -307,9 +328,10 @@ executor, for code written before detection.
 
 ## Upgrade an existing installation
 
-Run `migrate({ memory })` (or `migrate({ store })`) after upgrading the
-package. It applies the pending
+Run `npx mnemocyte migrate` (or `migrate({ memory })` in code) after
+upgrading the package. It applies the pending
 migrations, adopting an installation that was set up with `psql` first.
+`npx mnemocyte check` exits 1 while migrations are pending.
 
 With `psql`, apply the numbered migrations yourself. Never apply
 `fresh-install.sql` over an existing Mnemocyte schema.

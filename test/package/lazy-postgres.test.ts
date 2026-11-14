@@ -126,12 +126,23 @@ describe("lazy Postgres package loading", () => {
 		// Follow every relative static import from dist/index.mjs. The backend
 		// (queries, migration runner, driver adapters) must only be reachable
 		// through the dynamic import() that createMemory({ store: client })
-		// runs on first use.
+		// runs on first use. That import() sits in whichever chunk holds
+		// resolveStore: the root entry itself, or a chunk it shares with the
+		// bin.
 		const reached = await staticImportGraph(resolve("dist/index.mjs"));
-		const root = await readFile(resolve("dist/index.mjs"), "utf8");
-		expect(root).toMatch(
-			/\bimport\(["']\.\/postgres-backend-[^"']+\.mjs["']\)/,
+		const sources = await Promise.all(
+			[...reached].map((file) => readFile(file, "utf8")),
 		);
+		expect(
+			sources.filter((source) =>
+				/\bimport\(["']\.\/postgres-backend-[^"']+\.mjs["']\)/.test(source),
+			),
+		).toHaveLength(1);
+		expect(
+			[...reached].filter((file) =>
+				basename(file).startsWith("postgres-backend-"),
+			),
+		).toEqual([]);
 		for (const file of reached) {
 			const source = await readFile(file, "utf8");
 			expect(source, file).not.toMatch(

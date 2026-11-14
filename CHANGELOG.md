@@ -10,6 +10,18 @@ behavioural changes documented in their entries.
 
 ### Added
 
+- **The `mnemocyte` command.** `npx mnemocyte migrate` creates or upgrades
+  the schema using the client your app exports as `memory` from
+  `memory.ts` (the root, `lib/`, `src/`, `src/lib/`, or `--config
+  <path>`). It asks before enabling pgvector (`--yes` for CI) and has
+  `--dry-run`. `npx mnemocyte check` reports the pgvector version, the
+  applied migrations, the dimensions and the embedding model, and exits 1
+  on anything that would make the app throw. `npx mnemocyte sql
+  --dimensions <n>` prints the fresh-install schema without a database.
+  TypeScript memory files load without a build step; `.env` in the current
+  folder is read first. Without a memory file, `migrate` and `check`
+  connect to `DATABASE_URL` with the `postgres` package. See the
+  [CLI guide](docs/guide/cli.md).
 - **`consolidate` is stable.** `memory.consolidate` and
   `boundClient.consolidate` replace `experimental.consolidate`, with the
   same input, result and one-statement locking.
@@ -40,6 +52,9 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **The missing-schema error names the command.** The `"MIGRATION"` error
+  for a missing table or column now says to run `npx mnemocyte migrate`
+  instead of `migrate({ memory })`.
 - **Observability hooks are not awaited.** A slow or failing `onEvent` no
   longer delays or fails a call. Events are still delivered in order, and
   errors from the hook go to `onError` (dropped when unset). A synchronous

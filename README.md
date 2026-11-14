@@ -68,17 +68,22 @@ for the full walkthrough on Postgres.
 ## Postgres
 
 ```ts
-import { createMemory, migrate } from "mnemocyte";
+// memory.ts
+import { createMemory } from "mnemocyte";
 import postgres from "postgres";
 
 const sql = postgres(process.env.DATABASE_URL!);
-const memory = createMemory({ store: sql, embedder });
-
-await migrate({ memory, createExtension: true });
+export const memory = createMemory({ store: sql, embedder });
 ```
 
-Run `migrate` in every deploy; it applies only what is missing. See the
-[Postgres guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md).
+```bash
+npx mnemocyte migrate
+```
+
+`migrate` reads `memory.ts` and creates or upgrades the schema. Run it in
+every deploy; it applies only what is missing. See the
+[Postgres guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md)
+and the [CLI guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/cli.md).
 
 ## AI SDK
 
@@ -108,7 +113,8 @@ Every memory belongs to a `namespace` and an `entityId`, plus an optional
 - **Read:** `search`, `context`, `get`, `list`
 - **Maintain:** `prune`, `findDuplicates`, `consolidate`, `stats`,
   `listAuditLog`, `pruneAuditLog`
-- **Setup:** `migrate`, `for`
+- **Setup:** `migrate`, `for`, and the `mnemocyte` command (`migrate`,
+  `check`, `sql`)
 
 Errors are `MnemocyteError` with a stable `code`. See the
 [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md).
@@ -118,6 +124,7 @@ Errors are `MnemocyteError` with a stable `code`. See the
 - [Getting started](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/getting-started.md)
 - [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md)
 - [Postgres](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md)
+- [CLI](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/cli.md)
 - [Embedders](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md)
 - [AI SDK](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md)
 - [Limitations](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/limitations.md)

@@ -36,6 +36,8 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 	return {
 		backend: input.backend,
 		migrate: async (...args) => (await load()).migrate(...args),
+		inspectInstallation: async (...args) =>
+			(await load()).inspectInstallation(...args),
 		ensureEmbeddingCompatibility: async (...args) =>
 			(await load()).ensureEmbeddingCompatibility(...args),
 		insertMemories: async (...args) => (await load()).insertMemories(...args),

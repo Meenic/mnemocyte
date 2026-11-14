@@ -5,8 +5,8 @@ What is built today and how to work on it. The target design lives in
 moves here or into [features/](./features/).
 
 User-facing documentation is `README.md` plus [guide/](./guide/): getting
-started, the API reference, Postgres setup, embedders, the AI SDK and
-limitations. A change users can see
+started, the API reference, the CLI, Postgres setup, embedders, the AI SDK
+and limitations. A change users can see
 updates the matching guide page in the same PR.
 
 Feature areas:
@@ -28,6 +28,9 @@ Feature areas:
   `voyageEmbedder`, `cohereEmbedder`, `googleEmbedder` and
   `aiSdkEmbedder`, `ProviderError`, retries, timeouts, cancellation,
   observability.
+- [features/cli.md](./features/cli.md): the `mnemocyte` bin: loading the
+  app's memory file (type stripping, the resolve hook, tsconfig `paths`),
+  `.env`, the `DATABASE_URL` fallback, `migrate`, `check` and `sql`.
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
   validation and scope boundary; `memoryMiddleware` and `withMemory`;
   extraction with `save: { model }` and `extractMemories`.
@@ -45,8 +48,11 @@ pnpm dev     # tsdown in watch mode
 pnpm build   # writes dist/
 ```
 
-Mnemocyte is a library; there is no app to run. Try changes through the tests
-or from a consuming project.
+Mnemocyte is a library with a small CLI; there is no app to run. Try changes
+through the tests or from a consuming project. After `pnpm build`,
+`node dist/cli.mjs sql --dimensions 768` runs the bin without a database;
+`migrate` and `check` read `.env` in the current folder, so run them from
+a scratch project, never from this repository's root.
 
 ## Structure
 
@@ -60,6 +66,8 @@ src/
   ai-sdk-tools.ts       memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
   ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
   ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
+  cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
+  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, migrate, check, sql
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
@@ -98,7 +106,8 @@ src/
     errors.ts           constraint name from either driver error shape
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
-    migrations/         Postgres migration runner and bundled.ts (generated)
+    migrations/         Postgres migration runner, inspect.ts (read-only report) and bundled.ts (generated)
+    pgvector.ts         assertPgvectorVersion
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
@@ -109,8 +118,9 @@ test/                   unit, package, integration, fixtures, benchmarks
 ```
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
-`src/index.ts`, `src/ai-sdk.ts`, `src/postgres.ts`, `src/embedders/*.ts`
-and `src/stores/*.ts`. The package has no runtime dependencies. `postgres`,
+`src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts`,
+`src/embedders/*.ts` and `src/stores/*.ts`. `dist/cli.mjs` is the
+`mnemocyte` bin (`bin` in `package.json`), not an export. The package has no runtime dependencies. `postgres`,
 `pg`, `@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies
 at the versions the tests run; source files import at most their types
 (`postgres` and `drizzle-orm` only), so no built entry imports a driver (a
@@ -206,6 +216,10 @@ Exports:
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
 - `mnemocyte/stores/drizzle`: `drizzleStore(db)` and `DrizzleClient`.
+- The `mnemocyte` bin: `migrate`, `check` and `sql`, with `--config`,
+  `--dimensions`, `--env-file`, `--yes`, `--dry-run` and `--out`. Its
+  commands, flags and exit codes (0, 1, 2) are public; its modules are not
+  exported. See [features/cli.md](./features/cli.md).
 
 `package.json` lists each subpath explicitly, with a `types` and a `default`
 condition; there are no wildcard subpaths, so a new entry needs its own
@@ -279,6 +293,15 @@ Vitest has three projects (`vitest.config.ts`):
   `generateText` on a `withMemory` mock model to check the context
   reaches the prompt, and `extractMemories` with a mock model to check it
   stores a keyed memory.
+- The CLI is tested at four levels (see
+  [features/cli.md](./features/cli.md#tests)): pure parts in `test/cli/`
+  (`unit`); `migrate` and `check` against PGlite in process, with a
+  recording `CliIo` standing in for the terminal, in
+  `test/contract/cli.test.ts`; the built `dist/cli.mjs` as a child process
+  in temporary projects in `test/package/cli.test.ts`, which is where a
+  TypeScript memory file, the resolve hook and `.env` run on each CI Node
+  version; and the `DATABASE_URL` path on real Postgres in
+  `test/integration/cli.test.ts`.
 - `test/embedders/voyage.test.ts`, `cohere.test.ts` and `google.test.ts`
   stub `fetch` (helpers in `fetch-mock.ts`) and check each request's URL,
   headers and body per purpose, the dimension rules, response checks and
@@ -339,7 +362,8 @@ Vitest has three projects (`vitest.config.ts`):
   files after it. Its `createExtension` tests also drop the `vector`
   extension and create and drop a non-superuser role
   (`mnemocyte_restricted_test`), so the role in `DATABASE_URL` must be a
-  superuser, as it is on the Docker image and in CI. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
+  superuser, as it is on the Docker image and in CI. `cli.test.ts` drops
+  the tables and the extension the same way and leaves the same schema. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
 - postgres.js is a dev dependency on 4.x, and `postgres-3`
   (`npm:postgres@3.4.9`) installs 3.x next to it, so both are in the

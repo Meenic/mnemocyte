@@ -73,8 +73,8 @@ echo ".env" >> .gitignore
 echo "node_modules" >> .gitignore
 ```
 
-The scripts below load it with Node's `--env-file` flag; nothing else reads
-it.
+The app script below loads it with Node's `--env-file` flag, and the
+`mnemocyte` command in step 5 reads `.env` from the current folder itself.
 
 ## 4. Write `memory.ts`
 
@@ -138,61 +138,46 @@ are in the [embedders guide](./embedders.md).
 
 ## 5. Create the schema
 
-Mnemocyte never creates tables on its own. Create them with `migrate`, from
-a script of its own, `migrate.ts`:
-
-```ts
-import { migrate } from "mnemocyte";
-import { closeDatabase, memory } from "./memory.ts";
-
-try {
-  const result = await migrate({ memory, createExtension: true });
-  console.log(result);
-} finally {
-  await closeDatabase();
-}
-```
-
-Add it and the app to `package.json`:
-
-```json
-"scripts": {
-  "db:migrate": "node --env-file=.env migrate.ts",
-  "start": "node --env-file=.env index.ts"
-}
-```
+Mnemocyte never creates tables on its own. Create them with the `mnemocyte`
+command that comes with the package:
 
 ```bash
-pnpm db:migrate
+npx mnemocyte migrate
 ```
+
+It loads `memory.ts` for your database client and your embedder's size,
+and asks before it enables pgvector:
 
 ```txt
-{
-  applied: [
-    '0000_initial',
-    '0001_add_mnemocyte_meta',
-    '0002_add_embedding_model',
-    '0003_schema_v2'
-  ],
-  adopted: [],
-  extensionCreated: true
-}
+Using memory.ts
+pgvector is not enabled in this database. Run CREATE EXTENSION vector now? [y/N] y
+Enabled pgvector.
+Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2
 ```
 
-`migrate` takes the embedding size from your embedder and applies only what
-is missing, so a second run applies nothing; run it on every deploy, before
-the app starts. `createExtension: true` enables pgvector in the database,
-which needs a superuser (the Docker image's `postgres` user is one). On a
-managed database whose app role may not create extensions, have an admin
-run `CREATE EXTENSION vector;` once and drop the option. The
-[Postgres guide](./postgres.md#install-the-schema) covers `dryRun`, upgrades
-and applying the SQL files with `psql` instead.
+`migrate` applies only what is missing, so a second run applies nothing;
+run it on every deploy, before the app starts (`--yes` answers the
+question in CI). Enabling pgvector needs a superuser, which the Docker
+image's `postgres` user is. On a managed database whose app role may not
+create extensions, answer no and have an admin run the
+`CREATE EXTENSION vector;` it prints. `npx mnemocyte check` reports what
+is installed. The [CLI guide](./cli.md) has every command and flag, and the
+[Postgres guide](./postgres.md#install-the-schema) covers upgrades,
+`migrate()` from code and applying the SQL files with `psql` instead.
 
 ## 6. Store memories and build context
 
 `memory.for(scope)` returns a client bound to one scope, so its calls take
 no `scope`. Here the scope is a user (`entityId`) in the default namespace.
-Write `index.ts`:
+Add a script for the app to `package.json`:
+
+```json
+"scripts": {
+  "start": "node --env-file=.env index.ts"
+}
+```
+
+Then write `index.ts`:
 
 ```ts
 import { closeDatabase, memory } from "./memory.ts";
@@ -271,8 +256,8 @@ Scopes, `search`, `list`, `deleteScope` and the other methods are in the
 
 ## Other drivers
 
-Replace `memory.ts` with one of these; `migrate.ts` and `index.ts` stay the
-same.
+Replace `memory.ts` with one of these; `npx mnemocyte migrate` and
+`index.ts` stay the same.
 
 ### node-postgres
 
@@ -364,8 +349,9 @@ export async function closeDatabase() {
 ```
 
 A data folder can be open in one process at a time, so run
-`pnpm db:migrate` while the app is stopped, or call
-`migrate({ memory, createExtension: true })` when your app starts.
+`npx mnemocyte migrate` while the app is stopped, or call
+`migrate({ memory, createExtension: true })` (from `mnemocyte`) when your
+app starts.
 
 ## Prototype without a database
 
@@ -392,6 +378,7 @@ to 5 with the same calls.
 ## Next
 
 - [API reference](./api.md): every method, scopes and errors.
+- [CLI](./cli.md): `mnemocyte migrate`, `check` and `sql`.
 - [Postgres](./postgres.md): drivers, poolers, `migrate`, upgrades and
   indexes.
 - [Embedders](./embedders.md): custom embedders, timeouts and retries.

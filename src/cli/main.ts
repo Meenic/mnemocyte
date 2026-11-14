@@ -1,5 +1,6 @@
 import { type CliArgs, parseCliArgs, USAGE } from "./args.js";
 import { checkCommand } from "./check.js";
+import { initCommand } from "./init.js";
 import { CliError, type CliIo } from "./io.js";
 import { migrateCommand } from "./migrate.js";
 import { sqlCommand } from "./sql.js";
@@ -43,6 +44,8 @@ function run(args: CliArgs, io: CliIo, version: string): Promise<number> {
 		case "version":
 			io.write(`${version}\n`);
 			return Promise.resolve(0);
+		case "init":
+			return initCommand(args, io);
 		case "migrate":
 			return migrateCommand(args, io);
 		case "check":

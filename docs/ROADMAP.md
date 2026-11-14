@@ -213,7 +213,7 @@ it.
   so the `drizzle-kit` dev dependency, `drizzle.config.ts`, the
   `db:migrate` script and the drizzle-kit snapshots in `migrations/meta/`
   go. The journal stays: `migration:bundle` reads it.
-- [ ] `feat/cli-init`: `npx mnemocyte init` writes a `memory.ts` for the
+- [x] `feat/cli-init`: `npx mnemocyte init` writes a `memory.ts` for the
   driver it finds in `package.json` (`postgres`, `pg`,
   `@electric-sql/pglite`, `drizzle-orm`) in the first of the folders the
   CLI searches that exists, and adds `OPENAI_API_KEY=` to `.env` when the

@@ -55,6 +55,12 @@ describe("parseCliArgs", () => {
 			dryRun: false,
 		});
 		expect(parseCliArgs(["-y", "migrate"]).yes).toBe(true);
+		expect(parseCliArgs(["init"])).toEqual({
+			command: "init",
+			yes: false,
+			dryRun: false,
+		});
+		expect(parseCliArgs(["init", "--dry-run"]).dryRun).toBe(true);
 	});
 
 	test("help and version win over a command", () => {
@@ -72,7 +78,15 @@ describe("parseCliArgs", () => {
 		[["migrate", "extra"], 'Unexpected argument "extra"'],
 		[["migrate", "--force"], "Unknown option '--force'."],
 		[["check", "--yes"], "--yes applies to migrate, not to check."],
-		[["sql", "--dry-run"], "--dry-run applies to migrate, not to sql."],
+		[
+			["sql", "--dry-run"],
+			"--dry-run applies to migrate and init, not to sql.",
+		],
+		[["init", "--yes"], "--yes applies to migrate, not to init."],
+		[["init", "--config", "m.ts"], "--config does not apply to init."],
+		[["init", "--env-file", ".env.x"], "--env-file does not apply to init."],
+		[["init", "--dimensions", "8"], "--dimensions does not apply to init."],
+		[["init", "extra"], 'Unexpected argument "extra"'],
 		[["migrate", "--out", "x.sql"], "--out applies to sql, not to migrate."],
 		[["migrate", "--config="], "--config needs a path."],
 		[["migrate", "--config"], "--config"],

@@ -80,8 +80,9 @@ export const memory = createMemory({ store: sql, embedder });
 npx mnemocyte migrate
 ```
 
-`migrate` reads `memory.ts` and creates or upgrades the schema. Run it in
-every deploy; it applies only what is missing. See the
+`npx mnemocyte init` writes that `memory.ts` for the driver in your
+`package.json`. `migrate` reads `memory.ts` and creates or upgrades the
+schema. Run it in every deploy; it applies only what is missing. See the
 [Postgres guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md)
 and the [CLI guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/cli.md).
 

@@ -396,4 +396,61 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 			(await runCli(directory, ["sql", "--dimensions", "8"])).stdout,
 		);
 	}, 180_000);
+
+	test("init writes a memory.ts that migrate and check then load", async () => {
+		const pglite = {
+			"@electric-sql/pglite": "*",
+			"@electric-sql/pglite-pgvector": "*",
+		};
+		// The embedder is never called; openaiEmbedder only needs a key to
+		// be created. A variable that is set wins over the empty one in .env.
+		const env = { OPENAI_API_KEY: "sk-test" };
+		for (const [name, dependencies, label] of [
+			["init-pglite", pglite, "PGlite"],
+			["init-drizzle", { ...pglite, "drizzle-orm": "*" }, "Drizzle on PGlite"],
+		] as const) {
+			const directory = await project(name, {
+				"package.json": JSON.stringify({ name, type: "module", dependencies }),
+			});
+			for (const dependency of Object.keys(dependencies)) {
+				await linkPackage(
+					directory,
+					dependency,
+					resolve("node_modules", dependency),
+				);
+			}
+
+			const dry = await runCli(directory, ["init", "--dry-run"]);
+			expect(dry.code).toBe(0);
+			expect(dry.stdout).toContain(`using ${label}.`);
+			expect(dry.stdout).toContain("Would write memory.ts:");
+
+			const init = await runCli(directory, ["init"]);
+			expect(init.stderr).toBe("");
+			expect(init.code).toBe(0);
+			expect(init.stdout).toContain("Wrote memory.ts\n");
+			expect(init.stdout).toContain("Created .env with OPENAI_API_KEY=\n");
+			expect(await readFile(join(directory, ".env"), "utf8")).toBe(
+				"OPENAI_API_KEY=\n",
+			);
+
+			const sql = await runCli(directory, ["sql"], env);
+			expect(sql.stderr).toBe("");
+			expect(sql.stdout).toContain('"embedding" vector(1536)');
+
+			const migrated = await runCli(directory, ["migrate", "--yes"], env);
+			expect(migrated.stderr).toBe("");
+			expect(migrated.code).toBe(0);
+			expect(migrated.stdout).toContain("Using memory.ts");
+			expect(migrated.stdout).toContain(`Applied: ${ALL_MIGRATIONS}`);
+
+			const checked = await runCli(directory, ["check"], env);
+			expect(checked.code).toBe(0);
+			expect(checked.stdout).toContain("dimensions  1536 (vector)");
+
+			const again = await runCli(directory, ["init"]);
+			expect(again.code).toBe(0);
+			expect(again.stdout).toContain("memory.ts exists, left as is.\n");
+		}
+	}, 180_000);
 });

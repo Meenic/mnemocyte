@@ -176,13 +176,12 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 - **`migrate` options.** Landed: `migrate({ memory })`, `createExtension`
   and `dryRun` are described in
   [features/postgres.md](./features/postgres.md#the-migrate-runner).
-- **CLI.** Landed: the `mnemocyte` bin with `migrate`, `check` and `sql`
+- **CLI.** Landed: the `mnemocyte` bin with `init`, `migrate`, `check` and `sql`
   loads the app's own memory file, or connects to `DATABASE_URL` without
   one (decision 36); see [features/cli.md](./features/cli.md).
-- **`init`.** Still to come: `mnemocyte init` writes a `memory.ts` for the
-  driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env` when
-  it is missing. It never overwrites a file and prints every change;
-  `--dry-run` only prints.
+- **`init`.** Landed: `mnemocyte init` writes a `memory.ts` for the
+  driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env`
+  (decision 37); see [features/cli.md](./features/cli.md#init).
 - **Missing-schema errors.** Landed: the `"MIGRATION"` error for a missing
   table or column names `npx mnemocyte migrate` and links the Postgres
   guide, as described in [features/postgres.md](./features/postgres.md#errors).
@@ -702,3 +701,17 @@ Dated 2026-10-26 unless noted.
     `registerHooks` is "active development" on Node 22 and type stripping
     a release candidate there; both are covered by a package test that
     runs the built bin on every CI Node version.
+37. **`init` picks Drizzle first and writes the guide's files** (2026-11-14,
+    landed): the maintainer chose, for `mnemocyte init`, that `drizzle-orm`
+    wins over a plain driver and wraps the one next to it (`postgres`,
+    then `pg`, then PGlite), since a Drizzle app's database handle is its
+    `db`; without Drizzle `postgres` wins as the guide's default. With no
+    driver it writes the in-memory file, so the app runs at once. Each
+    file is a `memory.ts` block of the getting-started guide, with
+    `namespace` from `package.json` `name`, and a unit test holds the
+    two together; Drizzle over `pg` and over PGlite gained blocks there.
+    `init` appends `OPENAI_API_KEY=` to `.env`, creating the file when
+    needed, and only prints a note about `.gitignore`. The file goes in
+    the project root, the first folder the CLI searches; an existing
+    memory file anywhere the CLI searches is kept, and files are created
+    with `O_EXCL`, so `init` never overwrites.

@@ -355,10 +355,33 @@ reopened; its additive findings are in "After 1.0".
 
 ## After 1.0
 
-- libSQL / Turso backend, then SQLite + sqlite-vec once it is stable.
-- Public `MemoryStore` contract and a monorepo split
-  (`@mnemocyte/postgres`, …).
-- `@mnemocyte/mcp`.
+- libSQL / Turso backend, then SQLite + sqlite-vec once it is stable. A
+  backend that runs on the user's own client, as Postgres does, ships as a
+  subpath of `mnemocyte` (`mnemocyte/libsql`), not as its own package.
+- Public `MemoryStore` contract: versioned in its name (`MemoryStoreV1`) so
+  the core can accept two versions during a change instead of forcing a
+  major, exported from a subpath (`mnemocyte/store`), with the contract
+  test suite shipped beside it (`mnemocyte/store/test`) so third-party
+  backends can prove they conform. Third-party backends are their own
+  packages with `mnemocyte` as a peer (`^1`). A separate contract package,
+  as `@ai-sdk/provider` is for the AI SDK, only if third-party backends
+  become common.
+- `@mnemocyte/mcp`, the first separate package: it brings the MCP SDK and
+  a `bin`. It lives in a pnpm workspace in this repository and takes
+  `mnemocyte` as a peer (`^1`), the way `@mastra/pg` takes `@mastra/core`;
+  it uses only the public API, so it needs no exact pins.
+- Packaging rule (decision 1, revised 2026-11-15): split out a package only
+  when it needs dependencies of its own or its own release cadence. Drizzle,
+  Kysely and tRPC stay one package for the same reason: the user brings the
+  driver. If first-party code ever does split (`@mnemocyte/core`,
+  `@mnemocyte/postgres`), `mnemocyte` stays as an umbrella package that
+  depends on them with exact pins, releases with them, and re-exports every
+  current import path (`mnemocyte`, `mnemocyte/postgres`,
+  `mnemocyte/embedders/*`, `mnemocyte/ai-sdk`, the CLI), as `better-auth`
+  does with `@better-auth/core` and its adapters. That keeps the split
+  non-breaking, so it can ship in a 1.x minor. The raw-client shortcut
+  (`createMemory({ store: sql })`) then lives in the umbrella; the core
+  alone takes a `MemoryStore` such as `postgresStore({ client })`.
 - Drizzle schema export (`mnemocyte generate --adapter drizzle`) so Drizzle
   users manage the tables with `drizzle-kit`.
 - A `schemaName` option to keep the tables outside `public`.

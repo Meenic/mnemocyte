@@ -1,3 +1,4 @@
+import type { InstallationReport } from "../db/migrations/inspect.js";
 import { MnemocyteError } from "../errors.js";
 import type {
 	AuditEvent,
@@ -303,6 +304,14 @@ export interface MemoryStore {
 	 * applied.
 	 */
 	migrate(input: StoreMigrateInput): Promise<MigrateResult>;
+	/**
+	 * What is installed, read without changing anything: the report behind
+	 * the CLI's `check`. A store without persistent schema resolves with
+	 * `null`.
+	 */
+	inspectInstallation(
+		options?: StoreOperationOptions,
+	): Promise<InstallationReport | null>;
 	/**
 	 * Rejects with `"MIGRATION"` or `"CONFIG"` when the embedder does not match
 	 * the installation. A store without persistent installation state resolves

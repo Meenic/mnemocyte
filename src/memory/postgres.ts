@@ -1,6 +1,8 @@
 import { assertSqlExecutor } from "../db/atomic.js";
 import { postgresConstraintName, postgresErrorCode } from "../db/errors.js";
+import { inspectPostgresInstallation } from "../db/migrations/inspect.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
+import { assertPgvectorVersion } from "../db/pgvector.js";
 import {
 	countEventsBefore,
 	deleteEventsBatch,
@@ -69,8 +71,8 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 
 /** Missing table, column, object or function: the schema is behind. */
 const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
-/** The fix the missing-schema error names; `feat/cli` changes it. */
-const MIGRATE_COMMAND = "migrate({ memory })";
+/** The fix the missing-schema error names. */
+const MIGRATE_COMMAND = "npx mnemocyte migrate";
 const POSTGRES_GUIDE_URL =
 	"https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md";
 const INSTALL_GUIDE_URL = `${POSTGRES_GUIDE_URL}#install-the-schema`;
@@ -235,32 +237,7 @@ function assertVectorType(value: string | null): VectorType {
 	return value as VectorType;
 }
 
-/** Iterative HNSW scans (`hnsw.iterative_scan`) arrived in pgvector 0.8.0. */
-const MIN_PGVECTOR_VERSION: readonly [number, number] = [0, 8];
-
-export function assertPgvectorVersion(version: string | null): void {
-	if (version === null) {
-		throw new MnemocyteError(
-			"pgvector is not installed in this database. Run CREATE EXTENSION vector as a role that may create extensions.",
-			"MIGRATION",
-		);
-	}
-	const [major = Number.NaN, minor = Number.NaN] = version
-		.split(".")
-		.map((part) => Number.parseInt(part, 10));
-	const [minMajor, minMinor] = MIN_PGVECTOR_VERSION;
-	if (
-		!Number.isInteger(major) ||
-		!Number.isInteger(minor) ||
-		major < minMajor ||
-		(major === minMajor && minor < minMinor)
-	) {
-		throw new MnemocyteError(
-			`Mnemocyte needs pgvector ${minMajor}.${minMinor}.0 or later for filtered vector search; this database has ${version}. Upgrade the pgvector package on the server, then run ALTER EXTENSION vector UPDATE.`,
-			"MIGRATION",
-		);
-	}
-}
+export { assertPgvectorVersion };
 
 /** Ids that are not UUIDs cannot match a row, so they are never sent. */
 function uuidsOnly(ids: readonly string[]): string[] {
@@ -384,6 +361,9 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		backend: "postgres",
 		migrate(input) {
 			return runPostgresMigrations(client, input);
+		},
+		inspectInstallation(options) {
+			return inspectPostgresInstallation(client, options);
 		},
 		ensureEmbeddingCompatibility,
 		async insertMemories(memories, options) {

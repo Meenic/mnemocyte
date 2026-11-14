@@ -213,6 +213,9 @@ export function createInMemoryStore(): MemoryStore {
 		async migrate() {
 			return { applied: [], adopted: [], extensionCreated: false };
 		},
+		async inspectInstallation() {
+			return null;
+		},
 		async ensureEmbeddingCompatibility() {},
 		async insertMemories(rows, options) {
 			throwIfAborted(options?.signal);

@@ -54,7 +54,7 @@ function causeCode(error: MnemocyteError): unknown {
 
 function expectMigrateHint(error: MnemocyteError, sqlstate: string): void {
 	expect(error.message).toMatch(
-		/^Mnemocyte's tables are missing or out of date in this database \(.+\)\. Run migrate\(\{ memory \}\) to create or upgrade them: /,
+		/^Mnemocyte's tables are missing or out of date in this database \(.+\)\. Run npx mnemocyte migrate to create or upgrade them: /,
 	);
 	expect(error.message.endsWith(INSTALL_GUIDE)).toBe(true);
 	expect(error.message).not.toContain(".sql");
@@ -63,7 +63,7 @@ function expectMigrateHint(error: MnemocyteError, sqlstate: string): void {
 
 // Each test boots its own PGlite, which can take seconds under parallel load.
 describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
-	test("an empty database names migrate({ memory }) and the guide", async () => {
+	test("an empty database names the migrate command and the guide", async () => {
 		const { memory, embedded } = setup(await emptyDatabase());
 
 		const added = await expectMnemocyteError(

@@ -347,7 +347,7 @@ describe("Postgres metadata validation", () => {
 				client.search({ scope: testScope("alice"), query: "hello" }),
 				"MIGRATION",
 			);
-			expect(error.message).toContain("Run migrate({ memory })");
+			expect(error.message).toContain("Run npx mnemocyte migrate");
 			expect(error.message).not.toContain(".sql");
 			expect(error.cause).toEqual({ code });
 			expect(embedCalls).toEqual([]);
@@ -367,7 +367,7 @@ describe("Postgres metadata validation", () => {
 			"MIGRATION",
 		);
 		expect(error.message).toContain('no "installation" row');
-		expect(error.message).not.toContain("Run migrate");
+		expect(error.message).not.toContain("mnemocyte migrate");
 		expect(embedCalls).toEqual([]);
 	});
 

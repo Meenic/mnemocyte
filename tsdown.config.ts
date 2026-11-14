@@ -4,6 +4,7 @@ export default defineConfig({
 	entry: [
 		"src/index.ts",
 		"src/ai-sdk.ts",
+		"src/cli.ts",
 		"src/postgres.ts",
 		"src/embedders/*.ts",
 		"src/stores/*.ts",

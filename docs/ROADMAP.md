@@ -197,7 +197,7 @@ it.
   resumed (features/maintenance.md). Landed as
   `experimental.findDuplicatesPage` with a cursor and `batchSize`
   (decision 35).
-- [ ] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
+- [x] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
   `lib/`, `src/`, `src/lib/` or `--config`) for its store and embedder.
   `migrate` asks before enabling pgvector (`--yes` for CI) and supports
   `--dry-run`; `check` reports the pgvector version, applied migrations and
@@ -207,6 +207,8 @@ it.
   `postgres` peer. No new dependencies. The getting-started guide's
   `migrate.ts` and `db:migrate` script become `npx mnemocyte migrate`, and
   the missing-schema hint from `fix/migration-hint` names the command.
+  Landed with `module.registerHooks` for the resolve hook and `.env`
+  loading (decision 36).
 - [ ] `feat/cli-init`: `npx mnemocyte init` writes a `memory.ts` for the
   driver it finds in `package.json` (`postgres`, `pg`,
   `@electric-sql/pglite`, `drizzle-orm`) in the first of the folders the

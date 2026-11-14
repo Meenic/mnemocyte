@@ -166,7 +166,7 @@ Files in `migrations/`:
 | `0003_schema_v2.sql` | Scope columns, `key`, `type` → `kind`, text ids → uuid, `content_tsv`, the new indexes, `mnemocyte_meta.vector_type`. |
 | `fresh-install.sql` | The final schema of `0000`→`0003` in one file, rendered at 1536 dimensions. Only for an empty database. |
 | `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. |
-| `render-initial.mjs` | `--dimensions N [--out file]`: renders the template, with `halfvec` above 2,000 dimensions; rejects more than 4,000. |
+| `render-initial.mjs` | `--dimensions N [--out file]`: renders the template, with `halfvec` above 2,000 dimensions; rejects more than 4,000. `mnemocyte sql` prints the same text and is what the guides name; the script stays for callers by path and `pnpm migration:render`. |
 | `meta/` | Drizzle journal for `0000`→`0003`, and snapshots for `0000`→`0002`. |
 
 `0003` in detail:
@@ -194,9 +194,11 @@ Files in `migrations/`:
 
 Install paths:
 
-- Any database: `migrate({ memory })` or `migrate({ store, dimensions })`.
+- Any database: `npx mnemocyte migrate` ([cli.md](./cli.md)), which calls
+  `migrate({ memory })`, or `migrate({ store, dimensions })` from code.
 - New database, 1536 dimensions: apply `fresh-install.sql`.
-- New database, other dimensions: render the template and apply the result.
+- New database, other dimensions: render the template (`mnemocyte sql
+  --dimensions N`) and apply the result.
   It already contains the effects of `0001`→`0003`.
 - Existing 0.1.x database: apply `0001`, `0002`, then `0003`.
 - Existing 0.2.x or 0.3.x database: apply `0002`, then `0003`.
@@ -301,6 +303,12 @@ the runner only through a store from `mnemocyte/postgres` or
   `createExtension` is set. It creates no tracking table. It cannot see a
   statement that would fail on data, and it does not check whether the role
   may create the extension.
+- **Inspection without changes.** `inspectPostgresInstallation`
+  (`src/db/migrations/inspect.ts`), behind `MemoryStore.inspectInstallation`
+  and the CLI's `check`, reads the same catalog facts with the runner's
+  `readAppliedVersions`, `readCatalogState`, `installedVersion` and
+  `assertContiguous`, without the lock or a transaction; see
+  [cli.md](./cli.md#check).
 - **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
   migrate or dry-run. The self foreign key names `public.mnemocyte_memories`, so the
   tables must be in `public`. There is no `lock_timeout`: `0003` waits for
@@ -712,14 +720,16 @@ ids) use the same trick.
 - SQLSTATE `42P01`, `42703`, `42704`, `42883` (missing table, column, object,
   function) become `"MIGRATION"`, from `missingSchemaError` in
   `src/memory/postgres.ts`: "Mnemocyte's tables are missing or out of date
-  in this database (*driver message*). Run migrate({ memory }) to create or
+  in this database (*driver message*). Run npx mnemocyte migrate to create or
   upgrade them:" followed by the guide's `#install-the-schema` URL. The
   driver message is repeated (whitespace collapsed, cut at 200 characters)
   because many log pipelines drop `cause`; the driver error is still the
   `cause`. The message names no SQL files and does not mention
   `createExtension`: when pgvector is also missing, `migrate` itself fails
-  before changing anything and names it. `MIGRATE_COMMAND` holds the fix,
-  so `feat/cli` changes one line. The guide URL points at `main`, like the
+  before changing anything and names it. `MIGRATE_COMMAND` holds the fix:
+  the CLI command since `feat/cli`, because it is the first thing the
+  guides show; the linked guide section also covers `migrate()` from code,
+  which PGlite users need. The guide URL points at `main`, like the
   README's links.
 - A `23503` foreign-key violation on the `superseded_by` constraint during a
   delete becomes `"CONFLICT"`.

@@ -5,8 +5,8 @@ What is built today and how to work on it. The target design lives in
 moves here or into [features/](./features/).
 
 User-facing documentation is `README.md` plus [guide/](./guide/): getting
-started, the API reference, the CLI, Postgres setup, embedders, the AI SDK
-and limitations. A change users can see
+started, the API reference, the CLI, Postgres setup, embedders, the AI SDK,
+limitations and upgrading. A change users can see
 updates the matching guide page in the same PR.
 
 Feature areas:
@@ -117,8 +117,8 @@ test/                   unit, package, integration, fixtures, benchmarks
 ```
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
-`src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts`,
-`src/embedders/*.ts` and `src/stores/*.ts`. `dist/cli.mjs` is the
+`src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts` and
+`src/embedders/*.ts`. `dist/cli.mjs` is the
 `mnemocyte` bin (`bin` in `package.json`), not an export. The package has no runtime dependencies. `postgres`,
 `pg`, `@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies
 at the versions the tests run; source files import at most their types
@@ -213,8 +213,8 @@ Exports:
   `MemorySaveOptions` types; `extractMemories` and its
   `ExtractMemoriesInput` and `ExtractMemoriesOptions` types; needs the `ai`
   peer.
-- `mnemocyte/postgres`: `postgresStore({ client })` and the
-  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
+- `mnemocyte/postgres`: `postgresStore({ client })`, its
+  `PostgresStoreOptions`, and the `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
 - The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`, with `--config`,
@@ -257,8 +257,11 @@ Design rules for the public surface:
 - A new method that takes a `scope` gets a `DefaultNamespace` type
   parameter on its input, a wrapper in `createScopedClient` and one in
   `bindScope` (`memory/scope-binding.ts`), and a `Bound…Input` type.
-- Breaking changes ship in a new minor (0.x) with a `CHANGELOG.md` entry and
-  an upgrade note (the 0.5 → 0.6 table is in `docs/guide/api.md`).
+- From 1.0, breaking changes ship only in a major, with a `CHANGELOG.md`
+  entry and a section in `docs/guide/upgrading.md`. `guide/api.md`
+  "Stability" lists what semver covers (decision 39): not `experimental.*`,
+  messages, CLI text, `context()` wording or score values. Additive changes
+  and the open unions above go in a minor.
 
 ## Testing
 

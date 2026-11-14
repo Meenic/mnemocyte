@@ -329,7 +329,8 @@ object must not also have PGlite's `exec` or a pool's `connect` and
 Run `npx mnemocyte migrate` (or `migrate({ memory })` in code) after
 upgrading the package. It applies the pending
 migrations, adopting an installation that was set up with `psql` first.
-`npx mnemocyte check` exits 1 while migrations are pending.
+`npx mnemocyte check` exits 1 while migrations are pending. For the code
+changes between releases, see [upgrading.md](./upgrading.md).
 
 With `psql`, apply the numbered migrations yourself. Never apply
 `fresh-install.sql` over an existing Mnemocyte schema.

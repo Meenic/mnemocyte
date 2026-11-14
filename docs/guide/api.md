@@ -3,8 +3,8 @@
 Every client method, its options and the rules it enforces. Each method takes
 one object parameter, and every method that can run long accepts
 `signal: AbortSignal`. Failures are `MnemocyteError` with a stable `code`
-(see [errors](#errors)). Upgrading from 0.5? See
-[upgrading from 0.5](#upgrading-from-05).
+(see [errors](#errors)). Upgrading from 0.x? See
+[upgrading.md](./upgrading.md).
 
 ## `createMemory`
 
@@ -800,34 +800,33 @@ custom embedders and stores; `CONFIG`, `CONFLICT` and `MIGRATION` require a
 
 ### Stability
 
-From 1.0, a minor release may add members to these unions, so a `switch`
+Mnemocyte follows semantic versioning from 1.0: a breaking change to the
+API documented in these guides waits for a major release. That covers the
+client and its methods, the in-memory and Postgres backends with the four
+built-in drivers, `postgresStore` and the documented `SqlExecutor`
+interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
+commands, flags and exit codes. It does not cover:
+
+- anything under `experimental` (`experimental.findDuplicatesPage`), which
+  may change or go in a minor release;
+- error messages and the CLI's output text; branch on `code` and `reason`,
+  and on exit codes;
+- the exact wording of `context()` output. The formats, the guarantee that
+  memory content cannot break out of its block, and the `maxTokens` budget
+  are covered;
+- `score` values and the order of results. A minor release may tune
+  ranking; the shape of results and `scores` is covered;
+- the internal storage contract and modules not exported from a
+  documented entry.
+
+A minor release may add members to these unions, so a `switch`
 over them needs a `default` branch: `MnemocyteErrorCode`,
 `MnemocyteErrorReason`, `MnemocyteOperation` (observability events),
 `MnemocyteBackend` and `AuditEventType`. The other unions (`MemoryKind`,
 `ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
 `MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
 
-## Upgrading from 0.5
+## Upgrading
 
-0.6 replaces the entity-only client with the scoped one in a single breaking
-change. Memories written by 0.5 are in namespace `"default"` with no agent or
-session, so pass `namespace: "default"` to keep reading them.
-
-| 0.5 | 0.6 |
-|---|---|
-| `createMnemocyte(config)` | `createMemory(config)` |
-| `MnemocyteClient`, `MnemocyteConfig` | `MemoryClient`, `MemoryConfig` |
-| `remember({ entityId, … })` | `add({ scope, … })` |
-| `rememberMany({ inputs })` / `rememberMany(inputs)` | `addMany({ scope, memories })`, one scope per call |
-| `recall({ entityId, … })` | `search({ scope, … })` |
-| `buildContext({ entityId, … })` | `context({ scope, … })`; the query is no longer echoed |
-| `forget({ entityId, memoryId })` | `delete({ scope, id })` |
-| `forgetAll({ entityId })` | `deleteScope({ scope })`; also deletes the scope's audit events |
-| `prune({ entityId?, … })` | `prune({ scope, … })` or `prune({ allNamespaces: true, … })`, plus a selector besides the scope |
-| `findDuplicates`, `listAuditLog`, `experimental.consolidate` with `entityId` | `findDuplicates`, `listAuditLog`, `consolidate` with `scope` |
-| `stats({ entityId })` / `stats()` | `stats({ scope })` / `stats({ allNamespaces: true })`, one `MemoryStats` type |
-| `type`, `types`, `MemoryType` | `kind`, `kinds`, `MemoryKind` |
-| `memory.entityId`, `event.entityId` | `memory.scope.entityId`, `event.scope.entityId` |
-| `close()` | removed; end your own database client |
-| `"entity.cleared"` audit event | none; `deleteScope` deletes the audit events |
-| observability operations `remember`, `recall`, `buildContext`, `forget`, `forgetAll`, `close` | `add`, `search`, `context`, `delete`, `deleteScope`; no `close` |
+Moving from 0.5 or a later 0.x release? See [upgrading.md](./upgrading.md),
+one section per release up to 1.0.

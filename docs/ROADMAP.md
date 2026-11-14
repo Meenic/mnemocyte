@@ -263,7 +263,7 @@ branch each; `docs/v1` comes last.
   to "render and apply a migration for the selected embedding dimension",
   which does not exist (`migrate` rejects a different dimension on an
   existing installation); it should name what does work.
-- [ ] `docs/v1`: API freeze review, README and feature docs pass, upgrade
+- [x] `docs/v1`: API freeze review, README and feature docs pass, upgrade
   guide from 0.5. Also: decision 3's list of what 1.0 covers (the Voyage,
   Cohere and Gemini embedders, middleware, extraction, the CLI's commands,
   flags and exit codes but not its text); the recall numbers in

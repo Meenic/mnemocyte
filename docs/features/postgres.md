@@ -759,8 +759,18 @@ queries are not cancelled.
 
 ## Known problems
 
-Each one is a roadmap item in Phase 1 unless noted.
+The user-facing list is `docs/guide/limitations.md`; these are the ones a
+contributor meets in this backend.
 
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
   after an error and can leave a partial schema; `migrate()` then refuses to
   adopt it. The guide shows the flags.
+- The full-text column is `to_tsvector('english', content)`, fixed in
+  migration 0003 and `fresh-install.sql`, so every language gets English
+  stemming and stop words. An install-time configuration is an after-1.0
+  roadmap item; changing it needs a migration that rewrites the generated
+  column and its GIN index.
+- No method switches an installation's embedding model or dimensions;
+  `migrate` rejects a different dimension and the installation check
+  rejects a different model. Users re-embed or delete rows by hand
+  (`guide/postgres.md` "Repair mixed models").

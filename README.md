@@ -6,8 +6,6 @@ Mnemocyte stores what your app learns about users, agents and sessions in
 the database you already run, finds the relevant memories with hybrid
 vector and keyword search, and turns them into prompt-ready context.
 
-> Pre-1.0: APIs may change in minor releases.
-
 ## Install
 
 ```bash
@@ -114,12 +112,15 @@ Every memory belongs to a `namespace` and an `entityId`, plus an optional
 - **Read:** `search`, `context`, `get`, `list`
 - **Maintain:** `prune`, `findDuplicates`, `consolidate`, `stats`,
   `listAuditLog`, `pruneAuditLog`
-- **Setup:** `migrate`, `for`, and the `mnemocyte` command (`migrate`,
-  `check`, `sql`)
+- **Setup:** `migrate`, `for`, and the `mnemocyte` command (`init`,
+  `migrate`, `check`, `sql`)
 
 Errors are `MnemocyteError` with a stable `code` and, for `CONFIG`,
 `CONFLICT` and `MIGRATION`, a `reason`. See the
 [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md).
+
+Mnemocyte follows semantic versioning; `experimental.*` is outside it. See
+[stability](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md#stability).
 
 ## Documentation
 
@@ -130,6 +131,7 @@ Errors are `MnemocyteError` with a stable `code` and, for `CONFIG`,
 - [Embedders](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/embedders.md)
 - [AI SDK](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/ai-sdk.md)
 - [Limitations](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/limitations.md)
+- [Upgrading from 0.x](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/upgrading.md)
 - [Roadmap](https://github.com/Meenic/mnemocyte/blob/main/docs/ROADMAP.md) · [Changelog](https://github.com/Meenic/mnemocyte/blob/main/CHANGELOG.md)
 
 ## Contributing

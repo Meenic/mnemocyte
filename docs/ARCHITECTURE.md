@@ -221,6 +221,12 @@ Dated 2026-10-26 unless noted.
 3. **1.0 covers:** core, Postgres with the four drivers, `migrate()`, the
    OpenAI-compatible and AI SDK embedders, and AI SDK memory tools. The semver
    promise covers the user-facing API; `MemoryStore` stays internal.
+   (2026-11-14, revised by 39) 1.0 covers the core client and the in-memory
+   backend; Postgres with the four drivers, `postgresStore` and
+   `SqlExecutor` as documented; `migrate()`; every embedder (OpenAI,
+   OpenAI-compatible, Voyage, Cohere, Gemini and the AI SDK one); the AI
+   SDK tools, middleware, `withMemory` and extraction; and the CLI's
+   commands, flags and exit codes, but not its text.
 4. **Database access:** our own small `SqlExecutor`, not Kysely.
 5. **Drizzle:** an optional driver adapter, not a runtime dependency.
 6. **Scope:** `namespace` + `entityId` + optional `agentId` and `sessionId`
@@ -755,3 +761,18 @@ Dated 2026-10-26 unless noted.
       gain members in a minor; the other unions only in a major.)
     The resulting items are in Phase 4 of ROADMAP.md. The review's
     additive findings wait until after 1.0.
+39. **What semver leaves out** (2026-11-14): the maintainer chose, with
+    `docs/v1`:
+    - The promise excludes the internal `MemoryStore` contract, anything
+      under `experimental.*`, error message text, the CLI's output text,
+      the exact wording of `context()` output, and `score` values and
+      ranking. The `context()` formats, their fencing guarantee and the
+      token budget stay covered, and so do result shapes; retrieval tuning
+      may reorder results in a minor.
+    - `experimental.findDuplicatesPage` stays experimental in 1.0. It
+      landed the day of the freeze (decision 35) with no use in the field
+      yet; graduating it later is additive.
+    - The upgrade path from 0.5 lives in its own guide page,
+      `docs/guide/upgrading.md`, one section per release, and the docs drop
+      their pre-1.0 wording in `docs/v1` rather than in the release PR.
+    The final export review found no change beyond decisions 38 and 39.

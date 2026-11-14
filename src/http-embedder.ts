@@ -19,19 +19,19 @@ const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([
 /** How an embedder marks texts for one {@link EmbeddingPurpose}. */
 export interface PurposeHint {
 	/** Text put in front of every input, such as `"search_query: "`. */
-	readonly prefix?: string;
+	readonly prefix?: string | undefined;
 	/**
 	 * JSON fields added to the request body, such as
 	 * `{ input_type: "passage" }`. `model`, `input`, `encoding_format` and
 	 * `dimensions` are set by the embedder and may not appear here.
 	 */
-	readonly body?: JsonObject;
+	readonly body?: JsonObject | undefined;
 }
 
 /** Per-purpose hints; a purpose without one is sent as plain text. */
 export interface PurposeHints {
-	readonly query?: PurposeHint;
-	readonly document?: PurposeHint;
+	readonly query?: PurposeHint | undefined;
+	readonly document?: PurposeHint | undefined;
 }
 
 export interface HttpEmbedderConfig {

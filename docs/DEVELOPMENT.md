@@ -239,6 +239,15 @@ Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 Design rules for the public surface:
 
 - One object parameter per method; new options are optional fields.
+- Optional fields of inputs and options (method inputs, scopes, config,
+  embedder and AI SDK options) are typed `?: T | undefined`, and the runtime
+  treats `undefined` as absent: read them with `?? default` or
+  `!== undefined`, never spread them over defaults. Under
+  `exactOptionalPropertyTypes` a bare `?: T` rejects a `T | undefined`
+  variable. Result and event types the package produces keep `?: T`;
+  internal store types stay exact, so the store never sees a key set to
+  `undefined`. `test/memory/explicit-undefined.test.ts` and the export type
+  test check both sides.
 - Errors are `MnemocyteError` with a stable `code`, and a `reason` on every
   `"CONFIG"`, `"CONFLICT"` and `"MIGRATION"` (the constructor input requires
   one, so the compiler catches a throw without it); callers branch on those,

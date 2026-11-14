@@ -708,7 +708,7 @@ const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
 void boundConsolidated;
 void bound.delete({ id: "a", dependents: "reject" });
 const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
-// @ts-expect-error The deprecated consolidate alias is gone; use bound.consolidate.
+// @ts-expect-error The consolidate alias is gone; use bound.consolidate.
 void boundExperimental.consolidate;
 const boundPageInput: BoundFindDuplicatesPageInput = { batchSize: 100 };
 void boundExperimental.findDuplicatesPage(boundPageInput);
@@ -825,7 +825,7 @@ const extracted: Promise<Memory[]> = extractMemories(extractionInput);
 withMemory({ model: languageModel, memory: bound, save: { maxMemories: 5 } });
 extractMemories({
 	...extractionOptions,
-	// @ts-expect-error extractMemories takes a bound client, not the client itself.
+	// @ts-expect-error extractMemories takes a bound client, not the client.
 	memory: defaulted,
 	prompt: [],
 	text: "",
@@ -874,3 +874,110 @@ const readonlyPrune: PruneInput = {
 void readonlyNewMemory;
 void readonlySearch;
 void readonlyPrune;
+
+// Optional input fields accept an explicit undefined under
+// exactOptionalPropertyTypes (this file compiles with the flag on), so a
+// `T | undefined` variable passes through. The loops are the ones in
+// docs/guide/api.md.
+async function pageThrough(memory: MemoryClient, entity: ScopeSelector) {
+	let cursor: string | undefined;
+	do {
+		const page = await memory.list({ scope, limit: 50, cursor });
+		for (const item of page.memories) {
+			void item;
+		}
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+
+	do {
+		const page = await memory.experimental.findDuplicatesPage({
+			scope,
+			cursor,
+		});
+		for (const { a, b, similarity } of page.pairs) {
+			void [a, b, similarity];
+		}
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+
+	do {
+		const page = await memory.listAuditLog({
+			scope: entity,
+			limit: 100,
+			cursor,
+		});
+		for (const event of page.events) {
+			void event;
+		}
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+
+	do {
+		const page = await bound.list({ cursor });
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+	do {
+		const page = await bound.listAuditLog({ cursor });
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+}
+
+// An optional signal, and other optional values, passed straight through.
+async function passThrough(
+	memory: MemoryClient,
+	signal?: AbortSignal,
+	agentId?: string,
+	limit?: number,
+) {
+	const agentScope: MemoryScope = {
+		namespace: "app",
+		entityId: "entity",
+		agentId,
+	};
+	await memory.add({ scope: agentScope, content: "c", signal });
+	await memory.search({ scope: agentScope, query: "q", limit, signal });
+	await memory.context({ scope, query: "q", maxTokens: limit, signal });
+	await memory.update({ scope, id: "id", content: undefined, signal });
+	await memory.prune({ scope: selector, dryRun: undefined, signal });
+	await bound.search({ query: "q", limit, signal });
+	await extractMemories({
+		model: languageModel,
+		memory: bound,
+		prompt: [],
+		text: "t",
+		maxMemories: limit,
+		signal,
+	});
+}
+
+// Config built from environment variables, which are `string | undefined`.
+declare const env: Record<string, string | undefined>;
+const envConfig: MemoryConfig = {
+	namespace: env.MEMORY_NAMESPACE,
+	embedder: openaiEmbedder({
+		model: "text-embedding-3-small",
+		apiKey: env.OPENAI_API_KEY,
+		baseURL: env.OPENAI_BASE_URL,
+	}),
+	defaults: { limit: undefined },
+	retrieval: { fusion: { k: undefined }, recencyHalfLifeDays: undefined },
+	provider: { timeoutMs: undefined },
+	audit: { enabled: undefined },
+};
+const envMemory = createMemory(envConfig);
+void migrate({ memory: envMemory, dimensions: undefined });
+memoryMiddleware({ memory: bound, placement: undefined, context: undefined });
+aiSdkEmbedder({ model: "openai/text-embedding-3-small", maxBatch: undefined });
+
+// Explicit undefined does not open the scope or allNamespaces rules.
+// @ts-expect-error A scope still needs an entity.
+const undefinedEntity: MemoryScope = { namespace: "app", entityId: undefined };
+// @ts-expect-error prune still needs a scope or allNamespaces.
+const undefinedPrune: PruneInput = { scope: undefined, expired: true };
+// Resolved retrieval settings stay plain numbers.
+const explainedK: number = ({} as RetrievalExplanation).fusion.k;
+void pageThrough;
+void passThrough;
+void undefinedEntity;
+void undefinedPrune;
+void explainedK;

@@ -2,9 +2,11 @@
 
 Every client method, its options and the rules it enforces. Each method takes
 one object parameter, and every method that can run long accepts
-`signal: AbortSignal`. Failures are `MnemocyteError` with a stable `code`
-(see [errors](#errors)). Upgrading from 0.x? See
-[upgrading.md](./upgrading.md).
+`signal: AbortSignal`. An optional field set to `undefined` means the same as
+leaving it out, and the types allow it under `exactOptionalPropertyTypes`, so
+a `cursor` or `signal` that may be `undefined` passes straight through.
+Failures are `MnemocyteError` with a stable `code` (see [errors](#errors)).
+Upgrading from 0.x? See [upgrading.md](./upgrading.md).
 
 ## `createMemory`
 

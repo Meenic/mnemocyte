@@ -37,7 +37,7 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModelSize> = new Map([
 
 export interface VoyageEmbedderOptions {
 	/** Voyage API key. Defaults to `process.env.VOYAGE_API_KEY`. */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/** Voyage embedding model, such as `"voyage-4"`. */
 	readonly model: string;
 	/**
@@ -45,19 +45,19 @@ export interface VoyageEmbedderOptions {
 	 * take `output_dimension` accept 256, 512, 1024 or 2048, which is then
 	 * sent. Required for other models, where it is not sent.
 	 */
-	readonly dimensions?: number;
+	readonly dimensions?: number | undefined;
 	/**
 	 * Cut texts longer than the model's context instead of failing the
 	 * request. Sent as `truncation`. Defaults to `true`.
 	 */
-	readonly truncate?: boolean;
+	readonly truncate?: boolean | undefined;
 	/** API base URL. Defaults to `https://api.voyageai.com/v1`. */
-	readonly baseURL?: string;
+	readonly baseURL?: string | undefined;
 	/**
 	 * Most texts per request. Defaults to `100`. Voyage also caps the tokens
 	 * per request (120K for `voyage-4-large`), so lower it for long texts.
 	 */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 }
 
 /**

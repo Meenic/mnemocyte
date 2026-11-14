@@ -19,23 +19,23 @@ export interface OpenAICompatibleEmbedderOptions {
 	 * Sent as `Authorization: Bearer <apiKey>`. Leave it out for servers that
 	 * need no key, such as a local Ollama or LM Studio.
 	 */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/** Extra request headers, such as `{ "api-key": "…" }` for Azure. */
-	readonly headers?: Readonly<Record<string, string>>;
+	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/** Most texts per request. Defaults to `100`. */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 	/**
 	 * Send `dimensions` in the request, for models that can shorten their
 	 * vectors. Off by default, because servers reject it for models that
 	 * cannot. Defaults to `false`.
 	 */
-	readonly sendDimensions?: boolean;
+	readonly sendDimensions?: boolean | undefined;
 	/**
 	 * How to mark queries and documents for models that embed them
 	 * differently: a text `prefix` (nomic, E5) and/or request `body` fields
 	 * (NVIDIA NIM `input_type`, Jina `task`). Nothing is sent by default.
 	 */
-	readonly purposes?: PurposeHints;
+	readonly purposes?: PurposeHints | undefined;
 }
 
 /**

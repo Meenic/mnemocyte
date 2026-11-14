@@ -126,6 +126,27 @@ marked **Breaking** in their entries. What semver covers is in
   SQL files and `fresh-install.sql` still ship. The empty `dist/cli.d.mts`
   is gone too.
 
+### Fixed
+
+- **Optional fields accept an explicit `undefined` under
+  `exactOptionalPropertyTypes`.** Method inputs, bound-client inputs, scopes,
+  the `createMemory` and `migrate` config, embedder options and the AI SDK
+  options are typed `?: T | undefined`, so a `string | undefined` cursor or
+  an optional `signal` passes straight through. Before, the cursor loops in
+  `docs/guide/api.md` failed with TS2379. `undefined` means the same as
+  leaving the field out.
+
+  ```ts
+  let cursor: string | undefined;
+  do {
+    const page = await memory.list({ scope, cursor }); // compiles now
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  ```
+- **A `retrieval.fusion` or `retrieval.boosts` weight set to `undefined`
+  keeps its default.** It used to replace the default and throw
+  `"CONFIG"`.
+
 ### Documentation
 
 - **Upgrade guide.** [docs/guide/upgrading.md](docs/guide/upgrading.md)

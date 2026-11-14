@@ -23,29 +23,35 @@ export interface ExtractMemoriesOptions {
 	 * Guidance added after the built-in extraction prompt, such as "Only
 	 * remember dietary preferences." It cannot replace the built-in rules.
 	 */
-	readonly instructions?: string;
+	readonly instructions?: string | undefined;
 	/** Most memories stored per turn, 1–20. @defaultValue `10` */
-	readonly maxMemories?: number;
+	readonly maxMemories?: number | undefined;
 	/**
 	 * Milliseconds the whole extraction (search, model call and write) may
 	 * take before it fails with `"TIMEOUT"`. @defaultValue `30000`
 	 */
-	readonly timeoutMs?: number;
+	readonly timeoutMs?: number | undefined;
 }
 
 /** Input of {@link extractMemories}. */
 export interface ExtractMemoriesInput extends ExtractMemoriesOptions {
 	/** A client bound to one scope, from `memory.for(scope)`. */
 	readonly memory: BoundMemoryClient;
-	/** The conversation, in the AI SDK's provider format (`MemoryTurn.prompt`). */
+	/**
+	 * The conversation, in the AI SDK's provider format
+	 * (`MemoryTurn.prompt`).
+	 */
 	readonly prompt: MemoryPrompt;
 	/** The response to the last user message (`MemoryTurn.text`). */
 	readonly text: string;
 	/** Cancels the extraction. */
-	readonly signal?: AbortSignal;
+	readonly signal?: AbortSignal | undefined;
 }
 
-/** The kinds extraction may set; `episode` and `session` are not lasting facts. */
+/**
+ * The kinds extraction may set; `episode` and `session` are not lasting
+ * facts.
+ */
 type ExtractedKind = Extract<
 	MemoryKind,
 	"fact" | "preference" | "instruction" | "backstory"

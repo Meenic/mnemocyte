@@ -302,9 +302,10 @@ describe("consolidate", () => {
 			expect(success?.entityId).toBe("alice");
 			expect(success?.memoryId).toBe(survivor.id);
 			expect(success?.count).toBe(1);
-			const log = await client.listAuditLog({ scope: testScope("alice") });
+			const log = (await client.listAuditLog({ scope: testScope("alice") }))
+				.events;
 			const superseded = log.find(
-				(event) => event.description === "memory.superseded",
+				(event) => event.type === "memory.superseded",
 			);
 			expect(superseded).toBeTruthy();
 			const supersededEvent = expectDefined(superseded);

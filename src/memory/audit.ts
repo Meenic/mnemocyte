@@ -1,4 +1,9 @@
-import type { AuditEvent, JsonObject, Memory } from "../types.js";
+import type {
+	AuditEvent,
+	AuditEventType,
+	JsonObject,
+	Memory,
+} from "../types.js";
 import { createEventId } from "./records.js";
 import type { StoreScope, StoreSelector } from "./store.js";
 
@@ -10,14 +15,14 @@ import type { StoreScope, StoreSelector } from "./store.js";
 
 function event(
 	scope: StoreScope,
-	description: string,
+	type: AuditEventType,
 	metadata: JsonObject,
 	timestamp: Date,
 ): AuditEvent {
 	return {
 		id: createEventId(),
 		scope: { ...scope },
-		description,
+		type,
 		metadata,
 		timestamp: new Date(timestamp),
 	};

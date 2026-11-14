@@ -225,8 +225,8 @@ export async function verifyKeyedAddAudit(
 	const scope: MemoryScope = { namespace, entityId: "alice" };
 	const created = await client.add({ scope, key: "k", content: "first" });
 	await client.add({ scope, key: "k", content: "second" });
-	const log = await client.listAuditLog({ scope });
-	expect(log.map((event) => event.description).sort()).toEqual([
+	const log = (await client.listAuditLog({ scope })).events;
+	expect(log.map((event) => event.type).sort()).toEqual([
 		"memory.created",
 		"memory.updated",
 	]);

@@ -1,7 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import { DEFAULT_BOOSTS, DEFAULT_FUSION } from "../retrieval/scorer.js";
 import type {
-	AuditLogCursor,
 	ConsolidateInput,
 	ContextInput,
 	DeleteInput,
@@ -450,7 +449,7 @@ function selectorFromScope(
 	};
 }
 
-/** Validate a scope used as a selector for one entity (`deleteScope`, audit). */
+/** Validate a scope used as a selector for one entity (`deleteScope`). */
 export function validateEntitySelector(value: unknown): StoreEntitySelector {
 	// selectorFromScope checked namespace and entityId as non-empty strings.
 	return selectorFromScope(value, "scope", true) as StoreEntitySelector;
@@ -973,11 +972,15 @@ export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
 	return scope;
 }
 
-/** Validate a {@link ListAuditLogInput} and return its selector. */
+/**
+ * Validate a {@link ListAuditLogInput}: a selector (or `allNamespaces`), a
+ * `limit`, valid `before` / `after` dates. The cursor is decoded by the
+ * caller.
+ */
 export function validateListAuditLogInput(
 	input: ListAuditLogInput,
-): StoreEntitySelector {
-	const selector = validateEntitySelector(input.scope);
+): StoreSelector {
+	const selector = validateSelectorInput(input);
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
 	}
@@ -987,32 +990,8 @@ export function validateListAuditLogInput(
 	if (input.after !== undefined) {
 		assertValidDate(input.after, "after");
 	}
-	for (const [field, cursor] of [
-		["beforeCursor", input.beforeCursor],
-		["afterCursor", input.afterCursor],
-	] as const) {
-		if (cursor === undefined) {
-			continue;
-		}
-		assertAuditLogCursor(cursor, field);
-	}
 	assertOptionalSignal(input.signal);
 	return selector;
-}
-
-function assertAuditLogCursor(
-	value: unknown,
-	field: string,
-): asserts value is AuditLogCursor {
-	if (typeof value !== "object" || value === null) {
-		throw new MnemocyteError(
-			`${field} must be an audit-log cursor.`,
-			"VALIDATION",
-		);
-	}
-	const cursor = value as { id?: unknown; timestamp?: unknown };
-	assertValidDate(cursor.timestamp, `${field}.timestamp`);
-	assertNonEmptyString(cursor.id, `${field}.id`);
 }
 
 // pgvector's HNSW index holds `halfvec` up to 4,000 dimensions, the largest

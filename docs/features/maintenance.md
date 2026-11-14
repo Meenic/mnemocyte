@@ -266,12 +266,63 @@ every path on both backends and compares the events, and the Postgres
 contract makes audit inserts fail with a trigger to check that every path
 rolls back.
 
-`listAuditLog({ scope, limit = 50 })` selects events like a bulk operation
-(an omitted agent or session matches any) and returns them newest first by
-`(timestamp, id)`. Use `beforeCursor` / `afterCursor` (`{ timestamp, id }`)
-for complete pagination; `before` / `after` are strict timestamp filters that
-skip events sharing the boundary timestamp. `deleteScope` and
-`pruneAuditLog` delete events.
+Each event's `type` (`AuditEventType`, the five names above) is stored in
+the `description` column, which keeps its 0.x name. `rowToAuditEvent` casts
+the text without checking it: the library writes only those five, and a
+row inserted by hand comes back as it is rather than failing the page.
+
+### Listing
+
+`listAuditLog({ scope | allNamespaces: true, limit = 50, cursor, before,
+after })` takes a selector as `prune` does (`validateListAuditLogInput`
+calls `validateSelectorInput`) and returns `{ events, nextCursor }`, newest
+first by `(timestamp, id)`. As in `list`, the client asks the store for
+`limit + 1` events and returns a cursor only when the extra one came back,
+so an exact last page ends with `null`. `before` / `after` are strict
+timestamp filters applied to every page. `deleteScope` and `pruneAuditLog`
+delete events.
+
+The cursor (`encodeAuditCursor` in `memory/cursor.ts`) is base64url of
+`["a1", timestamp, id]` for the page's last event. The `a1` tag makes a
+`list` or `findDuplicatesPage` cursor fail with `"VALIDATION"`. The
+timestamp is UTC text with six fraction digits, because
+`mnemocyte_events.timestamp` stores microseconds: the column defaults to
+`now()`, so rows from 0.x or inserted by hand have them, while the library
+writes milliseconds. A cursor holding a `Date` would skip events in the
+same millisecond. `list` avoids that by ordering on
+`date_trunc('milliseconds', created_at)` (see
+[scopes.md](./scopes.md#list)), but that expression cannot be
+indexed and would cost audit pages their index. Instead the Postgres page
+compares the raw column, `(timestamp, id) < ($ts::timestamptz, $id)`, and
+returns each row's position as `to_char(… 'US')` text, the same format the
+retention batches use. The in-memory store writes the same text with
+`000` for the microseconds a `Date` cannot hold and compares the
+milliseconds, then the microsecond digits, then the id.
+
+Within one entity the page is an index scan of
+`mnemocyte_events_scope_time_idx` read backwards, with no sort. A
+namespace or every namespace has no index in `(timestamp, id)` order, so
+Postgres reads the selected events and keeps the top `limit + 1` with a
+top-N heapsort; a `(timestamp)` index was measured for retention and left
+out (below). Measured with the audit phase of `pnpm bench:postgres` on the
+`pgvector/pgvector:0.8.7-pg18` image with its default settings
+(`shared_buffers` 128 MB, `work_mem` 4 MB), over the retention dataset
+below before any batch runs (1,000,000 events, 10 namespaces of 100
+entities), pages of 50:
+
+| Page | Plan | Time |
+|---|---|---|
+| one entity (1,000 events), first or second page | `Index Scan` of the scope index, 51 rows, no sort | 0.13 ms, 54 buffers |
+| one namespace (100,000 events), first or second page | `Seq Scan`, top-N heapsort over 100,000 rows | 66 ms, 11,400 buffers |
+| all namespaces, first or second page | `Seq Scan`, top-N heapsort over 1,000,000 rows | 331 ms, 11,400 buffers |
+
+The second page costs the same as the first: the cursor filters rows, but
+every selected row is still read and compared. For a tenth of the table
+the planner prefers a sequential scan to the scope index. Pages across
+entities are an administrative read, so they stay without an index of
+their own until an application needs them faster; a `(timestamp, id)`
+index would serve the all-namespaces order at the cost measured for
+retention below.
 
 ### Retention
 

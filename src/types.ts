@@ -1030,7 +1030,7 @@ export interface PruneResult {
 export interface PruneAuditLogOptions {
 	/**
 	 * Delete events strictly before this time. Same filter as
-	 * {@link ListAuditLogInput.before}, so a `listAuditLog` call with it
+	 * {@link ListAuditLogOptions.before}, so a `listAuditLog` call with it
 	 * shows what would go.
 	 */
 	before: Date;
@@ -1178,6 +1178,16 @@ export interface DuplicatePair {
 }
 
 /**
+ * What an {@link AuditEvent} records. Mnemocyte writes only these five.
+ */
+export type AuditEventType =
+	| "memory.created"
+	| "memory.updated"
+	| "memory.deleted"
+	| "memory.pruned"
+	| "memory.superseded";
+
+/**
  * A single audit-log entry recording a change.
  */
 export interface AuditEvent {
@@ -1185,12 +1195,8 @@ export interface AuditEvent {
 	id: string;
 	/** Scope of the change. */
 	scope: MemoryRecordScope;
-	/**
-	 * Stable, dotted slug describing the change: `"memory.created"`,
-	 * `"memory.updated"`, `"memory.deleted"`, `"memory.pruned"` or
-	 * `"memory.superseded"`.
-	 */
-	description: string;
+	/** What changed. Stored in the `description` column on Postgres. */
+	type: AuditEventType;
 	/** JSON-compatible structured details persisted by value with the change. */
 	metadata: JsonObject;
 	/** When the change was recorded. */
@@ -1198,47 +1204,61 @@ export interface AuditEvent {
 }
 
 /**
- * Stable composite position for deterministic audit-log pagination.
+ * Options of {@link MemoryClient.listAuditLog} besides its scope.
  */
-export interface AuditLogCursor {
-	/** Event timestamp at the page boundary. */
-	timestamp: Date;
-	/** Event ID used to break timestamp ties. */
-	id: string;
-}
-
-/**
- * Input for {@link MemoryClient.listAuditLog}. An omitted `agentId` or
- * `sessionId` in `scope` matches any value, so `{ namespace, entityId }`
- * lists every event about the entity.
- */
-export interface ListAuditLogInput<DefaultNamespace extends boolean = false> {
-	/** Whose events to list; omitted optional fields match any value. */
-	scope: ScopeInput<DefaultNamespace>;
+export interface ListAuditLogOptions {
 	/**
-	 * Maximum number of entries to return, ordered newest first.
+	 * Page size, ordered newest first; positive integer.
 	 * @defaultValue `50`
 	 */
 	limit?: number;
 	/**
-	 * Only return entries strictly before this timestamp. This is a filter, not
-	 * a complete pagination cursor: events sharing the timestamp are excluded.
+	 * `nextCursor` from the previous page. Omit for the first page. Pass the
+	 * same selector and filters on every page.
+	 */
+	cursor?: string;
+	/**
+	 * Only return events strictly before this time. A filter, not a page
+	 * position: events at exactly this time are excluded.
 	 */
 	before?: Date;
 	/**
-	 * Only return entries strictly after this timestamp. This is a filter, not
-	 * a complete pagination cursor: events sharing the timestamp are excluded.
+	 * Only return events strictly after this time. A filter, not a page
+	 * position: events at exactly this time are excluded.
 	 */
 	after?: Date;
-	/** Return entries strictly older than this `(timestamp, id)` position. */
-	beforeCursor?: AuditLogCursor;
-	/** Return entries strictly newer than this `(timestamp, id)` position. */
-	afterCursor?: AuditLogCursor;
 	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
 	 * Postgres requests cancellation of the active audit-log query.
 	 */
 	signal?: AbortSignal;
+}
+
+/**
+ * Input for {@link MemoryClient.listAuditLog}: a {@link ScopeSelector}, or
+ * `allNamespaces: true` for the whole installation. The selector works like
+ * `prune`'s: `{ namespace }` lists every entity, and `entityId`, `agentId`
+ * and `sessionId` narrow it.
+ */
+export type ListAuditLogInput<DefaultNamespace extends boolean = false> =
+	ListAuditLogOptions &
+		(
+			| {
+					scope: ScopeSelectorInput<DefaultNamespace>;
+					allNamespaces?: never;
+			  }
+			| { allNamespaces: true; scope?: never }
+		);
+
+/** Result of {@link MemoryClient.listAuditLog}. */
+export interface ListAuditLogResult {
+	/** Events newest first, by `timestamp` then `id`. */
+	events: AuditEvent[];
+	/**
+	 * Opaque cursor for the next page, or `null` when this page is the last.
+	 * Pass it back unchanged as {@link ListAuditLogOptions.cursor}.
+	 */
+	nextCursor: string | null;
 }
 
 /**
@@ -1412,10 +1432,17 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	consolidate(
 		input: ConsolidateInput<DefaultNamespace>,
 	): Promise<ConsolidateResult>;
-	/** Return audit-log events for a scope, newest first. */
+	/**
+	 * One page of the audit events a scope selector (or `allNamespaces:
+	 * true`) selects, newest first. Page with `nextCursor`.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` without a selector (or
+	 * `allNamespaces: true`), or for a `cursor` that is not a `nextCursor`
+	 * of this method.
+	 */
 	listAuditLog(
 		input: ListAuditLogInput<DefaultNamespace>,
-	): Promise<AuditEvent[]>;
+	): Promise<ListAuditLogResult>;
 	/**
 	 * Delete audit events older than `before` that a scope selector (or
 	 * `allNamespaces: true`) selects, in batches of `batchSize`. Memories are
@@ -1530,7 +1557,7 @@ export type BoundFindDuplicatesPageInput = Omit<
 	"scope"
 >;
 /** Input for {@link BoundMemoryClient.listAuditLog}. */
-export type BoundListAuditLogInput = Omit<ListAuditLogInput, "scope">;
+export type BoundListAuditLogInput = ListAuditLogOptions;
 /** Input for {@link BoundMemoryClient.consolidate}. */
 export type BoundConsolidateInput = Omit<ConsolidateInput, "scope">;
 /** Input for {@link BoundMemoryClient.pruneAuditLog}. */
@@ -1577,7 +1604,7 @@ export interface BoundMemoryClient {
 	/** {@link MemoryClient.consolidate} at the bound scope. */
 	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 	/** {@link MemoryClient.listAuditLog} within the bound scope. */
-	listAuditLog(input?: BoundListAuditLogInput): Promise<AuditEvent[]>;
+	listAuditLog(input?: BoundListAuditLogInput): Promise<ListAuditLogResult>;
 	/** {@link MemoryClient.pruneAuditLog} within the bound scope. */
 	pruneAuditLog(input: BoundPruneAuditLogInput): Promise<PruneAuditLogResult>;
 	/** {@link MemoryClient.stats} within the bound scope. */

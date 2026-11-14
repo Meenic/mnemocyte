@@ -92,7 +92,7 @@ export function cloneAuditEvent(event: AuditEvent): AuditEvent {
 	return {
 		id: event.id,
 		scope: cloneScope(event.scope),
-		description: event.description,
+		type: event.type,
 		metadata: cloneJsonObject(event.metadata),
 		timestamp: new Date(event.timestamp),
 	};

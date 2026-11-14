@@ -75,6 +75,12 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   sees only shared memories, never those an agent holds; there is no way to
   list every agent's memories of an entity in one call. `stats`,
   `listAuditLog` and `deleteScope` do cover all agents.
+- **Audit pages across entities sort.** On Postgres, `listAuditLog` over a
+  namespace or `allNamespaces` sorts every selected event for each page; no
+  index serves that order. Over 1,000,000 events a page took 66 ms for a
+  100,000-event namespace and 330 ms for all namespaces, against 0.13 ms
+  for one entity, which reads an index. Narrow a large log with `before` /
+  `after`.
 - **Moving a memory between scopes takes two calls.** `update` cannot change
   the scope; delete the memory and add it in the new scope.
 - **Duplicate search is approximate on large scopes.** On Postgres,

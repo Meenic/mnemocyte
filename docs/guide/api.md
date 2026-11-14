@@ -571,32 +571,46 @@ const memory = createMemory({ embedder, audit: { enabled: true } });
 ```
 
 Mnemocyte then records `memory.created`, `memory.updated`, `memory.deleted`,
-`memory.pruned` (one per affected entity) and `memory.superseded`. Each event
-carries the `scope` it belongs to. A `delete` records one `memory.deleted`
+`memory.pruned` (one per affected entity) and `memory.superseded`, as each
+event's `type` (`AuditEventType`). Each event also carries the `scope` it
+belongs to, `metadata` with the memory ids, and a `timestamp`. A `delete` records one `memory.deleted`
 per deleted memory; dependents deleted with it carry `deletedWith`, and the
 survivor's event lists `restoredIds` when `dependents: "restore"` restored
 any.
 
 ```ts
 const entity = { namespace: "my-app", entityId: "user_123" };
-const page = await memory.listAuditLog({ scope: entity, limit: 100 });
 
-const last = page.at(-1);
-const next = last
-  ? await memory.listAuditLog({
-      scope: entity,
-      limit: 100,
-      beforeCursor: { timestamp: last.timestamp, id: last.id },
-    })
-  : [];
+let cursor: string | undefined;
+do {
+  const page = await memory.listAuditLog({ scope: entity, limit: 100, cursor });
+  for (const event of page.events) {
+    console.log(event.timestamp, event.type, event.metadata.memoryId);
+  }
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+
+// Every entity in the namespace, or every namespace:
+await memory.listAuditLog({ scope: { namespace: "my-app" } });
+await memory.listAuditLog({ allNamespaces: true });
 ```
 
-The scope selects like a bulk operation: `{ namespace, entityId }` lists the
-whole entity, and `agentId` or `sessionId` narrow it. Events come newest
-first; `limit` defaults to 50. Page with `beforeCursor` / `afterCursor`,
-which include events that share a timestamp. `before` and `after` are strict
-timestamp filters and skip every event at the boundary timestamp, so they can
-lose events when used for paging.
+Returns `{ events, nextCursor }`, events newest first by `timestamp`, then
+`id`; `limit` defaults to 50. `nextCursor` is an opaque string, `null` on
+the last page; pass it back unchanged, with the same scope and filters. A
+cursor stays valid while events are added or deleted, includes events that
+share a timestamp, and a malformed one, or one from `list`, throws
+`"VALIDATION"`.
+
+The scope selects like `prune`: `{ namespace }` lists every entity in the
+namespace, and `entityId`, `agentId` and `sessionId` narrow it.
+`allNamespaces: true` lists every namespace. `before` and `after` are
+strict timestamp filters: events at exactly that time are left out. Use
+`after` to fetch only events newer than a time you have seen.
+
+On Postgres a page of one entity reads an index in order. A page of a
+namespace, or of every namespace, sorts the events it selects, so on a
+large log prefer an entity scope or narrow it with `before` / `after`.
 
 Events are written together with the change they record: if the audit
 write fails, the call rejects and nothing is written, neither the memory

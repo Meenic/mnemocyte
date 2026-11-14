@@ -21,7 +21,7 @@ async function listSupersededEvents(
 ) {
 	return (
 		await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
-	).filter((event) => event.description === "memory.superseded");
+	).events.filter((event) => event.type === "memory.superseded");
 }
 
 export async function exerciseConsolidationDuplicateIdPolicy(params: {

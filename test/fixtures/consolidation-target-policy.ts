@@ -137,7 +137,7 @@ export async function exerciseConsolidationTargetPolicy(
 		];
 		const supersededAuditCountBefore = (
 			await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
-		).filter((event) => event.description === "memory.superseded").length;
+		).events.filter((event) => event.type === "memory.superseded").length;
 
 		await expectMnemocyteError(
 			client.consolidate({
@@ -174,7 +174,7 @@ export async function exerciseConsolidationTargetPolicy(
 		expect(
 			(
 				await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
-			).filter((event) => event.description === "memory.superseded"),
+			).events.filter((event) => event.type === "memory.superseded"),
 		).toHaveLength(supersededAuditCountBefore);
 	}
 

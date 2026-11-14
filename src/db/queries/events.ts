@@ -1,6 +1,5 @@
-import type { StoreEntitySelector, StoreSelector } from "../../memory/store.js";
+import type { StoreAuditPosition, StoreSelector } from "../../memory/store.js";
 import type { SqlExecutor } from "../../sql/executor.js";
-import type { AuditLogCursor } from "../../types.js";
 import {
 	EVENT_COLUMNS,
 	type EventRow,
@@ -10,23 +9,45 @@ import {
 import { createSqlParams, type SqlParams } from "../sql.js";
 import { selectorConditions } from "./memories.js";
 
-export interface EventFilter {
-	selector: StoreEntitySelector;
-	limit?: number;
-	before?: Date;
-	after?: Date;
-	beforeCursor?: AuditLogCursor;
-	afterCursor?: AuditLogCursor;
+/**
+ * An event's timestamp as UTC text with microseconds
+ * (`2026-11-14T09:30:00.123456Z`), which a `Date` would cut to
+ * milliseconds.
+ */
+function timestampText(column: string): string {
+	return `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 }
 
+export interface EventFilter {
+	selector: StoreSelector;
+	limit: number;
+	before?: Date;
+	after?: Date;
+	position?: StoreAuditPosition;
+}
+
+/** An event row and its `(timestamp, id)` position at full precision. */
+export interface PositionedEventRow {
+	row: EventRow;
+	position: StoreAuditPosition;
+}
+
+/**
+ * One audit page, newest first, keyed on the raw `(timestamp, id)`: the
+ * position carries microseconds, so no row in the same millisecond is
+ * skipped, and within one entity `mnemocyte_events_scope_time_idx` serves
+ * the order read backwards. Across entities (a namespace, or every
+ * namespace) no index serves it, and Postgres sorts the selected events.
+ */
 export async function listEvents(
 	db: SqlExecutor,
 	filter: EventFilter,
 	signal?: AbortSignal,
-): Promise<EventRow[]> {
+): Promise<PositionedEventRow[]> {
 	const params = createSqlParams();
-	// An omitted agent or session matches every value, so `{ namespace,
-	// entityId }` lists the whole entity across agents and sessions.
+	// An omitted entity, agent or session matches every value, so
+	// `{ namespace, entityId }` lists the whole entity across agents and
+	// sessions, and a null namespace every namespace.
 	const clauses: string[] = [selectorConditions(params, filter.selector)];
 	if (filter.before) {
 		clauses.push(`timestamp < ${params.timestamp(filter.before)}`);
@@ -34,26 +55,25 @@ export async function listEvents(
 	if (filter.after) {
 		clauses.push(`timestamp > ${params.timestamp(filter.after)}`);
 	}
-	if (filter.beforeCursor) {
+	if (filter.position) {
 		clauses.push(
-			`(timestamp, id) < (${params.timestamp(filter.beforeCursor.timestamp)}, ${params.uuid(filter.beforeCursor.id)})`,
+			`(timestamp, id) < (${params.add(filter.position.timestamp)}::timestamptz, ${params.uuid(filter.position.id)})`,
 		);
 	}
-	if (filter.afterCursor) {
-		clauses.push(
-			`(timestamp, id) > (${params.timestamp(filter.afterCursor.timestamp)}, ${params.uuid(filter.afterCursor.id)})`,
-		);
-	}
-	const rows = await db.query<RawEventRow>(
-		`SELECT ${EVENT_COLUMNS}
+	const rows = await db.query<RawEventRow & { position: string }>(
+		`SELECT ${EVENT_COLUMNS},
+			${timestampText("timestamp")} AS "position"
 		FROM mnemocyte_events
 		WHERE ${clauses.join("\n\t\t\tAND ")}
 		ORDER BY mnemocyte_events.timestamp DESC, mnemocyte_events.id DESC
-		LIMIT ${params.add(filter.limit ?? 50)}`,
+		LIMIT ${params.add(filter.limit)}`,
 		params.values,
 		signal ? { signal } : undefined,
 	);
-	return rows.map(toEventRow);
+	return rows.map(({ position, ...raw }) => ({
+		row: toEventRow(raw),
+		position: { timestamp: position, id: raw.id },
+	}));
 }
 
 export interface EventPruneFilter {
@@ -189,7 +209,7 @@ export async function deleteEventsBatch(
 			(SELECT count(*)::int FROM deleted) AS "deletedCount",
 			last.namespace AS "lastNamespace",
 			last.entity_id AS "lastEntityId",
-			to_char(last.timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "lastTimestamp",
+			${timestampText("last.timestamp")} AS "lastTimestamp",
 			last.id::text AS "lastId"
 		FROM (SELECT 1) AS one
 		LEFT JOIN last ON TRUE`,

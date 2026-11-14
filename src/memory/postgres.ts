@@ -603,16 +603,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async listAuditLog(input, options) {
 			return runPostgresOperation(async () => {
-				for (const cursor of [input.beforeCursor, input.afterCursor]) {
-					if (cursor !== undefined && !isUuid(cursor.id)) {
-						throw new MnemocyteError(
-							"Audit log cursor id must be an event id returned by listAuditLog.",
-							"VALIDATION",
-						);
-					}
-				}
 				const rows = await listEvents(client, input, options?.signal);
-				return rows.map(rowToAuditEvent);
+				return rows.map(({ row, position }) => ({
+					event: rowToAuditEvent(row),
+					position,
+				}));
 			});
 		},
 		async pruneAuditLog(input, options) {

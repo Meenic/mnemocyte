@@ -78,7 +78,7 @@ async function countSupersededEvents(
 ): Promise<number> {
 	return (
 		await client.listAuditLog({ scope: testScope(entityId), limit: 20 })
-	).filter((event) => event.description === "memory.superseded").length;
+	).events.filter((event) => event.type === "memory.superseded").length;
 }
 
 export async function exerciseConsolidationSurvivorRaces(params: {

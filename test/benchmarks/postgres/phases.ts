@@ -1006,6 +1006,61 @@ export async function auditPhase(ctx: BenchContext): Promise<void> {
 			},
 		},
 	});
+	// Audit pages over the full log before any batch deletes from it: one
+	// entity reads the scope index backwards; a namespace or every namespace
+	// has no index in that order, so Postgres sorts the selected events. The
+	// second page continues from the first page's cursor.
+	{
+		const loadMs = await seedEvents(ctx.db, {
+			total,
+			namespaces: 10,
+			entitiesPerNamespace: 100,
+			days: 180,
+		});
+		const selectors: Array<{
+			label: string;
+			input:
+				| { allNamespaces: true }
+				| { scope: { namespace: string; entityId?: string } };
+		}> = [
+			{
+				label: "one entity",
+				input: { scope: { namespace: "audit_3", entityId: "entity_42" } },
+			},
+			{ label: "one namespace", input: { scope: { namespace: "audit_3" } } },
+			{ label: "all namespaces", input: { allNamespaces: true } },
+		];
+		for (const { label, input } of selectors) {
+			let cursor: string | undefined;
+			for (const page of ["first page", "second page"]) {
+				recorder.clear();
+				const result = await memory.listAuditLog({
+					...input,
+					limit: 50,
+					...(cursor === undefined ? {} : { cursor }),
+				});
+				cursor = result.nextCursor ?? undefined;
+				const m = await measure(
+					ctx.db,
+					findStatement(recorder.log, "FROM mnemocyte_events"),
+					{ runs: ctx.runs },
+				);
+				ctx.report.add("audit pages", {
+					case: `listAuditLog, ${label}, ${page} of 50 (${total} events)`,
+					variant: "default",
+					measurement: m,
+				});
+				if (ctx.scale === 1 && label === "one entity") {
+					expect(m.indexes).toContain(INDEX.events);
+				}
+			}
+		}
+		ctx.report.add("audit pages", {
+			case: `${total} events loaded`,
+			variant: "default",
+			note: `load ${(loadMs / 1000).toFixed(1)} s`,
+		});
+	}
 	const timeIndex =
 		"CREATE INDEX mnemocyte_bench_events_time_idx ON mnemocyte_events (timestamp)";
 	const cases: Array<{

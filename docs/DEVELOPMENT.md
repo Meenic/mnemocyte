@@ -329,8 +329,10 @@ Vitest has three projects (`vitest.config.ts`):
   `describeStoreContract`) runs the same checks through every driver:
   migrate, transactions and savepoints, value round trips, chunked
   `addMany`, search and context, the scoped-API and bound-scope fixtures,
-  survivor-aware deletes, nearest-neighbor duplicates, audit payloads and
-  audit retention (fixtures shared with the in-memory unit tests), audit rollback (a
+  survivor-aware deletes, nearest-neighbor duplicates, audit payloads,
+  audit pages and audit retention (fixtures shared with the in-memory unit
+  tests), audit pages over hand-inserted events whose timestamps differ only
+  in microseconds, audit rollback (a
   trigger that fails the namespace's audit inserts), and cross-scope
   isolation for search, id
   lookups, prune, duplicates, consolidation, `deleteScope` and stats.

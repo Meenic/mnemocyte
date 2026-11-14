@@ -21,17 +21,17 @@ describe("in-memory store", () => {
 		await memory.add({ scope: testScope("alice"), content: "Alice." });
 		await memory.add({ scope: testScope("bob"), content: "Bob." });
 		expect(
-			await memory.listAuditLog({ scope: testScope("alice") }),
+			(await memory.listAuditLog({ scope: testScope("alice") })).events,
 		).toHaveLength(1);
 
 		await memory.deleteScope({ scope: testScope("alice") });
 
-		expect(await memory.listAuditLog({ scope: testScope("alice") })).toEqual(
-			[],
-		);
-		expect(await memory.listAuditLog({ scope: testScope("bob") })).toHaveLength(
-			1,
-		);
+		expect(
+			(await memory.listAuditLog({ scope: testScope("alice") })).events,
+		).toEqual([]);
+		expect(
+			(await memory.listAuditLog({ scope: testScope("bob") })).events,
+		).toHaveLength(1);
 	});
 
 	test("returns detached copies of audit events", async () => {
@@ -41,14 +41,16 @@ describe("in-memory store", () => {
 			content: "Alice.",
 		});
 
-		const [first] = await memory.listAuditLog({ scope: testScope("alice") });
+		const [first] = (await memory.listAuditLog({ scope: testScope("alice") }))
+			.events;
 		if (first) {
 			first.metadata.memoryId = "changed after read";
 			first.scope.entityId = "changed after read";
 			first.timestamp.setTime(0);
 		}
 
-		const [second] = await memory.listAuditLog({ scope: testScope("alice") });
+		const [second] = (await memory.listAuditLog({ scope: testScope("alice") }))
+			.events;
 		expect(second?.metadata.memoryId).toBe(added.id);
 		expect(second?.scope.entityId).toBe("alice");
 		expect(second?.timestamp).toEqual(added.updatedAt);

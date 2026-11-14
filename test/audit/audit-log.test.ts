@@ -34,7 +34,8 @@ describe("audit log", () => {
 				content: "hello",
 			});
 			await client.delete({ scope: testScope("alice"), id: mem.id });
-			const log = await client.listAuditLog({ scope: testScope("alice") });
+			const log = (await client.listAuditLog({ scope: testScope("alice") }))
+				.events;
 			expect(log.length).toBe(0);
 		}
 
@@ -49,15 +50,16 @@ describe("audit log", () => {
 			});
 			await new Promise((resolve) => setTimeout(resolve, 5));
 			await client.delete({ scope: testScope("alice"), id: mem.id });
-			const log = await client.listAuditLog({ scope: testScope("alice") });
+			const log = (await client.listAuditLog({ scope: testScope("alice") }))
+				.events;
 			expect(log.length).toBe(2);
 			// newest first
 			const deleted = expectDefined(log[0]);
 			const created = expectDefined(log[1]);
-			expect(deleted.description).toBe("memory.deleted");
+			expect(deleted.type).toBe("memory.deleted");
 			expect(deleted.scope.entityId).toBe("alice");
 			expect(deleted.metadata.memoryId).toBe(mem.id);
-			expect(created.description).toBe("memory.created");
+			expect(created.type).toBe("memory.created");
 			expect(created.metadata.memoryId).toBe(mem.id);
 			expect(created.metadata.kind).toBe("preference");
 			expect(created.metadata.importance).toBe("high");
@@ -75,16 +77,16 @@ describe("audit log", () => {
 			await client.add({ scope: testScope("alice"), content: "one" });
 			await client.add({ scope: testScope("bob"), content: "two" });
 			expect(
-				await client.listAuditLog({ scope: testScope("alice") }),
+				(await client.listAuditLog({ scope: testScope("alice") })).events,
 			).toHaveLength(1);
 			await expect(
 				client.deleteScope({ scope: testScope("alice") }),
 			).resolves.toEqual({ deletedCount: 1 });
-			expect(await client.listAuditLog({ scope: testScope("alice") })).toEqual(
-				[],
-			);
 			expect(
-				await client.listAuditLog({ scope: testScope("bob") }),
+				(await client.listAuditLog({ scope: testScope("alice") })).events,
+			).toEqual([]);
+			expect(
+				(await client.listAuditLog({ scope: testScope("bob") })).events,
 			).toHaveLength(1);
 		}
 
@@ -98,22 +100,25 @@ describe("audit log", () => {
 				createdBefore: new Date(Date.now() + 60_000),
 				dryRun: true,
 			});
-			const afterDry = await client.listAuditLog({
-				scope: testScope("alice"),
-			});
+			const afterDry = (
+				await client.listAuditLog({
+					scope: testScope("alice"),
+				})
+			).events;
 			expect(
-				afterDry.filter((event) => event.description === "memory.pruned")
-					.length,
+				afterDry.filter((event) => event.type === "memory.pruned").length,
 			).toBe(0);
 			await client.prune({
 				scope: testScope("alice"),
 				createdBefore: new Date(Date.now() + 60_000),
 			});
-			const afterReal = await client.listAuditLog({
-				scope: testScope("alice"),
-			});
+			const afterReal = (
+				await client.listAuditLog({
+					scope: testScope("alice"),
+				})
+			).events;
 			const pruned = afterReal.filter(
-				(event) => event.description === "memory.pruned",
+				(event) => event.type === "memory.pruned",
 			);
 			expect(pruned.length).toBe(1);
 			expect(expectDefined(pruned[0]).metadata.count).toBe(2);
@@ -124,8 +129,10 @@ describe("audit log", () => {
 			const client = createClient(true);
 			await client.add({ scope: testScope("alice"), content: "a" });
 			await client.add({ scope: testScope("bob"), content: "b" });
-			const alice = await client.listAuditLog({ scope: testScope("alice") });
-			const bob = await client.listAuditLog({ scope: testScope("bob") });
+			const alice = (await client.listAuditLog({ scope: testScope("alice") }))
+				.events;
+			const bob = (await client.listAuditLog({ scope: testScope("bob") }))
+				.events;
 			expect(alice.length).toBe(1);
 			expect(bob.length).toBe(1);
 			expect(expectDefined(alice[0]).scope.entityId).toBe("alice");
@@ -142,14 +149,18 @@ describe("audit log", () => {
 			const cutoff = new Date();
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			await client.add({ scope: testScope("alice"), content: "second" });
-			const afterOnly = await client.listAuditLog({
-				scope: testScope("alice"),
-				after: cutoff,
-			});
-			const beforeOnly = await client.listAuditLog({
-				scope: testScope("alice"),
-				before: cutoff,
-			});
+			const afterOnly = (
+				await client.listAuditLog({
+					scope: testScope("alice"),
+					after: cutoff,
+				})
+			).events;
+			const beforeOnly = (
+				await client.listAuditLog({
+					scope: testScope("alice"),
+					before: cutoff,
+				})
+			).events;
 			expect(afterOnly.length).toBe(1);
 			expect(expectDefined(afterOnly[0]).metadata.memoryId).toBeDefined();
 			expect(beforeOnly.length).toBe(1);
@@ -161,10 +172,12 @@ describe("audit log", () => {
 			for (let i = 0; i < 5; i += 1) {
 				await client.add({ scope: testScope("alice"), content: `m${i}` });
 			}
-			const log = await client.listAuditLog({
-				scope: testScope("alice"),
-				limit: 2,
-			});
+			const log = (
+				await client.listAuditLog({
+					scope: testScope("alice"),
+					limit: 2,
+				})
+			).events;
 			expect(log.length).toBe(2);
 			const newest = expectDefined(log[0]);
 			const previous = expectDefined(log[1]);
@@ -190,7 +203,8 @@ describe("audit log", () => {
 				},
 			});
 			await client.add({ scope: testScope("alice"), content: "x" });
-			const log = await client.listAuditLog({ scope: testScope("alice") });
+			const log = (await client.listAuditLog({ scope: testScope("alice") }))
+				.events;
 			expect(log.length).toBe(1);
 			const success = events.find(
 				(event) =>

@@ -1,6 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import { isUuid } from "./records.js";
-import type { StoreListPosition } from "./store.js";
+import type { StoreAuditPosition, StoreListPosition } from "./store.js";
 
 /**
  * `list` cursors are opaque to callers: base64url of the JSON array
@@ -69,6 +69,71 @@ export function decodeDuplicateCursor(cursor: unknown): string {
 	// Postgres orders uuids by their bytes, which is the order of their
 	// lower-case text; the in-memory store compares that text.
 	return id.toLowerCase();
+}
+
+/**
+ * Tag of `listAuditLog` cursors, so a `list` or `findDuplicatesPage` cursor
+ * (or one from a later format) is rejected instead of read as a position.
+ */
+const AUDIT_CURSOR_TAG = "a1";
+
+/** `YYYY-MM-DDTHH:MM:SS.ffffffZ`, the text {@link StoreAuditPosition} holds. */
+const AUDIT_TIMESTAMP =
+	/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})(\d{3})Z$/;
+
+/**
+ * `listAuditLog` cursors are opaque to callers: base64url of the JSON array
+ * `["a1", timestamp, id]` of the page's last event. The timestamp keeps
+ * microseconds, which Postgres stores and a `Date` would cut, so the next
+ * page compares the raw column and the scope index still serves the order.
+ */
+export function encodeAuditCursor(position: StoreAuditPosition): string {
+	return toBase64Url(
+		JSON.stringify([AUDIT_CURSOR_TAG, position.timestamp, position.id]),
+	);
+}
+
+export function decodeAuditCursor(cursor: unknown): StoreAuditPosition {
+	const invalid = () =>
+		new MnemocyteError(
+			"cursor must be a nextCursor value returned by listAuditLog.",
+			"VALIDATION",
+		);
+	const parsed = parseBase64UrlJson(cursor);
+	if (!Array.isArray(parsed) || parsed.length !== 3) {
+		throw invalid();
+	}
+	const [tag, timestamp, id] = parsed as unknown[];
+	if (
+		tag !== AUDIT_CURSOR_TAG ||
+		typeof timestamp !== "string" ||
+		typeof id !== "string" ||
+		!isUuid(id)
+	) {
+		throw invalid();
+	}
+	const match = AUDIT_TIMESTAMP.exec(timestamp);
+	// A date that does not round-trip (a 30 February) is not one Postgres
+	// or the in-memory store wrote.
+	const milliseconds = match ? `${match[1]}Z` : undefined;
+	if (
+		milliseconds === undefined ||
+		!Number.isFinite(Date.parse(milliseconds)) ||
+		new Date(milliseconds).toISOString() !== milliseconds
+	) {
+		throw invalid();
+	}
+	// Postgres orders uuids by their bytes, which is the order of their
+	// lower-case text; the in-memory store compares that text.
+	return { timestamp, id: id.toLowerCase() };
+}
+
+/**
+ * A `Date` as {@link StoreAuditPosition} text: its ISO string with the
+ * microseconds a `Date` cannot hold set to zero.
+ */
+export function auditTimestampText(date: Date): string {
+	return date.toISOString().replace(/Z$/, "000Z");
 }
 
 function toBase64Url(text: string): string {

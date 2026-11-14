@@ -218,13 +218,15 @@ it.
 The breaking changes from the freeze review (decision 38) land first, one
 branch each; `docs/v1` comes last.
 
-- [ ] `feat/audit-log-pages`: `listAuditLog` returns
+- [x] `feat/audit-log-pages`: `listAuditLog` returns
   `{ events, nextCursor }` and takes an opaque `cursor`, like `list`,
   instead of an array paged with `beforeCursor` / `afterCursor`; `before`
   and `after` stay as filters. `AuditEvent.type`, typed as a union of the
   five event names, replaces `description` (the column keeps its name).
   `listAuditLog` takes a selector like `pruneAuditLog`: `entityId`
-  optional, plus `allNamespaces: true`.
+  optional, plus `allNamespaces: true`. Landed with a cursor that keeps
+  the timestamp's microseconds, so entity pages still read the scope
+  index; pages across entities sort.
 - [ ] `chore/drop-legacy-surface`: remove `experimental.consolidate` (the
   deprecated alias, as promised for 1.0), `postgresJs()`, `drizzleStore()`
   and the `mnemocyte/stores/drizzle` subpath, which take positional

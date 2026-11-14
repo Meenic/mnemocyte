@@ -5,7 +5,7 @@ import { createMemory } from "mnemocyte";
 import { postgresJs, postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
-import { verifyAuditCursorPagination } from "../fixtures/audit-cursor.js";
+import { verifyAuditPages } from "../fixtures/audit-cursor.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -46,10 +46,14 @@ function createEmbedding(seed: string): number[] {
 
 describe("Postgres audit cursor pagination", () => {
 	test.skipIf(!databaseUrl)(
-		"does not skip equal-timestamp events",
+		"pages entity, namespace and all-namespace selectors",
 		async () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
-			const entityId = `audit_cursor_postgres_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			const suffix = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			const namespaces = [
+				`audit_pages_${suffix}`,
+				`audit_pages_other_${suffix}`,
+			];
 			await applyMigrations(sql);
 			const client = createMemory({
 				store: postgresStore({ client: postgresJs(sql) }),
@@ -64,10 +68,24 @@ describe("Postgres audit cursor pagination", () => {
 			});
 
 			try {
-				await verifyAuditCursorPagination(client, entityId);
+				await verifyAuditPages({
+					client,
+					scopeFor: (entityId, extra = {}) => ({
+						namespace: namespaces[0] ?? "",
+						entityId,
+						...extra,
+					}),
+					otherScopeFor: (entityId, extra = {}) => ({
+						namespace: namespaces[1] ?? "",
+						entityId,
+						...extra,
+					}),
+				});
 			} finally {
-				await sql`DELETE FROM mnemocyte_memories WHERE entity_id = ${entityId}`;
-				await sql`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
+				for (const namespace of namespaces) {
+					await sql`DELETE FROM mnemocyte_memories WHERE namespace = ${namespace}`;
+					await sql`DELETE FROM mnemocyte_events WHERE namespace = ${namespace}`;
+				}
 				await sql.end();
 			}
 		},

@@ -91,7 +91,7 @@ export async function verifyBoundScope(input: {
 	await expect(
 		alice.prune({ createdBefore: new Date(Date.now() + 60_000), dryRun: true }),
 	).resolves.toEqual({ matchedCount: 2, deletedCount: 0, dryRun: true });
-	const events = await alice.listAuditLog();
+	const events = (await alice.listAuditLog()).events;
 	expect(events.map((event) => event.scope.entityId)).toEqual([
 		"alice",
 		"alice",

@@ -19,7 +19,7 @@ import type {
 	AddManyInput,
 	AuditConfig,
 	AuditEvent,
-	AuditLogCursor,
+	AuditEventType,
 	BoundAddInput,
 	BoundExperimentalMemoryClient,
 	BoundFindDuplicatesPageInput,
@@ -41,6 +41,8 @@ import type {
 	JsonObject,
 	JsonValue,
 	ListAuditLogInput,
+	ListAuditLogOptions,
+	ListAuditLogResult,
 	ListResult,
 	Memory,
 	MemoryClient,
@@ -426,22 +428,27 @@ const duplicatePair: DuplicatePair = {
 };
 
 const auditConfig: AuditConfig = { enabled: true };
-const auditCursor: AuditLogCursor = {
-	timestamp: new Date(),
-	id: "evt_cursor",
-};
 const listAudit: ListAuditLogInput = {
-	scope,
+	scope: { namespace: "app" },
 	limit: 50,
-	beforeCursor: auditCursor,
+	cursor: "opaque",
+	before: new Date(),
 };
+const listAuditEverywhere: ListAuditLogInput = { allNamespaces: true };
+// @ts-expect-error listAuditLog takes a scope or allNamespaces, not both.
+const listAuditBoth: ListAuditLogInput = { scope, allNamespaces: true };
+const listAuditOptions: ListAuditLogOptions = { limit: 10 };
+const auditType: AuditEventType = "memory.superseded";
+// @ts-expect-error Only the five event types exist.
+const unknownAuditType: AuditEventType = "memory.renamed";
 const auditEvent: AuditEvent = {
 	id: "evt_x",
 	scope: recordScope,
-	description: "memory.created",
+	type: auditType,
 	metadata: {},
 	timestamp: new Date(),
 };
+const auditPage: Promise<ListAuditLogResult> = client.listAuditLog(listAudit);
 
 const consolidate: ConsolidateInput = {
 	scope,
@@ -605,6 +612,11 @@ void findDuplicates;
 void duplicatePair;
 void auditConfig;
 void listAudit;
+void listAuditEverywhere;
+void listAuditBoth;
+void listAuditOptions;
+void unknownAuditType;
+void auditPage;
 void auditEvent;
 void consolidate;
 void consolidateResult;
@@ -659,7 +671,12 @@ void bound.add(boundAdd);
 void bound.get(boundGet);
 void bound.list();
 void bound.findDuplicates();
-void bound.listAuditLog();
+const boundAuditPage: Promise<ListAuditLogResult> = bound.listAuditLog({
+	cursor: "opaque",
+});
+void boundAuditPage;
+// @ts-expect-error A bound client cannot list across namespaces.
+void bound.listAuditLog({ allNamespaces: true });
 const boundStats: Promise<MemoryStats> = bound.stats();
 const boundErased: Promise<{ deletedCount: number }> = bound.deleteScope();
 void bound.prune({ expired: true, dryRun: true });

@@ -8,6 +8,31 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `listAuditLog` pages like `list`.** It returns
+  `{ events, nextCursor }` instead of an array, and takes the opaque
+  `nextCursor` back as `cursor`. `beforeCursor`, `afterCursor` and the
+  `AuditLogCursor` type are gone; `before` and `after` stay as strict time
+  filters. The cursor keeps the microseconds Postgres stores, so events in
+  the same millisecond are never skipped.
+
+  ```ts
+  // 0.8
+  const events = await memory.listAuditLog({ scope, beforeCursor });
+  // now
+  const { events, nextCursor } = await memory.listAuditLog({ scope, cursor });
+  ```
+- **Breaking: `AuditEvent.type` replaces `description`.** It is typed as
+  `AuditEventType`, the union of the five event names. The Postgres column
+  keeps its name, so no migration is needed.
+- **`listAuditLog` takes a selector.** `entityId` is optional, so
+  `{ namespace }` lists every entity in a namespace, and
+  `allNamespaces: true` lists every namespace, as in `pruneAuditLog`. On
+  Postgres these pages sort the selected events; a page of one entity still
+  reads an index. Bound clients list within their scope and reject
+  `allNamespaces`.
+
 ## [0.8.0] - 2026-11-14
 
 ### Added

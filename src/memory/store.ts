@@ -2,7 +2,6 @@ import type { InstallationReport } from "../db/migrations/inspect.js";
 import { MnemocyteError } from "../errors.js";
 import type {
 	AuditEvent,
-	AuditLogCursor,
 	DependentsPolicy,
 	Embedder,
 	ImportanceLevel,
@@ -48,7 +47,7 @@ export interface StoreSelector {
 	readonly sessionId?: string;
 }
 
-/** A selector for one entity, as `deleteScope` and audit listings take. */
+/** A selector for one entity, as `deleteScope` takes. */
 export interface StoreEntitySelector extends StoreSelector {
 	readonly namespace: string;
 	readonly entityId: string;
@@ -161,13 +160,29 @@ export interface StoreDuplicatePage {
 	lastId: string | null;
 }
 
+/**
+ * Where an audit page stops: an event's `(timestamp, id)`, with the
+ * timestamp as UTC ISO 8601 text with six fraction digits
+ * (`2026-11-14T09:30:00.123456Z`), the precision Postgres stores.
+ */
+export interface StoreAuditPosition {
+	readonly timestamp: string;
+	readonly id: string;
+}
+
 export interface StoreAuditLogInput {
-	readonly selector: StoreEntitySelector;
+	readonly selector: StoreSelector;
 	readonly limit: number;
 	readonly before?: Date;
 	readonly after?: Date;
-	readonly beforeCursor?: AuditLogCursor;
-	readonly afterCursor?: AuditLogCursor;
+	/** Return events strictly after this position in `(timestamp, id)` descending order. */
+	readonly position?: StoreAuditPosition;
+}
+
+/** An event of an audit page and its position. */
+export interface StoreAuditLogEntry {
+	readonly event: AuditEvent;
+	readonly position: StoreAuditPosition;
 }
 
 export interface StoreDeleteInput {
@@ -450,13 +465,14 @@ export interface MemoryStore {
 
 	/**
 	 * Selected events in strict descending `(timestamp, id)` order, up to the
-	 * limit. `before` / `after` are strict timestamp filters; the cursors are
-	 * strict tuple filters on `(timestamp, id)`.
+	 * limit, each with its position. `before` / `after` are strict timestamp
+	 * filters; `position` is a strict tuple filter on `(timestamp, id)` at
+	 * the store's full timestamp precision.
 	 */
 	listAuditLog(
 		input: StoreAuditLogInput,
 		options?: StoreOperationOptions,
-	): Promise<AuditEvent[]>;
+	): Promise<StoreAuditLogEntry[]>;
 	/**
 	 * Deletes the selected events strictly before `before`, at most
 	 * `batchSize` per statement, or counts them on a dry run. Batches commit

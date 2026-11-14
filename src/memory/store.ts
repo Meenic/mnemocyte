@@ -57,8 +57,8 @@ export interface StoreMemoryFilter {
 	readonly visibility: StoreVisibility;
 	readonly kinds?: readonly MemoryKind[];
 	readonly tags?: readonly string[];
-	readonly before?: Date;
-	readonly after?: Date;
+	readonly createdBefore?: Date;
+	readonly createdAfter?: Date;
 	readonly includeSuperseded?: boolean;
 	readonly includeExpired?: boolean;
 }

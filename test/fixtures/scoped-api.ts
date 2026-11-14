@@ -436,3 +436,60 @@ export async function verifyGetAndScopeValidation(
 		"VALIDATION",
 	);
 }
+
+/**
+ * `search` filters `createdAt` with strict `createdBefore` / `createdAfter`
+ * bounds, and the names it took before 1.0 throw instead of being ignored.
+ *
+ * Bounds come from the returned `createdAt`, which a `Date` cuts to the
+ * millisecond, so the adds are spaced apart and the lower bound sits one
+ * millisecond past the first memory.
+ */
+export async function verifyCreatedFilters(
+	client: MemoryClient,
+	namespace: string,
+): Promise<void> {
+	const scope: MemoryScope = { namespace, entityId: "alice" };
+	const pause = () => new Promise((resolve) => setTimeout(resolve, 5));
+	const first = await client.add({ scope, content: "Tea note one." });
+	await pause();
+	const second = await client.add({ scope, content: "Tea note two." });
+	await pause();
+	const third = await client.add({ scope, content: "Tea note three." });
+	const afterFirst = new Date(first.createdAt.getTime() + 1);
+	const found = async (filters: {
+		createdBefore?: Date;
+		createdAfter?: Date;
+	}) =>
+		(await client.search({ scope, query: "tea note", limit: 10, ...filters }))
+			.map((result) => result.id)
+			.sort();
+
+	expect(await found({})).toEqual([first.id, second.id, third.id].sort());
+	expect(await found({ createdAfter: afterFirst })).toEqual(
+		[second.id, third.id].sort(),
+	);
+	expect(await found({ createdBefore: third.createdAt })).toEqual(
+		[first.id, second.id].sort(),
+	);
+	expect(
+		await found({ createdAfter: afterFirst, createdBefore: third.createdAt }),
+	).toEqual([second.id]);
+
+	await expectMnemocyteError(
+		client.search({ scope, query: "tea", createdBefore: new Date("nope") }),
+		"VALIDATION",
+	);
+	for (const [old, renamed] of [
+		["before", "createdBefore"],
+		["after", "createdAfter"],
+	] as const) {
+		for (const value of [new Date(), undefined]) {
+			const input = { scope, query: "tea", [old]: value };
+			await expectMnemocyteError(client.search(input), "VALIDATION");
+			await expect(client.search(input)).rejects.toThrow(
+				`search does not accept "${old}": it was renamed "${renamed}".`,
+			);
+		}
+	}
+}

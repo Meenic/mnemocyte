@@ -29,8 +29,8 @@ export interface MemoryFilter {
 	visibility: StoreVisibility;
 	kinds?: readonly MemoryKind[];
 	tags?: readonly string[];
-	before?: Date;
-	after?: Date;
+	createdBefore?: Date;
+	createdAfter?: Date;
 	includeSuperseded?: boolean;
 	includeExpired?: boolean;
 }
@@ -192,11 +192,11 @@ function recallFilters(params: SqlParams, input: MemoryFilter): string {
 	if (input.tags && input.tags.length > 0) {
 		clauses.push(`tags @> ${params.textArray(input.tags)}`);
 	}
-	if (input.before) {
-		clauses.push(`created_at < ${params.timestamp(input.before)}`);
+	if (input.createdBefore) {
+		clauses.push(`created_at < ${params.timestamp(input.createdBefore)}`);
 	}
-	if (input.after) {
-		clauses.push(`created_at > ${params.timestamp(input.after)}`);
+	if (input.createdAfter) {
+		clauses.push(`created_at > ${params.timestamp(input.createdAfter)}`);
 	}
 	return clauses.join("\n\t\t\tAND ");
 }

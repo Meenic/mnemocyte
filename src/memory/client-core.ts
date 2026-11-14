@@ -295,8 +295,8 @@ function memoryFilter(
 	input: {
 		kinds?: StoreMemoryFilter["kinds"] | undefined;
 		tags?: StoreMemoryFilter["tags"] | undefined;
-		before?: Date | undefined;
-		after?: Date | undefined;
+		createdBefore?: Date | undefined;
+		createdAfter?: Date | undefined;
 		includeSuperseded?: boolean | undefined;
 		includeExpired?: boolean | undefined;
 	},
@@ -305,8 +305,12 @@ function memoryFilter(
 		visibility,
 		...(input.kinds === undefined ? {} : { kinds: [...input.kinds] }),
 		...(input.tags === undefined ? {} : { tags: [...input.tags] }),
-		...(input.before === undefined ? {} : { before: new Date(input.before) }),
-		...(input.after === undefined ? {} : { after: new Date(input.after) }),
+		...(input.createdBefore === undefined
+			? {}
+			: { createdBefore: new Date(input.createdBefore) }),
+		...(input.createdAfter === undefined
+			? {}
+			: { createdAfter: new Date(input.createdAfter) }),
 		...(input.includeSuperseded === undefined
 			? {}
 			: { includeSuperseded: input.includeSuperseded }),

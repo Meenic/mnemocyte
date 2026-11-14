@@ -776,3 +776,13 @@ Dated 2026-10-26 unless noted.
       `docs/guide/upgrading.md`, one section per release, and the docs drop
       their pre-1.0 wording in `docs/v1` rather than in the release PR.
     The final export review found no change beyond decisions 38 and 39.
+40. **Time filters name their field** (2026-11-15, landed): the maintainer
+    chose, with `fix/created-filters`, to rename `search`'s `before` /
+    `after` to `createdBefore` / `createdAfter`, the name `prune` already
+    used. A memory has four times (`createdAt`, `updatedAt`,
+    `lastAccessedAt`, `expiresAt`), so a bare `before` on `list` or
+    `context` after 1.0 would be ambiguous; an audit event has one, so
+    `listAuditLog` and `pruneAuditLog` keep `before` / `after`. Method
+    inputs are not checked for unknown keys, so the old names throw
+    `"VALIDATION"` naming the new ones rather than being ignored, which
+    would widen the search. The check stays through 1.x.

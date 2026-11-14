@@ -300,7 +300,7 @@ const results = await memory.search({
 | `minScore` | `defaults.minScore` or 0 | Drop results below this score; `[0, 1]`. |
 | `kinds` | all | Only these kinds. |
 | `tags` | none | Memories must have every listed tag. |
-| `before`, `after` | none | Filter on `createdAt`. |
+| `createdBefore`, `createdAfter` | none | Strict bounds on `createdAt`, like `prune`'s `createdBefore`. |
 | `includeSuperseded` | `false` | Include memories replaced by consolidation. |
 | `includeExpired` | `false` | Include memories past `expiresAt`. |
 | `exactAgent`, `exactSession` | `false` | Leave out shared memories; see [scopes](#scopes). |
@@ -610,7 +610,9 @@ The scope selects like `prune`: `{ namespace }` lists every entity in the
 namespace, and `entityId`, `agentId` and `sessionId` narrow it.
 `allNamespaces: true` lists every namespace. `before` and `after` are
 strict timestamp filters: events at exactly that time are left out. Use
-`after` to fetch only events newer than a time you have seen.
+`after` to fetch only events newer than a time you have seen. An event has
+one time, so these keep bare names; memory filters name their field
+(`createdBefore`, `notAccessedSince`), since a memory has several.
 
 On Postgres a page of one entity reads an index in order. A page of a
 namespace, or of every namespace, sorts the events it selects, so on a

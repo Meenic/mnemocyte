@@ -157,10 +157,10 @@ export function matchesMemoryFilter(
 	if (input.tags && !input.tags.every((tag) => memory.tags.includes(tag))) {
 		return false;
 	}
-	if (input.before && memory.createdAt >= input.before) {
+	if (input.createdBefore && memory.createdAt >= input.createdBefore) {
 		return false;
 	}
-	if (input.after && memory.createdAt <= input.after) {
+	if (input.createdAfter && memory.createdAt <= input.createdAfter) {
 		return false;
 	}
 	return true;

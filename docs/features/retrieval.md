@@ -4,15 +4,18 @@
 
 `search({ scope, query, … })` in `memory/client-core.ts`:
 
-1. Validate input (every filter, including `tags`, `before` and `after`);
-   resolve `limit` (default 10) and `minScore` (default 0)
+1. Validate input (every filter, including `tags`, `createdBefore` and
+   `createdAfter`; the pre-1.0 `before` / `after` keys throw
+   `"VALIDATION"` naming the new ones, even set to `undefined`, because
+   method inputs are not checked for unknown keys and the filter would
+   otherwise be dropped); resolve `limit` (default 10) and `minScore` (default 0)
    from the input, then `config.defaults`.
 2. Check embedding compatibility (Postgres) and embed the query.
 3. Run two candidate searches in parallel, each with
    `limit × candidateMultiplier` (default 3) and the same filters (the
    scope's visibility, see [scopes.md](./scopes.md#scope); `kinds`, `tags`
-   must all match, `before`/`after` on `created_at`, superseded and
-   expired rows excluded unless asked for). A list whose fusion weight is 0
+   must all match, `createdBefore`/`createdAfter` on `created_at`,
+   superseded and expired rows excluded unless asked for). A list whose fusion weight is 0
    is not searched.
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by
      `embedding <=> $query` (HNSW when the planner chooses it, with a

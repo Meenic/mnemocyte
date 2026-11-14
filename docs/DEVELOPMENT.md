@@ -258,6 +258,9 @@ Design rules for the public surface:
 - Error codes and reasons, `MnemocyteOperation`, `MnemocyteBackend` and
   `AuditEventType` may gain members in a minor; the other unions change
   only in a major (`guide/api.md` "Stability").
+- A time filter on memories names its field: `createdBefore` /
+  `createdAfter` (`search`, `prune`), `notAccessedSince`. Bare `before` /
+  `after` are for audit events, which have one time (decision 40).
 - Every long-running method accepts `signal: AbortSignal`.
 - New or unproven behavior goes under `experimental` first.
 - Every method that reads or writes memories takes a `scope` (or is bound

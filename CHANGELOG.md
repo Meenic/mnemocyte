@@ -59,6 +59,18 @@ marked **Breaking** in their entries. What semver covers is in
 - **Breaking: the extraction `timeout` is `timeoutMs`**, in
   `extractMemories` and `memoryMiddleware({ save })`, like
   `provider.timeoutMs`.
+- **Breaking: `search` filters `createdAt` with `createdBefore` /
+  `createdAfter`**, the name `prune` already uses, instead of `before` /
+  `after`. The old keys throw `"VALIDATION"` naming the new one, even set
+  to `undefined`, so a search never silently drops its time filter.
+  `listAuditLog` and `pruneAuditLog` keep `before` / `after`.
+
+  ```ts
+  // 0.8
+  await memory.search({ scope, query, after: lastWeek });
+  // now
+  await memory.search({ scope, query, createdAfter: lastWeek });
+  ```
 - **`kinds` and `tags` inputs take `readonly` arrays** in `add`, `update`,
   `search`, `list`, `context`, `prune` and `findDuplicates`, and in the
   `searchMemories` tool's input type. Plain arrays still work.

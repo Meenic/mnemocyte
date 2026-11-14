@@ -693,6 +693,34 @@ function validateMemoryFilterFields(input: {
 	assertOptionalBoolean(input.includeExpired, "includeExpired");
 }
 
+/** Keys `search` took before 1.0, by their current name. */
+const RENAMED_SEARCH_FILTERS: Readonly<Record<string, string>> = {
+	before: "createdBefore",
+	after: "createdAfter",
+};
+
+/**
+ * Throw `"VALIDATION"` when `input` has a key an earlier version took.
+ *
+ * Method inputs are not checked for unknown keys, so a renamed filter would
+ * otherwise be ignored and the call would match more than asked. A key set
+ * to `undefined` still counts, as in `assertKnownKeys`.
+ */
+function assertNotRenamed(
+	name: string,
+	input: object,
+	renamed: Readonly<Record<string, string>>,
+): void {
+	for (const [key, replacement] of Object.entries(renamed)) {
+		if (Object.hasOwn(input, key)) {
+			throw new MnemocyteError({
+				message: `${name} does not accept "${key}": it was renamed "${replacement}".`,
+				code: "VALIDATION",
+			});
+		}
+	}
+}
+
 export function validateSearchInput(input: SearchInput): StoreVisibility {
 	const visibility = validateVisibility(input);
 	assertContent(input.query, "query");
@@ -703,11 +731,12 @@ export function validateSearchInput(input: SearchInput): StoreVisibility {
 		assertMinScore(input.minScore);
 	}
 	validateMemoryFilterFields(input);
-	if (input.before !== undefined) {
-		assertValidDate(input.before, "before");
+	assertNotRenamed("search", input, RENAMED_SEARCH_FILTERS);
+	if (input.createdBefore !== undefined) {
+		assertValidDate(input.createdBefore, "createdBefore");
 	}
-	if (input.after !== undefined) {
-		assertValidDate(input.after, "after");
+	if (input.createdAfter !== undefined) {
+		assertValidDate(input.createdAfter, "createdAfter");
 	}
 	assertOptionalBoolean(input.explain, "explain");
 	assertOptionalTrackAccess(input.trackAccess);

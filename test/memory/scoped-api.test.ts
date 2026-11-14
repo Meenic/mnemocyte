@@ -1,6 +1,7 @@
 import { createMemory } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import {
+	verifyCreatedFilters,
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
 	verifyKeyedAddAudit,
@@ -49,6 +50,10 @@ describe("scoped API (in-memory)", () => {
 
 	test("get reads by id or key, and every method validates its scope", async () => {
 		await verifyGetAndScopeValidation(createClient().client, "get");
+	});
+
+	test("search filters createdAt and rejects the old filter names", async () => {
+		await verifyCreatedFilters(createClient().client, "created");
 	});
 
 	test("context does not echo the query", async () => {

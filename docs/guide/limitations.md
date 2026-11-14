@@ -1,17 +1,25 @@
 # Limitations
 
-Mnemocyte is pre-1.0. These are the current limits, what happens when you hit
-them, and the [roadmap](../ROADMAP.md) item planned for each.
+These are the current limits of Mnemocyte, what happens when you hit them,
+and, where one exists, the [roadmap](../ROADMAP.md) item that addresses
+them.
 
 ## Storage
 
 - **One embedding model per Postgres installation.** A second model or
   dimension throws `"CONFIG"`, and mixed history throws `"MIGRATION"` until
   repaired ([postgres.md](./postgres.md#repair-mixed-models)).
+- **Switching embedding models has no supported path.** `migrate` never
+  changes an installation's model or dimensions, and no method re-embeds
+  stored memories. For a model with the same dimensions, re-embed the rows
+  or delete the old model's rows by hand, then record the new model as
+  [repair mixed models](./postgres.md#repair-mixed-models) shows. For
+  other dimensions, install in a fresh database and add the memories
+  again.
 - **At most 4,000 dimensions on Postgres.** Above 2,000 the schema stores
   embeddings as `halfvec` (16-bit floats), because pgvector's HNSW index on
   `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and `migrate` and
-  the renderer refuse larger sizes. Half precision is close to lossless for cosine
+  `mnemocyte sql` refuse larger sizes. Half precision is close to lossless for cosine
   ranking but not bit-for-bit equal to the vectors you sent.
 - **Four drivers are built in.** postgres.js, a node-postgres `Pool`,
   PGlite, and Drizzle over one of them. A `pg.Client` and other Drizzle
@@ -45,6 +53,12 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 
 ## Retrieval
 
+- **Keyword search is English only on Postgres.** The schema builds the
+  full-text column with the `english` text search configuration, so every
+  language gets English stemming and stop words: keyword matches in other
+  languages are weaker, and vector search carries more of the ranking. The
+  configuration is fixed in the schema; choosing one at install time is
+  planned after 1.0.
 - **Keyword search differs by backend.** Postgres uses English full-text
   search (stemming, stop words); the in-memory store matches query words as
   substrings. Both fuse ranks the same way, but they can find different
@@ -57,8 +71,10 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
 - **Vector search on a large entity is approximate on Postgres.** When the
   HNSW index is used, it can miss some of the nearest memories: on a test
   server with 132,000 memories at 1,536 dimensions, a 30,000-memory entity's
-  search returned about 88% of the exact nearest rows, and about 60% with a
-  `kinds` filter. Entities of a few hundred memories are searched exactly.
+  search returned about 96% of the exact nearest rows, and about 81% with a
+  `kinds` filter. Recall varies between index builds, so the same data can
+  score a few points higher or lower after a rebuild. Entities of a few
+  hundred memories are searched exactly.
 - **Access writes can be lost.** With `trackAccess` on, search does not wait
   for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so
@@ -135,6 +151,20 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   platforms pass `waitUntil`, or the function may stop before it finishes.
   It costs one model call per response, plus an embedder call for the
   search and, when something is stored, one for the new memories.
+
+## Updating from 0.7
+
+Three 0.8 changes behave differently from what 0.7 code may expect; the
+[upgrade guide](./upgrading.md#07--08) has the details.
+
+- **`prune` deletes consolidation survivors with their dependents** when
+  it selects both, instead of throwing `"CONFLICT"`. Preview with
+  `dryRun: true` before a prune that can match survivors.
+- **`findDuplicates` can miss pairs** on large Postgres scopes, because it
+  compares nearest neighbors from the HNSW index
+  ([deleting](#deleting) above).
+- **Observability hooks are not awaited**, so a call can return before
+  its `onEvent` work finishes ([providers](#providers) below).
 
 ## Providers
 

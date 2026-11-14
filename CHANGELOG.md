@@ -2,9 +2,10 @@
 
 All notable changes to `mnemocyte` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The
-package is pre-1.0; minor versions (`0.x.0`) may contain additive or
-behavioural changes documented in their entries.
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
+1.0; before it, minor versions (`0.x.0`) could contain breaking changes,
+marked **Breaking** in their entries. What semver covers is in
+[docs/guide/api.md](docs/guide/api.md#stability).
 
 ## [Unreleased]
 
@@ -124,6 +125,18 @@ behavioural changes documented in their entries.
   `mnemocyte sql --dimensions <n>` prints the rendered schema. The numbered
   SQL files and `fresh-install.sql` still ship. The empty `dist/cli.d.mts`
   is gone too.
+
+### Documentation
+
+- **Upgrade guide.** [docs/guide/upgrading.md](docs/guide/upgrading.md)
+  covers 0.5 to 1.0, one section per release; it replaces the 0.5 → 0.6
+  table in the API reference.
+- **What 1.0 promises.** The API reference's "Stability" section lists what
+  semantic versioning covers and what it leaves out: `experimental.*`,
+  error and CLI text, the wording of `context()` output, and score values.
+- **Limitations.** New entries for English-only keyword search on Postgres,
+  switching embedding models, and updating from 0.7; the approximate
+  search figures are those of the current `relaxed_order` query.
 
 ## [0.8.0] - 2026-11-14
 
@@ -436,7 +449,7 @@ behavioural changes documented in their entries.
   memories shared by every agent or outside any session (`exactAgent` /
   `exactSession` turn that off); bulk operations select, with an omitted
   agent or session matching any. Records and audit events carry their
-  `scope`. See the [upgrade table](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md#upgrading-from-05).
+  `scope`. See the [upgrade table](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/upgrading.md#05--06).
 - **Keyed `add`.** A `key` that already exists in the exact scope updates
   that memory in place (one `INSERT … ON CONFLICT … DO UPDATE` on Postgres),
   keeping its id, creation time and access counts. Audited as

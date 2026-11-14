@@ -136,6 +136,9 @@ never visible.
 instead: a field that is set must match exactly, and an omitted `agentId` or
 `sessionId` matches any value. So `deleteScope({ scope: { namespace,
 entityId } })` erases the entity across every agent and session.
+`deleteScope` is the one bulk operation that requires `entityId` and has
+no `allNamespaces`: an erasure names the entity it erases, so a whole
+namespace or installation is never one call away.
 
 ### Default namespace
 
@@ -163,8 +166,8 @@ it, TypeScript keeps `namespace` required, and a scope without one throws
 the client's, without the `scope` field:
 
 ```ts
-const user = memory.for({ entityId: user.id });            // namespace from the default
-const agent = memory.for({ entityId: user.id, agentId: "support" });
+const user = memory.for({ entityId: session.userId });     // namespace from the default
+const agent = memory.for({ entityId: session.userId, agentId: "support" });
 
 await user.add({ content: "Prefers short, direct answers." });
 const context = await agent.context({ query: message });
@@ -179,8 +182,8 @@ await user.deleteScope();                                  // erase the user
   value: `user.deleteScope()` erases the user across every agent and
   session.
 - Methods whose options are all optional (`list`, `deleteScope`,
-  `findDuplicates`, `listAuditLog`) can be called without an argument.
-  `stats()` takes none.
+  `findDuplicates`, `listAuditLog`, `experimental.findDuplicatesPage`)
+  can be called without an argument. `stats()` takes none.
 - A bound client has no `allNamespaces` and no `for`. A `scope` or
   `allNamespaces` field passed from untyped code throws `"VALIDATION"`
   instead of being ignored, so a call cannot leave the bound scope.
@@ -391,7 +394,9 @@ const context = await memory.context({
 
 Runs a search and renders the results as a string to put in a prompt, or
 returns `""` when no memory matches. It accepts search's `limit`, `minScore`, `kinds`, `tags`, `includeSuperseded`,
-`includeExpired`, `exactAgent`, `exactSession` and `trackAccess`, plus:
+`includeExpired`, `exactAgent`, `exactSession` and `trackAccess`, with
+the same defaults (`limit` and `minScore` fall back to the config's
+`defaults`), plus:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content
   cannot break out of its block: Markdown and plain text use a fence longer
@@ -774,7 +779,7 @@ try {
 | `CONFIG` | Invalid configuration, or the embedder does not match the Postgres installation. Has a `reason`. |
 | `VALIDATION` | Invalid method input, including a missing or malformed scope and a key the method or the scope does not take. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. A provider's error status throws a `ProviderError` with `status` and the response body as `cause` (see [embedders.md](./embedders.md#provider-errors)). |
-| `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
+| `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`, or `extractMemories` exceeded its `timeoutMs` (see [ai-sdk.md](./ai-sdk.md)). |
 | `ABORTED` | The caller's `AbortSignal` fired. |
 | `NOT_FOUND` | A referenced memory is not visible at the scope. |
 | `CONFLICT` | A mutation conflicts with a key or a consolidation link. Has a `reason`. |
@@ -815,12 +820,21 @@ interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
 commands, flags and exit codes. It does not cover:
 
 - anything under `experimental` (`experimental.findDuplicatesPage`), which
-  may change or go in a minor release;
+  may change or go in a minor release, together with the types that
+  describe it: `FindDuplicatesPageInput`, `BoundFindDuplicatesPageInput`,
+  `DuplicatePage`, `ExperimentalMemoryClient`,
+  `BoundExperimentalMemoryClient`, and the `"findDuplicatesPage"` member
+  of `MnemocyteOperation`;
 - error messages and the CLI's output text; branch on `code` and `reason`,
   and on exit codes;
 - the exact wording of `context()` output. The formats, the guarantee that
   memory content cannot break out of its block, and the `maxTokens` budget
   are covered;
+- the wording of the text `mnemocyte/ai-sdk` gives the model: the tool
+  and field descriptions of `memoryTools`, the preamble line the middleware
+  puts before the context, and the extraction prompt. A minor release may
+  reword them, as it may `context()` output. Tool names, input fields and
+  results are covered;
 - `score` values and the order of results. A minor release may tune
   ranking; the shape of results and `scores` is covered;
 - the internal storage contract and modules not exported from a
@@ -832,6 +846,13 @@ over them needs a `default` branch: `MnemocyteErrorCode`,
 `MnemocyteBackend` and `AuditEventType`. The other unions (`MemoryKind`,
 `ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
 `MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
+
+`MemoryPrompt`, `MemoryLanguageModel`, `MemoryWrappedModel`,
+`MemoryFinishReason` and `AiSdkProviderOptions` are derived from the
+types of the `ai` peer dependency, and so are the `ai` types that other
+types of `mnemocyte/ai-sdk` use (`Tool`, `LanguageModel`,
+`EmbeddingModel`, `LanguageModelMiddleware`). They follow the `ai`
+version you install within the supported range, not Mnemocyte's version.
 
 A minor release may add optional input keys. Unknown keys throw, so code
 that uses one fails on an older version with `"VALIDATION"` instead of

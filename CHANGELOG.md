@@ -174,8 +174,11 @@ marked **Breaking** in their entries. What semver covers is in
   covers 0.5 to 1.0, one section per release; it replaces the 0.5 → 0.6
   table in the API reference.
 - **What 1.0 promises.** The API reference's "Stability" section lists what
-  semantic versioning covers and what it leaves out: `experimental.*`,
-  error and CLI text, the wording of `context()` output, and score values.
+  semantic versioning covers and what it leaves out: `experimental.*` and
+  the types that describe it, error and CLI text, the wording of
+  `context()` output and of the text the AI SDK tools, middleware and
+  extraction give the model, and score values. Types derived from the `ai`
+  peer's types follow the installed `ai` version.
 - **Limitations.** New entries for English-only keyword search on Postgres,
   switching embedding models, and updating from 0.7; the approximate
   search figures are those of the current `relaxed_order` query.

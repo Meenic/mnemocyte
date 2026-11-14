@@ -35,7 +35,9 @@ interface Embedder {
 Wrapping any provider takes a few lines:
 
 ```ts
-const embedder = {
+import type { Embedder } from "mnemocyte";
+
+const embedder: Embedder = {
   model: "my-model",
   dimensions: 768,
   async embed(texts, options) {
@@ -332,19 +334,22 @@ When a provider answers with an error status, the shipped embedders throw a
 handling:
 
 ```ts
-import { ProviderError } from "mnemocyte";
+import { isMnemocyteError } from "mnemocyte";
 
 try {
   await memory.add({ scope, content });
 } catch (error) {
-  if (error instanceof ProviderError) {
+  if (isMnemocyteError(error) && error.code === "EMBEDDING" && "status" in error) {
     console.log(error.status, error.cause); // 429, { error: { code: "rate_limit_exceeded", … } }
   }
 }
 ```
 
 - `code` is `"EMBEDDING"`, so code that checks `MnemocyteError` codes keeps
-  working.
+  working. Check it with `isMnemocyteError` and the `status` field, as
+  above, rather than `instanceof ProviderError`, which fails when the app
+  ends up with two copies of the package (see
+  [errors](./api.md#errors)).
 - `status` is the HTTP status, and `retryAfterMs` the wait the provider asked
   for, if any.
 - `cause` is the response body: parsed JSON, or text. The message has the

@@ -430,12 +430,21 @@ export interface MemoryConfig {
 	store?: MnemocyteStoreConfig | PostgresClient | undefined;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
-	/** Defaults applied to {@link SearchInput} when properties are omitted. */
+	/**
+	 * Defaults applied to {@link SearchInput} and {@link ContextInput} when
+	 * properties are omitted.
+	 */
 	defaults?:
 		| {
-				/** Default `limit` for {@link MemoryClient.search}. */
+				/**
+				 * Default `limit` for {@link MemoryClient.search} and
+				 * {@link MemoryClient.context}.
+				 */
 				limit?: number | undefined;
-				/** Default `minScore` cutoff for {@link MemoryClient.search}. */
+				/**
+				 * Default `minScore` cutoff for {@link MemoryClient.search} and
+				 * {@link MemoryClient.context}.
+				 */
 				minScore?: number | undefined;
 		  }
 		| undefined;
@@ -848,7 +857,7 @@ export interface ListInput<DefaultNamespace extends boolean = false>
 	extends ScopedReadOptions {
 	/** Scope to list; see {@link MemoryScope} for shared memories. */
 	scope: ScopeInput<DefaultNamespace>;
-	/** Page size; positive integer. @defaultValue `50` */
+	/** Page size; an integer from 1 to 1,000. @defaultValue `50` */
 	limit?: number | undefined;
 	/** `nextCursor` from the previous page. Omit for the first page. */
 	cursor?: string | undefined;
@@ -975,9 +984,15 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 	format?: ContextFormat | undefined;
 	/** Positive-integer token budget. @defaultValue `1200` */
 	maxTokens?: number | undefined;
-	/** Maximum number of memories to consider. */
+	/**
+	 * Maximum number of memories to consider. Falls back to
+	 * {@link MemoryConfig.defaults}.
+	 */
 	limit?: number | undefined;
-	/** Minimum retrieval score required. */
+	/**
+	 * Minimum retrieval score required. Falls back to
+	 * {@link MemoryConfig.defaults}.
+	 */
 	minScore?: number | undefined;
 	/** Restrict to these kinds. */
 	kinds?: readonly MemoryKind[] | undefined;
@@ -1256,7 +1271,7 @@ export interface AuditEvent {
  */
 export interface ListAuditLogOptions {
 	/**
-	 * Page size, ordered newest first; positive integer.
+	 * Page size, ordered newest first; an integer from 1 to 1,000.
 	 * @defaultValue `50`
 	 */
 	limit?: number | undefined;

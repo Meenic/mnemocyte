@@ -218,7 +218,8 @@ Dated 2026-10-26 unless noted.
    (2026-11-15, revised) A second backend no longer triggers a split. The
    Postgres backend has no dependencies of its own (the user brings the
    driver), and the lazy `import()` of decision 23 already keeps it out of
-   in-memory bundles, so a split would save neither installs nor bytes.
+   in-memory bundles, so a split would remove no dependency and no bundled
+   code.
    First-party backends that run on the user's client ship as subpaths;
    a package is split out only when it needs dependencies of its own or
    its own release cadence (`@mnemocyte/mcp` first, with `mnemocyte` as a

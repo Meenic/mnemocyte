@@ -357,7 +357,10 @@ reopened; its additive findings are in "After 1.0".
 
 - libSQL / Turso backend, then SQLite + sqlite-vec once it is stable. A
   backend that runs on the user's own client, as Postgres does, ships as a
-  subpath of `mnemocyte` (`mnemocyte/libsql`), not as its own package.
+  subpath of `mnemocyte` (`mnemocyte/libsql`), not as its own package. If
+  SQLite needs the `sqlite-vec` package as a dependency of ours, rather
+  than the user loading the extension on their own connection, the
+  packaging rule below makes it a package of its own.
 - Public `MemoryStore` contract: versioned in its name (`MemoryStoreV1`) so
   the core can accept two versions during a change instead of forcing a
   major, exported from a subpath (`mnemocyte/store`), with the contract
@@ -371,9 +374,9 @@ reopened; its additive findings are in "After 1.0".
   `mnemocyte` as a peer (`^1`), the way `@mastra/pg` takes `@mastra/core`;
   it uses only the public API, so it needs no exact pins.
 - Packaging rule (decision 1, revised 2026-11-15): split out a package only
-  when it needs dependencies of its own or its own release cadence. Drizzle,
-  Kysely and tRPC stay one package for the same reason: the user brings the
-  driver. If first-party code ever does split (`@mnemocyte/core`,
+  when it needs dependencies of its own or its own release cadence. Drizzle
+  and Kysely stay one package for the same reason: the user brings the
+  driver, and the drivers are optional peers. If first-party code ever does split (`@mnemocyte/core`,
   `@mnemocyte/postgres`), `mnemocyte` stays as an umbrella package that
   depends on them with exact pins, releases with them, and re-exports every
   current import path (`mnemocyte`, `mnemocyte/postgres`,

@@ -82,10 +82,11 @@ export function openaiCompatibleEmbedder(
 		options.sendDimensions !== undefined &&
 		typeof options.sendDimensions !== "boolean"
 	) {
-		throw new MnemocyteError(
-			"openaiCompatibleEmbedder sendDimensions must be a boolean.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "openaiCompatibleEmbedder sendDimensions must be a boolean.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return createHttpEmbedder({
 		name: "openaiCompatibleEmbedder",

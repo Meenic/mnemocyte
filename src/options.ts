@@ -27,12 +27,14 @@ export function assertKnownKeys(
 			continue;
 		}
 		const replacement = Object.hasOwn(renamed, key) ? renamed[key] : undefined;
-		throw new MnemocyteError(
-			replacement === undefined
-				? `${name} does not accept the option "${key}". Accepted options: ${accepted.join(", ")}.`
-				: `${name} does not accept the option "${key}": it was renamed "${replacement}".`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				replacement === undefined
+					? `${name} does not accept the option "${key}". Accepted options: ${accepted.join(", ")}.`
+					: `${name} does not accept the option "${key}": it was renamed "${replacement}".`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 

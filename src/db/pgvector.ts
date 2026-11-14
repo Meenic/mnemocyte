@@ -9,10 +9,12 @@ const MIN_PGVECTOR_VERSION: readonly [number, number] = [0, 8];
  */
 export function assertPgvectorVersion(version: string | null): void {
 	if (version === null) {
-		throw new MnemocyteError(
-			"pgvector is not installed in this database. Run CREATE EXTENSION vector as a role that may create extensions.",
-			"MIGRATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"pgvector is not installed in this database. Run CREATE EXTENSION vector as a role that may create extensions.",
+			code: "MIGRATION",
+			reason: "PGVECTOR_UNAVAILABLE",
+		});
 	}
 	const [major = Number.NaN, minor = Number.NaN] = version
 		.split(".")
@@ -24,9 +26,10 @@ export function assertPgvectorVersion(version: string | null): void {
 		major < minMajor ||
 		(major === minMajor && minor < minMinor)
 	) {
-		throw new MnemocyteError(
-			`Mnemocyte needs pgvector ${minMajor}.${minMinor}.0 or later for filtered vector search; this database has ${version}. Upgrade the pgvector package on the server, then run ALTER EXTENSION vector UPDATE.`,
-			"MIGRATION",
-		);
+		throw new MnemocyteError({
+			message: `Mnemocyte needs pgvector ${minMajor}.${minMinor}.0 or later for filtered vector search; this database has ${version}. Upgrade the pgvector package on the server, then run ALTER EXTENSION vector UPDATE.`,
+			code: "MIGRATION",
+			reason: "PGVECTOR_UNAVAILABLE",
+		});
 	}
 }

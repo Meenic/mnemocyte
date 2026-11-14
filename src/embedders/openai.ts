@@ -40,10 +40,11 @@ export interface OpenAIEmbedderOptions {
 
 function assertDimensions(dimensions: number): void {
 	if (!Number.isInteger(dimensions) || dimensions < 1) {
-		throw new MnemocyteError(
-			"openaiEmbedder dimensions must be a positive integer.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "openaiEmbedder dimensions must be a positive integer.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
@@ -54,10 +55,11 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
 	const defaultDimensions = KNOWN_MODEL_DIMENSIONS[options.model];
 	if (defaultDimensions === undefined) {
 		if (options.dimensions === undefined) {
-			throw new MnemocyteError(
-				`openaiEmbedder requires dimensions for unknown model "${options.model}".`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `openaiEmbedder requires dimensions for unknown model "${options.model}".`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		assertDimensions(options.dimensions);
 		return {
@@ -70,10 +72,11 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
 		options.dimensions !== undefined &&
 		!CONFIGURABLE_DIMENSION_MODELS.has(options.model)
 	) {
-		throw new MnemocyteError(
-			`openaiEmbedder does not support a dimensions override for "${options.model}".`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `openaiEmbedder does not support a dimensions override for "${options.model}".`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 
 	if (options.dimensions !== undefined) {

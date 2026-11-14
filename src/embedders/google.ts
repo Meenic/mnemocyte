@@ -148,10 +148,10 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 		},
 		parseResponse(body, expectedCount) {
 			if (!isRecord(body) || !Array.isArray(body.embeddings)) {
-				throw new MnemocyteError(
-					"Google returned malformed embedding response data.",
-					"EMBEDDING",
-				);
+				throw new MnemocyteError({
+					message: "Google returned malformed embedding response data.",
+					code: "EMBEDDING",
+				});
 			}
 			return assertVectorList(
 				body.embeddings.map((item: unknown) =>

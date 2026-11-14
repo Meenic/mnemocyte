@@ -349,18 +349,21 @@ function toFoundMemory(memory: MemoryWithScore): FoundMemory {
  */
 export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 	if (!isRecord(options)) {
-		throw new MnemocyteError(
-			"memoryTools requires an options object.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "memoryTools requires an options object.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	assertKnownKeys("memoryTools", options, ["memory"]);
 	const { memory } = options;
 	if (!isBoundClient(memory)) {
-		throw new MnemocyteError(
-			"memoryTools requires a bound client: pass memory.for(scope), not the client itself.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				"memoryTools requires a bound client: pass memory.for(scope), not the client itself.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 
 	return {

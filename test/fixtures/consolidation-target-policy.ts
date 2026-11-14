@@ -94,6 +94,7 @@ export async function exerciseConsolidationTargetPolicy(
 				supersededIds: [definedLoser.id],
 			}),
 			"CONFLICT",
+			"CONSOLIDATION_CHANGED",
 		);
 
 		const memories = await listEntityMemories(client, entityId);
@@ -150,6 +151,7 @@ export async function exerciseConsolidationTargetPolicy(
 				],
 			}),
 			"CONFLICT",
+			"CONSOLIDATION_CHANGED",
 		);
 
 		const after = await listEntityMemories(client, entityId);
@@ -250,6 +252,7 @@ export async function exerciseConsolidationTargetPolicy(
 			);
 		}
 		expect(failure.reason.code).toBe("CONFLICT");
+		expect(failure.reason.reason).toBe("CONSOLIDATION_CHANGED");
 
 		const after = await listEntityMemories(client, entityId);
 		expect(

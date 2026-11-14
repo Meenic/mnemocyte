@@ -141,7 +141,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function configError(message: string, cause?: unknown): MnemocyteError {
-	return new MnemocyteError(`${NAME} ${message}`, "CONFIG", cause);
+	return new MnemocyteError({
+		message: `${NAME} ${message}`,
+		code: "CONFIG",
+		reason: "INVALID_OPTION",
+		cause: cause,
+	});
 }
 
 function assertPositiveInteger(value: unknown, field: string): number {
@@ -451,10 +456,10 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 				? embedOptions.purpose
 				: undefined;
 			if (purpose !== "query" && purpose !== "document") {
-				throw new MnemocyteError(
-					`${NAME} embed requires options.purpose "query" or "document".`,
-					"VALIDATION",
-				);
+				throw new MnemocyteError({
+					message: `${NAME} embed requires options.purpose "query" or "document".`,
+					code: "VALIDATION",
+				});
 			}
 			const providerOptions = hints.options[purpose];
 			const prefix = hints.prefixes[purpose];

@@ -34,7 +34,12 @@
  */
 
 export { createMemory } from "./client.js";
-export type { MnemocyteErrorCode, ProviderErrorInput } from "./errors.js";
+export type {
+	MnemocyteErrorCode,
+	MnemocyteErrorInput,
+	MnemocyteErrorReason,
+	ProviderErrorInput,
+} from "./errors.js";
 export { isMnemocyteError, MnemocyteError, ProviderError } from "./errors.js";
 export { migrate } from "./migrate.js";
 export type { PostgresClient } from "./sql/detect.js";

@@ -1,4 +1,4 @@
-import { MnemocyteError } from "../../errors.js";
+import { isMnemocyteError, MnemocyteError } from "../../errors.js";
 import { throwIfAborted } from "../../resilience.js";
 import type { SqlExecutor, SqlQueryOptions } from "../../sql/executor.js";
 import type { MigrateResult } from "../../types.js";
@@ -97,10 +97,11 @@ export function installedVersion(state: CatalogState): number {
 		if (meta && metaModel && !scoped) return 2;
 		if (meta && metaModel && scoped) return 3;
 	}
-	throw new MnemocyteError(
-		`The Mnemocyte tables match no migration (${JSON.stringify(state)}), so migrate() cannot tell which migrations were applied. Compare the schema with migrations/ and finish or undo the partial one.`,
-		"MIGRATION",
-	);
+	throw new MnemocyteError({
+		message: `The Mnemocyte tables match no migration (${JSON.stringify(state)}), so migrate() cannot tell which migrations were applied. Compare the schema with migrations/ and finish or undo the partial one.`,
+		code: "MIGRATION",
+		reason: "SCHEMA_UNRECOGNIZED",
+	});
 }
 
 export async function readCatalogState(
@@ -129,7 +130,10 @@ export async function readCatalogState(
 	);
 	const row = rows[0];
 	if (!row) {
-		throw new MnemocyteError("The catalog query returned no row.", "DB");
+		throw new MnemocyteError({
+			message: "The catalog query returned no row.",
+			code: "DB",
+		});
 	}
 	return row;
 }
@@ -220,31 +224,34 @@ async function runStatements(
 			await tx.query(statement, [], options);
 		}
 	} catch (error) {
-		if (error instanceof MnemocyteError) {
+		if (isMnemocyteError(error)) {
 			throw error;
 		}
-		throw new MnemocyteError(
-			`Migration ${name} failed and was rolled back.`,
-			"MIGRATION",
-			error,
-		);
+		throw new MnemocyteError({
+			message: `Migration ${name} failed and was rolled back.`,
+			code: "MIGRATION",
+			reason: "MIGRATION_FAILED",
+			cause: error,
+		});
 	}
 }
 
 export function assertContiguous(versions: readonly number[]): void {
 	versions.forEach((version, index) => {
 		if (version !== index) {
-			throw new MnemocyteError(
-				`mnemocyte_migrations lists versions ${versions.join(", ")}; expected 0 through ${versions.length - 1} with no gaps.`,
-				"MIGRATION",
-			);
+			throw new MnemocyteError({
+				message: `mnemocyte_migrations lists versions ${versions.join(", ")}; expected 0 through ${versions.length - 1} with no gaps.`,
+				code: "MIGRATION",
+				reason: "SCHEMA_UNRECOGNIZED",
+			});
 		}
 	});
 	if (versions.length > MIGRATIONS.length) {
-		throw new MnemocyteError(
-			`The database has ${versions.length} Mnemocyte migrations applied, but this version of Mnemocyte knows ${MIGRATIONS.length}. It was migrated by a newer Mnemocyte.`,
-			"MIGRATION",
-		);
+		throw new MnemocyteError({
+			message: `The database has ${versions.length} Mnemocyte migrations applied, but this version of Mnemocyte knows ${MIGRATIONS.length}. It was migrated by a newer Mnemocyte.`,
+			code: "MIGRATION",
+			reason: "SCHEMA_NEWER",
+		});
 	}
 }
 
@@ -273,7 +280,7 @@ async function createVectorExtension(
 	try {
 		await tx.query("CREATE EXTENSION IF NOT EXISTS vector", [], options);
 	} catch (error) {
-		if (error instanceof MnemocyteError) {
+		if (isMnemocyteError(error)) {
 			throw error;
 		}
 		const code = postgresErrorCode(error);
@@ -283,7 +290,12 @@ async function createVectorExtension(
 				: code === "0A000"
 					? "pgvector is not available on this Postgres server. Install it on the server (or pick a provider or image that ships it), then run migrate again."
 					: "CREATE EXTENSION vector failed.";
-		throw new MnemocyteError(message, "MIGRATION", error);
+		throw new MnemocyteError({
+			message,
+			code: "MIGRATION",
+			reason: "PGVECTOR_UNAVAILABLE",
+			cause: error,
+		});
 	}
 }
 
@@ -309,10 +321,11 @@ async function inspect(
 		installedDimensions !== null &&
 		installedDimensions !== input.dimensions
 	) {
-		throw new MnemocyteError(
-			`The installation stores ${installedDimensions}-dimension embeddings; migrate() was called with dimensions ${input.dimensions}.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `The installation stores ${installedDimensions}-dimension embeddings; migrate() was called with dimensions ${input.dimensions}.`,
+			code: "CONFIG",
+			reason: "DIMENSIONS_MISMATCH",
+		});
 	}
 
 	const versions = await readAppliedVersions(tx, options);
@@ -327,17 +340,20 @@ async function inspect(
 		return { kind: "untracked", trackingTable, installed };
 	}
 	if (input.dimensions === undefined) {
-		throw new MnemocyteError(
-			"dimensions is required for a fresh install: it fixes the embedding column for the installation. Pass memory (the client) or dimensions.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"dimensions is required for a fresh install: it fixes the embedding column for the installation. Pass memory (the client) or dimensions.",
+			code: "VALIDATION",
+		});
 	}
 	const pgvector = await hasPgvector(tx, options);
 	if (!pgvector && input.createExtension !== true) {
-		throw new MnemocyteError(
-			"pgvector is not installed in this database. Pass createExtension: true to have migrate() run CREATE EXTENSION vector, or have an admin run it first.",
-			"MIGRATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"pgvector is not installed in this database. Pass createExtension: true to have migrate() run CREATE EXTENSION vector, or have an admin run it first.",
+			code: "MIGRATION",
+			reason: "PGVECTOR_UNAVAILABLE",
+		});
 	}
 	return {
 		kind: "fresh",
@@ -446,9 +462,13 @@ async function dryRun(
 }
 
 function toMigrationError(error: unknown): MnemocyteError {
-	return error instanceof MnemocyteError
+	return isMnemocyteError(error)
 		? error
-		: new MnemocyteError("Postgres migration failed.", "DB", error);
+		: new MnemocyteError({
+				message: "Postgres migration failed.",
+				code: "DB",
+				cause: error,
+			});
 }
 
 /**
@@ -463,10 +483,12 @@ export async function runPostgresMigrations(
 ): Promise<MigrateResult> {
 	const transaction = db.transaction?.bind(db);
 	if (transaction === undefined) {
-		throw new MnemocyteError(
-			"migrate needs an executor with interactive transactions (SqlExecutor.transaction). Run it over a regular connection, not a stateless HTTP driver.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				"migrate needs an executor with interactive transactions (SqlExecutor.transaction). Run it over a regular connection, not a stateless HTTP driver.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (input.dryRun === true) {
 		throwIfAborted(input.signal);

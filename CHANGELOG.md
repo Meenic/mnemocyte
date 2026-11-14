@@ -8,8 +8,41 @@ behavioural changes documented in their entries.
 
 ## [Unreleased]
 
+### Added
+
+- **`MnemocyteError.reason`** says which case of `"CONFIG"`, `"CONFLICT"`
+  or `"MIGRATION"` an error is, for example `"KEY_IN_USE"`,
+  `"DIMENSIONS_MISMATCH"` or `"SCHEMA_MISSING"`, so callers never match on
+  messages. It is `undefined` on the other codes. The reasons are listed in
+  `docs/guide/api.md` "Errors", along with the unions a minor release may
+  extend (error codes and reasons, observability operations, backends,
+  audit event types).
+
 ### Changed
 
+- **Breaking: `new MnemocyteError` takes one object.** Custom embedders and
+  stores that throw it pass `{ message, code, reason, cause }`;
+  `"CONFIG"`, `"CONFLICT"` and `"MIGRATION"` require a `reason`. The
+  positional form throws a `TypeError`.
+
+  ```ts
+  // 0.8
+  throw new MnemocyteError("model is required", "CONFIG");
+  // now
+  throw new MnemocyteError({
+    message: "model is required",
+    code: "CONFIG",
+    reason: "INVALID_OPTION",
+  });
+  ```
+- **`isMnemocyteError` recognizes errors from another copy of the
+  package.** It checks a `Symbol.for("mnemocyte.error")` brand instead of
+  `instanceof`, which fails when an app and a library each install
+  Mnemocyte.
+- **The dimensions-mismatch `"CONFIG"` message names a fix that exists:**
+  configure an embedder with the installation's dimensions, or install in
+  a fresh database. It used to suggest a migration for a new dimension,
+  which `migrate` does not do.
 - **Breaking: unknown option keys throw `"CONFIG"`.** `createMemory`'s config
   and its nested objects (`retrieval`, `retrieval.fusion`, `defaults`,
   `provider` and the others), `postgresStore`, every embedder, and the AI SDK

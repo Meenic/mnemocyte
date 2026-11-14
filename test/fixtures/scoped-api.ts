@@ -354,6 +354,7 @@ export async function verifyUpdate(
 	await expectMnemocyteError(
 		client.update({ scope, id: memory.id, key: "food" }),
 		"CONFLICT",
+		"KEY_IN_USE",
 	);
 	await expect(
 		client.update({ scope, id: memory.id, key: null }),

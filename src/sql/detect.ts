@@ -129,10 +129,11 @@ function detectDriver(client: unknown): DetectedClient | undefined {
 }
 
 function nodePostgresClientError(subject: ClientSubject): MnemocyteError {
-	return new MnemocyteError(
-		`${subject} looks like a node-postgres Client. Pass a Pool instead: transactions check out their own connection with pool.connect().`,
-		"CONFIG",
-	);
+	return new MnemocyteError({
+		message: `${subject} looks like a node-postgres Client. Pass a Pool instead: transactions check out their own connection with pool.connect().`,
+		code: "CONFIG",
+		reason: "INVALID_OPTION",
+	});
 }
 
 /**
@@ -169,10 +170,11 @@ export function detectClient(
 		if (isNodePostgresClient(inner)) {
 			throw nodePostgresClientError(subject);
 		}
-		throw new MnemocyteError(
-			`${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, and drizzle-orm/pglite; for others, implement SqlExecutor.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, and drizzle-orm/pglite; for others, implement SqlExecutor.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (isSqlExecutor(client)) {
 		return { driver: "executor", client };

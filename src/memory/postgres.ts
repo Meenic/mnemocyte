@@ -39,7 +39,7 @@ import {
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
 import type { VectorType } from "../db/rows.js";
-import { MnemocyteError } from "../errors.js";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
 import type { SqlExecutor } from "../sql/executor.js";
@@ -129,11 +129,12 @@ function driverDetail(error: unknown): string | undefined {
  */
 function missingSchemaError(error: unknown): MnemocyteError {
 	const detail = driverDetail(error);
-	return new MnemocyteError(
-		`Mnemocyte's tables are missing or out of date in this database${detail ? ` (${detail})` : ""}. Run ${MIGRATE_COMMAND} to create or upgrade them: ${INSTALL_GUIDE_URL}`,
-		"MIGRATION",
-		error,
-	);
+	return new MnemocyteError({
+		message: `Mnemocyte's tables are missing or out of date in this database${detail ? ` (${detail})` : ""}. Run ${MIGRATE_COMMAND} to create or upgrade them: ${INSTALL_GUIDE_URL}`,
+		code: "MIGRATION",
+		reason: "SCHEMA_MISSING",
+		cause: error,
+	});
 }
 
 /**
@@ -141,21 +142,26 @@ function missingSchemaError(error: unknown): MnemocyteError {
  * the fix for a deleted one.
  */
 function missingInstallationRowError(): MnemocyteError {
-	return new MnemocyteError(
-		`mnemocyte_meta has no "installation" row, so the embedder cannot be checked against this database. migrate() writes the row only when it creates the schema and does not restore a deleted one; insert it again as shown in ${INSTALLATION_GUIDE_URL}`,
-		"MIGRATION",
-	);
+	return new MnemocyteError({
+		message: `mnemocyte_meta has no "installation" row, so the embedder cannot be checked against this database. migrate() writes the row only when it creates the schema and does not restore a deleted one; insert it again as shown in ${INSTALLATION_GUIDE_URL}`,
+		code: "MIGRATION",
+		reason: "INSTALLATION_INVALID",
+	});
 }
 
 function normalizePostgresError(error: unknown): MnemocyteError {
-	if (error instanceof MnemocyteError) {
+	if (isMnemocyteError(error)) {
 		return error;
 	}
 	const code = postgresErrorCode(error);
 	if (code && MIGRATION_ERROR_CODES.has(code)) {
 		return missingSchemaError(error);
 	}
-	return new MnemocyteError("Postgres operation failed.", "DB", error);
+	return new MnemocyteError({
+		message: "Postgres operation failed.",
+		code: "DB",
+		cause: error,
+	});
 }
 
 async function runPostgresOperation<T>(
@@ -174,7 +180,7 @@ async function runPostgresDeleteOperation<T>(
 	try {
 		return await operation();
 	} catch (error) {
-		if (error instanceof MnemocyteError) {
+		if (isMnemocyteError(error)) {
 			throw error;
 		}
 		if (
@@ -228,10 +234,11 @@ function assertVectorType(value: string | null): VectorType {
 		throw missingInstallationRowError();
 	}
 	if (!VECTOR_TYPES.has(value)) {
-		throw new MnemocyteError(
-			`mnemocyte_meta.vector_type is ${JSON.stringify(value)}; it must be "vector" or "halfvec".`,
-			"MIGRATION",
-		);
+		throw new MnemocyteError({
+			message: `mnemocyte_meta.vector_type is ${JSON.stringify(value)}; it must be "vector" or "halfvec".`,
+			code: "MIGRATION",
+			reason: "INSTALLATION_INVALID",
+		});
 	}
 	// Checked against VECTOR_TYPES above; the value is interpolated as a cast.
 	return value as VectorType;
@@ -313,20 +320,23 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		const vectorType = assertVectorType(meta.vectorType);
 		vectorTypePromise ??= Promise.resolve(vectorType);
 		if (meta.embeddingDimensions !== embedder.dimensions) {
-			throw new MnemocyteError(
-				`embedder.dimensions (${embedder.dimensions}) must match mnemocyte_meta.embedding_dimensions (${meta.embeddingDimensions}). Render and apply a migration for the selected embedding dimension, or configure an embedder that matches this installation.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `embedder.dimensions (${embedder.dimensions}) does not match this installation's ${meta.embeddingDimensions}-dimension embedding column. Configure an embedder that returns ${meta.embeddingDimensions} dimensions (many embedding models take a dimensions option), or install Mnemocyte in a fresh database for ${embedder.dimensions}-dimension embeddings; migrate() does not change the dimension of an existing installation.`,
+				code: "CONFIG",
+				reason: "DIMENSIONS_MISMATCH",
+			});
 		}
 		let installationModel = meta.embeddingModel;
 		if (installationModel === null) {
 			try {
 				const storedModels = await getStoredEmbeddingModels(client);
 				if (storedModels.length > 1) {
-					throw new MnemocyteError(
-						"mnemocyte_meta.embedding_model is unset, but stored memories contain multiple embedding_model values. Re-embed or remove the mixed historical rows, then explicitly record the installation model before using embedding-dependent operations.",
-						"MIGRATION",
-					);
+					throw new MnemocyteError({
+						message:
+							"mnemocyte_meta.embedding_model is unset, but stored memories contain multiple embedding_model values. Re-embed or remove the mixed historical rows, then explicitly record the installation model before using embedding-dependent operations.",
+						code: "MIGRATION",
+						reason: "MIXED_MODELS",
+					});
 				}
 				const inferredModel = storedModels[0] ?? embedder.model;
 				const recorded = await recordInstallationEmbeddingModel(
@@ -343,17 +353,20 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				throw normalizePostgresError(error);
 			}
 			if (installationModel === null) {
-				throw new MnemocyteError(
-					"mnemocyte_meta.embedding_model could not be recorded. Verify the installation metadata row and retry.",
-					"MIGRATION",
-				);
+				throw new MnemocyteError({
+					message:
+						"mnemocyte_meta.embedding_model could not be recorded. Verify the installation metadata row and retry.",
+					code: "MIGRATION",
+					reason: "INSTALLATION_INVALID",
+				});
 			}
 		}
 		if (installationModel !== embedder.model) {
-			throw new MnemocyteError(
-				`embedder.model ("${embedder.model}") must match mnemocyte_meta.embedding_model ("${installationModel}"). Configure the recorded model, or explicitly re-embed existing memories and update the installation metadata.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `embedder.model ("${embedder.model}") must match mnemocyte_meta.embedding_model ("${installationModel}"). Configure the recorded model, or explicitly re-embed existing memories and update the installation metadata.`,
+				code: "CONFIG",
+				reason: "MODEL_MISMATCH",
+			});
 		}
 	}
 
@@ -482,11 +495,12 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				return row ? rowToMemory(row) : null;
 			} catch (error) {
 				if (isScopeKeyViolation(error)) {
-					throw new MnemocyteError(
-						"Another memory in this scope already uses that key.",
-						"CONFLICT",
-						error,
-					);
+					throw new MnemocyteError({
+						message: "Another memory in this scope already uses that key.",
+						code: "CONFLICT",
+						reason: "KEY_IN_USE",
+						cause: error,
+					});
 				}
 				throw normalizePostgresError(error);
 			}
@@ -682,16 +696,19 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					options?.signal,
 				);
 				if (!result.survivorActive) {
-					throw new MnemocyteError(
-						"Consolidation survivor changed before mutation.",
-						"CONFLICT",
-					);
+					throw new MnemocyteError({
+						message: "Consolidation survivor changed before mutation.",
+						code: "CONFLICT",
+						reason: "CONSOLIDATION_CHANGED",
+					});
 				}
 				if (result.hasConflict) {
-					throw new MnemocyteError(
-						"Superseded memory already belongs to a different survivor.",
-						"CONFLICT",
-					);
+					throw new MnemocyteError({
+						message:
+							"Superseded memory already belongs to a different survivor.",
+						code: "CONFLICT",
+						reason: "CONSOLIDATION_CHANGED",
+					});
 				}
 				return { supersededIds: result.supersededIds };
 			});

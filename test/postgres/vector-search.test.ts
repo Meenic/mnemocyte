@@ -68,7 +68,10 @@ describe("assertPgvectorVersion", () => {
 		"rejects %s as a migration error",
 		(version) => {
 			expect(() => assertPgvectorVersion(version)).toThrow(
-				expect.objectContaining({ code: "MIGRATION" }),
+				expect.objectContaining({
+					code: "MIGRATION",
+					reason: "PGVECTOR_UNAVAILABLE",
+				}),
 			);
 		},
 	);
@@ -119,7 +122,10 @@ describe("Postgres vector search", () => {
 		for (let attempt = 0; attempt < 2; attempt += 1) {
 			await expect(
 				store.vectorSearch({ ...searchInput, limit: 5 }),
-			).rejects.toMatchObject({ code: "MIGRATION" });
+			).rejects.toMatchObject({
+				code: "MIGRATION",
+				reason: "PGVECTOR_UNAVAILABLE",
+			});
 		}
 
 		expect(queries.some((query) => query.inTransaction)).toBe(false);

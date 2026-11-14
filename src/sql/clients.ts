@@ -42,7 +42,11 @@ export function executorFor(detected: DetectedClient): SqlExecutor {
 export function toSqlExecutor(client: unknown): SqlExecutor {
 	const detected = detectClient(client, "client");
 	if (!detected) {
-		throw new MnemocyteError(`client must be ${SUPPORTED_CLIENTS}.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `client must be ${SUPPORTED_CLIENTS}.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return executorFor(detected);
 }

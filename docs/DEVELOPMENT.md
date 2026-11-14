@@ -177,7 +177,7 @@ plugin in `tsdown.config.ts` strips that comment.
   (`db/vector.ts`). Fixed decimal precision would turn small components into
   zero.
 - Driver errors are mapped to `MnemocyteError`: missing tables or columns
-  become `"MIGRATION"`, everything else `"DB"`.
+  become `"MIGRATION"` with reason `"SCHEMA_MISSING"`, everything else `"DB"`.
 - `@types/node` stays on the major of the minimum supported Node version.
 
 ## Public API
@@ -239,8 +239,16 @@ Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 Design rules for the public surface:
 
 - One object parameter per method; new options are optional fields.
-- Errors are `MnemocyteError` with a stable `code`; callers branch on the
-  code, never the message.
+- Errors are `MnemocyteError` with a stable `code`, and a `reason` on every
+  `"CONFIG"`, `"CONFLICT"` and `"MIGRATION"` (the constructor input requires
+  one, so the compiler catches a throw without it); callers branch on those,
+  never the message. A new case that callers would handle differently gets
+  a new reason. `isMnemocyteError` checks the `Symbol.for("mnemocyte.error")`
+  brand on the prototype; code that inspects an error the package may not
+  have created (an embedder's, a driver's) uses it instead of `instanceof`.
+- Error codes and reasons, `MnemocyteOperation`, `MnemocyteBackend` and
+  `AuditEventType` may gain members in a minor; the other unions change
+  only in a major (`guide/api.md` "Stability").
 - Every long-running method accepts `signal: AbortSignal`.
 - New or unproven behavior goes under `experimental` first.
 - Every method that reads or writes memories takes a `scope` (or is bound

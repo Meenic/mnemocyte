@@ -105,10 +105,11 @@ function compareIds(a: string, b: string): number {
 }
 
 function keyConflictError(): MnemocyteError {
-	return new MnemocyteError(
-		"Another memory in this scope already uses that key.",
-		"CONFLICT",
-	);
+	return new MnemocyteError({
+		message: "Another memory in this scope already uses that key.",
+		code: "CONFLICT",
+		reason: "KEY_IN_USE",
+	});
 }
 
 interface FoundPair {
@@ -683,10 +684,11 @@ export function createInMemoryStore(): MemoryStore {
 				!isVisible(survivor.scope, input.visibility) ||
 				survivor.supersededBy !== null
 			) {
-				throw new MnemocyteError(
-					"Consolidation survivor changed before mutation.",
-					"CONFLICT",
-				);
+				throw new MnemocyteError({
+					message: "Consolidation survivor changed before mutation.",
+					code: "CONFLICT",
+					reason: "CONSOLIDATION_CHANGED",
+				});
 			}
 			const newlySuperseded: StoredMemory[] = [];
 			const targets: StoredMemory[] = [];
@@ -705,10 +707,11 @@ export function createInMemoryStore(): MemoryStore {
 						memory.supersededBy !== input.survivorId,
 				)
 			) {
-				throw new MnemocyteError(
-					"Superseded memory already belongs to a different survivor.",
-					"CONFLICT",
-				);
+				throw new MnemocyteError({
+					message: "Superseded memory already belongs to a different survivor.",
+					code: "CONFLICT",
+					reason: "CONSOLIDATION_CHANGED",
+				});
 			}
 			for (const memory of targets) {
 				if (memory.supersededBy === null) {

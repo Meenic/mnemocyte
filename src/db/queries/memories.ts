@@ -271,10 +271,10 @@ export async function insertMemories(
 		return [];
 	}
 	if (auditEventIds !== undefined && auditEventIds.length !== rows.length) {
-		throw new MnemocyteError(
-			"insertMemories needs one audit event id per row.",
-			"DB",
-		);
+		throw new MnemocyteError({
+			message: "insertMemories needs one audit event id per row.",
+			code: "DB",
+		});
 	}
 	const eventIdChunks =
 		auditEventIds === undefined

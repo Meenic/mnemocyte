@@ -86,6 +86,7 @@ describe("Postgres single-statement writes", () => {
 				auditEnabled: false,
 			}),
 			"CONFLICT",
+			"CONSOLIDATION_CHANGED",
 		);
 	});
 

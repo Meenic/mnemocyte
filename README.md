@@ -117,7 +117,8 @@ Every memory belongs to a `namespace` and an `entityId`, plus an optional
 - **Setup:** `migrate`, `for`, and the `mnemocyte` command (`migrate`,
   `check`, `sql`)
 
-Errors are `MnemocyteError` with a stable `code`. See the
+Errors are `MnemocyteError` with a stable `code` and, for `CONFIG`,
+`CONFLICT` and `MIGRATION`, a `reason`. See the
 [API reference](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/api.md).
 
 ## Documentation

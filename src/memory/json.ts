@@ -1,4 +1,4 @@
-import { MnemocyteError } from "../errors.js";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import type { JsonObject, JsonValue } from "../types.js";
 import {
 	MAX_METADATA_BYTES,
@@ -14,11 +14,11 @@ export type OwnedJsonObject = JsonObject & {
 };
 
 function invalidJsonValue(path: string, cause?: unknown): MnemocyteError {
-	return new MnemocyteError(
-		`${path} must contain only JSON-compatible value data.`,
-		"VALIDATION",
-		cause,
-	);
+	return new MnemocyteError({
+		message: `${path} must contain only JSON-compatible value data.`,
+		code: "VALIDATION",
+		cause: cause,
+	});
 }
 
 function cloneJsonValue(
@@ -49,10 +49,10 @@ function cloneJsonValue(
 	// `ancestors` holds the containers above this one, so its size is the
 	// nesting depth of this value minus one.
 	if (ancestors.size >= maxDepth) {
-		throw new MnemocyteError(
-			`${path} must be nested at most ${maxDepth} levels deep.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${path} must be nested at most ${maxDepth} levels deep.`,
+			code: "VALIDATION",
+		});
 	}
 
 	ancestors.add(value);
@@ -122,7 +122,7 @@ export function cloneJsonObject(
 			Number.POSITIVE_INFINITY,
 		) as OwnedJsonObject;
 	} catch (error) {
-		if (error instanceof MnemocyteError) {
+		if (isMnemocyteError(error)) {
 			throw error;
 		}
 		throw invalidJsonValue(path, error);
@@ -148,16 +148,16 @@ export function snapshotMetadata(value: unknown): OwnedJsonObject {
 			MAX_METADATA_DEPTH,
 		) as OwnedJsonObject;
 	} catch (error) {
-		if (error instanceof MnemocyteError) {
+		if (isMnemocyteError(error)) {
 			throw error;
 		}
 		throw invalidJsonValue("metadata", error);
 	}
 	if (utf8Length(JSON.stringify(cloned)) > MAX_METADATA_BYTES) {
-		throw new MnemocyteError(
-			`metadata must be at most ${MAX_METADATA_BYTES} bytes as JSON.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `metadata must be at most ${MAX_METADATA_BYTES} bytes as JSON.`,
+			code: "VALIDATION",
+		});
 	}
 	return cloned;
 }

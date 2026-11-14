@@ -166,6 +166,7 @@ describe("Postgres metadata validation", () => {
 		const error = await expectMnemocyteError(
 			client.add({ scope: testScope("alice"), content: "hello" }),
 			"CONFIG",
+			"DIMENSIONS_MISMATCH",
 		);
 		expect(error.message).toContain("768");
 		expect(error.message).toContain("1536");
@@ -186,6 +187,7 @@ describe("Postgres metadata validation", () => {
 		const rememberError = await expectMnemocyteError(
 			client.add({ scope: testScope("alice"), content: "hello" }),
 			"CONFIG",
+			"MODEL_MISMATCH",
 		);
 		expect(rememberError.message).toContain("configured-model");
 		expect(rememberError.message).toContain("recorded-model");
@@ -195,6 +197,7 @@ describe("Postgres metadata validation", () => {
 				memories: [{ content: "batch" }],
 			}),
 			"CONFIG",
+			"MODEL_MISMATCH",
 		);
 		expect(embedCalls).toEqual([]);
 		expect(fake.getExecuteCount()).toBe(0);
@@ -213,6 +216,7 @@ describe("Postgres metadata validation", () => {
 		await expectMnemocyteError(
 			client.search({ scope: testScope("alice"), query: "hello" }),
 			"CONFIG",
+			"MODEL_MISMATCH",
 		);
 		expect(embedCalls).toEqual([]);
 		expect(fake.getExecuteCount()).toBe(0);
@@ -231,6 +235,7 @@ describe("Postgres metadata validation", () => {
 		await expectMnemocyteError(
 			client.findDuplicates({ scope: testScope("alice") }),
 			"CONFIG",
+			"MODEL_MISMATCH",
 		);
 		expect(embedCalls).toEqual([]);
 		expect(fake.getExecuteCount()).toBe(0);
@@ -287,6 +292,7 @@ describe("Postgres metadata validation", () => {
 		await expectMnemocyteError(
 			client.search({ scope: testScope("alice"), query: "hello" }),
 			"CONFIG",
+			"MODEL_MISMATCH",
 		);
 		expect(fake.getMeta()?.embeddingModel).toBe("historical-model");
 		expect(embedCalls).toEqual([]);
@@ -306,6 +312,7 @@ describe("Postgres metadata validation", () => {
 		const error = await expectMnemocyteError(
 			client.findDuplicates({ scope: testScope("alice") }),
 			"MIGRATION",
+			"MIXED_MODELS",
 		);
 		expect(error.message).toContain("multiple");
 		expect(fake.getMeta()?.embeddingModel).toBeNull();
@@ -346,6 +353,7 @@ describe("Postgres metadata validation", () => {
 			const error = await expectMnemocyteError(
 				client.search({ scope: testScope("alice"), query: "hello" }),
 				"MIGRATION",
+				"SCHEMA_MISSING",
 			);
 			expect(error.message).toContain("Run npx mnemocyte migrate");
 			expect(error.message).not.toContain(".sql");
@@ -365,6 +373,7 @@ describe("Postgres metadata validation", () => {
 		const error = await expectMnemocyteError(
 			client.search({ scope: testScope("alice"), query: "hello" }),
 			"MIGRATION",
+			"INSTALLATION_INVALID",
 		);
 		expect(error.message).toContain('no "installation" row');
 		expect(error.message).not.toContain("mnemocyte migrate");
@@ -384,6 +393,7 @@ describe("Postgres metadata validation", () => {
 		await expectMnemocyteError(
 			migrationClient.search({ scope: testScope("alice"), query: "hello" }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 
 		const dbFailure = createFakeHandle({

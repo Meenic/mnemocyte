@@ -34,7 +34,11 @@ function cancelQuietly(query: CancelableQuery<unknown>): void {
 }
 
 function abortedError(signal: AbortSignal): MnemocyteError {
-	return new MnemocyteError("Operation was aborted.", "ABORTED", signal.reason);
+	return new MnemocyteError({
+		message: "Operation was aborted.",
+		code: "ABORTED",
+		cause: signal.reason,
+	});
 }
 
 async function awaitCancelableQuery<T>(

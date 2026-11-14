@@ -743,18 +743,20 @@ fusion weights must not both be 0. Invalid values throw `"CONFIG"`.
 
 ## Errors
 
-Every method throws `MnemocyteError`. Branch on `code`, never on the message;
-`isMnemocyteError(error)` narrows an `unknown`. `cause` holds the underlying
-driver or provider error when there is one.
+Every method throws `MnemocyteError`. Branch on `code` and `reason`, never on
+the message. `isMnemocyteError(error)` narrows an `unknown`; it checks a
+`Symbol.for("mnemocyte.error")` brand rather than `instanceof`, so it also
+recognizes errors from a second installed copy of the package. `cause` holds
+the underlying driver or provider error when there is one.
 
 ```ts
 import { isMnemocyteError } from "mnemocyte";
 
 try {
-  await memory.search({ scope, query });
+  await memory.update({ scope, id, key: "favorite-color" });
 } catch (error) {
-  if (isMnemocyteError(error) && error.code === "TIMEOUT") {
-    // retry later
+  if (isMnemocyteError(error) && error.reason === "KEY_IN_USE") {
+    // another memory in this scope already has that key
   }
   throw error;
 }
@@ -762,15 +764,48 @@ try {
 
 | Code | Thrown when |
 |---|---|
-| `CONFIG` | Invalid client configuration (including `namespace`), or the embedder (or `migrate`'s `dimensions`) does not match the Postgres installation. |
+| `CONFIG` | Invalid configuration, or the embedder does not match the Postgres installation. Has a `reason`. |
 | `VALIDATION` | Invalid method input, including a missing or malformed scope. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. A provider's error status throws a `ProviderError` with `status` and the response body as `cause` (see [embedders.md](./embedders.md#provider-errors)). |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
 | `ABORTED` | The caller's `AbortSignal` fired. |
 | `NOT_FOUND` | A referenced memory is not visible at the scope. |
-| `CONFLICT` | A delete or consolidation conflicts with a consolidation link, or an update's key is already used. |
-| `MIGRATION` | Mnemocyte tables or columns are missing, the installation holds mixed models, or `migrate` could not apply a migration. |
+| `CONFLICT` | A mutation conflicts with a key or a consolidation link. Has a `reason`. |
+| `MIGRATION` | The schema, its metadata or pgvector is not usable. Has a `reason`. |
 | `DB` | Any other database failure. |
+
+`reason` is set on every `CONFIG`, `CONFLICT` and `MIGRATION` error and is
+`undefined` on the other codes:
+
+| Code | Reason | Thrown when |
+|---|---|---|
+| `CONFIG` | `INVALID_OPTION` | An option is missing, malformed or unknown (including `namespace`), the client or executor is not supported, or `migrate`'s `dimensions` differs from the client's embedder. |
+| | `DIMENSIONS_MISMATCH` | The embedder's dimensions, or `migrate`'s `dimensions`, differ from the installation's. |
+| | `MODEL_MISMATCH` | The embedder's model differs from the one the installation recorded. |
+| `CONFLICT` | `KEY_IN_USE` | An update's key is already used in the memory's scope. |
+| | `HAS_DEPENDENTS` | `delete` with `dependents: "reject"` (the default), `deleteScope` or `prune` would remove a memory that others are consolidated into. |
+| | `HIDDEN_DEPENDENTS` | `dependents: "restore"` or `"delete"` meets a memory consolidated into the target that is not visible at the scope. |
+| | `CONSOLIDATION_CHANGED` | `consolidate`'s survivor is no longer active, or a superseded memory already belongs to another survivor. |
+| `MIGRATION` | `SCHEMA_MISSING` | Mnemocyte tables or columns are missing or out of date. Run `migrate`. |
+| | `SCHEMA_UNRECOGNIZED` | The tables match no migration, or `mnemocyte_migrations` has gaps. |
+| | `SCHEMA_NEWER` | A newer Mnemocyte migrated the database. |
+| | `INSTALLATION_INVALID` | The `mnemocyte_meta` installation row is missing or holds a value Mnemocyte cannot use. |
+| | `MIXED_MODELS` | Stored memories hold more than one embedding model. |
+| | `PGVECTOR_UNAVAILABLE` | pgvector is missing, older than 0.8.0, or cannot be created. |
+| | `MIGRATION_FAILED` | A migration failed and was rolled back. |
+
+`new MnemocyteError({ message, code, reason, cause })` takes one object, for
+custom embedders and stores; `CONFIG`, `CONFLICT` and `MIGRATION` require a
+`reason` of that code.
+
+### Stability
+
+From 1.0, a minor release may add members to these unions, so a `switch`
+over them needs a `default` branch: `MnemocyteErrorCode`,
+`MnemocyteErrorReason`, `MnemocyteOperation` (observability events),
+`MnemocyteBackend` and `AuditEventType`. The other unions (`MemoryKind`,
+`ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
+`MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
 
 ## Upgrading from 0.5
 

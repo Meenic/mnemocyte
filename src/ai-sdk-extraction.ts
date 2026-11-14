@@ -136,7 +136,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function configError(name: string, message: string): MnemocyteError {
-	return new MnemocyteError(`${name} ${message}`, "CONFIG");
+	return new MnemocyteError({
+		message: `${name} ${message}`,
+		code: "CONFIG",
+		reason: "INVALID_OPTION",
+	});
 }
 
 function isModel(value: unknown): value is LanguageModel {
@@ -470,10 +474,16 @@ export async function extractMemories(
 		);
 	}
 	if (!Array.isArray(prompt)) {
-		throw new MnemocyteError(`${name} prompt must be an array.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${name} prompt must be an array.`,
+			code: "VALIDATION",
+		});
 	}
 	if (typeof text !== "string") {
-		throw new MnemocyteError(`${name} text must be a string.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${name} text must be a string.`,
+			code: "VALIDATION",
+		});
 	}
 	return runExtraction({
 		...resolveExtractionOptions(name, input, [
@@ -554,11 +564,11 @@ export async function runExtraction(
 		});
 	} catch (error) {
 		if (timer.aborted && input.signal?.aborted !== true) {
-			throw new MnemocyteError(
-				`extractMemories timed out after ${timeoutMs} ms.`,
-				"TIMEOUT",
-				error,
-			);
+			throw new MnemocyteError({
+				message: `extractMemories timed out after ${timeoutMs} ms.`,
+				code: "TIMEOUT",
+				cause: error,
+			});
 		}
 		throw error;
 	}

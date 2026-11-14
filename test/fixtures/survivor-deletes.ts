@@ -67,10 +67,12 @@ export async function verifySurvivorDeletes(
 		await expectMnemocyteError(
 			client.delete({ scope, id: survivor.id }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 		await expectMnemocyteError(
 			client.delete({ scope, id: survivor.id, dependents: "reject" }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 		expect(await idsOf(client, scope)).toEqual([survivor.id, loser.id].sort());
 		// Without dependents every policy deletes just the memory.
@@ -128,6 +130,7 @@ export async function verifySurvivorDeletes(
 		await expectMnemocyteError(
 			client.delete({ scope, id: outer.id }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 		await expect(
 			client.delete({ scope, id: outer.id, dependents: "delete" }),
@@ -158,6 +161,7 @@ export async function verifySurvivorDeletes(
 			await expectMnemocyteError(
 				client.delete({ scope: shared, id: survivor.id, dependents }),
 				"CONFLICT",
+				dependents === "reject" ? "HAS_DEPENDENTS" : "HIDDEN_DEPENDENTS",
 			);
 		}
 		await expect(

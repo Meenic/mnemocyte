@@ -217,7 +217,8 @@ uses top-level `await`, so `dist/` must not.
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
 `listAuditLog`, `pruneAuditLog`, `stats`, `consolidate`, `for` and the
-deprecated `experimental.consolidate` alias (removed in 1.0). There is no
+deprecated `experimental.consolidate` alias (removed in 1.0), plus
+`experimental.findDuplicatesPage`. There is no
 `close()`.
 `for(scope)` returns a `BoundMemoryClient` with the same methods minus
 `scope`, `allNamespaces` and `for`, plus a read-only `scope`.
@@ -397,7 +398,11 @@ Vitest has three projects (`vitest.config.ts`):
   median and p90 time, mean buffers, recall and the plans used.
   `findDuplicates` on the mid entity is measured under both orderings too,
   with the scope index and without it (its HNSW path, one warm-up and 3
-  runs per ordering, since each run takes about 30 s). Warm rows report the
+  runs per ordering, since each run takes about 30 s).
+  `experimental.findDuplicatesPage` walks the mid and large entities
+  through the library (wall clock per page and in total, pairs against the
+  exact ones for mid and against one `findDuplicates` call for large), and
+  measures the middle page with and without its re-check. Warm rows report the
   slowest run next to the median. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the

@@ -191,10 +191,12 @@ it.
   `findDuplicates` on its HNSW path (scope index dropped) against
   `strict_order`, and adopted it without a CTE: 187 → 200 of 200 pairs,
   30.1 → 21.2 s, same plan (decision 34).
-- [ ] `feat/duplicates-chunks`: `findDuplicates` over a large scope in
+- [x] `feat/duplicates-chunks`: `findDuplicates` over a large scope in
   chunks (a cursor over the memories it compares, or a time budget), since
   a 30,000-memory scope takes minutes on one statement and cannot be
-  resumed (features/maintenance.md).
+  resumed (features/maintenance.md). Landed as
+  `experimental.findDuplicatesPage` with a cursor and `batchSize`
+  (decision 35).
 - [ ] `feat/cli`: a `mnemocyte` bin that loads the app's `memory.ts` (root,
   `lib/`, `src/`, `src/lib/` or `--config`) for its store and embedder.
   `migrate` asks before enabling pgvector (`--yes` for CI) and supports

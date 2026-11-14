@@ -12,6 +12,7 @@ import {
 	countPruneMatches,
 	deleteMemory as deleteMemoryQuery,
 	deleteScope as deleteScopeQuery,
+	findDuplicatePage as findDuplicatePageQuery,
 	findDuplicatePairs as findDuplicatePairsQuery,
 	getMemoryById,
 	getMemoryByKey as getMemoryByKeyQuery,
@@ -597,6 +598,27 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 							similarity: Math.max(0, Math.min(1, row.similarity)),
 						}) satisfies StoreDuplicatePair,
 				);
+			});
+		},
+		async findDuplicatePage(input, options) {
+			return runPostgresOperation(async () => {
+				const page = await findDuplicatePageQuery(
+					client,
+					input,
+					options?.signal,
+				);
+				return {
+					pairs: page.pairs.map(
+						(row) =>
+							({
+								a: rowToMemory(row.a),
+								b: rowToMemory(row.b),
+								similarity: Math.max(0, Math.min(1, row.similarity)),
+							}) satisfies StoreDuplicatePair,
+					),
+					compared: page.compared,
+					lastId: page.lastId,
+				};
 			});
 		},
 		async listAuditLog(input, options) {

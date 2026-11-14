@@ -469,6 +469,96 @@ async function duplicates(
 	return { measurement: m };
 }
 
+/**
+ * `experimental.findDuplicatesPage` over the whole entity through the
+ * library, one page after another with the default batch size, timed by
+ * wall clock (round trip included). Then the middle page's statement under
+ * `EXPLAIN (ANALYZE, BUFFERS)`, and the same statement with the re-check
+ * that keeps a cross-page pair once short-circuited (`true OR NOT EXISTS`,
+ * so its parameters keep their types), which is what the re-check costs.
+ * Returns the pairs of the run, best first, by pair key.
+ */
+async function duplicatePages(
+	ctx: BenchContext,
+	client: Client,
+	section: string,
+	entityId: string,
+): Promise<string[]> {
+	const times: number[] = [];
+	const pairs: Array<{ key: string; similarity: number }> = [];
+	const cursors: Array<string | undefined> = [];
+	let compared = 0;
+	let cursor: string | undefined;
+	const started = performance.now();
+	do {
+		cursors.push(cursor);
+		const pageStarted = performance.now();
+		const page = await client.memory.experimental.findDuplicatesPage({
+			scope: { entityId },
+			...(cursor === undefined ? {} : { cursor }),
+		});
+		times.push(performance.now() - pageStarted);
+		compared += page.compared;
+		for (const pair of page.pairs) {
+			pairs.push({
+				key: `${pair.a.id} ${pair.b.id}`,
+				similarity: pair.similarity,
+			});
+		}
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor !== undefined);
+	const total = performance.now() - started;
+	const unique = new Set(pairs.map((pair) => pair.key)).size;
+	ctx.report.add(section, {
+		case: `findDuplicatesPage, ${entityId}`,
+		variant: "all pages (wall clock)",
+		note: `${times.length} pages, ${compared} memories compared; page median ${(percentile(times, 0.5) / 1000).toFixed(2)} s, slowest ${(Math.max(...times) / 1000).toFixed(2)} s; total ${(total / 1000).toFixed(1)} s; ${pairs.length} pairs, ${unique} distinct`,
+	});
+	expect(unique).toBe(pairs.length);
+
+	client.recorder.clear();
+	const middle = cursors[Math.floor((cursors.length - 1) / 2)];
+	await client.memory.experimental.findDuplicatesPage({
+		scope: { entityId },
+		...(middle === undefined ? {} : { cursor: middle }),
+	});
+	const { log } = client.recorder;
+	const settings = findStatement(log, "hnsw.iterative_scan");
+	const statement = findStatement(log, "compared AS MATERIALIZED");
+	const m = await measure(ctx.db, statement, {
+		prelude: [settings],
+		runs: HNSW_DUPLICATE_RUNS,
+	});
+	ctx.report.add(section, {
+		case: `findDuplicatesPage, ${entityId}`,
+		variant: "middle page",
+		measurement: m,
+	});
+	if (ctx.scale === 1 && entityId === LARGE) {
+		expect(m.indexes).toContain(INDEX.hnsw);
+	}
+	const owner = /neighbor_id > from_id(\s*OR NOT EXISTS)/;
+	if (!owner.test(statement.sql)) {
+		throw new Error(`No re-check in: ${statement.sql}`);
+	}
+	ctx.report.add(section, {
+		case: `findDuplicatesPage, ${entityId}`,
+		variant: "middle page, no re-check",
+		measurement: await measure(
+			ctx.db,
+			{ sql: statement.sql.replace(owner, "true$1"), params: statement.params },
+			{ prelude: [settings], runs: HNSW_DUPLICATE_RUNS },
+		),
+	});
+	return pairs
+		.sort(
+			(x, y) =>
+				y.similarity - x.similarity ||
+				(x.key < y.key ? -1 : x.key > y.key ? 1 : 0),
+		)
+		.map((pair) => pair.key);
+}
+
 /** Search and duplicates on `halfvec(3072)`. */
 export async function halfvecPhase(ctx: BenchContext): Promise<void> {
 	const section = "halfvec(3072)";
@@ -741,6 +831,36 @@ export async function vectorPhase(ctx: BenchContext): Promise<void> {
 		}
 	}
 	await duplicates(ctx, client, section, LARGE, { runs: 1, recall: false });
+
+	// Pages: each call bounded, every pair once. The mid entity's pairs are
+	// compared with the exact ones; the large entity's best 1,000 with one
+	// findDuplicates call, the most it returns.
+	{
+		const pages = await duplicatePages(ctx, client, section, MID);
+		ctx.report.add(section, {
+			case: `findDuplicatesPage, ${MID}`,
+			variant: "recall",
+			note: `${pages.length} pairs; exact (index scans off): ${exact ?? "not measured"}`,
+		});
+	}
+	{
+		const pages = await duplicatePages(ctx, client, section, LARGE);
+		const started = performance.now();
+		const whole = await client.memory.findDuplicates({
+			scope: { entityId: LARGE },
+			limit: 1000,
+		});
+		const ms = performance.now() - started;
+		const best = new Set(pages.slice(0, whole.length));
+		const shared = whole.filter((pair) =>
+			best.has(`${pair.a.id} ${pair.b.id}`),
+		).length;
+		ctx.report.add(section, {
+			case: `findDuplicatesPage, ${LARGE}`,
+			variant: "against findDuplicates",
+			note: `${pages.length} pairs in all pages; findDuplicates (limit 1000, ${(ms / 1000).toFixed(1)} s wall clock) returned ${whole.length}, ${shared} of them among the pages' best ${best.size}`,
+		});
+	}
 
 	// Deletes: the superseded_by index serves the foreign-key check and the
 	// dependents check.

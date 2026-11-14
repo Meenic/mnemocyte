@@ -1016,11 +1016,14 @@ export interface DuplicateSearchInput {
 	includeExpired?: boolean;
 }
 
-/** The duplicate-search filters for one side of a pair, `a` or `b`. */
+/**
+ * The duplicate-search filters for one table alias: a side of a pair, `a`
+ * or `b`, or `c` for the neighbors a page re-checks.
+ */
 function duplicateFilters(
 	params: SqlParams,
-	input: DuplicateSearchInput,
-	table: "a" | "b",
+	input: Omit<DuplicateSearchInput, "limit">,
+	table: "a" | "b" | "c",
 ): string {
 	const clauses: string[] = [
 		visibilityConditions(params, input.visibility, table),
@@ -1121,6 +1124,138 @@ export async function findDuplicatePairs(
 		b: toMemoryRow(extractPrefixedMemoryRow(row, "b")),
 		similarity: Number(row.similarity) || 0,
 	}));
+}
+
+export interface DuplicatePageInput
+	extends Omit<DuplicateSearchInput, "limit"> {
+	batchSize: number;
+	afterId?: string;
+}
+
+/**
+ * One page of {@link findDuplicatePairs}: the `compared` CTE takes the
+ * first `batchSize` memories that pass the filters after `after`, in id
+ * order, and each gets the same `LATERAL` nearest-neighbor subquery over
+ * every memory that passes them. A neighbor with the larger id gives a pair
+ * this page owns. A neighbor `n` with the smaller id was compared on an
+ * earlier page (or this one), so the pair is kept only when `n`'s own
+ * nearest neighbors, found again with the same subquery, do not include
+ * the compared memory; that re-check runs only for pairs at or above the
+ * threshold. The statement returns one row per pair, best first, and on
+ * every row the number of memories compared and the last id; a page with
+ * no pairs returns one row without a pair.
+ */
+export async function findDuplicatePage(
+	db: SqlExecutor,
+	input: DuplicatePageInput,
+	signal?: AbortSignal,
+): Promise<{
+	pairs: Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>;
+	compared: number;
+	lastId: string | null;
+}> {
+	const params = createSqlParams();
+	const outer = duplicateFilters(params, input, "a");
+	const after =
+		input.afterId === undefined
+			? ""
+			: `AND a.id > ${params.uuid(input.afterId)}`;
+	const batchSize = params.add(input.batchSize);
+	const inner = duplicateFilters(params, input, "b");
+	const recheck = duplicateFilters(params, input, "c");
+	const neighbors = params.add(input.neighbors);
+	const text = `WITH compared AS MATERIALIZED (
+			SELECT a.id, a.embedding
+			FROM mnemocyte_memories AS a
+			WHERE ${outer}
+				${after}
+			ORDER BY a.id
+			LIMIT ${batchSize}
+		),
+		found AS (
+			SELECT
+				compared.id AS from_id,
+				neighbor.id AS neighbor_id,
+				1 - neighbor.distance AS similarity
+			FROM compared
+			CROSS JOIN LATERAL (
+				SELECT b.id, b.embedding <=> compared.embedding AS distance
+				FROM mnemocyte_memories AS b
+				WHERE ${inner}
+					AND b.id <> compared.id
+				ORDER BY distance
+				LIMIT ${neighbors}
+			) AS neighbor
+		),
+		owned AS (
+			SELECT
+				LEAST(from_id, neighbor_id) AS a_id,
+				GREATEST(from_id, neighbor_id) AS b_id,
+				max(similarity) AS similarity
+			FROM found
+			WHERE similarity >= ${params.add(input.threshold)}
+				AND (
+					neighbor_id > from_id
+					OR NOT EXISTS (
+						SELECT 1
+						FROM mnemocyte_memories AS n
+						CROSS JOIN LATERAL (
+							SELECT c.id
+							FROM mnemocyte_memories AS c
+							WHERE ${recheck}
+								AND c.id <> n.id
+							ORDER BY c.embedding <=> n.embedding
+							LIMIT ${neighbors}
+						) AS back
+						WHERE n.id = found.neighbor_id
+							AND back.id = found.from_id
+					)
+				)
+			GROUP BY 1, 2
+		),
+		page AS (
+			SELECT
+				(SELECT count(*) FROM compared) AS compared_count,
+				(SELECT id FROM compared ORDER BY id DESC LIMIT 1) AS last_id
+		)
+		SELECT
+			page.compared_count AS "comparedCount",
+			page.last_id::text AS "lastId",
+			owned.similarity AS "similarity",
+			${selectMemoryColumns({ table: "a", prefix: "a" })},
+			${selectMemoryColumns({ table: "b", prefix: "b" })}
+		FROM page
+		LEFT JOIN owned ON true
+		LEFT JOIN mnemocyte_memories AS a ON a.id = owned.a_id
+		LEFT JOIN mnemocyte_memories AS b ON b.id = owned.b_id
+		ORDER BY owned.similarity DESC, owned.a_id, owned.b_id`;
+	const [, rows = []] = await runAtomically(
+		db,
+		[
+			{
+				sql: `SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true),
+				set_config('hnsw.ef_search', $1, true)`,
+				params: [String(hnswEfSearch(input.neighbors + 1))],
+			},
+			{ sql: text, params: params.values },
+		],
+		signal ? { signal } : undefined,
+	);
+	const first = rows[0];
+	return {
+		pairs: rows
+			.filter((row) => row.similarity !== null && row.similarity !== undefined)
+			.map((row) => ({
+				a: toMemoryRow(extractPrefixedMemoryRow(row, "a")),
+				b: toMemoryRow(extractPrefixedMemoryRow(row, "b")),
+				similarity: Number(row.similarity) || 0,
+			})),
+		compared: Number(first?.comparedCount ?? 0),
+		lastId:
+			typeof first?.lastId === "string" && first.lastId !== ""
+				? first.lastId
+				: null,
+	};
 }
 
 export async function loadConsolidationTargets(

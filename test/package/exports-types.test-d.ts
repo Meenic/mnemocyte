@@ -22,6 +22,7 @@ import type {
 	AuditLogCursor,
 	BoundAddInput,
 	BoundExperimentalMemoryClient,
+	BoundFindDuplicatesPageInput,
 	BoundGetInput,
 	BoundMemoryClient,
 	ConsolidateInput,
@@ -29,12 +30,14 @@ import type {
 	ContextFormat,
 	ContextInput,
 	DependentsPolicy,
+	DuplicatePage,
 	DuplicatePair,
 	Embedder,
 	EmbeddingPurpose,
 	EmbedOptions,
 	ExperimentalMemoryClient,
 	FindDuplicatesInput,
+	FindDuplicatesPageInput,
 	JsonObject,
 	JsonValue,
 	ListAuditLogInput,
@@ -451,6 +454,25 @@ const consolidateResult: ConsolidateResult = {
 	supersededIds: ["mem_b"],
 };
 const experimental: ExperimentalMemoryClient = client.experimental;
+const duplicatePageInput: FindDuplicatesPageInput = {
+	scope,
+	threshold: 0.95,
+	neighbors: 10,
+	batchSize: 500,
+	cursor: "cursor",
+};
+const duplicatePage: Promise<DuplicatePage> =
+	experimental.findDuplicatesPage(duplicatePageInput);
+void duplicatePage.then(
+	(page) =>
+		[page.pairs, page.nextCursor, page.compared] satisfies [
+			DuplicatePair[],
+			string | null,
+			number,
+		],
+);
+// @ts-expect-error A page takes no limit; it returns every pair it owns.
+void experimental.findDuplicatesPage({ scope, limit: 10 });
 const consolidated: Promise<ConsolidateResult> =
 	client.consolidate(consolidate);
 const dependentsPolicy: DependentsPolicy = "restore";
@@ -649,6 +671,11 @@ void boundConsolidated;
 void bound.delete({ id: "a", dependents: "reject" });
 const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
 void boundExperimental.consolidate({ survivorId: "a", supersededIds: ["b"] });
+const boundPageInput: BoundFindDuplicatesPageInput = { batchSize: 100 };
+void boundExperimental.findDuplicatesPage(boundPageInput);
+void boundExperimental.findDuplicatesPage();
+// @ts-expect-error A bound client takes no scope.
+void boundExperimental.findDuplicatesPage({ scope });
 const boundMigrate: MigrateInput = { memory: bound };
 // @ts-expect-error A bound client takes no scope.
 void bound.add({ scope, content: "content" });

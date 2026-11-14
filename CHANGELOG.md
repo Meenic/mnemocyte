@@ -22,6 +22,13 @@ behavioural changes documented in their entries.
   `DependentsPolicy` type is exported.
 - **`neighbors` on `findDuplicates`.** How many nearest memories each
   memory is compared with (default 10, at most 100).
+- **`experimental.findDuplicatesPage`.** `findDuplicates` in pages for
+  large scopes: each call compares the next `batchSize` memories (default
+  500, at most 1,000) with the whole scope and returns
+  `{ pairs, nextCursor, compared }`. A run of pages returns each pair once;
+  pairs are sorted within a page. Bound clients have it too. Exported types:
+  `FindDuplicatesPageInput`, `BoundFindDuplicatesPageInput`,
+  `DuplicatePage`.
 - **`observability.onError`.** Receives `{ error, event }` when `onEvent`
   throws or rejects.
 - **`pruneAuditLog`.** Deletes audit events older than `before` for a scope

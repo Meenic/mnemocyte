@@ -8,6 +8,7 @@ import type {
 	DependentsPolicy,
 	Embedder,
 	FindDuplicatesInput,
+	FindDuplicatesPageInput,
 	ImportanceLevel,
 	ListAuditLogInput,
 	MemoryKind,
@@ -23,11 +24,13 @@ import type {
 import {
 	DEFAULT_AUDIT_PRUNE_BATCH,
 	DEFAULT_DEPENDENTS_POLICY,
+	DEFAULT_DUPLICATE_BATCH_SIZE,
 } from "./defaults.js";
 import type { OwnedJsonObject } from "./json.js";
 import {
 	MAX_AUDIT_PRUNE_BATCH,
 	MAX_CONTENT_LENGTH,
+	MAX_DUPLICATE_BATCH_SIZE,
 	MAX_DUPLICATE_NEIGHBORS,
 	MAX_KEY_BYTES,
 	MAX_LIMIT,
@@ -838,6 +841,39 @@ export function validatePruneAuditLogInput(
 export function validateFindDuplicatesInput(
 	input: FindDuplicatesInput,
 ): StoreVisibility {
+	const visibility = validateDuplicateSearch(input);
+	if (input.limit !== undefined) {
+		assertLimit(input.limit);
+	}
+	return visibility;
+}
+
+/**
+ * Validate a {@link FindDuplicatesPageInput} and return its visibility and
+ * batch size. The cursor is decoded by the caller.
+ */
+export function validateFindDuplicatesPageInput(
+	input: FindDuplicatesPageInput,
+): { visibility: StoreVisibility; batchSize: number } {
+	const visibility = validateDuplicateSearch(input);
+	const batchSize = input.batchSize ?? DEFAULT_DUPLICATE_BATCH_SIZE;
+	if (
+		!Number.isInteger(batchSize) ||
+		batchSize < 1 ||
+		batchSize > MAX_DUPLICATE_BATCH_SIZE
+	) {
+		throw new MnemocyteError(
+			`batchSize must be an integer from 1 to ${MAX_DUPLICATE_BATCH_SIZE}.`,
+			"VALIDATION",
+		);
+	}
+	return { visibility, batchSize };
+}
+
+/** The fields `findDuplicates` and `findDuplicatesPage` share. */
+function validateDuplicateSearch(
+	input: Omit<FindDuplicatesInput, "limit">,
+): StoreVisibility {
 	const visibility = validateVisibility(input);
 	if (input.threshold !== undefined) {
 		if (
@@ -850,9 +886,6 @@ export function validateFindDuplicatesInput(
 				"VALIDATION",
 			);
 		}
-	}
-	if (input.limit !== undefined) {
-		assertLimit(input.limit);
 	}
 	if (
 		input.neighbors !== undefined &&

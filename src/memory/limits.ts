@@ -41,6 +41,12 @@ export const MAX_SCOPE_FIELD_BYTES = 256;
  */
 export const MAX_DUPLICATE_NEIGHBORS = 100;
 
+/**
+ * `batchSize` of `findDuplicatesPage`: memories one page compares. With
+ * `neighbors` at its cap a page holds at most 100,000 candidate pairs.
+ */
+export const MAX_DUPLICATE_BATCH_SIZE = 1000;
+
 /** Memories in one `addMany` call; they are written in one transaction. */
 export const MAX_ADD_MANY = 1000;
 

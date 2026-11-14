@@ -16,6 +16,7 @@ import {
 } from "../fixtures/atomic-audit.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
+import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
 	verifyGetAndScopeValidation,
@@ -382,6 +383,15 @@ export function describeStoreContract(
 		test("nearest-neighbor duplicates", async () => {
 			const { memory, namespace } = client("knn");
 			await verifyKnnDuplicates(memory, (entityId, extra = {}) => ({
+				namespace,
+				entityId,
+				...extra,
+			}));
+		});
+
+		test("duplicate pages", async () => {
+			const { memory, namespace } = client("pages");
+			await verifyDuplicatePages(memory, (entityId, extra = {}) => ({
 				namespace,
 				entityId,
 				...extra,

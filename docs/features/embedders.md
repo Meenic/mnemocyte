@@ -60,7 +60,7 @@ created (`"CONFIG"`), with the shared helpers in the same file
 `resolveBoolean`, `resolveMaxBatch`, `resolveBaseUrl`).
 
 `createHttpEmbedder` is the OpenAI-shaped one behind `openaiEmbedder` and
-`openaiCompatibleEmbedder`: `POST {baseUrl}/embeddings`, and a response with
+`openaiCompatibleEmbedder`: `POST {baseURL}/embeddings`, and a response with
 exactly one array embedding per input with unique, in-range indexes, sorted
 by index (`parseIndexedEmbeddings`, which `voyageEmbedder` uses too).
 `aiSdkEmbedder` (below) calls the AI SDK instead. All of them build their
@@ -74,7 +74,7 @@ OpenAI, Azure OpenAI, Mistral, Together, Ollama, LM Studio, vLLM.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `baseUrl` | required | Absolute URL; trailing slashes are removed. |
+| `baseURL` | required | Absolute URL; trailing slashes are removed. |
 | `model` | required | Sent as `model`. |
 | `dimensions` | required | The vector length the server returns. |
 | `apiKey` | none | `Authorization: Bearer …`; no header without it. |
@@ -100,7 +100,7 @@ is `createHttpEmbedder` with OpenAI's defaults:
   (3072), `text-embedding-ada-002` (1536). The `3-*` models accept a
   `dimensions` override, which is then sent; unknown models require
   `dimensions`, which is sent too.
-- `baseUrl` defaults to `https://api.openai.com/v1`; `maxBatch` is passed
+- `baseURL` defaults to `https://api.openai.com/v1`; `maxBatch` is passed
   through. There are no purpose hints: OpenAI models are symmetric.
 
 ### `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder`
@@ -112,8 +112,8 @@ provider's request and response (decision 29 in
 
 | | Voyage | Cohere | Google (Gemini API) |
 |---|---|---|---|
-| Request | `POST {baseUrl}/embeddings` | `POST {baseUrl}/embed` | `POST {baseUrl}/models/{model}:batchEmbedContents` |
-| `baseUrl` default | `https://api.voyageai.com/v1` | `https://api.cohere.com/v2` | `https://generativelanguage.googleapis.com/v1beta` |
+| Request | `POST {baseURL}/embeddings` | `POST {baseURL}/embed` | `POST {baseURL}/models/{model}:batchEmbedContents` |
+| `baseURL` default | `https://api.voyageai.com/v1` | `https://api.cohere.com/v2` | `https://generativelanguage.googleapis.com/v1beta` |
 | Auth | `authorization: Bearer …` | `authorization: Bearer …` | `x-goog-api-key` |
 | Key default | `VOYAGE_API_KEY` | `COHERE_API_KEY` | `GEMINI_API_KEY` |
 | Texts | `input` | `texts` | one `requests[]` item per text: `model: "models/{id}"`, `content.parts[{ text }]` |

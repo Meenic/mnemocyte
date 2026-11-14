@@ -1,5 +1,6 @@
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
 import { isMnemocyteError, MnemocyteError } from "./errors.js";
+import { assertKnownKeys } from "./options.js";
 import type {
 	BoundMemoryClient,
 	ImportanceLevel,
@@ -22,7 +23,7 @@ export interface SearchMemoriesInput {
 	/** Most memories to return, 1–20. @defaultValue `5` */
 	limit?: number;
 	/** Only memories of these kinds. */
-	kinds?: MemoryKind[];
+	kinds?: readonly MemoryKind[];
 }
 
 /** A memory as the `searchMemories` tool returns it to the model. */
@@ -353,6 +354,7 @@ export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 			"CONFIG",
 		);
 	}
+	assertKnownKeys("memoryTools", options, ["memory"]);
 	const { memory } = options;
 	if (!isBoundClient(memory)) {
 		throw new MnemocyteError(

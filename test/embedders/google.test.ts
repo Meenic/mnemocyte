@@ -102,12 +102,12 @@ describe("googleEmbedder", () => {
 		});
 	});
 
-	test("sends taskType but no size for unknown models, and uses the baseUrl", async () => {
+	test("sends taskType but no size for unknown models, and uses the baseURL", async () => {
 		const embedder = googleEmbedder({
 			apiKey: "k",
 			model: "gemini-embedding-next",
 			dimensions: 1024,
-			baseUrl: "https://proxy.example/gemini/v1beta/",
+			baseURL: "https://proxy.example/gemini/v1beta/",
 			maxBatch: 10,
 		});
 		expect(embedder.maxBatch).toBe(10);

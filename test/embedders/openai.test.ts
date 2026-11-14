@@ -80,7 +80,7 @@ describe("openaiEmbedder", () => {
 		const embedder = openaiEmbedder({
 			apiKey: "explicit-key",
 			model: "text-embedding-3-small",
-			baseUrl: "https://example.test/v1",
+			baseURL: "https://example.test/v1",
 		});
 		const embeddings = await embedder.embed(["first", "second"], {
 			purpose: "document",

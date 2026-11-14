@@ -10,6 +10,31 @@ behavioural changes documented in their entries.
 
 ### Changed
 
+- **Breaking: unknown option keys throw `"CONFIG"`.** `createMemory`'s config
+  and its nested objects (`retrieval`, `retrieval.fusion`, `defaults`,
+  `provider` and the others), `postgresStore`, every embedder, and the AI SDK
+  functions (`aiSdkEmbedder`, `memoryMiddleware`, `withMemory`,
+  `memoryTools`, `extractMemories`, with `context` and `save`) reject a key
+  they do not take, instead of ignoring it. A misspelled `baseURL` used to
+  send texts and the API key to the provider's default endpoint. A key set
+  to `undefined` still counts as absent.
+- **Breaking: `baseUrl` is `baseURL`** in `openaiEmbedder`,
+  `openaiCompatibleEmbedder`, `voyageEmbedder`, `cohereEmbedder` and
+  `googleEmbedder`, the AI SDK's spelling. The old name throws an error that
+  names the new one.
+- **Breaking: the extraction `timeout` is `timeoutMs`**, in
+  `extractMemories` and `memoryMiddleware({ save })`, like
+  `provider.timeoutMs`.
+- **`kinds` and `tags` inputs take `readonly` arrays** in `add`, `update`,
+  `search`, `list`, `context`, `prune` and `findDuplicates`, and in the
+  `searchMemories` tool's input type. Plain arrays still work.
+
+  ```ts
+  // 0.8
+  openaiEmbedder({ model, baseUrl: "https://proxy.example/v1" });
+  // now
+  openaiEmbedder({ model, baseURL: "https://proxy.example/v1" });
+  ```
 - **Breaking: `listAuditLog` pages like `list`.** It returns
   `{ events, nextCursor }` instead of an array, and takes the opaque
   `nextCursor` back as `cursor`. `beforeCursor`, `afterCursor` and the

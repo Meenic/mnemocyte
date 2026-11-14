@@ -167,7 +167,7 @@ hook; `extractMemories` checks them on each call and rejects with
 | `model` | a non-blank string or an object; `generateText` resolves it | required |
 | `instructions` | a string of at most 4,000 characters | none |
 | `maxMemories` | an integer from 1 to 20 | 10 |
-| `timeout` | a positive integer, in ms | 30,000 |
+| `timeoutMs` | a positive integer, in ms | 30,000 |
 | `waitUntil` (middleware only) | a function | none |
 
 Unlike `withMemory`'s `model`, a `"provider/model"` string is accepted:
@@ -216,7 +216,7 @@ Unlike `withMemory`'s `model`, a `"provider/model"` string is accepted:
    id, so concurrent extractions of one fact end in one memory. An empty
    list writes nothing.
 
-One `AbortSignal.timeout(timeout)`, combined with the caller's `signal`
+One `AbortSignal.timeout(timeoutMs)`, combined with the caller's `signal`
 through `AbortSignal.any`, covers the search, the model call and the write.
 When the timer fired and the caller's signal did not, the error becomes a
 `"TIMEOUT"` `MnemocyteError` with the original as `cause`.

@@ -50,6 +50,10 @@ const embedder = {
 On Postgres, `model` and `dimensions` must match the installation (see
 [postgres.md](./postgres.md#one-embedding-model-per-installation)).
 
+Every embedder below throws `"CONFIG"` for an option it does not take. This
+matters most for the endpoint: `openaiEmbedder({ baseUrl })` is an error, not
+a call to api.openai.com. The option is `baseURL`, as in the AI SDK.
+
 ## `openaiEmbedder`
 
 ```ts
@@ -63,7 +67,7 @@ const embedder = openaiEmbedder({ model: "text-embedding-3-small" });
 | `model` | required | Embedding model id. |
 | `apiKey` | `process.env.OPENAI_API_KEY` | A missing key throws `"CONFIG"`. |
 | `dimensions` | the model's | Required for models the helper does not know. |
-| `baseUrl` | `https://api.openai.com/v1` | Another OpenAI endpoint, such as a proxy. |
+| `baseURL` | `https://api.openai.com/v1` | Another OpenAI endpoint, such as a proxy. |
 | `maxBatch` | 100 | Most texts per request. |
 
 Known models: `text-embedding-3-small` (1536), `text-embedding-3-large`
@@ -83,7 +87,7 @@ Mistral, Together, Ollama, LM Studio, vLLM and others.
 import { openaiCompatibleEmbedder } from "mnemocyte/embedders";
 
 const embedder = openaiCompatibleEmbedder({
-  baseUrl: "http://localhost:11434/v1",
+  baseURL: "http://localhost:11434/v1",
   model: "nomic-embed-text",
   dimensions: 768,
   purposes: {
@@ -95,7 +99,7 @@ const embedder = openaiCompatibleEmbedder({
 
 | Option | Default | Meaning |
 |---|---|---|
-| `baseUrl` | required | Requests go to `{baseUrl}/embeddings`. |
+| `baseURL` | required | Requests go to `{baseURL}/embeddings`. |
 | `model` | required | The model id as the server names it. |
 | `dimensions` | required | The length of the vectors the model returns. |
 | `apiKey` | none | Sent as `Authorization: Bearer …`. Local servers need none. |
@@ -150,7 +154,7 @@ const google = googleEmbedder({
 | `apiKey` | `VOYAGE_API_KEY`, `COHERE_API_KEY` or `GEMINI_API_KEY` | A missing key throws `"CONFIG"`. |
 | `dimensions` | the model's | A smaller size, for models that offer one (below). Required for models the helper does not know. |
 | `truncate` | `true` | Cut texts longer than the model's context instead of failing the request. |
-| `baseUrl` | the provider's API | Another endpoint, such as a proxy. |
+| `baseURL` | the provider's API | Another endpoint, such as a proxy. |
 | `maxBatch` | 100 (Cohere: 96) | Most texts per request. Cohere accepts at most 96. |
 
 Known models:

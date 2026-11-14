@@ -8,7 +8,7 @@ import {
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const BASE = {
-	baseUrl: "http://localhost:11434/v1/",
+	baseURL: "http://localhost:11434/v1/",
 	model: "nomic-embed-text",
 	dimensions: 2,
 } as const;
@@ -162,8 +162,8 @@ describe("openaiCompatibleEmbedder", () => {
 	});
 
 	test.each([
-		["a missing baseUrl", { ...BASE, baseUrl: "" }],
-		["a relative baseUrl", { ...BASE, baseUrl: "/v1" }],
+		["a missing baseURL", { ...BASE, baseURL: "" }],
+		["a relative baseURL", { ...BASE, baseURL: "/v1" }],
 		["a missing model", { ...BASE, model: " " }],
 		["zero dimensions", { ...BASE, dimensions: 0 }],
 		["a fractional maxBatch", { ...BASE, maxBatch: 1.5 }],

@@ -425,7 +425,7 @@ describe("extractMemories", () => {
 				memory: memory.for({ entityId: "alice" }),
 				prompt: [user("I live in Lisbon.")],
 				text: "Nice.",
-				timeout: 20,
+				timeoutMs: 20,
 			}),
 			"TIMEOUT",
 		);
@@ -445,7 +445,7 @@ describe("extractMemories", () => {
 			{ ...base, model: " " },
 			{ ...base, maxMemories: 0 },
 			{ ...base, maxMemories: 21 },
-			{ ...base, timeout: 0 },
+			{ ...base, timeoutMs: 0 },
 			{ ...base, instructions: 42 },
 		]) {
 			await expectMnemocyteError(call(input), "CONFIG");

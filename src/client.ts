@@ -4,6 +4,7 @@ import { createScopedClient } from "./memory/scope-binding.js";
 import { resolveStore } from "./memory/store-input.js";
 import {
 	assertEmbedder,
+	assertKnownConfigKeys,
 	validateDefaultNamespace,
 	validateProviderResilienceConfig,
 	validateRetrievalConfig,
@@ -51,6 +52,7 @@ export function createMemory(
 ): MemoryClient<true>;
 export function createMemory(config: MemoryConfig): MemoryClient;
 export function createMemory(config: MemoryConfig): MemoryClient<boolean> {
+	assertKnownConfigKeys(config);
 	assertEmbedder(config.embedder);
 	const namespace = validateDefaultNamespace(config.namespace);
 	validateRetrievalConfig(config.retrieval);

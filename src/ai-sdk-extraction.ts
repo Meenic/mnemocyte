@@ -1,6 +1,7 @@
 import { generateText, jsonSchema, type LanguageModel, Output } from "ai";
 import type { MemoryPrompt } from "./ai-sdk-middleware.js";
 import { MnemocyteError } from "./errors.js";
+import { assertKnownKeys } from "./options.js";
 import type {
 	BoundMemoryClient,
 	ImportanceLevel,
@@ -29,7 +30,7 @@ export interface ExtractMemoriesOptions {
 	 * Milliseconds the whole extraction (search, model call and write) may
 	 * take before it fails with `"TIMEOUT"`. @defaultValue `30000`
 	 */
-	readonly timeout?: number;
+	readonly timeoutMs?: number;
 }
 
 /** Input of {@link extractMemories}. */
@@ -68,7 +69,7 @@ export interface ResolvedExtractionOptions {
 	readonly model: LanguageModel;
 	readonly instructions: string | undefined;
 	readonly maxMemories: number;
-	readonly timeout: number;
+	readonly timeoutMs: number;
 }
 
 /** `source` of every memory extraction writes. */
@@ -151,8 +152,15 @@ function isModel(value: unknown): value is LanguageModel {
 export function resolveExtractionOptions(
 	name: string,
 	options: Record<string, unknown>,
+	otherKeys: readonly string[],
 ): ResolvedExtractionOptions {
-	const { model, instructions, maxMemories, timeout } = options;
+	assertKnownKeys(
+		name,
+		options,
+		["model", "instructions", "maxMemories", "timeoutMs", ...otherKeys],
+		{ timeout: "timeoutMs" },
+	);
+	const { model, instructions, maxMemories, timeoutMs } = options;
 	if (!isModel(model)) {
 		throw configError(
 			name,
@@ -182,10 +190,12 @@ export function resolveExtractionOptions(
 		);
 	}
 	if (
-		timeout !== undefined &&
-		(typeof timeout !== "number" || !Number.isInteger(timeout) || timeout < 1)
+		timeoutMs !== undefined &&
+		(typeof timeoutMs !== "number" ||
+			!Number.isInteger(timeoutMs) ||
+			timeoutMs < 1)
 	) {
-		throw configError(name, "timeout must be a positive integer (ms).");
+		throw configError(name, "timeoutMs must be a positive integer.");
 	}
 	return {
 		model,
@@ -194,7 +204,7 @@ export function resolveExtractionOptions(
 				? undefined
 				: instructions,
 		maxMemories: maxMemories ?? DEFAULT_MAX_MEMORIES,
-		timeout: timeout ?? DEFAULT_TIMEOUT_MS,
+		timeoutMs: timeoutMs ?? DEFAULT_TIMEOUT_MS,
 	};
 }
 
@@ -429,7 +439,7 @@ function combineSignals(
  *
  * Returns the stored memories (new or updated); `[]` when the model found
  * nothing or the prompt has no user text. Fails with `"TIMEOUT"` after
- * `timeout` ms and with the AI SDK's `NoObjectGeneratedError` when the
+ * `timeoutMs` ms and with the AI SDK's `NoObjectGeneratedError` when the
  * model's output does not match the schema. Requires the `ai` package.
  *
  * @example
@@ -466,7 +476,14 @@ export async function extractMemories(
 		throw new MnemocyteError(`${name} text must be a string.`, "VALIDATION");
 	}
 	return runExtraction({
-		...resolveExtractionOptions(name, input),
+		...resolveExtractionOptions(name, input, [
+			"memory",
+			"prompt",
+			"text",
+			"signal",
+			// Part of a MemoryTurn, which callers spread into the input.
+			"finishReason",
+		]),
 		memory,
 		prompt,
 		text,
@@ -483,12 +500,12 @@ export async function runExtraction(
 		readonly signal?: AbortSignal;
 	},
 ): Promise<Memory[]> {
-	const { memory, maxMemories, timeout } = input;
+	const { memory, maxMemories, timeoutMs } = input;
 	const turn = readTurn(input.prompt);
 	if (turn.user.length === 0) {
 		return [];
 	}
-	const timer = AbortSignal.timeout(timeout);
+	const timer = AbortSignal.timeout(timeoutMs);
 	const signal = combineSignals(timer, input.signal);
 	try {
 		const existing = await memory.search({
@@ -538,7 +555,7 @@ export async function runExtraction(
 	} catch (error) {
 		if (timer.aborted && input.signal?.aborted !== true) {
 			throw new MnemocyteError(
-				`extractMemories timed out after ${timeout} ms.`,
+				`extractMemories timed out after ${timeoutMs} ms.`,
 				"TIMEOUT",
 				error,
 			);

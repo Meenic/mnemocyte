@@ -1,5 +1,6 @@
 import { APICallError, type EmbeddingModel, embedMany } from "ai";
 import { MnemocyteError, type ProviderError } from "./errors.js";
+import { assertKnownKeys } from "./options.js";
 import { createProviderError, parseErrorBody } from "./provider-error.js";
 import type { Embedder, EmbeddingPurpose, EmbedOptions } from "./types.js";
 
@@ -301,6 +302,10 @@ function resolvePurposeHints(
 		if (!isRecord(options.purposes)) {
 			throw configError("purposes must be an object.");
 		}
+		assertKnownKeys(`${NAME} purposes`, options.purposes, [
+			"query",
+			"document",
+		]);
 		hints = {
 			query: snapshotProviderOptions(options.purposes.query, "purposes.query"),
 			document: snapshotProviderOptions(
@@ -417,6 +422,13 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 	if (!isRecord(options)) {
 		throw configError("requires an options object.");
 	}
+	assertKnownKeys(NAME, options, [
+		"model",
+		"dimensions",
+		"maxBatch",
+		"providerOptions",
+		"purposes",
+	]);
 	const { model } = options;
 	const identity = identifyModel(model);
 	const { dimensions, request } = resolveDimensions(

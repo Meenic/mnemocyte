@@ -5,12 +5,13 @@ import {
 	isRecord,
 	type KnownModelSize,
 	resolveApiKey,
-	resolveBaseUrl,
+	resolveBaseURL,
 	resolveBoolean,
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
 } from "../http-embedder.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder, EmbeddingPurpose } from "../types.js";
 
 const NAME = "googleEmbedder";
@@ -72,7 +73,7 @@ export interface GoogleEmbedderOptions {
 	 * API base URL. Defaults to
 	 * `https://generativelanguage.googleapis.com/v1beta`.
 	 */
-	readonly baseUrl?: string;
+	readonly baseURL?: string;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number;
 }
@@ -95,6 +96,12 @@ export interface GoogleEmbedderOptions {
  * ```
  */
 export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
+	assertKnownKeys(
+		"googleEmbedder",
+		options,
+		["apiKey", "model", "dimensions", "truncate", "baseURL", "maxBatch"],
+		RENAMED_BASE_URL,
+	);
 	const apiKey = resolveApiKey(options.apiKey, "GEMINI_API_KEY", NAME);
 	const given = resolveModel(options.model, NAME);
 	const model = given.startsWith("models/")
@@ -109,8 +116,8 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 	const purposeStyle: PurposeStyle =
 		KNOWN_MODELS.get(model)?.purposeStyle ?? "taskType";
 	const autoTruncate = resolveBoolean(options.truncate, "truncate", NAME, true);
-	const baseUrl = resolveBaseUrl(
-		options.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta",
+	const baseURL = resolveBaseURL(
+		options.baseURL ?? "https://generativelanguage.googleapis.com/v1beta",
 		NAME,
 	);
 	const resource = `models/${model}`;
@@ -120,7 +127,7 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 		model,
 		dimensions: size.dimensions,
 		maxBatch: resolveMaxBatch(options.maxBatch, NAME, 100),
-		url: `${baseUrl}/models/${encodeURIComponent(model)}:batchEmbedContents`,
+		url: `${baseURL}/models/${encodeURIComponent(model)}:batchEmbedContents`,
 		headers: { "x-goog-api-key": apiKey },
 		buildBody(texts, purpose) {
 			const prefix = purposeStyle === "prefix" ? PREFIXES[purpose] : "";

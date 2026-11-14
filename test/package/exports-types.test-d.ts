@@ -488,7 +488,7 @@ const hints: PurposeHints = {
 	document: passage,
 };
 const compatibleOptions: OpenAICompatibleEmbedderOptions = {
-	baseUrl: "http://localhost:11434/v1",
+	baseURL: "http://localhost:11434/v1",
 	model: "nomic-embed-text",
 	dimensions: 768,
 	maxBatch: 64,
@@ -513,7 +513,7 @@ const directCohere: Embedder = directCohereEmbedder({ model: "embed-v4.0" });
 const googleOptions: GoogleEmbedderOptions = {
 	model: "gemini-embedding-001",
 	dimensions: 768,
-	baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+	baseURL: "https://generativelanguage.googleapis.com/v1beta",
 };
 const google: Embedder = googleEmbedder(googleOptions);
 const directGoogle: Embedder = directGoogleEmbedder({
@@ -771,7 +771,7 @@ const saveOptions: MemorySaveOptions = {
 	model: "openai/gpt-6.1-mini",
 	instructions: "Only remember travel details.",
 	maxMemories: 5,
-	timeout: 10_000,
+	timeoutMs: 10_000,
 	waitUntil: (promise: Promise<void>) => {
 		void promise;
 	},
@@ -820,3 +820,22 @@ void scopedSearch;
 void batchOnlyExecutor;
 void gatewayEmbedder;
 void modelEmbedder;
+
+// kinds and tags inputs accept readonly arrays.
+const readonlyKinds: readonly MemoryKind[] = ["fact"];
+const readonlyTags: readonly string[] = ["a"];
+const readonlyNewMemory: NewMemory = { content: "c", tags: readonlyTags };
+const readonlySearch: SearchInput = {
+	scope,
+	query: "q",
+	kinds: readonlyKinds,
+	tags: readonlyTags,
+};
+const readonlyPrune: PruneInput = {
+	scope: selector,
+	kinds: readonlyKinds,
+	tags: readonlyTags,
+};
+void readonlyNewMemory;
+void readonlySearch;
+void readonlyPrune;

@@ -715,7 +715,7 @@ export interface NewMemory {
 	/** Relative importance. @defaultValue `"normal"` */
 	importance?: ImportanceLevel;
 	/** Free-form tags used for later filtering. */
-	tags?: string[];
+	tags?: readonly string[];
 	/** Optional human-readable source attribution. */
 	source?: string;
 	/** JSON-compatible metadata persisted by value alongside the memory. */
@@ -760,9 +760,9 @@ export interface SearchInput<DefaultNamespace extends boolean = false>
 	/** Minimum final score required for a memory to be returned. */
 	minScore?: number;
 	/** Restrict results to these kinds. */
-	kinds?: MemoryKind[];
+	kinds?: readonly MemoryKind[];
 	/** Require results to include all of these tags. */
-	tags?: string[];
+	tags?: readonly string[];
 	/** Only include memories created strictly before this date. */
 	before?: Date;
 	/** Only include memories created strictly after this date. */
@@ -810,9 +810,9 @@ export interface ListInput<DefaultNamespace extends boolean = false>
 	/** `nextCursor` from the previous page. Omit for the first page. */
 	cursor?: string;
 	/** Restrict to these kinds. */
-	kinds?: MemoryKind[];
+	kinds?: readonly MemoryKind[];
 	/** Require memories to include all of these tags. */
-	tags?: string[];
+	tags?: readonly string[];
 	/** Include superseded memories. @defaultValue `false` */
 	includeSuperseded?: boolean;
 	/** Include expired memories. @defaultValue `false` */
@@ -848,7 +848,7 @@ export interface UpdateInput<DefaultNamespace extends boolean = false> {
 	key?: string | null;
 	kind?: MemoryKind;
 	importance?: ImportanceLevel;
-	tags?: string[];
+	tags?: readonly string[];
 	/** New source, or `null` to remove it. */
 	source?: string | null;
 	metadata?: JsonObject;
@@ -937,9 +937,9 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 	/** Minimum retrieval score required. */
 	minScore?: number;
 	/** Restrict to these kinds. */
-	kinds?: MemoryKind[];
+	kinds?: readonly MemoryKind[];
 	/** Require results to include all of these tags. */
-	tags?: string[];
+	tags?: readonly string[];
 	/** Include superseded memories. @defaultValue `false` */
 	includeSuperseded?: boolean;
 	/** Include expired memories. @defaultValue `false` */
@@ -976,9 +976,9 @@ export interface PruneSelectors {
 	 */
 	notAccessedSince?: Date;
 	/** Match memories of these kinds. */
-	kinds?: MemoryKind[];
+	kinds?: readonly MemoryKind[];
 	/** Match memories that include all of these tags. */
-	tags?: string[];
+	tags?: readonly string[];
 	/** Match memories at or below this importance. */
 	maxImportance?: ImportanceLevel;
 	/** Count what would be pruned without deleting anything. @defaultValue `false` */

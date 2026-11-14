@@ -58,7 +58,10 @@ export interface MemoryTurn {
 	readonly prompt: MemoryPrompt;
 	/** Text of the response, its text parts joined. */
 	readonly text: string;
-	/** Why the model stopped. Never `"tool-calls"`, `"error"` or `"interrupted"`. */
+	/**
+	 * Why the model stopped. Never `"tool-calls"`, `"error"` or
+	 * `"interrupted"`.
+	 */
 	readonly finishReason: MemoryFinishReason;
 }
 
@@ -75,7 +78,7 @@ export interface MemorySaveOptions extends ExtractMemoriesOptions {
 	 * never rejects (failures go to `onError`). Pass the platform's
 	 * `waitUntil` so a serverless function is not stopped mid-extraction.
 	 */
-	readonly waitUntil?: (promise: Promise<void>) => void;
+	readonly waitUntil?: ((promise: Promise<void>) => void) | undefined;
 }
 
 /** A failure the middleware caught instead of failing the call. */
@@ -100,21 +103,21 @@ export interface MemoryMiddlewareOptions {
 	 * of the last user message; `"system"` adds a system message after the
 	 * leading system messages. @defaultValue `"user"`
 	 */
-	readonly placement?: "user" | "system";
+	readonly placement?: "user" | "system" | undefined;
 	/**
 	 * Settings for `context()`: `maxTokens`, `format`, `limit`, `minScore`,
 	 * `kinds`, `tags`, `tokenCounter`, `trackAccess` and the other filters.
 	 * Defaults are `context()`'s (1200 tokens, markdown).
 	 */
-	readonly context?: MemoryMiddlewareContextOptions;
+	readonly context?: MemoryMiddlewareContextOptions | undefined;
 	/**
 	 * The text to recall memories for. Defaults to the text of the last user
 	 * message (its last 32,000 characters). Return `undefined` or a blank
 	 * string to add no context to the call.
 	 */
-	readonly query?: (input: {
-		readonly prompt: MemoryPrompt;
-	}) => string | undefined;
+	readonly query?:
+		| ((input: { readonly prompt: MemoryPrompt }) => string | undefined)
+		| undefined;
 	/**
 	 * Runs once per response, after the final model call of a
 	 * `generateText` or `streamText` (not after a step that ends in tool
@@ -122,14 +125,14 @@ export interface MemoryMiddlewareOptions {
 	 * extract memories from the turn into the bound scope. The response does
 	 * not wait for either; failures go to `onError`. Off by default.
 	 */
-	readonly save?: MemorySaveHook | MemorySaveOptions;
+	readonly save?: MemorySaveHook | MemorySaveOptions | undefined;
 	/**
 	 * Receives failures the middleware swallows: a `context()` call that
 	 * failed (the model call then runs without memory) and a `save` hook that
 	 * threw or rejected. Aborts are thrown instead. Errors it throws are
 	 * ignored.
 	 */
-	readonly onError?: (error: MemoryMiddlewareError) => void;
+	readonly onError?: ((error: MemoryMiddlewareError) => void) | undefined;
 }
 
 export interface WithMemoryOptions extends MemoryMiddlewareOptions {
@@ -297,7 +300,10 @@ function resolveOptions(
 	};
 }
 
-/** Text of the last user message, its last {@link MAX_CONTENT_LENGTH} characters. */
+/**
+ * Text of the last user message, its last {@link MAX_CONTENT_LENGTH}
+ * characters.
+ */
 function lastUserMessageText({
 	prompt,
 }: {
@@ -356,23 +362,19 @@ function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
 }
 
 /**
- * AI SDK language model middleware that adds memories from a bound client to
- * every call. Before each model call, `transformParams` runs `context()` on
- * the text of the last user message and adds the result, under a one-line
- * preamble, to the last user message (or as a system message with
- * `placement: "system"`). Nothing is added when no memory matches. The
- * call's `abortSignal` is forwarded to `context()`.
+ * AI SDK middleware that adds memories from a bound client to each call.
+ * Before a model call it runs `context()` on the last user message and adds
+ * the result, under a one-line preamble, to that message (or as a system
+ * message with `placement: "system"`); nothing is added when no memory
+ * matches. The call's `abortSignal` reaches `context()`.
  *
- * In a multi-step call the context of the last query is reused, so the
- * steps of one tool loop embed once; create the middleware per request.
- * A failed `context()` call goes to `onError` and the model call runs
- * without memory; an abort is thrown.
+ * The steps of one tool loop reuse the last query's context and embed once,
+ * so create the middleware per request. A failed `context()` goes to
+ * `onError` and the call runs without memory; an abort is thrown.
  *
- * With a `save` function, the hook runs after the response with the
- * conversation and the response text. With `save: { model }`, that model
- * extracts memories from the turn (`extractMemories`). The response
- * waits for neither. Without `save: { model }` the middleware makes no
- * model calls of its own. Requires the `ai` package.
+ * `save` runs after the response, which waits for neither form: a function
+ * gets the turn, and `{ model }` extracts memories with `extractMemories`.
+ * Only `save: { model }` makes model calls of its own. Requires `ai`.
  *
  * @example
  * ```ts
@@ -381,7 +383,9 @@ function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
  *
  * const model = wrapLanguageModel({
  *   model: openai("gpt-6.1-sol"),
- *   middleware: memoryMiddleware({ memory: memory.for({ entityId: userId }) }),
+ *   middleware: memoryMiddleware({
+ *     memory: memory.for({ entityId: userId }),
+ *   }),
  * });
  * const result = streamText({ model, messages });
  * ```

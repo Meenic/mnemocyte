@@ -283,7 +283,7 @@ findings that decisions 3, 38 and 39 already settle (array results for
 `search` and `findDuplicates`, extraction covered by semver) are not
 reopened; its additive findings are in "After 1.0".
 
-- [ ] `fix/optional-undefined`: optional input fields accept an explicit
+- [x] `fix/optional-undefined`: optional input fields accept an explicit
   `undefined`. With `exactOptionalPropertyTypes`, `cursor?: string`
   rejects a `string | undefined` variable, so the cursor loops in
   `guide/api.md` (`list`, `experimental.findDuplicatesPage`,
@@ -293,7 +293,16 @@ reopened; its additive findings are in "After 1.0".
   fields of the method inputs, the bound inputs, the embedder options and
   the AI SDK options to `?: T | undefined`, after checking that each one
   already treats `undefined` as absent at runtime. Additive. An export type
-  test compiles the guide's loops with the flag on.
+  test compiles the guide's loops with the flag on. Landed with the scopes
+  and the config types (`MemoryConfig` and its nested settings,
+  `MnemocyteStoreConfig`, `migrate`'s input) widened too, as the maintainer
+  chose: `createMemory({ namespace: process.env.… })` hit the same error.
+  The one runtime gap was `retrieval.fusion` and `retrieval.boosts`, spread
+  over their defaults, so a weight set to `undefined` threw `"CONFIG"`.
+  `RetrievalExplanation`'s `fusion` and `boosts` became plain number
+  fields, since `Required<>` keeps an explicit `undefined`. The internal
+  `...(x === undefined ? {} : { x })` spreads stay, as the maintainer chose:
+  most feed internal store types that stay exact on purpose.
 - [ ] `fix/created-filters`: one name for the creation-time filter.
   `search` filters `createdAt` with `before` / `after`, `prune` with
   `createdBefore`, and `listAuditLog` / `pruneAuditLog` use `before` /

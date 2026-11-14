@@ -18,7 +18,7 @@ export interface OpenAIEmbedderOptions {
 	/**
 	 * OpenAI API key. Defaults to `process.env.OPENAI_API_KEY`.
 	 */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/**
 	 * OpenAI embedding model name.
 	 */
@@ -27,15 +27,15 @@ export interface OpenAIEmbedderOptions {
 	 * Output dimensions. Required for unknown/future model names and accepted
 	 * only for OpenAI models that support configurable dimensions.
 	 */
-	readonly dimensions?: number;
+	readonly dimensions?: number | undefined;
 	/**
 	 * Override the OpenAI API base URL; defaults to
 	 * `https://api.openai.com/v1`. For other providers, use
 	 * `openaiCompatibleEmbedder`.
 	 */
-	readonly baseURL?: string;
+	readonly baseURL?: string | undefined;
 	/** Most texts per request. Defaults to `100`. */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 }
 
 function assertDimensions(dimensions: number): void {

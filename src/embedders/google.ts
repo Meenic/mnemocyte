@@ -52,7 +52,7 @@ const PREFIXES: Record<EmbeddingPurpose, string> = {
 
 export interface GoogleEmbedderOptions {
 	/** Gemini API key. Defaults to `process.env.GEMINI_API_KEY`. */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/**
 	 * Gemini embedding model, such as `"gemini-embedding-001"`. A `models/`
 	 * prefix is accepted and left out of the embedder's `model`.
@@ -63,19 +63,19 @@ export interface GoogleEmbedderOptions {
 	 * which is then sent as `outputDimensionality`. Required for other
 	 * models, where it is not sent.
 	 */
-	readonly dimensions?: number;
+	readonly dimensions?: number | undefined;
 	/**
 	 * Cut texts longer than the model's context instead of failing the
 	 * request. Sent as `autoTruncate`. Defaults to `true`.
 	 */
-	readonly truncate?: boolean;
+	readonly truncate?: boolean | undefined;
 	/**
 	 * API base URL. Defaults to
 	 * `https://generativelanguage.googleapis.com/v1beta`.
 	 */
-	readonly baseURL?: string;
+	readonly baseURL?: string | undefined;
 	/** Most texts per request. Defaults to `100`. */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 }
 
 /**

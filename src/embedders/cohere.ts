@@ -41,7 +41,7 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModelSize> = new Map([
 
 export interface CohereEmbedderOptions {
 	/** Cohere API key. Defaults to `process.env.COHERE_API_KEY`. */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/** Cohere embedding model, such as `"embed-v4.0"`. */
 	readonly model: string;
 	/**
@@ -49,17 +49,17 @@ export interface CohereEmbedderOptions {
 	 * v5 models accept the sizes Cohere lists, which is then sent as
 	 * `output_dimension`. Required for other models, where it is not sent.
 	 */
-	readonly dimensions?: number;
+	readonly dimensions?: number | undefined;
 	/**
 	 * Cut the end of texts longer than the model's context instead of
 	 * failing the request: `truncate: "END"`, or `"NONE"` when `false`.
 	 * Defaults to `true`.
 	 */
-	readonly truncate?: boolean;
+	readonly truncate?: boolean | undefined;
 	/** API base URL. Defaults to `https://api.cohere.com/v2`. */
-	readonly baseURL?: string;
+	readonly baseURL?: string | undefined;
 	/** Most texts per request, at most 96 (Cohere's limit). Defaults to `96`. */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 }
 
 /**

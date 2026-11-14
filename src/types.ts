@@ -78,9 +78,9 @@ export interface MemoryScope {
 	/** Who or what the memory is about. Non-empty. */
 	entityId: string;
 	/** Agent that holds the memory; omit for memories shared by every agent. */
-	agentId?: string;
+	agentId?: string | undefined;
 	/** Session the memory belongs to; omit for memories outside any session. */
-	sessionId?: string;
+	sessionId?: string | undefined;
 }
 
 /**
@@ -93,11 +93,11 @@ export interface ScopeSelector {
 	/** Tenant or application. Non-empty. */
 	namespace: string;
 	/** Limit to one entity. */
-	entityId?: string;
+	entityId?: string | undefined;
 	/** Limit to memories this agent holds (not shared ones). */
-	agentId?: string;
+	agentId?: string | undefined;
 	/** Limit to memories of this session (not session-less ones). */
-	sessionId?: string;
+	sessionId?: string | undefined;
 }
 
 /**
@@ -118,13 +118,13 @@ export interface MemoryRecordScope {
  */
 export interface OptionalNamespaceScope {
 	/** Tenant or application. Defaults to {@link MemoryConfig.namespace}. */
-	namespace?: string;
+	namespace?: string | undefined;
 	/** Who or what the memory is about. Non-empty. */
 	entityId: string;
 	/** Agent that holds the memory; omit for memories shared by every agent. */
-	agentId?: string;
+	agentId?: string | undefined;
 	/** Session the memory belongs to; omit for memories outside any session. */
-	sessionId?: string;
+	sessionId?: string | undefined;
 }
 
 /**
@@ -133,13 +133,13 @@ export interface OptionalNamespaceScope {
  */
 export interface OptionalNamespaceSelector {
 	/** Tenant or application. Defaults to {@link MemoryConfig.namespace}. */
-	namespace?: string;
+	namespace?: string | undefined;
 	/** Limit to one entity. */
-	entityId?: string;
+	entityId?: string | undefined;
 	/** Limit to memories this agent holds (not shared ones). */
-	agentId?: string;
+	agentId?: string | undefined;
 	/** Limit to memories of this session (not session-less ones). */
-	sessionId?: string;
+	sessionId?: string | undefined;
 }
 
 /**
@@ -214,7 +214,10 @@ export interface MnemocyteObservation {
 	backend: MnemocyteBackend;
 	/** Wall-clock timestamp of this event. */
 	timestamp: Date;
-	/** Elapsed milliseconds since the `"start"` event. Present on `"success"` / `"error"`. */
+	/**
+	 * Elapsed milliseconds since the `"start"` event. Present on
+	 * `"success"` / `"error"`.
+	 */
 	durationMs?: number;
 	/** Namespace of the operation's scope, when it has one. */
 	namespace?: string;
@@ -244,13 +247,15 @@ export interface ObservabilityConfig {
 	 * A synchronous hook still blocks while it runs. On serverless platforms
 	 * un-awaited work can be cut off when the function ends; flush it yourself.
 	 */
-	onEvent?: (event: MnemocyteObservation) => void | Promise<void>;
+	onEvent?: ((event: MnemocyteObservation) => void | Promise<void>) | undefined;
 	/**
 	 * Called when `onEvent` throws or rejects, with the error and the event it
 	 * was handling. Unset by default, so failures are dropped. A throw from
 	 * this hook is ignored too.
 	 */
-	onError?: (info: { error: unknown; event: MnemocyteObservation }) => void;
+	onError?:
+		| ((info: { error: unknown; event: MnemocyteObservation }) => void)
+		| undefined;
 }
 
 /**
@@ -267,24 +272,24 @@ export interface ProviderResilienceConfig {
 	 * Must be a non-negative finite number. Defaults to `0` which disables the
 	 * timeout.
 	 */
-	timeoutMs?: number;
+	timeoutMs?: number | undefined;
 	/**
 	 * Maximum number of retry attempts after the initial call. Must be a
 	 * non-negative integer. `0` disables retries. Defaults to `2`.
 	 */
-	retries?: number;
+	retries?: number | undefined;
 	/**
 	 * Base backoff delay (ms) used before the first retry; it doubles for
 	 * each later retry, and each wait is a random 50–100% of it. Must be a
 	 * non-negative finite number. Defaults to `500`.
 	 */
-	baseDelayMs?: number;
+	baseDelayMs?: number | undefined;
 	/**
 	 * Maximum backoff delay (ms) used between retries. Must be a non-negative
 	 * finite number. Values below `baseDelayMs` are normalized up to the base
 	 * delay. Defaults to `8000`.
 	 */
-	maxDelayMs?: number;
+	maxDelayMs?: number | undefined;
 	/**
 	 * Longest server-requested wait (ms) Mnemocyte honours. An error with a
 	 * `retryAfterMs` (from a `Retry-After` or `retry-after-ms` header) waits
@@ -292,7 +297,7 @@ export interface ProviderResilienceConfig {
 	 * error is thrown without retrying. Must be a non-negative finite number.
 	 * Defaults to `60000`.
 	 */
-	maxRetryAfterMs?: number;
+	maxRetryAfterMs?: number | undefined;
 	/**
 	 * Optional predicate deciding whether `error` should trigger a retry.
 	 * Receives the thrown value and the 1-indexed `attempt` number that
@@ -301,7 +306,7 @@ export interface ProviderResilienceConfig {
 	 * transient `code` (such as `ECONNRESET`) on the error or its `cause`,
 	 * and `"TIMEOUT"` errors.
 	 */
-	shouldRetry?: (error: unknown, attempt: number) => boolean;
+	shouldRetry?: ((error: unknown, attempt: number) => boolean) | undefined;
 }
 
 declare const mnemocyteStoreConfigBrand: unique symbol;
@@ -326,19 +331,19 @@ interface MigrateOptions {
 	 * provider's admin role (`rds_superuser`, `neon_superuser`, Supabase's
 	 * `postgres`). Without the privilege it rejects with `"MIGRATION"`.
 	 */
-	createExtension?: boolean;
+	createExtension?: boolean | undefined;
 	/**
 	 * Inspect the database as a real run would and return the `applied`,
 	 * `adopted` and `extensionCreated` it would produce, changing nothing.
 	 * It rejects with the errors a real run would raise before its first
 	 * statement; a migration that would fail partway through is not detected.
 	 */
-	dryRun?: boolean;
+	dryRun?: boolean | undefined;
 	/**
 	 * Cancels the running statement when aborted. The migration in progress
 	 * rolls back; migrations that already committed stay applied.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -358,7 +363,7 @@ export type MigrateInput =
 			 * Optional here. A value that differs from `embedder.dimensions`
 			 * rejects with `"CONFIG"` before anything runs.
 			 */
-			dimensions?: number;
+			dimensions?: number | undefined;
 	  })
 	| (MigrateOptions & {
 			memory?: never;
@@ -375,7 +380,7 @@ export type MigrateInput =
 			 * existing installation it is optional, and a value that differs from
 			 * the installed column rejects with `"CONFIG"` before anything runs.
 			 */
-			dimensions?: number;
+			dimensions?: number | undefined;
 	  });
 
 /**
@@ -413,7 +418,7 @@ export interface MemoryConfig {
 	 * {@link createMemory} returns a `MemoryClient<true>`, whose scopes take
 	 * an optional namespace.
 	 */
-	namespace?: string;
+	namespace?: string | undefined;
 	/**
 	 * Where memories live: the database client the app already owns (a
 	 * postgres.js `sql` function, a node-postgres `Pool`, a PGlite instance,
@@ -422,32 +427,34 @@ export interface MemoryConfig {
 	 * closes the client. The Postgres backend is imported on the first call
 	 * that uses it. When omitted, an in-memory backend is used.
 	 */
-	store?: MnemocyteStoreConfig | PostgresClient;
+	store?: MnemocyteStoreConfig | PostgresClient | undefined;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
-	/** Default values applied to {@link SearchInput} when properties are omitted. */
-	defaults?: {
-		/** Default `limit` for {@link MemoryClient.search}. */
-		limit?: number;
-		/** Default `minScore` cutoff for {@link MemoryClient.search}. */
-		minScore?: number;
-	};
+	/** Defaults applied to {@link SearchInput} when properties are omitted. */
+	defaults?:
+		| {
+				/** Default `limit` for {@link MemoryClient.search}. */
+				limit?: number | undefined;
+				/** Default `minScore` cutoff for {@link MemoryClient.search}. */
+				minScore?: number | undefined;
+		  }
+		| undefined;
 	/** Retrieval-ranking tuning. See {@link RetrievalConfig}. */
-	retrieval?: RetrievalConfig;
+	retrieval?: RetrievalConfig | undefined;
 	/** Observability hooks. See {@link ObservabilityConfig}. */
-	observability?: ObservabilityConfig;
+	observability?: ObservabilityConfig | undefined;
 	/**
 	 * Production-hardening knobs for outbound provider calls
 	 * (timeouts, retries, abort propagation). See
 	 * {@link ProviderResilienceConfig}.
 	 */
-	provider?: ProviderResilienceConfig;
+	provider?: ProviderResilienceConfig | undefined;
 	/**
 	 * Audit-log configuration. When enabled, Mnemocyte records an
 	 * {@link AuditEvent} for every change to a memory. Read with
 	 * {@link MemoryClient.listAuditLog}.
 	 */
-	audit?: AuditConfig;
+	audit?: AuditConfig | undefined;
 }
 
 /**
@@ -461,7 +468,7 @@ export interface AuditConfig {
 	 *
 	 * @defaultValue `false`
 	 */
-	enabled?: boolean;
+	enabled?: boolean | undefined;
 }
 
 /**
@@ -474,7 +481,10 @@ export interface AuditConfig {
  * configured embedder is incompatible.
  */
 export interface Embedder {
-	/** Stable identifier for the underlying model (e.g. `"text-embedding-3-small"`). */
+	/**
+	 * Stable identifier for the underlying model (e.g.
+	 * `"text-embedding-3-small"`).
+	 */
 	readonly model: string;
 	/** Dimensionality of vectors returned by {@link Embedder.embed}. */
 	readonly dimensions: number;
@@ -482,7 +492,7 @@ export interface Embedder {
 	 * Most texts Mnemocyte passes to one {@link Embedder.embed} call. Must be a
 	 * positive integer. Defaults to `100`.
 	 */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 	/**
 	 * Embed one or more texts. Implementations MUST return one vector per
 	 * input, in the same order, each of length {@link Embedder.dimensions} and
@@ -576,7 +586,10 @@ export interface RetrievalScores {
 	vectorRank: number | null;
 	/** Position in the lexical (full-text) list, or `null`. */
 	lexicalRank: number | null;
-	/** Cosine similarity clamped to `[0, 1]`, or `null` when not in the vector list. */
+	/**
+	 * Cosine similarity clamped to `[0, 1]`, or `null` when not in the vector
+	 * list.
+	 */
 	vector: number | null;
 	/**
 	 * Backend-defined lexical score (`ts_rank` on Postgres, the fraction of
@@ -586,7 +599,10 @@ export interface RetrievalScores {
 	lexical: number | null;
 	/** Reciprocal rank fusion score in `[0, 1]`, before boosts. */
 	fused: number;
-	/** Time-decay score in `[0, 1]` based on {@link RetrievalConfig.recencyHalfLifeDays}. */
+	/**
+	 * Time-decay score in `[0, 1]` based on
+	 * {@link RetrievalConfig.recencyHalfLifeDays}.
+	 */
 	recency: number;
 	/** Score in `[0, 1]` derived from {@link ImportanceLevel}. */
 	importance: number;
@@ -597,12 +613,21 @@ export interface RetrievalScores {
  * `weight / (k + rank)`; the sum is divided by its best possible value.
  */
 export interface RetrievalFusionConfig {
-	/** Non-negative finite rank constant. Larger values flatten rank differences. @defaultValue `60` */
-	k?: number;
-	/** Non-negative finite weight of the vector list. `0` skips the vector search. @defaultValue `1` */
-	vector?: number;
-	/** Non-negative finite weight of the lexical list. `0` skips the lexical search. @defaultValue `1` */
-	lexical?: number;
+	/**
+	 * Non-negative finite rank constant. Larger values flatten rank
+	 * differences. @defaultValue `60`
+	 */
+	k?: number | undefined;
+	/**
+	 * Non-negative finite weight of the vector list. `0` skips the vector
+	 * search. @defaultValue `1`
+	 */
+	vector?: number | undefined;
+	/**
+	 * Non-negative finite weight of the lexical list. `0` skips the lexical
+	 * search. @defaultValue `1`
+	 */
+	lexical?: number | undefined;
 }
 
 /**
@@ -612,9 +637,12 @@ export interface RetrievalFusionConfig {
  */
 export interface RetrievalBoosts {
 	/** Non-negative finite strength of the recency boost. @defaultValue `0.1` */
-	recency?: number;
-	/** Non-negative finite strength of the importance boost. @defaultValue `0.1` */
-	importance?: number;
+	recency?: number | undefined;
+	/**
+	 * Non-negative finite strength of the importance boost.
+	 * @defaultValue `0.1`
+	 */
+	importance?: number | undefined;
 }
 
 /**
@@ -623,17 +651,20 @@ export interface RetrievalBoosts {
  */
 export interface RetrievalConfig {
 	/** Reciprocal rank fusion settings. See {@link RetrievalFusionConfig}. */
-	fusion?: RetrievalFusionConfig;
+	fusion?: RetrievalFusionConfig | undefined;
 	/** Recency and importance boosts. See {@link RetrievalBoosts}. */
-	boosts?: RetrievalBoosts;
-	/** Positive finite half-life (days) for the recency score. @defaultValue `90` */
-	recencyHalfLifeDays?: number;
+	boosts?: RetrievalBoosts | undefined;
+	/**
+	 * Positive finite half-life (days) for the recency score.
+	 * @defaultValue `90`
+	 */
+	recencyHalfLifeDays?: number | undefined;
 	/**
 	 * Multiplier applied to {@link SearchInput.limit} to determine how many
 	 * candidates each search fetches before fusion.
 	 * Must be an integer greater than or equal to 1. @defaultValue `3`
 	 */
-	candidateMultiplier?: number;
+	candidateMultiplier?: number | undefined;
 	/**
 	 * Record access on search: increment {@link Memory.accessCount} and set
 	 * {@link Memory.lastAccessedAt} on the returned memories. The write starts
@@ -645,7 +676,7 @@ export interface RetrievalConfig {
 	 *
 	 * @defaultValue `false`
 	 */
-	trackAccess?: boolean;
+	trackAccess?: boolean | undefined;
 }
 
 /**
@@ -655,9 +686,9 @@ export interface RetrievalConfig {
  */
 export interface RetrievalExplanation {
 	/** Effective fusion settings (defaults filled in). */
-	fusion: Required<RetrievalFusionConfig>;
+	fusion: { k: number; vector: number; lexical: number };
 	/** Effective boosts (defaults filled in). */
-	boosts: Required<RetrievalBoosts>;
+	boosts: { recency: number; importance: number };
 	/** Factor in `(0, 1]` applied to {@link RetrievalScores.fused}. */
 	boostFactor: number;
 	/** Final score — same value as {@link MemoryWithScore.score}. */
@@ -669,7 +700,10 @@ export interface RetrievalExplanation {
  * retrieval scores.
  */
 export interface MemoryWithScore extends Memory {
-	/** Final relevance score in `[0, 1]`: the fused score times the boost factor. Higher is better. */
+	/**
+	 * Final relevance score in `[0, 1]`: the fused score times the boost
+	 * factor. Higher is better.
+	 */
 	score: number;
 	/** Per-component scores that produced {@link MemoryWithScore.score}. */
 	scores: RetrievalScores;
@@ -690,13 +724,13 @@ export interface ScopedReadOptions {
 	 * Only memories whose agent equals `scope.agentId`, without shared ones.
 	 * @defaultValue `false`
 	 */
-	exactAgent?: boolean;
+	exactAgent?: boolean | undefined;
 	/**
 	 * Only memories whose session equals `scope.sessionId`, without
 	 * session-less ones.
 	 * @defaultValue `false`
 	 */
-	exactSession?: boolean;
+	exactSession?: boolean | undefined;
 }
 
 /**
@@ -712,21 +746,21 @@ export interface NewMemory {
 	 * key that already exists in the scope replaces that memory's content and
 	 * fields, keeping its `id`, `createdAt` and access counts.
 	 */
-	key?: string;
+	key?: string | undefined;
 	/** Memory kind. @defaultValue `"fact"` */
-	kind?: MemoryKind;
+	kind?: MemoryKind | undefined;
 	/** Relative importance. @defaultValue `"normal"` */
-	importance?: ImportanceLevel;
+	importance?: ImportanceLevel | undefined;
 	/** Free-form tags used for later filtering. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Optional human-readable source attribution. */
-	source?: string;
+	source?: string | undefined;
 	/** JSON-compatible metadata persisted by value alongside the memory. */
-	metadata?: JsonObject;
+	metadata?: JsonObject | undefined;
 	/** Confidence in `[0, 1]`. @defaultValue `1` */
-	confidence?: number;
+	confidence?: number | undefined;
 	/** Optional expiry; expired memories are filtered out by default. */
-	expiresAt?: Date;
+	expiresAt?: Date | undefined;
 }
 
 /** Input for {@link MemoryClient.add}. */
@@ -738,7 +772,7 @@ export interface AddInput<DefaultNamespace extends boolean = false>
 	 * Optional cancellation signal. Forwarded to the embedder; when aborted,
 	 * the operation throws a {@link MnemocyteError} with code `"ABORTED"`.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /** Input for {@link MemoryClient.addMany}. */
@@ -748,7 +782,7 @@ export interface AddManyInput<DefaultNamespace extends boolean = false> {
 	/** Memories to add, in order. Keys must be distinct within the batch. */
 	memories: readonly NewMemory[];
 	/** Optional cancellation signal for the whole batch. */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /** Input for {@link MemoryClient.search}. */
@@ -759,34 +793,37 @@ export interface SearchInput<DefaultNamespace extends boolean = false>
 	/** Free-text query; embedded and matched against stored memories. */
 	query: string;
 	/** Maximum number of results. Falls back to {@link MemoryConfig.defaults}. */
-	limit?: number;
+	limit?: number | undefined;
 	/** Minimum final score required for a memory to be returned. */
-	minScore?: number;
+	minScore?: number | undefined;
 	/** Restrict results to these kinds. */
-	kinds?: readonly MemoryKind[];
+	kinds?: readonly MemoryKind[] | undefined;
 	/** Require results to include all of these tags. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Only include memories created strictly before this date. */
-	before?: Date;
+	before?: Date | undefined;
 	/** Only include memories created strictly after this date. */
-	after?: Date;
+	after?: Date | undefined;
 	/** Include memories that have been superseded. @defaultValue `false` */
-	includeSuperseded?: boolean;
+	includeSuperseded?: boolean | undefined;
 	/** Include memories whose `expiresAt` has passed. @defaultValue `false` */
-	includeExpired?: boolean;
-	/** Populate {@link MemoryWithScore.explanation} on each result. @defaultValue `false` */
-	explain?: boolean;
+	includeExpired?: boolean | undefined;
+	/**
+	 * Populate {@link MemoryWithScore.explanation} on each result.
+	 * @defaultValue `false`
+	 */
+	explain?: boolean | undefined;
 	/**
 	 * Record access for this call's results. Overrides
 	 * {@link RetrievalConfig.trackAccess}.
 	 */
-	trackAccess?: boolean;
+	trackAccess?: boolean | undefined;
 	/**
 	 * Optional cancellation signal. Forwarded to the embedder; when
 	 * aborted, the operation throws a {@link MnemocyteError} with code
 	 * `"ABORTED"`.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -798,9 +835,9 @@ export type GetInput<DefaultNamespace extends boolean = false> =
 		scope: ScopeInput<DefaultNamespace>;
 	};
 
-/** Input for {@link BoundMemoryClient.get}: {@link GetInput} without `scope`. */
+/** Input for {@link BoundMemoryClient.get}: {@link GetInput} minus `scope`. */
 export type BoundGetInput = ScopedReadOptions & {
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 } & ({ id: string; key?: never } | { key: string; id?: never });
 
 /** Input for {@link MemoryClient.list}. */
@@ -809,19 +846,19 @@ export interface ListInput<DefaultNamespace extends boolean = false>
 	/** Scope to list; see {@link MemoryScope} for shared memories. */
 	scope: ScopeInput<DefaultNamespace>;
 	/** Page size; positive integer. @defaultValue `50` */
-	limit?: number;
+	limit?: number | undefined;
 	/** `nextCursor` from the previous page. Omit for the first page. */
-	cursor?: string;
+	cursor?: string | undefined;
 	/** Restrict to these kinds. */
-	kinds?: readonly MemoryKind[];
+	kinds?: readonly MemoryKind[] | undefined;
 	/** Require memories to include all of these tags. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Include superseded memories. @defaultValue `false` */
-	includeSuperseded?: boolean;
+	includeSuperseded?: boolean | undefined;
 	/** Include expired memories. @defaultValue `false` */
-	includeExpired?: boolean;
+	includeExpired?: boolean | undefined;
 	/** Optional cancellation signal. */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /** Result of {@link MemoryClient.list}. */
@@ -846,20 +883,20 @@ export interface UpdateInput<DefaultNamespace extends boolean = false> {
 	/** Id of the memory to update. */
 	id: string;
 	/** New content. The memory is re-embedded. */
-	content?: string;
+	content?: string | undefined;
 	/** New key, or `null` to remove it. Must be unique in the memory's scope. */
-	key?: string | null;
-	kind?: MemoryKind;
-	importance?: ImportanceLevel;
-	tags?: readonly string[];
+	key?: string | null | undefined;
+	kind?: MemoryKind | undefined;
+	importance?: ImportanceLevel | undefined;
+	tags?: readonly string[] | undefined;
 	/** New source, or `null` to remove it. */
-	source?: string | null;
-	metadata?: JsonObject;
-	confidence?: number;
+	source?: string | null | undefined;
+	metadata?: JsonObject | undefined;
+	confidence?: number | undefined;
 	/** New expiry, or `null` to remove it. */
-	expiresAt?: Date | null;
+	expiresAt?: Date | null | undefined;
 	/** Optional cancellation signal, forwarded to the embedder. */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /** Input for {@link MemoryClient.delete}. */
@@ -873,9 +910,9 @@ export interface DeleteInput<DefaultNamespace extends boolean = false> {
 	 * memories' `supersededBy` points at it. See {@link DependentsPolicy}.
 	 * @defaultValue `"reject"`
 	 */
-	dependents?: DependentsPolicy;
+	dependents?: DependentsPolicy | undefined;
 	/** Optional cancellation signal. */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -902,7 +939,7 @@ export interface DeleteScopeInput<DefaultNamespace extends boolean = false> {
 	/** What to delete; omitted optional fields match any value. */
 	scope: ScopeInput<DefaultNamespace>;
 	/** Optional cancellation signal. */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /** Result of {@link MemoryClient.deleteScope}. */
@@ -932,33 +969,33 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 	/** Free-text query used to select relevant memories. It is not echoed. */
 	query: string;
 	/** Output format. @defaultValue `"markdown"` */
-	format?: ContextFormat;
+	format?: ContextFormat | undefined;
 	/** Positive-integer token budget. @defaultValue `1200` */
-	maxTokens?: number;
+	maxTokens?: number | undefined;
 	/** Maximum number of memories to consider. */
-	limit?: number;
+	limit?: number | undefined;
 	/** Minimum retrieval score required. */
-	minScore?: number;
+	minScore?: number | undefined;
 	/** Restrict to these kinds. */
-	kinds?: readonly MemoryKind[];
+	kinds?: readonly MemoryKind[] | undefined;
 	/** Require results to include all of these tags. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Include superseded memories. @defaultValue `false` */
-	includeSuperseded?: boolean;
+	includeSuperseded?: boolean | undefined;
 	/** Include expired memories. @defaultValue `false` */
-	includeExpired?: boolean;
+	includeExpired?: boolean | undefined;
 	/**
 	 * Record access for the selected memories. Overrides
 	 * {@link RetrievalConfig.trackAccess}.
 	 */
-	trackAccess?: boolean;
+	trackAccess?: boolean | undefined;
 	/** Tokenizer used to enforce {@link ContextInput.maxTokens}. */
-	tokenCounter?: TokenCounter;
+	tokenCounter?: TokenCounter | undefined;
 	/**
 	 * Optional cancellation signal. Forwarded to the search and the embedder;
 	 * when aborted, the operation throws `"ABORTED"`.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -967,31 +1004,34 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
  */
 export interface PruneSelectors {
 	/** Match memories whose `expiresAt` is in the past. */
-	expired?: boolean;
+	expired?: boolean | undefined;
 	/** Match memories that have been superseded (`supersededBy !== null`). */
-	superseded?: boolean;
+	superseded?: boolean | undefined;
 	/** Match memories created strictly before this date. */
-	createdBefore?: Date;
+	createdBefore?: Date | undefined;
 	/**
 	 * Match memories last accessed strictly before this date. A memory that
 	 * was never accessed counts from its `createdAt`, so one created after
 	 * the date is kept.
 	 */
-	notAccessedSince?: Date;
+	notAccessedSince?: Date | undefined;
 	/** Match memories of these kinds. */
-	kinds?: readonly MemoryKind[];
+	kinds?: readonly MemoryKind[] | undefined;
 	/** Match memories that include all of these tags. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Match memories at or below this importance. */
-	maxImportance?: ImportanceLevel;
-	/** Count what would be pruned without deleting anything. @defaultValue `false` */
-	dryRun?: boolean;
+	maxImportance?: ImportanceLevel | undefined;
+	/**
+	 * Count what would be pruned without deleting anything.
+	 * @defaultValue `false`
+	 */
+	dryRun?: boolean | undefined;
 	/**
 	 * Optional cancellation signal. A pre-aborted signal prevents storage work.
 	 * In-flight Postgres pruning requests server-query cancellation, but a
 	 * deletion that has already committed cannot be undone.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -1040,14 +1080,17 @@ export interface PruneAuditLogOptions {
 	 * large backlog never runs as one long transaction.
 	 * @defaultValue `1000`
 	 */
-	batchSize?: number;
-	/** Count what would be deleted without deleting anything. @defaultValue `false` */
-	dryRun?: boolean;
+	batchSize?: number | undefined;
+	/**
+	 * Count what would be deleted without deleting anything.
+	 * @defaultValue `false`
+	 */
+	dryRun?: boolean | undefined;
 	/**
 	 * Optional cancellation signal, checked before each batch. Batches that
 	 * already committed stay deleted; the call then throws `"ABORTED"`.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -1089,32 +1132,32 @@ export interface FindDuplicatesInput<DefaultNamespace extends boolean = false>
 	 * Cosine-similarity cutoff in `[0, 1]`. Pairs whose similarity is at
 	 * or above this value are returned. @defaultValue `0.95`
 	 */
-	threshold?: number;
+	threshold?: number | undefined;
 	/**
 	 * Maximum number of duplicate pairs to return, ordered by descending
 	 * similarity. @defaultValue `100`
 	 */
-	limit?: number;
+	limit?: number | undefined;
 	/**
 	 * Nearest neighbors compared per memory, 1 to 100. A pair is found when
 	 * either memory is among the other's `neighbors` nearest. On Postgres the
 	 * neighbors come from the HNSW index, which is approximate, so a pair can
 	 * be missed. @defaultValue `10`
 	 */
-	neighbors?: number;
+	neighbors?: number | undefined;
 	/** Restrict the scan to these kinds. */
-	kinds?: readonly MemoryKind[];
+	kinds?: readonly MemoryKind[] | undefined;
 	/** Require both memories in the pair to include all of these tags. */
-	tags?: readonly string[];
+	tags?: readonly string[] | undefined;
 	/** Include superseded memories in the scan. @defaultValue `false` */
-	includeSuperseded?: boolean;
+	includeSuperseded?: boolean | undefined;
 	/** Include expired memories in the scan. @defaultValue `false` */
-	includeExpired?: boolean;
+	includeExpired?: boolean | undefined;
 	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
 	 * Postgres requests cancellation of the active duplicate-search query.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -1132,12 +1175,12 @@ export interface FindDuplicatesPageInput<
 	 * compared with every memory of the scope, so a page returns at most
 	 * `batchSize × neighbors` pairs. @defaultValue `500`
 	 */
-	batchSize?: number;
+	batchSize?: number | undefined;
 	/**
 	 * Where to continue: the {@link DuplicatePage.nextCursor} of the previous
 	 * page, unchanged. Omit it for the first page.
 	 */
-	cursor?: string;
+	cursor?: string | undefined;
 }
 
 /**
@@ -1213,27 +1256,27 @@ export interface ListAuditLogOptions {
 	 * Page size, ordered newest first; positive integer.
 	 * @defaultValue `50`
 	 */
-	limit?: number;
+	limit?: number | undefined;
 	/**
 	 * `nextCursor` from the previous page. Omit for the first page. Pass the
 	 * same selector and filters on every page.
 	 */
-	cursor?: string;
+	cursor?: string | undefined;
 	/**
 	 * Only return events strictly before this time. A filter, not a page
 	 * position: events at exactly this time are excluded.
 	 */
-	before?: Date;
+	before?: Date | undefined;
 	/**
 	 * Only return events strictly after this time. A filter, not a page
 	 * position: events at exactly this time are excluded.
 	 */
-	after?: Date;
+	after?: Date | undefined;
 	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
 	 * Postgres requests cancellation of the active audit-log query.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -1287,13 +1330,13 @@ export interface ConsolidateInput<DefaultNamespace extends boolean = false> {
 	 * superseded.
 	 * @defaultValue `true`
 	 */
-	mergeTags?: boolean;
+	mergeTags?: boolean | undefined;
 	/**
 	 * Optional cancellation signal. On Postgres it cancels the running
 	 * statement; the consolidation is one statement, so a cancel before it
 	 * finishes writes nothing.
 	 */
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }
 
 /**
@@ -1509,7 +1552,10 @@ export interface ExperimentalMemoryClient<
 	 * ```ts
 	 * let cursor: string | undefined;
 	 * do {
-	 *   const page = await memory.experimental.findDuplicatesPage({ scope, cursor });
+	 *   const page = await memory.experimental.findDuplicatesPage({
+	 *     scope,
+	 *     cursor,
+	 *   });
 	 *   await review(page.pairs);
 	 *   cursor = page.nextCursor ?? undefined;
 	 * } while (cursor);

@@ -5,6 +5,7 @@ import type {
 	MemoryWithScore,
 	RetrievalBoosts,
 	RetrievalConfig,
+	RetrievalExplanation,
 	RetrievalFusionConfig,
 	SearchInput,
 } from "../types.js";
@@ -16,23 +17,53 @@ const IMPORTANCE_SCORES: Record<ImportanceLevel, number> = {
 	critical: 1,
 };
 
-export const DEFAULT_FUSION: Readonly<Required<RetrievalFusionConfig>> = {
+/** Fusion settings with the defaults filled in. */
+export type ResolvedFusion = RetrievalExplanation["fusion"];
+/** Boosts with the defaults filled in. */
+export type ResolvedBoosts = RetrievalExplanation["boosts"];
+
+export const DEFAULT_FUSION: Readonly<ResolvedFusion> = {
 	k: 60,
 	vector: 1,
 	lexical: 1,
 };
 
-export const DEFAULT_BOOSTS: Readonly<Required<RetrievalBoosts>> = {
+export const DEFAULT_BOOSTS: Readonly<ResolvedBoosts> = {
 	recency: 0.1,
 	importance: 0.1,
 };
+
+/**
+ * `config` over {@link DEFAULT_FUSION}. A field set to `undefined` keeps
+ * its default, as if it were left out; a spread would copy the
+ * `undefined`.
+ */
+export function resolveFusion(
+	config: RetrievalFusionConfig | undefined,
+): ResolvedFusion {
+	return {
+		k: config?.k ?? DEFAULT_FUSION.k,
+		vector: config?.vector ?? DEFAULT_FUSION.vector,
+		lexical: config?.lexical ?? DEFAULT_FUSION.lexical,
+	};
+}
+
+/** `config` over {@link DEFAULT_BOOSTS}, like {@link resolveFusion}. */
+export function resolveBoosts(
+	config: RetrievalBoosts | undefined,
+): ResolvedBoosts {
+	return {
+		recency: config?.recency ?? DEFAULT_BOOSTS.recency,
+		importance: config?.importance ?? DEFAULT_BOOSTS.importance,
+	};
+}
 
 const DEFAULT_RECENCY_HALF_LIFE_DAYS = 90;
 export const DEFAULT_CANDIDATE_MULTIPLIER = 3;
 
 export interface ScoringConfig {
-	fusion: Required<RetrievalFusionConfig>;
-	boosts: Required<RetrievalBoosts>;
+	fusion: ResolvedFusion;
+	boosts: ResolvedBoosts;
 	recencyHalfLifeDays: number;
 }
 
@@ -104,8 +135,8 @@ export function toVectorScore(cosineSimilarity: number): number {
 
 export function createScoringConfig(config?: RetrievalConfig): ScoringConfig {
 	return {
-		fusion: { ...DEFAULT_FUSION, ...config?.fusion },
-		boosts: { ...DEFAULT_BOOSTS, ...config?.boosts },
+		fusion: resolveFusion(config?.fusion),
+		boosts: resolveBoosts(config?.boosts),
 		recencyHalfLifeDays:
 			config?.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS,
 	};
@@ -137,7 +168,7 @@ export function rankByScore(scores: readonly number[]): number[] {
 export function fusedScore(
 	vectorRank: number | null,
 	lexicalRank: number | null,
-	fusion: Required<RetrievalFusionConfig>,
+	fusion: ResolvedFusion,
 ): number {
 	const best = (fusion.vector + fusion.lexical) / (fusion.k + 1);
 	let score = 0;

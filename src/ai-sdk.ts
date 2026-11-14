@@ -15,8 +15,8 @@ export type AiSdkProviderOptions = NonNullable<
 
 /** Provider options sent with queries and with documents. */
 export interface AiSdkPurposeOptions {
-	readonly query?: AiSdkProviderOptions;
-	readonly document?: AiSdkProviderOptions;
+	readonly query?: AiSdkProviderOptions | undefined;
+	readonly document?: AiSdkProviderOptions | undefined;
 }
 
 export interface AiSdkEmbedderOptions {
@@ -32,18 +32,18 @@ export interface AiSdkEmbedderOptions {
 	 * any other model requires it. For a known model, a different value is
 	 * sent to the provider to shorten the vectors.
 	 */
-	readonly dimensions?: number;
+	readonly dimensions?: number | undefined;
 	/** Most texts per call. Defaults to `100`. */
-	readonly maxBatch?: number;
+	readonly maxBatch?: number | undefined;
 	/** Provider options sent with every call. */
-	readonly providerOptions?: AiSdkProviderOptions;
+	readonly providerOptions?: AiSdkProviderOptions | undefined;
 	/**
 	 * Provider options for queries and for documents, merged over
 	 * `providerOptions`. Replaces the built-in hints for Google, Cohere and
 	 * Voyage, including the text prefixes for `gemini-embedding-2`; a purpose
 	 * left out gets no hint.
 	 */
-	readonly purposes?: AiSdkPurposeOptions;
+	readonly purposes?: AiSdkPurposeOptions | undefined;
 }
 
 interface KnownModel {

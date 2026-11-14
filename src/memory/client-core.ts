@@ -293,12 +293,12 @@ function toDuplicatePair(pair: {
 function memoryFilter(
 	visibility: StoreVisibility,
 	input: {
-		kinds?: StoreMemoryFilter["kinds"];
-		tags?: StoreMemoryFilter["tags"];
-		before?: Date;
-		after?: Date;
-		includeSuperseded?: boolean;
-		includeExpired?: boolean;
+		kinds?: StoreMemoryFilter["kinds"] | undefined;
+		tags?: StoreMemoryFilter["tags"] | undefined;
+		before?: Date | undefined;
+		after?: Date | undefined;
+		includeSuperseded?: boolean | undefined;
+		includeExpired?: boolean | undefined;
 	},
 ): StoreMemoryFilter {
 	return {

@@ -1,6 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import { assertKnownKeys } from "../options.js";
-import { DEFAULT_BOOSTS, DEFAULT_FUSION } from "../retrieval/scorer.js";
+import { resolveBoosts, resolveFusion } from "../retrieval/scorer.js";
 import type {
 	ConsolidateInput,
 	ContextInput,
@@ -363,7 +363,7 @@ export function validateRetrievalConfig(
 		return;
 	}
 
-	const fusion = { ...DEFAULT_FUSION, ...config.fusion };
+	const fusion = resolveFusion(config.fusion);
 	for (const key of ["k", "vector", "lexical"] as const) {
 		assertNonNegativeFiniteConfigValue(fusion[key], `retrieval.fusion.${key}`);
 	}
@@ -375,7 +375,7 @@ export function validateRetrievalConfig(
 			reason: "INVALID_OPTION",
 		});
 	}
-	const boosts = { ...DEFAULT_BOOSTS, ...config.boosts };
+	const boosts = resolveBoosts(config.boosts);
 	for (const key of ["recency", "importance"] as const) {
 		assertNonNegativeFiniteConfigValue(boosts[key], `retrieval.boosts.${key}`);
 	}
@@ -656,7 +656,10 @@ export function validateNewMemory(input: PreparedNewMemory): void {
 	}
 }
 
-/** Keys must be distinct in one batch: one statement cannot update a row twice. */
+/**
+ * Keys must be distinct in one batch: one statement cannot update a row
+ * twice.
+ */
 export function assertDistinctKeys(memories: readonly NewMemory[]): void {
 	const seen = new Set<string>();
 	for (const memory of memories) {
@@ -713,12 +716,12 @@ export function validateSearchInput(input: SearchInput): StoreVisibility {
 }
 
 export function validateListFilter(input: {
-	limit?: number;
+	limit?: number | undefined;
 	kinds?: unknown;
 	tags?: unknown;
 	includeSuperseded?: unknown;
 	includeExpired?: unknown;
-	signal?: AbortSignal;
+	signal?: AbortSignal | undefined;
 }): void {
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);

@@ -1,4 +1,10 @@
-import type { AuditEvent, Memory, MemoryClient, MemoryScope } from "mnemocyte";
+import type {
+	AuditEvent,
+	AuditEventType,
+	Memory,
+	MemoryClient,
+	MemoryScope,
+} from "mnemocyte";
 import { expect } from "vitest";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
 import type { ScopeFor } from "./survivor-deletes.js";
@@ -31,11 +37,11 @@ function canonical(value: unknown): string {
 
 /** An event without its id and timestamp, in a stable order for comparison. */
 function shapes(
-	events: readonly Pick<AuditEvent, "description" | "scope" | "metadata">[],
+	events: readonly Pick<AuditEvent, "type" | "scope" | "metadata">[],
 ) {
 	return events
 		.map((event) => ({
-			description: event.description,
+			type: event.type,
 			scope: event.scope,
 			metadata: event.metadata,
 		}))
@@ -46,27 +52,26 @@ async function auditLog(
 	memory: MemoryClient,
 	scope: MemoryScope,
 ): Promise<AuditEvent[]> {
-	return memory.listAuditLog({
+	const page = await memory.listAuditLog({
 		scope: {
 			namespace: expectDefined(scope.namespace),
 			entityId: scope.entityId,
 		},
 		limit: 1000,
 	});
+	return page.events;
 }
 
 function eventFor(
 	events: readonly AuditEvent[],
-	description: string,
+	type: AuditEventType,
 	memoryId: string,
 ): AuditEvent {
 	return expectDefined(
 		events.find(
-			(event) =>
-				event.description === description &&
-				event.metadata.memoryId === memoryId,
+			(event) => event.type === type && event.metadata.memoryId === memoryId,
 		),
-		`no ${description} event for ${memoryId}`,
+		`no ${type} event for ${memoryId}`,
 	);
 }
 
@@ -136,14 +141,14 @@ export async function verifyAuditPayloads(
 
 	const events = await auditLog(memory, entity);
 	const created = (memoryId: string, extra: object = {}) => ({
-		description: "memory.created",
+		type: "memory.created" as const,
 		scope: written,
 		metadata: { memoryId, kind: "fact", importance: "normal", ...extra },
 	});
 	expect(shapes(events)).toEqual(
 		shapes([
 			{
-				description: "memory.created",
+				type: "memory.created",
 				scope: written,
 				metadata: {
 					memoryId: plain.id,
@@ -153,7 +158,7 @@ export async function verifyAuditPayloads(
 			},
 			created(keyed.id, { key: "drink" }),
 			{
-				description: "memory.updated",
+				type: "memory.updated",
 				scope: written,
 				metadata: {
 					memoryId: keyed.id,
@@ -164,7 +169,7 @@ export async function verifyAuditPayloads(
 			},
 			created(survivor.id),
 			{
-				description: "memory.updated",
+				type: "memory.updated",
 				scope: written,
 				metadata: {
 					memoryId: keyed.id,
@@ -174,45 +179,45 @@ export async function verifyAuditPayloads(
 				},
 			},
 			{
-				description: "memory.updated",
+				type: "memory.updated",
 				scope: written,
 				metadata: { memoryId: plain.id, fields: ["content", "tags"] },
 			},
 			{
-				description: "memory.superseded",
+				type: "memory.superseded",
 				scope: written,
 				metadata: { memoryId: plain.id, supersededBy: survivor.id },
 			},
 			{
-				description: "memory.deleted",
+				type: "memory.deleted",
 				scope: written,
 				metadata: { memoryId: survivor.id, restoredIds: [plain.id] },
 			},
 			created(rootId),
 			created(leafId),
 			{
-				description: "memory.superseded",
+				type: "memory.superseded",
 				scope: written,
 				metadata: { memoryId: leafId, supersededBy: rootId },
 			},
 			{
-				description: "memory.deleted",
+				type: "memory.deleted",
 				scope: written,
 				metadata: { memoryId: rootId },
 			},
 			{
-				description: "memory.deleted",
+				type: "memory.deleted",
 				scope: written,
 				metadata: { memoryId: leafId, deletedWith: rootId },
 			},
 			{
-				description: "memory.deleted",
+				type: "memory.deleted",
 				scope: written,
 				metadata: { memoryId: keyed.id },
 			},
 			created(expired.id),
 			{
-				description: "memory.pruned",
+				type: "memory.pruned",
 				scope: recordScope(entity),
 				metadata: { count: 1 },
 			},
@@ -230,8 +235,7 @@ export async function verifyAuditPayloads(
 	);
 	const update = events.find(
 		(event) =>
-			event.description === "memory.updated" &&
-			event.metadata.memoryId === plain.id,
+			event.type === "memory.updated" && event.metadata.memoryId === plain.id,
 	);
 	expect(expectDefined(update).timestamp).toEqual(updated.updatedAt);
 }

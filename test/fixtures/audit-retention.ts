@@ -11,7 +11,7 @@ async function eventsOf(
 	client: MemoryClient,
 	scope: MemoryScope | Omit<MemoryScope, "agentId" | "sessionId">,
 ): Promise<AuditEvent[]> {
-	return client.listAuditLog({ scope, limit: 100 });
+	return (await client.listAuditLog({ scope, limit: 100 })).events;
 }
 
 /** Every event in the list is at or after the cutoff. */

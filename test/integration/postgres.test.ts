@@ -308,16 +308,16 @@ async function main(databaseUrl: string) {
 		expect(context.length).toBeGreaterThan(0);
 
 		// 10. listAuditLog surfaces the recorded events.
-		const log = await client.listAuditLog({
-			scope: testScope(entityId),
-			limit: 50,
-		});
-		const descriptions = log.map((event) => event.description).sort();
+		const log = (
+			await client.listAuditLog({
+				scope: testScope(entityId),
+				limit: 50,
+			})
+		).events;
+		const descriptions = log.map((event) => event.type).sort();
 		expect(descriptions).toContain("memory.created");
 		expect(descriptions).toContain("memory.superseded");
-		const superseded = log.find(
-			(event) => event.description === "memory.superseded",
-		);
+		const superseded = log.find((event) => event.type === "memory.superseded");
 		expect(superseded?.metadata.memoryId).toBe(dup.id);
 		expect(superseded?.metadata.supersededBy).toBe(memory.id);
 
@@ -356,7 +356,7 @@ async function main(databaseUrl: string) {
 		);
 		await expect(
 			client.listAuditLog({ scope: testScope(entityId) }),
-		).resolves.toEqual([]);
+		).resolves.toEqual({ events: [], nextCursor: null });
 
 		// 13. Observability captured at least one success event for each op exercised.
 		const operations = new Set(

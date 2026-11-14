@@ -41,10 +41,11 @@ export async function verifyNamespacePruneAudit(
 		dryRun: true,
 	});
 	for (const entityId of [alice, bob, unaffected]) {
-		const events = await client.listAuditLog({ scope: testScope(entityId) });
-		expect(
-			events.filter((event) => event.description === "memory.pruned"),
-		).toEqual([]);
+		const events = (await client.listAuditLog({ scope: testScope(entityId) }))
+			.events;
+		expect(events.filter((event) => event.type === "memory.pruned")).toEqual(
+			[],
+		);
 	}
 
 	await expect(
@@ -57,13 +58,13 @@ export async function verifyNamespacePruneAudit(
 
 	const aliceEvents = (
 		await client.listAuditLog({ scope: testScope(alice) })
-	).filter((event) => event.description === "memory.pruned");
+	).events.filter((event) => event.type === "memory.pruned");
 	const bobEvents = (
 		await client.listAuditLog({ scope: testScope(bob) })
-	).filter((event) => event.description === "memory.pruned");
+	).events.filter((event) => event.type === "memory.pruned");
 	const unaffectedEvents = (
 		await client.listAuditLog({ scope: testScope(unaffected) })
-	).filter((event) => event.description === "memory.pruned");
+	).events.filter((event) => event.type === "memory.pruned");
 
 	expect(aliceEvents).toHaveLength(1);
 	expect(expectDefined(aliceEvents[0]).metadata.count).toBe(2);
@@ -79,13 +80,13 @@ export async function verifyNamespacePruneAudit(
 		dryRun: false,
 	});
 	expect(
-		(await client.listAuditLog({ scope: testScope(alice) })).filter(
-			(event) => event.description === "memory.pruned",
+		(await client.listAuditLog({ scope: testScope(alice) })).events.filter(
+			(event) => event.type === "memory.pruned",
 		),
 	).toHaveLength(1);
 	expect(
-		(await client.listAuditLog({ scope: testScope(bob) })).filter(
-			(event) => event.description === "memory.pruned",
+		(await client.listAuditLog({ scope: testScope(bob) })).events.filter(
+			(event) => event.type === "memory.pruned",
 		),
 	).toHaveLength(1);
 }

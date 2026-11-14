@@ -42,8 +42,8 @@ describe("prune audit coverage", () => {
 		).resolves.toEqual({ matchedCount: 2, deletedCount: 2, dryRun: false });
 
 		for (const scope of [alice, bob]) {
-			const pruned = (await client.listAuditLog({ scope })).filter(
-				(event) => event.description === "memory.pruned",
+			const pruned = (await client.listAuditLog({ scope })).events.filter(
+				(event) => event.type === "memory.pruned",
 			);
 			expect(
 				pruned.map((event) => ({

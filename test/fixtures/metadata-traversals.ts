@@ -68,7 +68,8 @@ export async function verifyMetadataTraversalCounts(
 			content: "single traversal",
 			metadata: metadata("single"),
 		});
-		singleLog = await client.listAuditLog({ scope: testScope(singleEntity) });
+		singleLog = (await client.listAuditLog({ scope: testScope(singleEntity) }))
+			.events;
 	});
 	expect(single.probes.get("single")).toBe(2);
 	// Audit metadata is built by the store with the write, so it is only
@@ -79,7 +80,7 @@ export async function verifyMetadataTraversalCounts(
 	}
 	expect(singleMemory.metadata).toEqual(metadata("single"));
 	expect(singleLog).toHaveLength(1);
-	expect(singleLog[0]?.description).toBe("memory.created");
+	expect(singleLog[0]?.type).toBe("memory.created");
 
 	singleMemory.metadata[PROBE_KEY] = "mutated-public-memory";
 	if (singleLog[0]) {
@@ -90,9 +91,11 @@ export async function verifyMetadataTraversalCounts(
 		query: "single traversal",
 	});
 	expect(recalled[0]?.metadata[PROBE_KEY]).toBe("single");
-	const rereadLog = await client.listAuditLog({
-		scope: testScope(singleEntity),
-	});
+	const rereadLog = (
+		await client.listAuditLog({
+			scope: testScope(singleEntity),
+		})
+	).events;
 	expect(rereadLog[0]?.metadata.memoryId).toBe(singleMemory.id);
 
 	const batchEntity = `${entityPrefix}_batch`;
@@ -112,7 +115,8 @@ export async function verifyMetadataTraversalCounts(
 				},
 			],
 		});
-		batchLog = await client.listAuditLog({ scope: testScope(batchEntity) });
+		batchLog = (await client.listAuditLog({ scope: testScope(batchEntity) }))
+			.events;
 	});
 	expect(batch.probes.get("batch-one")).toBe(2);
 	expect(batch.probes.get("batch-two")).toBe(2);

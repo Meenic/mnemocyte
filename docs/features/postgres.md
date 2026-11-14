@@ -11,7 +11,7 @@ the foreign key alone names `public`):
 | Table | Purpose |
 |---|---|
 | `mnemocyte_memories` | One row per memory: `id` (uuid PK), `entity_id`, `content`, `kind`, `importance`, `tags text[]`, `source`, `metadata jsonb`, `confidence real`, `embedding vector(N)` or `halfvec(N)` (nullable), `embedding_model`, `embedding_dimensions`, `superseded_by` (uuid, self FK, `ON DELETE NO ACTION`), `superseded_at`, `expires_at`, `last_accessed_at`, `access_count`, `created_at`, `updated_at`, then the scope columns `namespace`, `agent_id`, `session_id`, an optional `key`, and `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED`. |
-| `mnemocyte_events` | Audit log: `id` (uuid), `entity_id`, `description`, `metadata jsonb`, `timestamp`, `namespace`, `agent_id`, `session_id`. |
+| `mnemocyte_events` | Audit log: `id` (uuid), `entity_id`, `description` (the event's `type`), `metadata jsonb`, `timestamp`, `namespace`, `agent_id`, `session_id`. |
 | `mnemocyte_meta` | One row, key `installation`: `embedding_dimensions`, `embedding_model` and `vector_type` (`vector` or `halfvec`, `CHECK`ed) for the whole installation. |
 
 New columns sit at the end of each table, in the order `0003` adds them, so
@@ -29,7 +29,7 @@ Indexes:
 | `mnemocyte_memories_superseded_by_idx` | partial btree `(superseded_by) WHERE superseded_by IS NOT NULL` | The foreign-key check on delete and the dependents check in the delete CTE look rows up by `superseded_by`. |
 | `mnemocyte_memories_content_tsv_idx` | GIN `(content_tsv)` | Full-text `@@` without parsing every row. |
 | `mnemocyte_memories_embedding_hnsw_idx` | HNSW `vector_cosine_ops` or `halfvec_cosine_ops` | Cosine kNN. |
-| `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages, read backwards for newest first, and `pruneAuditLog` batches, read forwards. |
+| `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages of one entity, read backwards for newest first, and `pruneAuditLog` batches, read forwards. Pages across entities sort (see [maintenance.md](./maintenance.md#listing)). |
 
 The `ORDER BY` of audit pages and `pruneAuditLog` batches names the table
 columns, because the select list's `id::text AS id` would otherwise shadow
@@ -103,8 +103,8 @@ instead of 6.4 ms on the large one; the HNSW path does not use it, and its
 write cost is lost in HNSW's. The saving is a few milliseconds on one kind of
 query, so it stays out until an application shows a `kinds`-heavy workload.
 
-Audit pages read `mnemocyte_events_scope_time_idx` backwards with no sort
-(0.08–0.17 ms). `pruneAuditLog` reads it forwards in keyset batches; a
+Audit pages of one entity read `mnemocyte_events_scope_time_idx`
+backwards with no sort (0.08–0.17 ms). `pruneAuditLog` reads it forwards in keyset batches; a
 separate `(timestamp)` index was measured and left out (see
 [maintenance.md](./maintenance.md#retention)).
 

@@ -19,6 +19,7 @@ import {
 	writtenEvent,
 } from "./audit.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
+import { auditTimestampText } from "./cursor.js";
 import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
 import {
 	isExpired,
@@ -33,6 +34,7 @@ import { cloneAuditEvent, cloneMemory, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
+	type StoreAuditPosition,
 	type StoreConsolidateInput,
 	type StoreConsolidateResult,
 	type StoreDeleteInput,
@@ -53,6 +55,33 @@ function comparePositions(
 	const timestampDifference = a.timestamp.getTime() - b.timestamp.getTime();
 	if (timestampDifference !== 0) {
 		return timestampDifference;
+	}
+	if (a.id === b.id) {
+		return 0;
+	}
+	return a.id < b.id ? -1 : 1;
+}
+
+function auditPosition(event: AuditEvent): StoreAuditPosition {
+	return { timestamp: auditTimestampText(event.timestamp), id: event.id };
+}
+
+/**
+ * Order of two audit positions by time, then id. The text ends in
+ * microseconds (`….123456Z`); a `Date` holds the milliseconds before them,
+ * so the last three digits are compared on their own.
+ */
+function compareAuditPositions(
+	a: StoreAuditPosition,
+	b: StoreAuditPosition,
+): number {
+	const milliseconds = (text: string) => Date.parse(`${text.slice(0, -4)}Z`);
+	const microseconds = (text: string) => Number(text.slice(-4, -1));
+	const difference =
+		milliseconds(a.timestamp) - milliseconds(b.timestamp) ||
+		microseconds(a.timestamp) - microseconds(b.timestamp);
+	if (difference !== 0) {
+		return difference;
 	}
 	if (a.id === b.id) {
 		return 0;
@@ -572,6 +601,7 @@ export function createInMemoryStore(): MemoryStore {
 		},
 		async listAuditLog(input, options) {
 			throwIfAborted(options?.signal);
+			const position = input.position;
 			return auditLog
 				.filter((event) => {
 					throwIfAborted(options?.signal);
@@ -590,23 +620,17 @@ export function createInMemoryStore(): MemoryStore {
 					) {
 						return false;
 					}
-					if (
-						input.beforeCursor !== undefined &&
-						comparePositions(event, input.beforeCursor) >= 0
-					) {
-						return false;
-					}
-					if (
-						input.afterCursor !== undefined &&
-						comparePositions(event, input.afterCursor) <= 0
-					) {
-						return false;
-					}
-					return true;
+					return (
+						position === undefined ||
+						compareAuditPositions(auditPosition(event), position) < 0
+					);
 				})
 				.sort((a, b) => comparePositions(b, a))
 				.slice(0, input.limit)
-				.map(cloneAuditEvent);
+				.map((event) => ({
+					event: cloneAuditEvent(event),
+					position: auditPosition(event),
+				}));
 		},
 		async pruneAuditLog(input, options) {
 			throwIfAborted(options?.signal);

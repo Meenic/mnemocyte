@@ -117,7 +117,7 @@ describe("pruneAuditLog (PGlite)", () => {
 		} finally {
 			afterStatement = () => {};
 		}
-		expect(await memory.listAuditLog({ scope })).toHaveLength(3);
+		expect((await memory.listAuditLog({ scope })).events).toHaveLength(3);
 	});
 
 	/** The plan of a recorded statement, without running it. */

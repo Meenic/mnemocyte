@@ -30,8 +30,10 @@ import type {
 	UpdateInput,
 } from "../types.js";
 import {
+	decodeAuditCursor,
 	decodeDuplicateCursor,
 	decodeListCursor,
+	encodeAuditCursor,
 	encodeDuplicateCursor,
 	encodeListCursor,
 } from "./cursor.js";
@@ -813,23 +815,33 @@ export function createMemoryClient(
 				async () => {
 					throwIfAborted(input?.signal);
 					const selector = validateListAuditLogInput(input);
-					return store.listAuditLog(
+					const limit = input.limit ?? DEFAULT_AUDIT_LOG_LIMIT;
+					const position =
+						input.cursor === undefined
+							? undefined
+							: decodeAuditCursor(input.cursor);
+					// One extra event says whether another page exists.
+					const entries = await store.listAuditLog(
 						{
 							selector,
-							limit: input.limit ?? DEFAULT_AUDIT_LOG_LIMIT,
+							limit: limit + 1,
 							...(input.before === undefined ? {} : { before: input.before }),
 							...(input.after === undefined ? {} : { after: input.after }),
-							...(input.beforeCursor === undefined
-								? {}
-								: { beforeCursor: input.beforeCursor }),
-							...(input.afterCursor === undefined
-								? {}
-								: { afterCursor: input.afterCursor }),
+							...(position === undefined ? {} : { position }),
 						},
 						storeOptions(input.signal),
 					);
+					const page = entries.slice(0, limit);
+					const last = page.at(-1);
+					return {
+						events: page.map((entry) => entry.event),
+						nextCursor:
+							entries.length > limit && last
+								? encodeAuditCursor(last.position)
+								: null,
+					};
 				},
-				(result) => ({ count: result.length }),
+				(result) => ({ count: result.events.length }),
 			);
 		},
 		pruneAuditLog(input) {

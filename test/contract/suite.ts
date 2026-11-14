@@ -14,6 +14,7 @@ import {
 	verifyAuditFailureRollsBack,
 	verifyAuditPayloads,
 } from "../fixtures/atomic-audit.js";
+import { allPages, verifyAuditPages } from "../fixtures/audit-cursor.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
@@ -405,6 +406,66 @@ export function describeStoreContract(
 				entityId,
 				...extra,
 			}));
+		});
+
+		test("audit pages", async () => {
+			const { memory, namespace } = client("pages", { audit: true });
+			const other = client("pages_other").namespace;
+			await verifyAuditPages({
+				client: memory,
+				scopeFor: (entityId, extra = {}) => ({ namespace, entityId, ...extra }),
+				otherScopeFor: (entityId, extra = {}) => ({
+					namespace: other,
+					entityId,
+					...extra,
+				}),
+			});
+		});
+
+		test("audit pages keep microseconds a Date would cut", async () => {
+			const { memory, namespace } = client("micro");
+			// Rows written by the column default `now()`, or by hand, carry
+			// microseconds. Five events in one millisecond, two of them at
+			// the same microsecond, in two entities.
+			const times = [
+				"2026-01-01T00:00:00.123000Z",
+				"2026-01-01T00:00:00.123400Z",
+				"2026-01-01T00:00:00.123400Z",
+				"2026-01-01T00:00:00.123401Z",
+				"2026-01-01T00:00:00.123999Z",
+			];
+			for (const [index, time] of times.entries()) {
+				await db().query(
+					`INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata, timestamp)
+					 VALUES (gen_random_uuid(), $1, $2, 'memory.created', '{}'::jsonb, $3::timestamptz)`,
+					[namespace, index % 2 === 0 ? "even" : "odd", time],
+				);
+			}
+			const expected = async (entity: string | null) =>
+				(
+					await db().query<{ id: string }>(
+						`SELECT id::text AS id FROM mnemocyte_events
+						 WHERE namespace = $1 AND ($2::text IS NULL OR entity_id = $2)
+						 ORDER BY timestamp DESC, id DESC`,
+						[namespace, entity],
+					)
+				).map((row) => row.id);
+			for (const entityId of ["even", null] as const) {
+				const scope =
+					entityId === null ? { namespace } : { namespace, entityId };
+				const { events } = await allPages(
+					(cursor) =>
+						memory.listAuditLog({
+							scope,
+							limit: 1,
+							...(cursor === undefined ? {} : { cursor }),
+						}),
+					1,
+				);
+				expect(events.map((event) => event.id)).toEqual(
+					await expected(entityId),
+				);
+			}
 		});
 
 		test("audit retention", async () => {

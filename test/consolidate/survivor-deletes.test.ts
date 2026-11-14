@@ -43,10 +43,10 @@ describe("survivor-aware deletes (in-memory)", () => {
 			supersededIds: [loserId],
 		});
 		await memory.delete({ scope, id: survivorId, dependents: "delete" });
-		const cascade = await memory.listAuditLog({ scope, limit: 10 });
+		const cascade = (await memory.listAuditLog({ scope, limit: 10 })).events;
 		expect(
 			cascade
-				.filter((event) => event.description === "memory.deleted")
+				.filter((event) => event.type === "memory.deleted")
 				.map((event) => event.metadata),
 		).toEqual(
 			expect.arrayContaining([
@@ -63,10 +63,11 @@ describe("survivor-aware deletes (in-memory)", () => {
 		});
 		await memory.delete({ scope, id: next.id, dependents: "restore" });
 		// Events in the same millisecond have no fixed order, so find it by id.
-		const restored = (await memory.listAuditLog({ scope, limit: 20 })).find(
+		const restored = (
+			await memory.listAuditLog({ scope, limit: 20 })
+		).events.find(
 			(event) =>
-				event.description === "memory.deleted" &&
-				event.metadata.memoryId === next.id,
+				event.type === "memory.deleted" && event.metadata.memoryId === next.id,
 		);
 		expect(restored?.metadata).toEqual({
 			memoryId: next.id,

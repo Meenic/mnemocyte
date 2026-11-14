@@ -1,6 +1,7 @@
 import type { EventRow, MemoryRow } from "../db/rows.js";
 import type {
 	AuditEvent,
+	AuditEventType,
 	ImportanceLevel,
 	Memory,
 	MemoryKind,
@@ -47,7 +48,8 @@ export function rowToAuditEvent(row: EventRow): AuditEvent {
 			agentId: row.agentId,
 			sessionId: row.sessionId,
 		},
-		description: row.description,
+		// The column holds what this library wrote: one of the five types.
+		type: row.description as AuditEventType,
 		metadata: cloneJsonObject(row.metadata),
 		timestamp: row.timestamp,
 	};

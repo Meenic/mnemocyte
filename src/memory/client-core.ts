@@ -18,6 +18,7 @@ import type {
 	AddInput,
 	AddManyInput,
 	ConsolidateResult,
+	DuplicatePage,
 	DuplicatePair,
 	EmbeddingPurpose,
 	Memory,
@@ -28,7 +29,12 @@ import type {
 	SearchInput,
 	UpdateInput,
 } from "../types.js";
-import { decodeListCursor, encodeListCursor } from "./cursor.js";
+import {
+	decodeDuplicateCursor,
+	decodeListCursor,
+	encodeDuplicateCursor,
+	encodeListCursor,
+} from "./cursor.js";
 import {
 	DEFAULT_AUDIT_LOG_LIMIT,
 	DEFAULT_DUPLICATE_LIMIT,
@@ -71,6 +77,7 @@ import {
 	validateDeleteInput,
 	validateEntitySelector,
 	validateFindDuplicatesInput,
+	validateFindDuplicatesPageInput,
 	validateListAuditLogInput,
 	validateListFilter,
 	validateNewMemory,
@@ -946,6 +953,54 @@ export function createMemoryClient(
 		experimental: {
 			// Deprecated alias of `consolidate`, removed in 1.0.
 			consolidate: (input) => client.consolidate(input),
+			findDuplicatesPage(input) {
+				return observe(
+					config,
+					store.backend,
+					"findDuplicatesPage",
+					scopeMetadata(input),
+					async () => {
+						throwIfAborted(input?.signal);
+						const { visibility, batchSize } =
+							validateFindDuplicatesPageInput(input);
+						const afterId =
+							input.cursor === undefined
+								? undefined
+								: decodeDuplicateCursor(input.cursor);
+						await ensureEmbeddingCompatibility();
+						const page = await store.findDuplicatePage(
+							{
+								...memoryFilter(visibility, input),
+								threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+								neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
+								batchSize,
+								...(afterId === undefined ? {} : { afterId }),
+							},
+							storeOptions(input.signal),
+						);
+						if (
+							!Number.isInteger(page.compared) ||
+							page.compared < 0 ||
+							page.compared > batchSize ||
+							page.compared > 0 !== (page.lastId !== null)
+						) {
+							throw new MnemocyteError(
+								"Duplicate search returned an invalid page.",
+								"DB",
+							);
+						}
+						return {
+							pairs: page.pairs.map(toDuplicatePair),
+							nextCursor:
+								page.compared === batchSize && page.lastId !== null
+									? encodeDuplicateCursor(page.lastId)
+									: null,
+							compared: page.compared,
+						} satisfies DuplicatePage;
+					},
+					(result) => ({ count: result.pairs.length }),
+				);
+			},
 		},
 	};
 }

@@ -126,7 +126,7 @@ export function matchesPruneFilter(
  */
 export function matchesDuplicateFilter(
 	memory: Memory,
-	input: StoreDuplicateInput,
+	input: Omit<StoreDuplicateInput, "limit">,
 	now: Date,
 ): boolean {
 	return matchesMemoryFilter(memory, input, now);

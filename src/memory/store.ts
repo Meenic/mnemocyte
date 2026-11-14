@@ -143,6 +143,23 @@ export interface StoreDuplicatePair {
 	similarity: number;
 }
 
+export interface StoreDuplicatePageInput
+	extends Omit<StoreDuplicateInput, "limit"> {
+	/** Memories whose neighbors the page compares. */
+	readonly batchSize: number;
+	/** Compare only memories whose id is greater than this one. */
+	readonly afterId?: string;
+}
+
+export interface StoreDuplicatePage {
+	/** The pairs the page owns, ordered like {@link MemoryStore.findDuplicatePairs}. */
+	pairs: StoreDuplicatePair[];
+	/** Memories whose neighbors the page compared. */
+	compared: number;
+	/** The greatest id the page compared, or `null` when it compared none. */
+	lastId: string | null;
+}
+
 export interface StoreAuditLogInput {
 	readonly selector: StoreEntitySelector;
 	readonly limit: number;
@@ -407,6 +424,20 @@ export interface MemoryStore {
 		input: StoreDuplicateInput,
 		options?: StoreOperationOptions,
 	): Promise<StoreDuplicatePair[]>;
+	/**
+	 * One page of {@link MemoryStore.findDuplicatePairs}: the first
+	 * `batchSize` memories that pass the filters with an id greater than
+	 * `after`, in id order, each compared with every memory that passes them.
+	 * A pair found from memory `x` is returned when `x` has the smaller id,
+	 * or when the smaller id's own `neighbors` nearest do not include `x`;
+	 * either way it belongs to exactly one page of a run, the page of the
+	 * memory whose neighbors contain the other (the smaller id's when both
+	 * do). No limit.
+	 */
+	findDuplicatePage(
+		input: StoreDuplicatePageInput,
+		options?: StoreOperationOptions,
+	): Promise<StoreDuplicatePage>;
 
 	/**
 	 * Selected events in strict descending `(timestamp, id)` order, up to the

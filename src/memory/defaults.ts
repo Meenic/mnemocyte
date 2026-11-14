@@ -27,6 +27,8 @@ export const DEFAULT_DUPLICATE_THRESHOLD = 0.95;
 export const DEFAULT_DUPLICATE_LIMIT = 100;
 /** Default nearest neighbors compared per memory by `findDuplicates`. */
 export const DEFAULT_DUPLICATE_NEIGHBORS = 10;
+/** Default memories compared per page of `findDuplicatesPage`. */
+export const DEFAULT_DUPLICATE_BATCH_SIZE = 500;
 /** Default `dependents` policy of `delete`. */
 export const DEFAULT_DEPENDENTS_POLICY: DependentsPolicy = "reject";
 /** Default cap on audit-log entries returned per `listAuditLog`. */

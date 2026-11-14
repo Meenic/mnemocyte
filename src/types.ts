@@ -181,6 +181,7 @@ export type MnemocyteOperation =
 	| "context"
 	| "prune"
 	| "findDuplicates"
+	| "findDuplicatesPage"
 	| "listAuditLog"
 	| "pruneAuditLog"
 	| "consolidate"
@@ -1117,6 +1118,53 @@ export interface FindDuplicatesInput<DefaultNamespace extends boolean = false>
 }
 
 /**
+ * Input for {@link ExperimentalMemoryClient.findDuplicatesPage}: one page of
+ * {@link MemoryClient.findDuplicates}, comparing up to `batchSize` memories
+ * in id order after `cursor`. Pass the same fields on every page of a run.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export interface FindDuplicatesPageInput<
+	DefaultNamespace extends boolean = false,
+> extends Omit<FindDuplicatesInput<DefaultNamespace>, "limit"> {
+	/**
+	 * Memories whose neighbors this page compares, 1 to 1,000. Each is
+	 * compared with every memory of the scope, so a page returns at most
+	 * `batchSize × neighbors` pairs. @defaultValue `500`
+	 */
+	batchSize?: number;
+	/**
+	 * Where to continue: the {@link DuplicatePage.nextCursor} of the previous
+	 * page, unchanged. Omit it for the first page.
+	 */
+	cursor?: string;
+}
+
+/**
+ * One page of duplicate pairs from
+ * {@link ExperimentalMemoryClient.findDuplicatesPage}.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export interface DuplicatePage {
+	/**
+	 * Pairs this page owns, most similar first, then by ids. A pair belongs
+	 * to the page of the memory whose neighbors contain the other one, or of
+	 * the smaller id when both do, so a run of pages returns each pair once.
+	 * The order holds within the page only.
+	 */
+	pairs: DuplicatePair[];
+	/**
+	 * Opaque cursor for the next page, or `null` when this page compared the
+	 * last memories. Pass it back unchanged as
+	 * {@link FindDuplicatesPageInput.cursor}.
+	 */
+	nextCursor: string | null;
+	/** Memories whose neighbors this page compared. */
+	compared: number;
+}
+
+/**
  * A pair of memories that are likely duplicates. Unordered; each pair is
  * returned once.
  */
@@ -1426,6 +1474,32 @@ export interface ExperimentalMemoryClient<
 	consolidate(
 		input: ConsolidateInput<DefaultNamespace>,
 	): Promise<ConsolidateResult>;
+	/**
+	 * {@link MemoryClient.findDuplicates} in pages, so each call is bounded
+	 * and a run can be resumed: a page compares up to `batchSize` memories
+	 * after the cursor, in id order, with every memory of the scope, and
+	 * returns the pairs it owns. Same rules as `findDuplicates`, with no
+	 * `limit`; the pages of a run return each pair once. Read-only.
+	 *
+	 * Each page reads the scope again, so memories added, changed or
+	 * superseded between pages can make a pair come twice or not at all.
+	 *
+	 * @example
+	 * ```ts
+	 * let cursor: string | undefined;
+	 * do {
+	 *   const page = await memory.experimental.findDuplicatesPage({ scope, cursor });
+	 *   await review(page.pairs);
+	 *   cursor = page.nextCursor ?? undefined;
+	 * } while (cursor);
+	 * ```
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` for a `cursor` that is not a
+	 * `nextCursor` of this method, or the inputs `findDuplicates` rejects.
+	 */
+	findDuplicatesPage(
+		input: FindDuplicatesPageInput<DefaultNamespace>,
+	): Promise<DuplicatePage>;
 }
 
 /** Input for {@link BoundMemoryClient.add}. */
@@ -1446,6 +1520,15 @@ export type BoundDeleteScopeInput = Omit<DeleteScopeInput, "scope">;
 export type BoundContextInput = Omit<ContextInput, "scope">;
 /** Input for {@link BoundMemoryClient.findDuplicates}. */
 export type BoundFindDuplicatesInput = Omit<FindDuplicatesInput, "scope">;
+/**
+ * Input for {@link BoundExperimentalMemoryClient.findDuplicatesPage}.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export type BoundFindDuplicatesPageInput = Omit<
+	FindDuplicatesPageInput,
+	"scope"
+>;
 /** Input for {@link BoundMemoryClient.listAuditLog}. */
 export type BoundListAuditLogInput = Omit<ListAuditLogInput, "scope">;
 /** Input for {@link BoundMemoryClient.consolidate}. */
@@ -1518,4 +1601,11 @@ export interface BoundExperimentalMemoryClient {
 	 * @deprecated Use {@link BoundMemoryClient.consolidate}. Removed in 1.0.
 	 */
 	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
+	/**
+	 * {@link ExperimentalMemoryClient.findDuplicatesPage} at the bound
+	 * scope.
+	 */
+	findDuplicatesPage(
+		input?: BoundFindDuplicatesPageInput,
+	): Promise<DuplicatePage>;
 }

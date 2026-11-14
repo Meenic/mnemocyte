@@ -9,6 +9,7 @@ import type {
 	DeleteInput,
 	DeleteScopeInput,
 	FindDuplicatesInput,
+	FindDuplicatesPageInput,
 	GetInput,
 	ListAuditLogInput,
 	ListInput,
@@ -126,6 +127,10 @@ export function createScopedClient(
 			bindScope(core, validateScope(withNamespace(scope, namespace)), context),
 		experimental: {
 			consolidate: (input) => client.consolidate(input),
+			findDuplicatesPage: (input) =>
+				core.experimental.findDuplicatesPage(
+					withScopeNamespace(input, namespace) as FindDuplicatesPageInput,
+				),
 		},
 	};
 	return attachMemoryClientInternals(client, context.internals);
@@ -224,6 +229,10 @@ function bindScope(
 			),
 		experimental: {
 			consolidate: (input) => bound.consolidate(input),
+			findDuplicatesPage: (input) =>
+				run("findDuplicatesPage", input, true, (value) =>
+					core.experimental.findDuplicatesPage({ ...value, scope }),
+				),
 		},
 	};
 	return attachMemoryClientInternals(bound, context.internals);

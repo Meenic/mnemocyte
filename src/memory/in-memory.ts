@@ -37,6 +37,7 @@ import {
 	type StoreConsolidateResult,
 	type StoreDeleteInput,
 	type StoreDeleteResult,
+	type StoreDuplicateInput,
 	type StoreDuplicatePair,
 	type StoreLexicalCandidate,
 	type StoreLexicalSearchInput,
@@ -81,6 +82,64 @@ function keyConflictError(): MnemocyteError {
 	);
 }
 
+interface FoundPair {
+	a: StoredMemory;
+	b: StoredMemory;
+	similarity: number;
+}
+
+/**
+ * The exact `count` nearest of `candidates` to `memory`, without itself,
+ * most similar first and ties by id. Similarities are clamped to `[0, 1]`.
+ */
+function nearestNeighbors(
+	memory: StoredMemory,
+	candidates: readonly StoredMemory[],
+	count: number,
+): Array<{ other: StoredMemory; similarity: number }> {
+	return candidates
+		.filter((other) => other.id !== memory.id)
+		.map((other) => ({
+			other,
+			similarity: Math.max(
+				0,
+				Math.min(1, cosineSimilarity(memory.embedding, other.embedding)),
+			),
+		}))
+		.sort(
+			(x, y) =>
+				y.similarity - x.similarity || compareIds(x.other.id, y.other.id),
+		)
+		.slice(0, count);
+}
+
+/** Add a pair keyed by its ordered ids, keeping the first one found. */
+function addPair(
+	pairs: Map<string, FoundPair>,
+	x: StoredMemory,
+	y: StoredMemory,
+	similarity: number,
+): void {
+	const [a, b] = x.id < y.id ? [x, y] : [y, x];
+	const key = `${a.id} ${b.id}`;
+	if (!pairs.has(key)) {
+		pairs.set(key, { a, b, similarity });
+	}
+}
+
+function sortPairs(pairs: Map<string, FoundPair>): FoundPair[] {
+	return [...pairs.values()].sort(
+		(x, y) =>
+			y.similarity - x.similarity ||
+			compareIds(x.a.id, y.a.id) ||
+			compareIds(x.b.id, y.b.id),
+	);
+}
+
+function toStorePair({ a, b, similarity }: FoundPair): StoreDuplicatePair {
+	return { a: cloneMemory(a), b: cloneMemory(b), similarity };
+}
+
 export function createInMemoryStore(): MemoryStore {
 	const memories = new Map<string, StoredMemory>();
 	const auditLog: AuditEvent[] = [];
@@ -95,6 +154,19 @@ export function createInMemoryStore(): MemoryStore {
 			}
 		}
 		return undefined;
+	}
+
+	/** The memories a duplicate search compares. */
+	function duplicateCandidates(
+		input: Omit<StoreDuplicateInput, "limit">,
+		signal: AbortSignal | undefined,
+	): StoredMemory[] {
+		throwIfAborted(signal);
+		const now = new Date();
+		return Array.from(memories.values()).filter((memory) => {
+			throwIfAborted(signal);
+			return matchesDuplicateFilter(memory, input, now);
+		});
 	}
 
 	/** Memories whose `supersededBy` is `memoryId`, by id. */
@@ -441,61 +513,59 @@ export function createInMemoryStore(): MemoryStore {
 			};
 		},
 		async findDuplicatePairs(input, options) {
-			throwIfAborted(options?.signal);
-			const now = new Date();
-			const candidates = Array.from(memories.values()).filter((memory) => {
-				throwIfAborted(options?.signal);
-				return matchesDuplicateFilter(memory, input, now);
-			});
+			const candidates = duplicateCandidates(input, options?.signal);
 			// Exact k nearest neighbors per memory; the Postgres store gets them
 			// from its HNSW index. Pairs are keyed by their ordered ids.
-			const pairs = new Map<
-				string,
-				{ a: StoredMemory; b: StoredMemory; similarity: number }
-			>();
+			const pairs = new Map<string, FoundPair>();
 			for (const memory of candidates) {
 				throwIfAborted(options?.signal);
-				const nearest = candidates
-					.filter((other) => other.id !== memory.id)
-					.map((other) => ({
-						other,
-						similarity: Math.max(
-							0,
-							Math.min(1, cosineSimilarity(memory.embedding, other.embedding)),
-						),
-					}))
-					.sort(
-						(x, y) =>
-							y.similarity - x.similarity || compareIds(x.other.id, y.other.id),
-					)
-					.slice(0, input.neighbors);
-				for (const { other, similarity } of nearest) {
-					if (similarity < input.threshold) {
-						continue;
-					}
-					const [a, b] =
-						memory.id < other.id ? [memory, other] : [other, memory];
-					const key = `${a.id} ${b.id}`;
-					if (!pairs.has(key)) {
-						pairs.set(key, { a, b, similarity });
+				for (const { other, similarity } of nearestNeighbors(
+					memory,
+					candidates,
+					input.neighbors,
+				)) {
+					if (similarity >= input.threshold) {
+						addPair(pairs, memory, other, similarity);
 					}
 				}
 			}
-			return [...pairs.values()]
-				.sort(
-					(x, y) =>
-						y.similarity - x.similarity ||
-						compareIds(x.a.id, y.a.id) ||
-						compareIds(x.b.id, y.b.id),
-				)
-				.slice(0, input.limit)
-				.map(
-					({ a, b, similarity }): StoreDuplicatePair => ({
-						a: cloneMemory(a),
-						b: cloneMemory(b),
-						similarity,
-					}),
-				);
+			return sortPairs(pairs).slice(0, input.limit).map(toStorePair);
+		},
+		async findDuplicatePage(input, options) {
+			const candidates = duplicateCandidates(input, options?.signal);
+			const compared = candidates
+				.filter(({ id }) => input.afterId === undefined || id > input.afterId)
+				.sort((x, y) => compareIds(x.id, y.id))
+				.slice(0, input.batchSize);
+			const pairs = new Map<string, FoundPair>();
+			for (const memory of compared) {
+				throwIfAborted(options?.signal);
+				for (const { other, similarity } of nearestNeighbors(
+					memory,
+					candidates,
+					input.neighbors,
+				)) {
+					if (similarity < input.threshold) {
+						continue;
+					}
+					// A smaller id was compared on an earlier page (or this one) and
+					// owns the pair when it found this memory itself.
+					if (
+						other.id < memory.id &&
+						nearestNeighbors(other, candidates, input.neighbors).some(
+							(neighbor) => neighbor.other.id === memory.id,
+						)
+					) {
+						continue;
+					}
+					addPair(pairs, memory, other, similarity);
+				}
+			}
+			return {
+				pairs: sortPairs(pairs).map(toStorePair),
+				compared: compared.length,
+				lastId: compared.at(-1)?.id ?? null,
+			};
 		},
 		async listAuditLog(input, options) {
 			throwIfAborted(options?.signal);

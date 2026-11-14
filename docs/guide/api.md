@@ -226,6 +226,7 @@ database is called, on every backend:
 | `limit` (`search`, `context`, `list`, `findDuplicates`, `listAuditLog`) | 1 to 1,000 |
 | `addMany` | 1,000 memories per call |
 | `batchSize` (`pruneAuditLog`) | 1 to 10,000 |
+| `batchSize` (`experimental.findDuplicatesPage`) | 1 to 1,000 |
 
 32,000 characters is about 8,000 tokens, the input limit of common embedding
 models. The key and scope limits keep the scope + key index entry within what
@@ -495,6 +496,40 @@ part of the table. HNSW search is approximate, so a pair can occasionally be
 missed; run `findDuplicates` again after consolidating to catch the rest.
 The in-memory backend finds the exact nearest neighbors by comparing every
 pair, and slows down noticeably past a few thousand memories.
+
+### In pages (experimental)
+
+```ts
+let cursor: string | undefined;
+do {
+  const page = await memory.experimental.findDuplicatesPage({ scope, cursor });
+  for (const { a, b, similarity } of page.pairs) {
+    // ...
+  }
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+`experimental.findDuplicatesPage` runs `findDuplicates` over a large scope
+in bounded calls that a job can resume, for example one page per queue task.
+Each call compares the next `batchSize` memories (default 500, at most
+1,000), in id order, with every memory of the scope, and returns
+`{ pairs, nextCursor, compared }`. Pass `nextCursor` back unchanged as
+`cursor`, with the same other fields, until it is `null`. It takes the same
+fields as `findDuplicates` except `limit`.
+
+- A run of pages returns the same pairs as `findDuplicates` without a limit,
+  each once, with the smaller id as `a`.
+- Pairs are most similar first within a page, not across pages. For a
+  global top N, collect the pages and sort by `similarity`.
+- A page holds at most `batchSize × neighbors` pairs.
+- Each page reads the scope again: memories added, changed or consolidated
+  between pages can make a pair come twice or not at all. New memories have
+  larger ids, so they are compared on a later page.
+- A cursor that is not a `nextCursor` of this method throws
+  `"VALIDATION"`.
+
+It is experimental, so its input and result may change in a minor release.
 
 ## `consolidate`
 

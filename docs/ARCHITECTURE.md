@@ -116,7 +116,8 @@ formats and the token-budget guarantee and no longer echoes the query; see
 ## Maintenance
 
 This has landed: `prune` requiring a scope or `allNamespaces: true`,
-survivor-aware deletes, the k-nearest-neighbor `findDuplicates`,
+survivor-aware deletes, the k-nearest-neighbor `findDuplicates` and its
+pages (`experimental.findDuplicatesPage`, decision 35),
 `consolidate` on the stable client (decision 30) and audit retention
 through `pruneAuditLog` (decision 32); see
 [features/maintenance.md](./features/maintenance.md).
@@ -670,3 +671,22 @@ Dated 2026-10-26 unless noted.
     index build, median of 3 after a warm-up): 187 → 200 of 200 pairs,
     30.1 → 21.2 s (slowest 30.1 → 21.4 s), the same plan with the same cost
     estimates.
+35. **`findDuplicates` in pages by a cursor** (2026-11-14, landed): a
+    30,000-memory scope took 84–149 s in one statement that cannot be
+    resumed. The maintainer chose a cursor over a time budget: a page
+    compares a fixed `batchSize` of memories in id order, so pages are the
+    same on both backends and testable, and a caller who wants a deadline
+    stops between pages; a budget would need several statements per call
+    and give pages that depend on timing. It starts as
+    `experimental.findDuplicatesPage` returning `{ pairs, nextCursor,
+    compared }`, and the stable `findDuplicates` is unchanged. A pair
+    belongs to the page of the memory whose neighbors contain the other (the
+    smaller id's when both do); a page re-runs the nearest-neighbor search
+    of a smaller-id neighbor to skip pairs an earlier page returned, so a
+    run returns each pair once without state between calls. Pages have no
+    `limit` and sort only their own pairs; a global order is the caller's,
+    which keeps a page bounded by `batchSize × neighbors`.
+    Measured on the 30,000-memory entity (Postgres 18.6, pgvector 0.8.7):
+    52 pages of 500 at 1.33 s each (slowest 1.46 s), 68.7 s in all
+    against 51.3 s for one statement, every pair once and the best 1,000
+    equal to one `findDuplicates` call's; the re-check costs 5% of a page.

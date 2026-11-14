@@ -129,6 +129,77 @@ In-memory computes the exact `neighbors` nearest for each memory, ties by
 id, so both backends follow the same rules; HNSW recall is the only
 difference.
 
+### Pages: `experimental.findDuplicatesPage`
+
+`experimental.findDuplicatesPage({ scope, …, batchSize = 500, cursor })`
+splits that scan by the memories whose neighbors it takes (ARCHITECTURE
+decision 35). A page takes the first `batchSize` (1 to 1,000) memories
+that pass the filters with an id greater than the cursor's, in id order,
+and gives each the same nearest-neighbor search over every memory that
+passes them. It returns `{ pairs, nextCursor, compared }`, with
+`nextCursor` `null` when the page compared fewer than `batchSize`
+memories, so a scope whose size is a multiple of `batchSize` ends with an
+empty page. The cursor is opaque: base64url of `["d1", lastId]`
+(`encodeDuplicateCursor` in `src/memory/cursor.ts`); the tag makes a
+`list` cursor fail with `"VALIDATION"`. There is no `limit`, since cutting
+a page would lose pairs the next page does not find again: a page holds at
+most `batchSize × neighbors` pairs, best first within the page.
+
+**Each pair once.** A pair can be found from either memory, and the two can
+be on different pages. A pair belongs to the page of the memory whose
+`neighbors` nearest contain the other one, or of the smaller id when both
+do. A neighbor with a larger id is kept as found. For a neighbor `n` with
+a smaller id, which an earlier page (or this one) compared, the page finds
+`n`'s own nearest neighbors again and keeps the pair only when they do not
+contain the compared memory. The re-check runs only for pairs at or above
+the threshold, so it costs one more nearest-neighbor search per such pair
+found from its larger side. A run of pages then returns exactly the pairs
+of `findDuplicates` without a limit. On Postgres that holds while HNSW
+gives the same neighbors to both searches of `n`; they run on separate
+statements with the same settings and index.
+
+**On Postgres** a page is one statement after the same `set_config` as
+`findDuplicatePairs`: a materialized `compared` CTE (the filters,
+`a.id > $after`, `ORDER BY a.id LIMIT batchSize`), the `LATERAL`
+nearest-neighbor join from it, and the re-check as a `NOT EXISTS` over the
+same `LATERAL` subquery for `n`. The statement also returns the number of
+memories compared and the last id, on a row of its own when the page has
+no pairs. `findDuplicatePage` in `src/db/queries/memories.ts`.
+
+**In-memory** sorts the filtered memories by id, compares the next
+`batchSize` and applies the same rule with exact neighbors.
+
+Pages read the scope again, so changes between pages can repeat or skip a
+pair: a memory consolidated after its page no longer hides pairs, and one
+added with an id below the cursor is never compared from its own side. New
+ids are UUIDv7, which grow with time, so a new memory lands after the
+cursor.
+
+Measured with `pnpm bench:postgres` on the server and dataset above
+(Postgres 18.6, pgvector 0.8.7, 128 MB of `shared_buffers`), default
+`batchSize` 500, `neighbors` 10 and threshold 0.95. Pages are walked
+through the library, one after another; "middle page" is that page's
+statement under `EXPLAIN (ANALYZE, BUFFERS)` (median of 3 after a
+warm-up), and "no re-check" the same statement with the re-check
+short-circuited:
+
+| Scope | Pages | Per page | All pages | One statement | Middle page | No re-check |
+|---|---|---|---|---|---|---|
+| 2,000 memories (1,706 compared) | 4 | 4.9 s (slowest 5.1 s) | 17.0 s, 200 pairs (exact: 200) | 31.6 s | 5.01 s, scope btree | 4.44 s |
+| 30,000 memories (25,631 compared) | 52 | 1.33 s (slowest 1.46 s) | 68.7 s, 2,952 pairs | 51.3 s | 1.33 s, HNSW | 1.27 s |
+
+Every pair came once. On the large scope the best 1,000 pairs of the pages
+were the 1,000 that one `findDuplicates` call (`limit: 1000`, 50.9 s)
+returned. Its middle page reads `compared` through the primary key in id
+order and runs HNSW per memory: 561 HNSW scans for 500 memories, the 61
+extra being re-checks, which cost 5% of the page (13% on the mid scope,
+whose pages read the scope btree per memory). A run of pages takes about a
+third longer than one statement on the large scope, but no call took
+longer than 1.5 s. On the mid scope the four pages together were faster
+than the one statement. The one-statement times are this run's (one cold
+run for the large scope); the 149 s in the table above is an earlier run
+under `strict_order`.
+
 ## `consolidate`
 
 `consolidate({ scope, survivorId, supersededIds, mergeTags = true })` marks

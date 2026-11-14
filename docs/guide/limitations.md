@@ -83,7 +83,11 @@ them, and the [roadmap](../ROADMAP.md) item planned for each.
   neighbor. For a small scope it reads the scope's rows for every memory,
   so its cost still grows with the square of the scope's size: on a test
   server, a 2,000-memory scope took 29 s and a 30,000-memory scope 149 s,
-  in one statement that cannot be resumed. Run it from a background job.
+  in one statement that cannot be resumed. Run it from a background job,
+  or page through it with `experimental.findDuplicatesPage`, which bounds
+  each call and resumes from a cursor
+  ([in pages](./api.md#in-pages-experimental)); on the same server the
+  30,000-memory scope took 52 pages of about 1.3 s each.
   The in-memory backend is exact but compares every pair.
 - **Audit events stay until you prune them.** Nothing expires them on its
   own; schedule `pruneAuditLog` (see

@@ -167,7 +167,7 @@ Files in `migrations/`:
 | `fresh-install.sql` | The final schema of `0000`→`0003` in one file, rendered at 1536 dimensions. Only for an empty database. |
 | `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. |
 | `render-initial.mjs` | `--dimensions N [--out file]`: renders the template, with `halfvec` above 2,000 dimensions; rejects more than 4,000. `mnemocyte sql` prints the same text and is what the guides name; the script stays for callers by path and `pnpm migration:render`. |
-| `meta/` | Drizzle journal for `0000`→`0003`, and snapshots for `0000`→`0002`. |
+| `meta/_journal.json` | The ordered list of numbered migrations, in drizzle-kit's journal format. `pnpm migration:bundle` reads it to write `bundled.ts`. |
 
 `0003` in detail:
 
@@ -203,8 +203,6 @@ Install paths:
 - Existing 0.1.x database: apply `0001`, `0002`, then `0003`.
 - Existing 0.2.x or 0.3.x database: apply `0002`, then `0003`.
 - Existing 0.4.x or 0.5.x database: apply `0003`.
-- Inside this repository, `pnpm db:migrate` runs `drizzle-kit migrate` over
-  the journal (`0000`→`0003`), reading `DATABASE_URL` or `.env`.
 
 `fresh-install.sql` is generated from the template; a unit test fails if the
 two drift, and an integration test compares its resulting catalog (columns

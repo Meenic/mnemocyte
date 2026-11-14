@@ -112,7 +112,7 @@ src/
   context/              context(): formatters, token budget
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
   stores/drizzle.ts     drizzleStore(db)
-migrations/             SQL migrations, template, renderer, Drizzle journal
+migrations/             SQL migrations, template, renderer, migration journal
 scripts/                bundle-migrations.mjs, check-package.mjs
 test/                   unit, package, integration, fixtures, benchmarks
 ```

@@ -278,6 +278,58 @@ branch each; `docs/v1` comes last.
   and how an update from 0.7 behaves (prune with dependents, approximate
   `findDuplicates`, hooks not awaited).
 
+A second API review before the release (2026-11-14) adds three items. Its
+findings that decisions 3, 38 and 39 already settle (array results for
+`search` and `findDuplicates`, extraction covered by semver) are not
+reopened; its additive findings are in "After 1.0".
+
+- [ ] `fix/optional-undefined`: optional input fields accept an explicit
+  `undefined`. With `exactOptionalPropertyTypes`, `cursor?: string`
+  rejects a `string | undefined` variable, so the cursor loops in
+  `guide/api.md` (`list`, `experimental.findDuplicatesPage`,
+  `listAuditLog`) fail with TS2379, and so does passing an optional
+  `signal` through; the package's own code spreads
+  `...(x === undefined ? {} : { x })` to get around it. Widen the optional
+  fields of the method inputs, the bound inputs, the embedder options and
+  the AI SDK options to `?: T | undefined`, after checking that each one
+  already treats `undefined` as absent at runtime. Additive. An export type
+  test compiles the guide's loops with the flag on.
+- [ ] `fix/created-filters`: one name for the creation-time filter.
+  `search` filters `createdAt` with `before` / `after`, `prune` with
+  `createdBefore`, and `listAuditLog` / `pruneAuditLog` use `before` /
+  `after` for the event time. Either rename `search`'s pair to
+  `createdBefore` / `createdAfter` (breaking, so before 1.0) or keep it and
+  record why; the maintainer decides. The "After 1.0" filters on `list`
+  and `context` take the chosen name.
+- [ ] `docs/api-review`: documentation fixes from the review; no code
+  change.
+  - Stability (`guide/api.md`, revising decision 39): text the model reads
+    (tool descriptions, the middleware preamble, the extraction prompt) may
+    change in a minor, like `context()` wording; `MemoryPrompt`,
+    `MemoryLanguageModel`, `MemoryFinishReason` and `AiSdkProviderOptions`
+    are derived from the `ai` peer's types and follow them; the
+    experimental exemption covers the root exports `FindDuplicatesPageInput`,
+    `DuplicatePage`, `BoundFindDuplicatesPageInput`,
+    `ExperimentalMemoryClient` and `BoundExperimentalMemoryClient`, and the
+    `"findDuplicatesPage"` member of `MnemocyteOperation`.
+  - Examples that do not type-check: "Bound scopes" in `guide/api.md`
+    assigns `memory.for({ entityId: user.id })` to `user` itself (TS2448);
+    the custom embedder in `guide/embedders.md` has no `Embedder`
+    annotation, so its parameters are implicit `any`; the JSDoc of
+    `createMemory` and `postgresStore` calls
+    `postgres(process.env.DATABASE_URL)`, which matches no overload without
+    `!`.
+  - Drift: `TIMEOUT` in the errors table also comes from
+    `extractMemories`' `timeoutMs`; `MemoryConfig.defaults` applies to
+    `context` too, not only `search`; `guide/embedders.md` checks
+    `instanceof ProviderError` where `guide/api.md` recommends the brand;
+    the no-argument list in "Bound scopes" leaves out
+    `experimental.findDuplicatesPage`; the `limit` JSDoc on `ListInput` and
+    `ListAuditLogOptions` says "positive integer" instead of 1 to 1,000.
+  - `deleteScope` is listed with the bulk selectors but requires
+    `entityId` and has no `allNamespaces`; say so, and that it is on
+    purpose (an erasure names its entity).
+
 ## Cut first if time runs short
 
 `mnemocyte init`.
@@ -299,3 +351,10 @@ branch each; `docs/v1` comes last.
   `check` and `migrate --dry-run`; an install-time text search
   configuration; an indexed memory id on audit events for per-memory
   history.
+- Additive items from the second API review: an `isProviderError` guard
+  next to `isMnemocyteError`; `headers` on every fetch-based embedder, not
+  only `openaiCompatibleEmbedder`; `BoundPruneInput` and `BoundStatsInput`
+  aliases (the bound `prune` takes `PruneSelectors`, which also holds
+  `dryRun` and `signal`; renaming it is breaking after 1.0); aliases that
+  give the two `purposes` types matching names (`PurposeHints`,
+  `AiSdkPurposeOptions`).

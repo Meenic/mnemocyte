@@ -250,7 +250,7 @@ branch each; `docs/v1` comes last.
   every nested settings object too, with a pointed error for the two old
   names; `extractMemories` still accepts `finishReason`, so a spread
   `MemoryTurn` works.
-- [ ] `feat/error-reasons`: a stable `reason` on `MnemocyteError` for the
+- [x] `feat/error-reasons`: a stable `reason` on `MnemocyteError` for the
   cases one code covers today (`CONFLICT`: key in use, consolidation link;
   `CONFIG`: bad config, embedder or dimensions that do not match the
   installation; `MIGRATION`: missing schema, mixed models, failed

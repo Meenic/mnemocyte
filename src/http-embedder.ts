@@ -69,22 +69,28 @@ export function assertPositiveInteger(
 	name: string,
 ): void {
 	if (!Number.isInteger(value) || value < 1) {
-		throw new MnemocyteError(
-			`${name} ${field} must be a positive integer.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} ${field} must be a positive integer.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
 export function resolveBaseURL(baseURL: unknown, name: string): string {
 	if (typeof baseURL !== "string" || baseURL.trim().length === 0) {
-		throw new MnemocyteError(`${name} requires a baseURL.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `${name} requires a baseURL.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (!URL.canParse(baseURL)) {
-		throw new MnemocyteError(
-			`${name} baseURL must be an absolute URL.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} baseURL must be an absolute URL.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return baseURL.replace(/\/+$/, "");
 }
@@ -97,15 +103,20 @@ function resolveHeaders(
 		return {};
 	}
 	if (!isRecord(headers)) {
-		throw new MnemocyteError(`${name} headers must be an object.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `${name} headers must be an object.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	const resolved: Record<string, string> = {};
 	for (const [key, value] of Object.entries(headers)) {
 		if (typeof value !== "string") {
-			throw new MnemocyteError(
-				`${name} header "${key}" must be a string.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${name} header "${key}" must be a string.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		resolved[key.toLowerCase()] = value;
 	}
@@ -121,31 +132,35 @@ function resolveHint(
 		return { prefix: "", body: {} };
 	}
 	if (!isRecord(hint)) {
-		throw new MnemocyteError(
-			`${name} purposes.${purpose} must be an object.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} purposes.${purpose} must be an object.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	assertKnownKeys(`${name} purposes.${purpose}`, hint, ["prefix", "body"]);
 	const { prefix, body } = hint;
 	if (prefix !== undefined && typeof prefix !== "string") {
-		throw new MnemocyteError(
-			`${name} purposes.${purpose}.prefix must be a string.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} purposes.${purpose}.prefix must be a string.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (body !== undefined && !isRecord(body)) {
-		throw new MnemocyteError(
-			`${name} purposes.${purpose}.body must be an object.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} purposes.${purpose}.body must be an object.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	for (const field of Object.keys(body ?? {})) {
 		if (RESERVED_BODY_FIELDS.has(field)) {
-			throw new MnemocyteError(
-				`${name} purposes.${purpose}.body may not set "${field}".`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${name} purposes.${purpose}.body may not set "${field}".`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 	}
 	let snapshot: JsonObject;
@@ -154,11 +169,12 @@ function resolveHint(
 		// sent.
 		snapshot = JSON.parse(JSON.stringify(body ?? {})) as JsonObject;
 	} catch (error) {
-		throw new MnemocyteError(
-			`${name} purposes.${purpose}.body must be JSON.`,
-			"CONFIG",
-			error,
-		);
+		throw new MnemocyteError({
+			message: `${name} purposes.${purpose}.body must be JSON.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+			cause: error,
+		});
 	}
 	return { prefix: prefix ?? "", body: snapshot };
 }
@@ -168,7 +184,11 @@ function resolvePurposes(
 	name: string,
 ): Record<EmbeddingPurpose, ResolvedHint> {
 	if (purposes !== undefined && !isRecord(purposes)) {
-		throw new MnemocyteError(`${name} purposes must be an object.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `${name} purposes must be an object.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (purposes !== undefined) {
 		assertKnownKeys(`${name} purposes`, purposes, ["query", "document"]);
@@ -203,26 +223,26 @@ function validateEmbeddingResponse(
 	provider: string,
 ): EmbeddingItem[] {
 	if (!isRecord(body) || !Array.isArray(body.data)) {
-		throw new MnemocyteError(
-			`${provider} returned malformed embedding response data.`,
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: `${provider} returned malformed embedding response data.`,
+			code: "EMBEDDING",
+		});
 	}
 	if (body.data.length !== expectedCount) {
-		throw new MnemocyteError(
-			`${provider} returned an unexpected number of embeddings.`,
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: `${provider} returned an unexpected number of embeddings.`,
+			code: "EMBEDDING",
+		});
 	}
 
 	const indices = new Set<number>();
 	const items: EmbeddingItem[] = [];
 	for (const item of body.data) {
 		if (!isRecord(item)) {
-			throw new MnemocyteError(
-				`${provider} returned a malformed embedding item.`,
-				"EMBEDDING",
-			);
+			throw new MnemocyteError({
+				message: `${provider} returned a malformed embedding item.`,
+				code: "EMBEDDING",
+			});
 		}
 		const { embedding, index } = item;
 		if (
@@ -231,22 +251,22 @@ function validateEmbeddingResponse(
 			index < 0 ||
 			index >= expectedCount
 		) {
-			throw new MnemocyteError(
-				`${provider} returned an embedding with an invalid index.`,
-				"EMBEDDING",
-			);
+			throw new MnemocyteError({
+				message: `${provider} returned an embedding with an invalid index.`,
+				code: "EMBEDDING",
+			});
 		}
 		if (indices.has(index)) {
-			throw new MnemocyteError(
-				`${provider} returned a duplicate embedding index.`,
-				"EMBEDDING",
-			);
+			throw new MnemocyteError({
+				message: `${provider} returned a duplicate embedding index.`,
+				code: "EMBEDDING",
+			});
 		}
 		if (!Array.isArray(embedding)) {
-			throw new MnemocyteError(
-				`${provider} returned an embedding that is not an array.`,
-				"EMBEDDING",
-			);
+			throw new MnemocyteError({
+				message: `${provider} returned an embedding that is not an array.`,
+				code: "EMBEDDING",
+			});
 		}
 		indices.add(index);
 		items.push({ embedding: embedding as number[], index });
@@ -280,23 +300,23 @@ export function assertVectorList(
 	provider: string,
 ): number[][] {
 	if (!Array.isArray(vectors)) {
-		throw new MnemocyteError(
-			`${provider} returned malformed embedding response data.`,
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: `${provider} returned malformed embedding response data.`,
+			code: "EMBEDDING",
+		});
 	}
 	if (vectors.length !== expectedCount) {
-		throw new MnemocyteError(
-			`${provider} returned an unexpected number of embeddings.`,
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: `${provider} returned an unexpected number of embeddings.`,
+			code: "EMBEDDING",
+		});
 	}
 	for (const vector of vectors) {
 		if (!Array.isArray(vector)) {
-			throw new MnemocyteError(
-				`${provider} returned an embedding that is not an array.`,
-				"EMBEDDING",
-			);
+			throw new MnemocyteError({
+				message: `${provider} returned an embedding that is not an array.`,
+				code: "EMBEDDING",
+			});
 		}
 	}
 	return vectors as number[][];
@@ -349,10 +369,10 @@ export function createFetchEmbedder(config: FetchEmbedderConfig): Embedder {
 			// Untyped callers can leave options out; fail with a clear error.
 			const purpose: unknown = isRecord(options) ? options.purpose : undefined;
 			if (purpose !== "query" && purpose !== "document") {
-				throw new MnemocyteError(
-					`${name} embed requires options.purpose "query" or "document".`,
-					"VALIDATION",
-				);
+				throw new MnemocyteError({
+					message: `${name} embed requires options.purpose "query" or "document".`,
+					code: "VALIDATION",
+				});
 			}
 			const response = await fetch(url, {
 				method: "POST",
@@ -372,11 +392,11 @@ export function createFetchEmbedder(config: FetchEmbedderConfig): Embedder {
 				if (options.signal?.aborted) {
 					throw error;
 				}
-				throw new MnemocyteError(
-					`${provider} returned a response that is not JSON.`,
-					"EMBEDDING",
-					error,
-				);
+				throw new MnemocyteError({
+					message: `${provider} returned a response that is not JSON.`,
+					code: "EMBEDDING",
+					cause: error,
+				});
 			}
 			return parseResponse(body, texts.length);
 		},
@@ -394,10 +414,11 @@ export function resolveApiKey(
 ): string {
 	const resolved = apiKey ?? process.env[envVar];
 	if (typeof resolved !== "string" || resolved.trim().length === 0) {
-		throw new MnemocyteError(
-			`${name} requires an API key. Pass apiKey or set ${envVar}.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} requires an API key. Pass apiKey or set ${envVar}.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return resolved;
 }
@@ -432,10 +453,11 @@ export function resolveModelDimensions(input: {
 	const size = input.known.get(model);
 	if (size === undefined) {
 		if (dimensions === undefined) {
-			throw new MnemocyteError(
-				`${name} requires dimensions for unknown model "${model}".`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${name} requires dimensions for unknown model "${model}".`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		return { dimensions: dimensions as number, send: false };
 	}
@@ -445,28 +467,31 @@ export function resolveModelDimensions(input: {
 	const requested = dimensions as number;
 	if (size.sizes !== undefined) {
 		if (!size.sizes.includes(requested)) {
-			throw new MnemocyteError(
-				`${name} dimensions for "${model}" must be one of ${size.sizes.join(", ")}.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${name} dimensions for "${model}" must be one of ${size.sizes.join(", ")}.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		return { dimensions: requested, send: true };
 	}
 	if (size.range !== undefined) {
 		const [min, max] = size.range;
 		if (requested < min || requested > max) {
-			throw new MnemocyteError(
-				`${name} dimensions for "${model}" must be between ${min} and ${max}.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${name} dimensions for "${model}" must be between ${min} and ${max}.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		return { dimensions: requested, send: true };
 	}
 	if (requested !== size.dimensions) {
-		throw new MnemocyteError(
-			`${name} model "${model}" always returns ${size.dimensions} dimensions.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} model "${model}" always returns ${size.dimensions} dimensions.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return { dimensions: requested, send: false };
 }
@@ -482,7 +507,11 @@ export function resolveBoolean(
 		return fallback;
 	}
 	if (typeof value !== "boolean") {
-		throw new MnemocyteError(`${name} ${field} must be a boolean.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `${name} ${field} must be a boolean.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return value;
 }
@@ -490,7 +519,11 @@ export function resolveBoolean(
 /** Check a non-empty model id; `"CONFIG"` otherwise. */
 export function resolveModel(model: unknown, name: string): string {
 	if (typeof model !== "string" || model.trim().length === 0) {
-		throw new MnemocyteError(`${name} requires a model.`, "CONFIG");
+		throw new MnemocyteError({
+			message: `${name} requires a model.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return model;
 }
@@ -507,10 +540,11 @@ export function resolveMaxBatch(
 	}
 	assertPositiveInteger(maxBatch as number, "maxBatch", name);
 	if (max !== undefined && (maxBatch as number) > max) {
-		throw new MnemocyteError(
-			`${name} maxBatch must be at most ${max}.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} maxBatch must be at most ${max}.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return maxBatch as number;
 }
@@ -530,10 +564,11 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 		config.apiKey !== undefined &&
 		(typeof config.apiKey !== "string" || config.apiKey.trim().length === 0)
 	) {
-		throw new MnemocyteError(
-			`${name} apiKey must be a non-empty string.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${name} apiKey must be a non-empty string.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	const headers: Record<string, string> = {
 		...resolveHeaders(config.headers, name),

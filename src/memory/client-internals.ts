@@ -38,10 +38,11 @@ export function readMemoryClientInternals(
 		candidate === null ||
 		!(MEMORY_CLIENT_INTERNALS in candidate)
 	) {
-		throw new MnemocyteError(
-			"memory must be a client from createMemory() or memory.for().",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "memory must be a client from createMemory() or memory.for().",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return (candidate as Record<typeof MEMORY_CLIENT_INTERNALS, unknown>)[
 		MEMORY_CLIENT_INTERNALS

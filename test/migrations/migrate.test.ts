@@ -226,6 +226,7 @@ describe("migrate", () => {
 		await expectMnemocyteError(
 			migrate({ store: db.store, dimensions: 1536 }),
 			"MIGRATION",
+			"PGVECTOR_UNAVAILABLE",
 		);
 		expect(db.executed).toEqual([]);
 	});
@@ -296,6 +297,7 @@ describe("migrate", () => {
 		const error = await expectMnemocyteError(
 			migrate({ store: db.store }),
 			"MIGRATION",
+			"MIGRATION_FAILED",
 		);
 
 		expect(error.message).toContain("0003_schema_v2");
@@ -310,6 +312,7 @@ describe("migrate", () => {
 		await expectMnemocyteError(
 			migrate({ store: db.store, dimensions: 768 }),
 			"CONFIG",
+			"DIMENSIONS_MISMATCH",
 		);
 		expect(db.state.tracked).toBeNull();
 	});
@@ -334,14 +337,22 @@ describe("migrate", () => {
 			},
 		});
 
-		await expectMnemocyteError(migrate({ store: db.store }), "MIGRATION");
+		await expectMnemocyteError(
+			migrate({ store: db.store }),
+			"MIGRATION",
+			"SCHEMA_UNRECOGNIZED",
+		);
 		expect(db.state.tracked).toBeNull();
 	});
 
 	test("rejects tracking rows with gaps", async () => {
 		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 2, 3] });
 
-		await expectMnemocyteError(migrate({ store: db.store }), "MIGRATION");
+		await expectMnemocyteError(
+			migrate({ store: db.store }),
+			"MIGRATION",
+			"SCHEMA_UNRECOGNIZED",
+		);
 	});
 
 	test("rejects a database migrated by a newer version", async () => {
@@ -350,6 +361,7 @@ describe("migrate", () => {
 		const error = await expectMnemocyteError(
 			migrate({ store: db.store }),
 			"MIGRATION",
+			"SCHEMA_NEWER",
 		);
 		expect(error.message).toContain("newer");
 	});
@@ -396,6 +408,7 @@ describe("migrate", () => {
 		await expectMnemocyteError(
 			migrate({ store: {} as MnemocyteStoreConfig }),
 			"CONFIG",
+			"INVALID_OPTION",
 		);
 	});
 });
@@ -441,6 +454,7 @@ describe("migrate({ memory })", () => {
 		const error = await expectMnemocyteError(
 			migrate({ memory, dimensions: 1536 }),
 			"CONFIG",
+			"INVALID_OPTION",
 		);
 		expect(error.message).toContain("768");
 		expect(db.log).toEqual([]);
@@ -450,7 +464,11 @@ describe("migrate({ memory })", () => {
 		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
 		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
 
-		await expectMnemocyteError(migrate({ memory }), "CONFIG");
+		await expectMnemocyteError(
+			migrate({ memory }),
+			"CONFIG",
+			"DIMENSIONS_MISMATCH",
+		);
 	});
 
 	test("rejects an embedder too large for any vector column", async () => {
@@ -560,6 +578,7 @@ describe("migrate({ createExtension })", () => {
 		const error = await expectMnemocyteError(
 			migrate({ store: db.store, dimensions: 1536 }),
 			"MIGRATION",
+			"PGVECTOR_UNAVAILABLE",
 		);
 		expect(error.message).toContain("createExtension: true");
 		expect(db.log.join("\n")).not.toContain("CREATE EXTENSION");
@@ -581,6 +600,7 @@ describe("migrate({ createExtension })", () => {
 			const error = await expectMnemocyteError(
 				migrate({ store: db.store, dimensions: 1536, createExtension: true }),
 				"MIGRATION",
+				"PGVECTOR_UNAVAILABLE",
 			);
 			expect(error.message).toContain(message);
 			expect(error.cause).toMatchObject({ code });

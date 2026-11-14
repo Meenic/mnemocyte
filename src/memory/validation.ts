@@ -90,10 +90,10 @@ function assertMemoryKind(
 	field: string,
 ): asserts value is MemoryKind {
 	if (!isMemoryKind(value)) {
-		throw new MnemocyteError(
-			`${field} must be a known memory kind.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be a known memory kind.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -102,10 +102,10 @@ function assertImportanceLevel(
 	field: string,
 ): asserts value is ImportanceLevel {
 	if (!isImportanceLevel(value)) {
-		throw new MnemocyteError(
-			`${field} must be a known importance level.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be a known importance level.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -114,21 +114,40 @@ function assertMemoryKindArray(
 	field: string,
 ): asserts value is readonly MemoryKind[] {
 	if (!Array.isArray(value)) {
-		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${field} must be an array.`,
+			code: "VALIDATION",
+		});
 	}
 	for (const item of value) {
 		if (!isMemoryKind(item)) {
-			throw new MnemocyteError(
-				`${field} must contain only known memory kinds.`,
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: `${field} must contain only known memory kinds.`,
+				code: "VALIDATION",
+			});
 		}
 	}
 }
 
+/**
+ * A `"VALIDATION"` error for a call input, or an `"INVALID_OPTION"` one when
+ * the same check runs on configuration.
+ */
+function inputError(
+	message: string,
+	code: "CONFIG" | "VALIDATION",
+): MnemocyteError {
+	return code === "CONFIG"
+		? new MnemocyteError({ message, code, reason: "INVALID_OPTION" })
+		: new MnemocyteError({ message, code });
+}
+
 function assertValidDate(value: unknown, field: string): asserts value is Date {
 	if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-		throw new MnemocyteError(`${field} must be a valid Date.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${field} must be a valid Date.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -138,7 +157,7 @@ export function assertNonEmptyString(
 	code: "CONFIG" | "VALIDATION" = "VALIDATION",
 ): asserts value is string {
 	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new MnemocyteError(`${field} must be a non-empty string.`, code);
+		throw inputError(`${field} must be a non-empty string.`, code);
 	}
 }
 
@@ -151,16 +170,19 @@ export function assertOptionalSignal(signal: AbortSignal | undefined): void {
 			typeof signal.addEventListener !== "function" ||
 			typeof signal.removeEventListener !== "function")
 	) {
-		throw new MnemocyteError("signal must be an AbortSignal.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "signal must be an AbortSignal.",
+			code: "VALIDATION",
+		});
 	}
 }
 
 export function assertLimit(value: number): void {
 	if (!Number.isInteger(value) || value < 1 || value > MAX_LIMIT) {
-		throw new MnemocyteError(
-			`limit must be an integer from 1 to ${MAX_LIMIT}.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `limit must be an integer from 1 to ${MAX_LIMIT}.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -171,10 +193,10 @@ export function assertContent(
 ): asserts value is string {
 	assertNonEmptyString(value, field);
 	if (value.length > MAX_CONTENT_LENGTH) {
-		throw new MnemocyteError(
-			`${field} must be at most ${MAX_CONTENT_LENGTH} characters.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be at most ${MAX_CONTENT_LENGTH} characters.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -187,10 +209,7 @@ function assertMaxBytes(
 	// Each UTF-16 code unit takes at most 3 UTF-8 bytes, so short strings
 	// skip the encoding.
 	if (value.length * 3 > max && utf8Length(value) > max) {
-		throw new MnemocyteError(
-			`${field} must be at most ${max} bytes in UTF-8.`,
-			code,
-		);
+		throw inputError(`${field} must be at most ${max} bytes in UTF-8.`, code);
 	}
 }
 
@@ -227,44 +246,48 @@ export function validateDefaultNamespace(value: unknown): string | undefined {
 
 export function assertMinScore(value: number): void {
 	if (!Number.isFinite(value) || value < 0 || value > 1) {
-		throw new MnemocyteError(
-			"minScore must be a number between 0 and 1.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "minScore must be a number between 0 and 1.",
+			code: "VALIDATION",
+		});
 	}
 }
 
 export function assertEmbedder(embedder: Embedder): void {
 	if (!embedder || typeof embedder.embed !== "function") {
-		throw new MnemocyteError(
-			"embedder with an embed function is required.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "embedder with an embed function is required.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	assertNonEmptyString(embedder.model, "embedder.model", "CONFIG");
 	if (!Number.isInteger(embedder.dimensions) || embedder.dimensions < 1) {
-		throw new MnemocyteError(
-			"embedder.dimensions must be a positive integer.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "embedder.dimensions must be a positive integer.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (
 		embedder.maxBatch !== undefined &&
 		(!Number.isInteger(embedder.maxBatch) || embedder.maxBatch < 1)
 	) {
-		throw new MnemocyteError(
-			"embedder.maxBatch must be a positive integer.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "embedder.maxBatch must be a positive integer.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
 function assertPositiveFiniteConfigValue(value: number, field: string): void {
 	if (!Number.isFinite(value) || value <= 0) {
-		throw new MnemocyteError(
-			`${field} must be a positive finite number.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be a positive finite number.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
@@ -273,10 +296,11 @@ function assertNonNegativeFiniteConfigValue(
 	field: string,
 ): void {
 	if (!Number.isFinite(value) || value < 0) {
-		throw new MnemocyteError(
-			`${field} must be a non-negative finite number.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be a non-negative finite number.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
@@ -344,10 +368,12 @@ export function validateRetrievalConfig(
 		assertNonNegativeFiniteConfigValue(fusion[key], `retrieval.fusion.${key}`);
 	}
 	if (fusion.vector + fusion.lexical === 0) {
-		throw new MnemocyteError(
-			"retrieval.fusion.vector and retrieval.fusion.lexical must not both be zero.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				"retrieval.fusion.vector and retrieval.fusion.lexical must not both be zero.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	const boosts = { ...DEFAULT_BOOSTS, ...config.boosts };
 	for (const key of ["recency", "importance"] as const) {
@@ -364,20 +390,23 @@ export function validateRetrievalConfig(
 		config.trackAccess !== undefined &&
 		typeof config.trackAccess !== "boolean"
 	) {
-		throw new MnemocyteError(
-			"retrieval.trackAccess must be a boolean.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "retrieval.trackAccess must be a boolean.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (
 		config.candidateMultiplier !== undefined &&
 		(!Number.isInteger(config.candidateMultiplier) ||
 			config.candidateMultiplier < 1)
 	) {
-		throw new MnemocyteError(
-			"retrieval.candidateMultiplier must be an integer greater than or equal to 1.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				"retrieval.candidateMultiplier must be an integer greater than or equal to 1.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
@@ -388,7 +417,11 @@ export function validateProviderResilienceConfig(
 		return;
 	}
 	if (typeof config !== "object" || config === null || Array.isArray(config)) {
-		throw new MnemocyteError("provider must be an object.", "CONFIG");
+		throw new MnemocyteError({
+			message: "provider must be an object.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 
 	for (const [field, value] of [
@@ -398,35 +431,41 @@ export function validateProviderResilienceConfig(
 		["provider.maxRetryAfterMs", config.maxRetryAfterMs],
 	] as const) {
 		if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
-			throw new MnemocyteError(
-				`${field} must be a non-negative finite number.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `${field} must be a non-negative finite number.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 	}
 	if (
 		config.retries !== undefined &&
 		(!Number.isInteger(config.retries) || config.retries < 0)
 	) {
-		throw new MnemocyteError(
-			"provider.retries must be a non-negative integer.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "provider.retries must be a non-negative integer.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (
 		config.shouldRetry !== undefined &&
 		typeof config.shouldRetry !== "function"
 	) {
-		throw new MnemocyteError(
-			"provider.shouldRetry must be a function.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "provider.shouldRetry must be a function.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
 function assertObject(value: unknown, field: string): void {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		throw new MnemocyteError(`${field} must be an object.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${field} must be an object.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -457,7 +496,10 @@ export function validateScope(value: unknown, field = "scope"): StoreScope {
 
 function assertOptionalBoolean(value: unknown, field: string): void {
 	if (value !== undefined && typeof value !== "boolean") {
-		throw new MnemocyteError(`${field} must be a boolean.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${field} must be a boolean.`,
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -519,48 +561,55 @@ export function validateSelectorInput(input: {
 }): StoreSelector {
 	assertObject(input, "input");
 	if (input.allNamespaces !== undefined && input.allNamespaces !== true) {
-		throw new MnemocyteError("allNamespaces must be true.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "allNamespaces must be true.",
+			code: "VALIDATION",
+		});
 	}
 	if (input.allNamespaces === true) {
 		if (input.scope !== undefined) {
-			throw new MnemocyteError(
-				"Pass either scope or allNamespaces: true, not both.",
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: "Pass either scope or allNamespaces: true, not both.",
+				code: "VALIDATION",
+			});
 		}
 		return { namespace: null };
 	}
 	if (input.scope === undefined) {
-		throw new MnemocyteError(
-			"A scope (at least a namespace) or allNamespaces: true is required.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"A scope (at least a namespace) or allNamespaces: true is required.",
+			code: "VALIDATION",
+		});
 	}
 	return selectorFromScope(input.scope, "scope", false);
 }
 
 function assertTags(value: unknown, field = "tags"): void {
 	if (!Array.isArray(value)) {
-		throw new MnemocyteError(`${field} must be an array.`, "VALIDATION");
+		throw new MnemocyteError({
+			message: `${field} must be an array.`,
+			code: "VALIDATION",
+		});
 	}
 	if (value.length > MAX_TAGS) {
-		throw new MnemocyteError(
-			`${field} must contain at most ${MAX_TAGS} tags.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${field} must contain at most ${MAX_TAGS} tags.`,
+			code: "VALIDATION",
+		});
 	}
 	for (const tag of value as readonly unknown[]) {
 		if (typeof tag !== "string") {
-			throw new MnemocyteError(
-				`${field} must contain only strings.`,
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: `${field} must contain only strings.`,
+				code: "VALIDATION",
+			});
 		}
 		if (tag.length > MAX_TAG_LENGTH) {
-			throw new MnemocyteError(
-				`${field} must contain tags of at most ${MAX_TAG_LENGTH} characters.`,
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: `${field} must contain tags of at most ${MAX_TAG_LENGTH} characters.`,
+				code: "VALIDATION",
+			});
 		}
 	}
 }
@@ -572,10 +621,10 @@ function assertConfidence(value: unknown): void {
 		value < 0 ||
 		value > 1
 	) {
-		throw new MnemocyteError(
-			"confidence must be a number between 0 and 1.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "confidence must be a number between 0 and 1.",
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -594,7 +643,10 @@ export function validateNewMemory(input: PreparedNewMemory): void {
 		assertTags(input.tags);
 	}
 	if (input.source !== undefined && typeof input.source !== "string") {
-		throw new MnemocyteError("source must be a string.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "source must be a string.",
+			code: "VALIDATION",
+		});
 	}
 	if (input.confidence !== undefined) {
 		assertConfidence(input.confidence);
@@ -612,10 +664,10 @@ export function assertDistinctKeys(memories: readonly NewMemory[]): void {
 			continue;
 		}
 		if (seen.has(memory.key)) {
-			throw new MnemocyteError(
-				"memories must not repeat a key within one addMany call.",
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: "memories must not repeat a key within one addMany call.",
+				code: "VALIDATION",
+			});
 		}
 		seen.add(memory.key);
 	}
@@ -683,25 +735,28 @@ export function validateContextInput(input: ContextInput): void {
 		input.format !== "plain" &&
 		input.format !== "xml"
 	) {
-		throw new MnemocyteError(
-			'format must be "markdown", "plain" or "xml".',
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: 'format must be "markdown", "plain" or "xml".',
+			code: "VALIDATION",
+		});
 	}
 	if (
 		input.maxTokens !== undefined &&
 		(!Number.isInteger(input.maxTokens) || input.maxTokens < 1)
 	) {
-		throw new MnemocyteError(
-			"maxTokens must be a positive integer when supplied.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "maxTokens must be a positive integer when supplied.",
+			code: "VALIDATION",
+		});
 	}
 }
 
 function assertOptionalTrackAccess(value: unknown): void {
 	if (value !== undefined && typeof value !== "boolean") {
-		throw new MnemocyteError("trackAccess must be a boolean.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "trackAccess must be a boolean.",
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -764,7 +819,10 @@ export function validateUpdateFields(input: PreparedUpdateFields): void {
 		input.source !== null &&
 		typeof input.source !== "string"
 	) {
-		throw new MnemocyteError("source must be a string or null.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "source must be a string or null.",
+			code: "VALIDATION",
+		});
 	}
 	if (input.confidence !== undefined) {
 		assertConfidence(input.confidence);
@@ -773,10 +831,10 @@ export function validateUpdateFields(input: PreparedUpdateFields): void {
 		assertValidDate(input.expiresAt, "expiresAt");
 	}
 	if (Object.values(input).every((value) => value === undefined)) {
-		throw new MnemocyteError(
-			"update requires at least one field to change.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "update requires at least one field to change.",
+			code: "VALIDATION",
+		});
 	}
 }
 
@@ -813,15 +871,18 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 	let tags: readonly string[] | undefined;
 	if (input.tags !== undefined) {
 		if (!Array.isArray(input.tags)) {
-			throw new MnemocyteError("tags must be an array.", "VALIDATION");
+			throw new MnemocyteError({
+				message: "tags must be an array.",
+				code: "VALIDATION",
+			});
 		}
 		const normalized = new Set<string>();
 		for (const value of input.tags as readonly unknown[]) {
 			if (typeof value !== "string" || value.trim().length === 0) {
-				throw new MnemocyteError(
-					"tags must contain only non-empty strings.",
-					"VALIDATION",
-				);
+				throw new MnemocyteError({
+					message: "tags must contain only non-empty strings.",
+					code: "VALIDATION",
+				});
 			}
 			normalized.add(value.trim());
 		}
@@ -863,10 +924,11 @@ export function validatePruneAuditLogInput(
 ): StoreAuditPruneInput {
 	const selector = validateSelectorInput(input);
 	if (input.before === undefined) {
-		throw new MnemocyteError(
-			"before is required: pruneAuditLog deletes events older than it.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"before is required: pruneAuditLog deletes events older than it.",
+			code: "VALIDATION",
+		});
 	}
 	assertValidDate(input.before, "before");
 	const batchSize = input.batchSize ?? DEFAULT_AUDIT_PRUNE_BATCH;
@@ -875,10 +937,10 @@ export function validatePruneAuditLogInput(
 		batchSize < 1 ||
 		batchSize > MAX_AUDIT_PRUNE_BATCH
 	) {
-		throw new MnemocyteError(
-			`batchSize must be an integer from 1 to ${MAX_AUDIT_PRUNE_BATCH}.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `batchSize must be an integer from 1 to ${MAX_AUDIT_PRUNE_BATCH}.`,
+			code: "VALIDATION",
+		});
 	}
 	assertOptionalBoolean(input.dryRun, "dryRun");
 	assertOptionalSignal(input.signal);
@@ -915,10 +977,10 @@ export function validateFindDuplicatesPageInput(
 		batchSize < 1 ||
 		batchSize > MAX_DUPLICATE_BATCH_SIZE
 	) {
-		throw new MnemocyteError(
-			`batchSize must be an integer from 1 to ${MAX_DUPLICATE_BATCH_SIZE}.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `batchSize must be an integer from 1 to ${MAX_DUPLICATE_BATCH_SIZE}.`,
+			code: "VALIDATION",
+		});
 	}
 	return { visibility, batchSize };
 }
@@ -934,10 +996,10 @@ function validateDuplicateSearch(
 			input.threshold < 0 ||
 			input.threshold > 1
 		) {
-			throw new MnemocyteError(
-				"threshold must be a number between 0 and 1.",
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: "threshold must be a number between 0 and 1.",
+				code: "VALIDATION",
+			});
 		}
 	}
 	if (
@@ -946,10 +1008,10 @@ function validateDuplicateSearch(
 			input.neighbors < 1 ||
 			input.neighbors > MAX_DUPLICATE_NEIGHBORS)
 	) {
-		throw new MnemocyteError(
-			`neighbors must be an integer from 1 to ${MAX_DUPLICATE_NEIGHBORS}.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `neighbors must be an integer from 1 to ${MAX_DUPLICATE_NEIGHBORS}.`,
+			code: "VALIDATION",
+		});
 	}
 	validateMemoryFilterFields(input);
 	assertOptionalSignal(input.signal);
@@ -976,10 +1038,10 @@ export function validateDeleteInput(input: DeleteInput): {
 		input.dependents !== undefined &&
 		!DEPENDENTS_POLICIES.has(input.dependents)
 	) {
-		throw new MnemocyteError(
-			'dependents must be "reject", "restore" or "delete".',
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: 'dependents must be "reject", "restore" or "delete".',
+			code: "VALIDATION",
+		});
 	}
 	assertOptionalSignal(input.signal);
 	return {
@@ -996,28 +1058,31 @@ export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
 	const scope = validateScope(input.scope);
 	assertNonEmptyString(input.survivorId, "survivorId");
 	if (!Array.isArray(input.supersededIds)) {
-		throw new MnemocyteError("supersededIds must be an array.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "supersededIds must be an array.",
+			code: "VALIDATION",
+		});
 	}
 	if (input.supersededIds.length === 0) {
-		throw new MnemocyteError(
-			"supersededIds must contain at least one memory id.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "supersededIds must contain at least one memory id.",
+			code: "VALIDATION",
+		});
 	}
 	if (input.supersededIds.includes(input.survivorId)) {
-		throw new MnemocyteError(
-			"survivorId must not appear in supersededIds.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: "survivorId must not appear in supersededIds.",
+			code: "VALIDATION",
+		});
 	}
 	const seenIds = new Set<string>();
 	for (const id of input.supersededIds) {
 		assertNonEmptyString(id, "supersededIds[*]");
 		if (seenIds.has(id)) {
-			throw new MnemocyteError(
-				"supersededIds must not contain duplicate memory ids.",
-				"VALIDATION",
-			);
+			throw new MnemocyteError({
+				message: "supersededIds must not contain duplicate memory ids.",
+				code: "VALIDATION",
+			});
 		}
 		seenIds.add(id);
 	}
@@ -1058,15 +1123,19 @@ const MAX_MIGRATE_DIMENSIONS = 4000;
  */
 export function validateMigrateInput(input: MigrateInput): void {
 	if (typeof input !== "object" || input === null) {
-		throw new MnemocyteError("migrate requires an input object.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "migrate requires an input object.",
+			code: "VALIDATION",
+		});
 	}
 	const hasMemory = input.memory !== undefined;
 	const hasStore = input.store !== undefined;
 	if (hasMemory === hasStore) {
-		throw new MnemocyteError(
-			"migrate takes either memory (a client from createMemory()) or store, not both and not neither.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"migrate takes either memory (a client from createMemory()) or store, not both and not neither.",
+			code: "VALIDATION",
+		});
 	}
 	assertOptionalBoolean(input.createExtension, "createExtension");
 	assertOptionalBoolean(input.dryRun, "dryRun");
@@ -1089,9 +1158,9 @@ export function assertMigrateDimensions(
 		dimensions < 1 ||
 		dimensions > MAX_MIGRATE_DIMENSIONS
 	) {
-		throw new MnemocyteError(
-			`${field} must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message: `${field} must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
+			code: "VALIDATION",
+		});
 	}
 }

@@ -747,5 +747,11 @@ Dated 2026-10-26 unless noted.
       `isMnemocyteError` checks a `Symbol.for` brand. The AI SDK
       (`isInstance`) and Better Auth (`isAPIError`) both use a guard
       because `instanceof` fails across duplicate package copies.
+      (Landed with `feat/error-reasons`: 14 reasons, unique across codes,
+      each a case the caller handles differently; `new MnemocyteError`
+      takes one object whose type requires a reason for those three
+      codes. The brand is on the prototype. Codes, reasons,
+      `MnemocyteOperation`, `MnemocyteBackend` and `AuditEventType` may
+      gain members in a minor; the other unions only in a major.)
     The resulting items are in Phase 4 of ROADMAP.md. The review's
     additive findings wait until after 1.0.

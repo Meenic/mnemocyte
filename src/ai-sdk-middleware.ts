@@ -179,7 +179,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function configError(name: string, message: string): MnemocyteError {
-	return new MnemocyteError(`${name} ${message}`, "CONFIG");
+	return new MnemocyteError({
+		message: `${name} ${message}`,
+		code: "CONFIG",
+		reason: "INVALID_OPTION",
+	});
 }
 
 function isBoundClient(value: unknown): value is BoundMemoryClient {

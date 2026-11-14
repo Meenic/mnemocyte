@@ -37,10 +37,11 @@ export function unwrapMnemocyteStoreConfig(
 ): MemoryStore {
 	const candidate: unknown = config;
 	if (!hasEnvelope(candidate)) {
-		throw new MnemocyteError(
-			"store must be created by a supported Mnemocyte store adapter.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "store must be created by a supported Mnemocyte store adapter.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 
 	return candidate[MEMORY_STORE_CONFIG];

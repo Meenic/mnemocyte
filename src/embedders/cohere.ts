@@ -118,10 +118,10 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 		},
 		parseResponse(body, expectedCount) {
 			if (!isRecord(body) || !isRecord(body.embeddings)) {
-				throw new MnemocyteError(
-					"Cohere returned malformed embedding response data.",
-					"EMBEDDING",
-				);
+				throw new MnemocyteError({
+					message: "Cohere returned malformed embedding response data.",
+					code: "EMBEDDING",
+				});
 			}
 			return assertVectorList(body.embeddings.float, expectedCount, "Cohere");
 		},

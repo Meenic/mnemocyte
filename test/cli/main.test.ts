@@ -81,18 +81,22 @@ describe("describeError", () => {
 		const driver = Object.assign(new Error(""), { code: "ECONNREFUSED" });
 		expect(
 			describeError(
-				new MnemocyteError("Postgres migration failed.", "DB", driver),
+				new MnemocyteError({
+					message: "Postgres migration failed.",
+					code: "DB",
+					cause: driver,
+				}),
 			),
 		).toBe("mnemocyte: Postgres migration failed.\n  cause: ECONNREFUSED\n");
 
 		const nested = new CliError(
 			"Could not read the database, so nothing was checked.",
 			2,
-			new MnemocyteError(
-				"Could not inspect the Postgres installation.",
-				"DB",
-				new Error('password authentication\n failed for user "app"'),
-			),
+			new MnemocyteError({
+				message: "Could not inspect the Postgres installation.",
+				code: "DB",
+				cause: new Error('password authentication\n failed for user "app"'),
+			}),
 		);
 		expect(describeError(nested)).toBe(
 			[

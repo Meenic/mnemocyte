@@ -76,6 +76,7 @@ export async function exerciseConsolidationDeletePolicy(
 		await expectMnemocyteError(
 			client.delete({ scope: testScope(entityId), id: survivor.id }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 		await expectPairUnchanged(client, entityId, survivor.id, loser.id);
 	}
@@ -115,6 +116,7 @@ export async function exerciseConsolidationDeletePolicy(
 		await expectMnemocyteError(
 			client.deleteScope({ scope: agentScope }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 		await expect(
 			client.stats({ scope: testScope(entityId) }),
@@ -142,6 +144,7 @@ export async function exerciseConsolidationDeletePolicy(
 		await expectMnemocyteError(
 			client.prune({ scope: testScope(entityId), expired: true }),
 			"CONFLICT",
+			"HAS_DEPENDENTS",
 		);
 
 		const memories = await listEntityMemories(client, entityId);

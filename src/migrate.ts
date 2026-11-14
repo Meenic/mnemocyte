@@ -55,10 +55,11 @@ export async function migrate(input: MigrateInput): Promise<MigrateResult> {
 		const internals = readMemoryClientInternals(input.memory);
 		const embedderDimensions = internals.embedder.dimensions;
 		if (dimensions !== undefined && dimensions !== embedderDimensions) {
-			throw new MnemocyteError(
-				`migrate() was called with dimensions ${dimensions}, but the client's embedder has dimensions ${embedderDimensions}. Drop dimensions, or fix the embedder.`,
-				"CONFIG",
-			);
+			throw new MnemocyteError({
+				message: `migrate() was called with dimensions ${dimensions}, but the client's embedder has dimensions ${embedderDimensions}. Drop dimensions, or fix the embedder.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
 		}
 		assertMigrateDimensions(embedderDimensions, "embedder.dimensions");
 		store = internals.store;

@@ -171,7 +171,10 @@ function bindScope(
 				"A bound client cannot take allNamespaces. Call the unbound client for operations across namespaces.";
 		}
 		if (message !== undefined) {
-			const error = new MnemocyteError(message, "VALIDATION");
+			const error = new MnemocyteError({
+				message,
+				code: "VALIDATION",
+			});
 			return observe(context.config, context.backend, operation, metadata, () =>
 				Promise.reject(error),
 			);

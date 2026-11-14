@@ -12,7 +12,13 @@ import { expectMnemocyteError, testScope } from "../helpers.js";
 describe("resilience", () => {
 	test("does not retry typed relationship conflicts", () => {
 		expect(
-			defaultShouldRetry(new MnemocyteError("has dependents", "CONFLICT")),
+			defaultShouldRetry(
+				new MnemocyteError({
+					message: "has dependents",
+					code: "CONFLICT",
+					reason: "HAS_DEPENDENTS",
+				}),
+			),
 		).toBe(false);
 	});
 
@@ -65,14 +71,26 @@ describe("resilience", () => {
 			),
 		).toBe(true);
 
-		expect(defaultShouldRetry(new MnemocyteError("slow", "TIMEOUT"))).toBe(
-			true,
-		);
-		for (const code of ["EMBEDDING", "VALIDATION", "CONFIG", "DB"] as const) {
-			expect(defaultShouldRetry(new MnemocyteError("x", code)), code).toBe(
-				false,
-			);
+		expect(
+			defaultShouldRetry(
+				new MnemocyteError({ message: "slow", code: "TIMEOUT" }),
+			),
+		).toBe(true);
+		for (const code of ["EMBEDDING", "VALIDATION", "DB"] as const) {
+			expect(
+				defaultShouldRetry(new MnemocyteError({ message: "x", code })),
+				code,
+			).toBe(false);
 		}
+		expect(
+			defaultShouldRetry(
+				new MnemocyteError({
+					message: "x",
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+				}),
+			),
+		).toBe(false);
 		expect(defaultShouldRetry("string error")).toBe(false);
 		expect(defaultShouldRetry(undefined)).toBe(false);
 	});

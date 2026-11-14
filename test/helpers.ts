@@ -1,13 +1,59 @@
 import {
 	isMnemocyteError,
 	type MemoryScope,
+	type MnemocyteError,
 	type MnemocyteErrorCode,
+	type MnemocyteErrorReason,
 } from "mnemocyte";
 import { expect } from "vitest";
+
+/** The reasons each code may carry; codes not listed carry none. */
+export const REASONS_BY_CODE: Partial<
+	Record<MnemocyteErrorCode, readonly MnemocyteErrorReason[]>
+> = {
+	CONFIG: ["INVALID_OPTION", "DIMENSIONS_MISMATCH", "MODEL_MISMATCH"],
+	CONFLICT: [
+		"KEY_IN_USE",
+		"HAS_DEPENDENTS",
+		"HIDDEN_DEPENDENTS",
+		"CONSOLIDATION_CHANGED",
+	],
+	MIGRATION: [
+		"SCHEMA_MISSING",
+		"SCHEMA_UNRECOGNIZED",
+		"SCHEMA_NEWER",
+		"INSTALLATION_INVALID",
+		"MIXED_MODELS",
+		"PGVECTOR_UNAVAILABLE",
+		"MIGRATION_FAILED",
+	],
+};
+
+/**
+ * Check `error` has `code`, a reason that belongs to it (none for codes
+ * without reasons), and `reason` when given.
+ */
+export function expectErrorReason(
+	error: MnemocyteError,
+	code: MnemocyteErrorCode,
+	reason?: MnemocyteErrorReason,
+): void {
+	expect(error.code).toBe(code);
+	const allowed = REASONS_BY_CODE[code];
+	if (allowed === undefined) {
+		expect(error.reason).toBeUndefined();
+	} else {
+		expect(allowed).toContain(error.reason);
+	}
+	if (reason !== undefined) {
+		expect(error.reason).toBe(reason);
+	}
+}
 
 export async function expectMnemocyteError(
 	promise: Promise<unknown>,
 	code: MnemocyteErrorCode,
+	reason?: MnemocyteErrorReason,
 ) {
 	try {
 		await promise;
@@ -16,7 +62,7 @@ export async function expectMnemocyteError(
 		if (!isMnemocyteError(error)) {
 			throw error;
 		}
-		expect(error.code).toBe(code);
+		expectErrorReason(error, code, reason);
 		return error;
 	}
 

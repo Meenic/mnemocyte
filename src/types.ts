@@ -160,6 +160,8 @@ export type ScopeSelectorInput<DefaultNamespace extends boolean = false> =
 /**
  * Identifies which backend a {@link MemoryClient} is using: the configured
  * {@link MemoryConfig.store}, or in-memory storage when none is supplied.
+ * A minor release may add backends, so a `switch` over them needs a
+ * `default`.
  */
 export type MnemocyteBackend = "in-memory" | "postgres";
 
@@ -167,7 +169,8 @@ export type MnemocyteBackend = "in-memory" | "postgres";
  * The {@link MemoryClient} methods that emit {@link MnemocyteObservation}
  * events through {@link ObservabilityConfig.onEvent}, plus `"trackAccess"`:
  * the access write a tracked search starts after its results are ready (see
- * {@link RetrievalConfig.trackAccess}).
+ * {@link RetrievalConfig.trackAccess}). A minor release may add operations,
+ * so a `switch` over them needs a `default`.
  */
 export type MnemocyteOperation =
 	| "add"
@@ -1175,7 +1178,9 @@ export interface DuplicatePair {
 }
 
 /**
- * What an {@link AuditEvent} records. Mnemocyte writes only these five.
+ * What an {@link AuditEvent} records. Mnemocyte writes only these five
+ * today; a minor release may add event types, so a `switch` over them needs
+ * a `default`.
  */
 export type AuditEventType =
 	| "memory.created"

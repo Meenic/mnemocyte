@@ -116,7 +116,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		} finally {
 			gate.release();
 		}
-		await expectMnemocyteError(pending, "CONFLICT");
+		await expectMnemocyteError(pending, "CONFLICT", "CONSOLIDATION_CHANGED");
 
 		const memories = await listEntityMemories(client, entityId);
 		expect(memories.some((memory) => memory.id === definedSurvivor.id)).toBe(
@@ -159,7 +159,7 @@ export async function exerciseConsolidationSurvivorRaces(params: {
 		} finally {
 			gate.release();
 		}
-		await expectMnemocyteError(pending, "CONFLICT");
+		await expectMnemocyteError(pending, "CONFLICT", "CONSOLIDATION_CHANGED");
 
 		const memories = await listEntityMemories(client, entityId);
 		const survivorAfter = expectDefined(

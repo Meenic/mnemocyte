@@ -24,11 +24,12 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 	const load = (): Promise<MemoryStore> => {
 		pending ??= input.load().catch((error: unknown) => {
 			pending = undefined;
-			throw new MnemocyteError(
-				`Could not load the ${input.backend} backend.`,
-				"CONFIG",
-				error,
-			);
+			throw new MnemocyteError({
+				message: `Could not load the ${input.backend} backend.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+				cause: error,
+			});
 		});
 		return pending;
 	};

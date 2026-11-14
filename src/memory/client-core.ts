@@ -133,7 +133,10 @@ function scopeMetadata(input: unknown): ObservationMetadata {
 
 function snapshotNewMemory(input: NewMemory): PreparedNewMemory {
 	if (typeof input !== "object" || input === null) {
-		throw new MnemocyteError("Each memory must be an object.", "VALIDATION");
+		throw new MnemocyteError({
+			message: "Each memory must be an object.",
+			code: "VALIDATION",
+		});
 	}
 	return {
 		content: input.content,
@@ -242,7 +245,10 @@ function matchInsertResults(
 	const byKey = new Map<string, Memory>();
 	for (const memory of returned) {
 		if (byId.has(memory.id)) {
-			throw new MnemocyteError("Memory insert returned a duplicate ID.", "DB");
+			throw new MnemocyteError({
+				message: "Memory insert returned a duplicate ID.",
+				code: "DB",
+			});
 		}
 		byId.set(memory.id, memory);
 		if (memory.key !== null) {
@@ -255,16 +261,19 @@ function matchInsertResults(
 		const memory =
 			inserted ?? (row.key === null ? undefined : byKey.get(row.key));
 		if (!memory || used.has(memory.id)) {
-			throw new MnemocyteError(
-				"Memory insert did not return every requested row.",
-				"DB",
-			);
+			throw new MnemocyteError({
+				message: "Memory insert did not return every requested row.",
+				code: "DB",
+			});
 		}
 		used.add(memory.id);
 		return { memory, created: inserted !== undefined };
 	});
 	if (used.size !== returned.length) {
-		throw new MnemocyteError("Memory insert returned an unknown ID.", "DB");
+		throw new MnemocyteError({
+			message: "Memory insert returned an unknown ID.",
+			code: "DB",
+		});
 	}
 	return outcomes;
 }
@@ -392,10 +401,10 @@ export function createMemoryClient(
 					await store.insertMemories(stored, { audit }),
 				);
 				if (!outcome) {
-					throw new MnemocyteError(
-						"Memory insert did not return the inserted row.",
-						"DB",
-					);
+					throw new MnemocyteError({
+						message: "Memory insert did not return the inserted row.",
+						code: "DB",
+					});
 				}
 				return outcome.memory;
 			},
@@ -415,13 +424,16 @@ export function createMemoryClient(
 			() => {
 				const scope = validateScope(input.scope);
 				if (!Array.isArray(input.memories)) {
-					throw new MnemocyteError("memories must be an array.", "VALIDATION");
+					throw new MnemocyteError({
+						message: "memories must be an array.",
+						code: "VALIDATION",
+					});
 				}
 				if (input.memories.length > MAX_ADD_MANY) {
-					throw new MnemocyteError(
-						`memories must contain at most ${MAX_ADD_MANY} items; split larger batches into several addMany calls.`,
-						"VALIDATION",
-					);
+					throw new MnemocyteError({
+						message: `memories must contain at most ${MAX_ADD_MANY} items; split larger batches into several addMany calls.`,
+						code: "VALIDATION",
+					});
 				}
 				return {
 					scope,
@@ -579,10 +591,10 @@ export function createMemoryClient(
 					const hasId = input.id !== undefined;
 					const hasKey = input.key !== undefined;
 					if (hasId === hasKey) {
-						throw new MnemocyteError(
-							"get requires exactly one of id or key.",
-							"VALIDATION",
-						);
+						throw new MnemocyteError({
+							message: "get requires exactly one of id or key.",
+							code: "VALIDATION",
+						});
 					}
 					if (hasId) {
 						assertNonEmptyString(input.id, "id");
@@ -690,7 +702,10 @@ export function createMemoryClient(
 						...(audit ? { audit: { fields: Object.keys(fields).sort() } } : {}),
 					});
 					if (!memory) {
-						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+						throw new MnemocyteError({
+							message: "Memory was not found.",
+							code: "NOT_FOUND",
+						});
 					}
 					return memory;
 				},
@@ -720,7 +735,10 @@ export function createMemoryClient(
 						storeOptions(input.signal),
 					);
 					if (!result) {
-						throw new MnemocyteError("Memory was not found.", "NOT_FOUND");
+						throw new MnemocyteError({
+							message: "Memory was not found.",
+							code: "NOT_FOUND",
+						});
 					}
 				},
 			);
@@ -891,16 +909,16 @@ export function createMemoryClient(
 					);
 					throwIfAborted(input.signal);
 					if (!survivor) {
-						throw new MnemocyteError(
-							"Survivor memory was not found.",
-							"NOT_FOUND",
-						);
+						throw new MnemocyteError({
+							message: "Survivor memory was not found.",
+							code: "NOT_FOUND",
+						});
 					}
 					if (survivor.supersededBy !== null) {
-						throw new MnemocyteError(
-							"Survivor memory is itself superseded.",
-							"VALIDATION",
-						);
+						throw new MnemocyteError({
+							message: "Survivor memory is itself superseded.",
+							code: "VALIDATION",
+						});
 					}
 					const targets = await store.loadConsolidationTargets(
 						visibility,
@@ -911,10 +929,10 @@ export function createMemoryClient(
 					const foundIds = new Set(targets.map((target) => target.id));
 					for (const id of input.supersededIds) {
 						if (!foundIds.has(id)) {
-							throw new MnemocyteError(
-								"Superseded memory was not found.",
-								"NOT_FOUND",
-							);
+							throw new MnemocyteError({
+								message: "Superseded memory was not found.",
+								code: "NOT_FOUND",
+							});
 						}
 					}
 					if (
@@ -924,10 +942,12 @@ export function createMemoryClient(
 								target.supersededBy !== survivor.id,
 						)
 					) {
-						throw new MnemocyteError(
-							"Superseded memory already belongs to a different survivor.",
-							"CONFLICT",
-						);
+						throw new MnemocyteError({
+							message:
+								"Superseded memory already belongs to a different survivor.",
+							code: "CONFLICT",
+							reason: "CONSOLIDATION_CHANGED",
+						});
 					}
 					const losers = targets.filter(
 						(target) => target.supersededBy === null,
@@ -994,10 +1014,10 @@ export function createMemoryClient(
 							page.compared > batchSize ||
 							page.compared > 0 !== (page.lastId !== null)
 						) {
-							throw new MnemocyteError(
-								"Duplicate search returned an invalid page.",
-								"DB",
-							);
+							throw new MnemocyteError({
+								message: "Duplicate search returned an invalid page.",
+								code: "DB",
+							});
 						}
 						return {
 							pairs: page.pairs.map(toDuplicatePair),

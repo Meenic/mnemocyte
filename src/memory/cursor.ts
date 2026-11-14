@@ -15,10 +15,10 @@ export function encodeListCursor(position: StoreListPosition): string {
 }
 
 function invalidCursor(): MnemocyteError {
-	return new MnemocyteError(
-		"cursor must be a nextCursor value returned by list.",
-		"VALIDATION",
-	);
+	return new MnemocyteError({
+		message: "cursor must be a nextCursor value returned by list.",
+		code: "VALIDATION",
+	});
 }
 
 export function decodeListCursor(cursor: unknown): StoreListPosition {
@@ -54,10 +54,11 @@ export function encodeDuplicateCursor(id: string): string {
 
 export function decodeDuplicateCursor(cursor: unknown): string {
 	const invalid = () =>
-		new MnemocyteError(
-			"cursor must be a nextCursor value returned by findDuplicatesPage.",
-			"VALIDATION",
-		);
+		new MnemocyteError({
+			message:
+				"cursor must be a nextCursor value returned by findDuplicatesPage.",
+			code: "VALIDATION",
+		});
 	const parsed = parseBase64UrlJson(cursor);
 	if (!Array.isArray(parsed) || parsed.length !== 2) {
 		throw invalid();
@@ -95,10 +96,10 @@ export function encodeAuditCursor(position: StoreAuditPosition): string {
 
 export function decodeAuditCursor(cursor: unknown): StoreAuditPosition {
 	const invalid = () =>
-		new MnemocyteError(
-			"cursor must be a nextCursor value returned by listAuditLog.",
-			"VALIDATION",
-		);
+		new MnemocyteError({
+			message: "cursor must be a nextCursor value returned by listAuditLog.",
+			code: "VALIDATION",
+		});
 	const parsed = parseBase64UrlJson(cursor);
 	if (!Array.isArray(parsed) || parsed.length !== 3) {
 		throw invalid();

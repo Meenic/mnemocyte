@@ -50,6 +50,8 @@ import type {
 	MigrateInput,
 	MigrateResult,
 	MnemocyteErrorCode,
+	MnemocyteErrorInput,
+	MnemocyteErrorReason,
 	MnemocyteStoreConfig,
 	NewMemory,
 	OptionalNamespaceScope,
@@ -291,7 +293,34 @@ const migrateBoth: MigrateInput = {
 // @ts-expect-error migrate needs memory or store.
 const migrateNeither: MigrateInput = { dimensions: 1536 };
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
-const conflictError = new MnemocyteError("conflict", conflictCode);
+const keyInUse: MnemocyteErrorReason = "KEY_IN_USE";
+const conflictError = new MnemocyteError({
+	message: "conflict",
+	code: "CONFLICT",
+	reason: keyInUse,
+});
+const conflictReason: MnemocyteErrorReason | undefined = conflictError.reason;
+const timeoutInput: MnemocyteErrorInput = { message: "slow", code: "TIMEOUT" };
+const timeoutError = new MnemocyteError(timeoutInput);
+// @ts-expect-error CONFLICT requires a reason.
+const conflictWithoutReason: MnemocyteErrorInput = {
+	message: "conflict",
+	code: "CONFLICT",
+};
+// @ts-expect-error a reason belongs to one code.
+const mismatchedReason: MnemocyteErrorInput = {
+	message: "config",
+	code: "CONFIG",
+	reason: "KEY_IN_USE",
+};
+const reasonOnTimeout: MnemocyteErrorInput = {
+	message: "slow",
+	code: "TIMEOUT",
+	// @ts-expect-error codes without reasons take none.
+	reason: "INVALID_OPTION",
+};
+// @ts-expect-error the positional form is gone.
+const positionalError = new MnemocyteError("conflict", conflictCode);
 const jsonValue: JsonValue = ["value", 1, true, null, { nested: "value" }];
 const jsonObject: JsonObject = { value: jsonValue };
 const kind: MemoryKind = "preference";
@@ -576,6 +605,12 @@ void postgresConfig;
 void queryOptions;
 void conflictCode;
 void conflictError;
+void conflictReason;
+void timeoutError;
+void conflictWithoutReason;
+void mismatchedReason;
+void reasonOnTimeout;
+void positionalError;
 void jsonValue;
 void jsonObject;
 void add;

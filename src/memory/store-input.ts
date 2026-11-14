@@ -25,10 +25,11 @@ export function resolveStore(value: unknown): MemoryStore {
 	}
 	const detected = detectClient(value, "store");
 	if (!detected) {
-		throw new MnemocyteError(
-			`store must come from postgresStore() or be a database client: ${SUPPORTED_CLIENTS}.`,
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: `store must come from postgresStore() or be a database client: ${SUPPORTED_CLIENTS}.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	return createLazyStore({
 		backend: "postgres",

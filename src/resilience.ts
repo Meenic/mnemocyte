@@ -1,4 +1,4 @@
-import { MnemocyteError } from "./errors.js";
+import { isMnemocyteError, MnemocyteError } from "./errors.js";
 import type { ProviderResilienceConfig } from "./types.js";
 
 /**
@@ -48,11 +48,11 @@ const MAX_CAUSE_DEPTH = 4;
  */
 export function throwIfAborted(signal: AbortSignal | undefined): void {
 	if (signal?.aborted) {
-		throw new MnemocyteError(
-			"Operation was aborted.",
-			"ABORTED",
-			signal.reason,
-		);
+		throw new MnemocyteError({
+			message: "Operation was aborted.",
+			code: "ABORTED",
+			cause: signal.reason,
+		});
 	}
 }
 
@@ -99,7 +99,7 @@ export function defaultShouldRetry(error: unknown): boolean {
 	if (status !== undefined) {
 		return RETRYABLE_STATUSES.has(status);
 	}
-	if (error instanceof MnemocyteError) {
+	if (isMnemocyteError(error)) {
 		return error.code === "TIMEOUT";
 	}
 	return hasRetryableNetworkCode(error);
@@ -154,18 +154,22 @@ function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
 		const onAbort = (): void => {
 			clearTimeout(timer);
 			reject(
-				new MnemocyteError("Operation was aborted.", "ABORTED", signal?.reason),
+				new MnemocyteError({
+					message: "Operation was aborted.",
+					code: "ABORTED",
+					cause: signal?.reason,
+				}),
 			);
 		};
 		if (signal) {
 			if (signal.aborted) {
 				clearTimeout(timer);
 				reject(
-					new MnemocyteError(
-						"Operation was aborted.",
-						"ABORTED",
-						signal.reason,
-					),
+					new MnemocyteError({
+						message: "Operation was aborted.",
+						code: "ABORTED",
+						cause: signal.reason,
+					}),
 				);
 				return;
 			}
@@ -175,10 +179,10 @@ function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
 }
 
 function timeoutError(timeoutMs: number): MnemocyteError {
-	return new MnemocyteError(
-		`Provider call timed out after ${timeoutMs}ms.`,
-		"TIMEOUT",
-	);
+	return new MnemocyteError({
+		message: `Provider call timed out after ${timeoutMs}ms.`,
+		code: "TIMEOUT",
+	});
 }
 
 /**
@@ -219,7 +223,11 @@ function runAttempt<T>(
 			}
 			controller.abort(signal?.reason);
 			reject(
-				new MnemocyteError("Operation was aborted.", "ABORTED", signal?.reason),
+				new MnemocyteError({
+					message: "Operation was aborted.",
+					code: "ABORTED",
+					cause: signal?.reason,
+				}),
 			);
 		};
 		if (signal) {
@@ -230,11 +238,11 @@ function runAttempt<T>(
 				settled = true;
 				controller.abort(signal.reason);
 				reject(
-					new MnemocyteError(
-						"Operation was aborted.",
-						"ABORTED",
-						signal.reason,
-					),
+					new MnemocyteError({
+						message: "Operation was aborted.",
+						code: "ABORTED",
+						cause: signal.reason,
+					}),
 				);
 				return;
 			}
@@ -315,7 +323,7 @@ export async function withResilience<T>(
 			return await runAttempt(action, timeoutMs, externalSignal);
 		} catch (error) {
 			lastError = error;
-			if (error instanceof MnemocyteError && error.code === "ABORTED") {
+			if (isMnemocyteError(error) && error.code === "ABORTED") {
 				throw error;
 			}
 			if (attempt >= maxAttempts) {

@@ -1,4 +1,4 @@
-import { MnemocyteError } from "../../errors.js";
+import { isMnemocyteError, MnemocyteError } from "../../errors.js";
 import type { SqlExecutor, SqlQueryOptions } from "../../sql/executor.js";
 import { postgresErrorCode } from "../errors.js";
 import {
@@ -114,7 +114,7 @@ async function readMigrations(
 	} catch (error) {
 		// The runner's own refusals: gaps, a newer Mnemocyte, a schema that
 		// matches no migration.
-		if (error instanceof MnemocyteError && error.code === "MIGRATION") {
+		if (isMnemocyteError(error) && error.code === "MIGRATION") {
 			return { state: "invalid", reason: error.message };
 		}
 		throw error;
@@ -176,12 +176,12 @@ export async function inspectPostgresInstallation(
 			};
 		}
 	} catch (error) {
-		throw error instanceof MnemocyteError
+		throw isMnemocyteError(error)
 			? error
-			: new MnemocyteError(
-					"Could not inspect the Postgres installation.",
-					"DB",
-					error,
-				);
+			: new MnemocyteError({
+					message: "Could not inspect the Postgres installation.",
+					code: "DB",
+					cause: error,
+				});
 	}
 }

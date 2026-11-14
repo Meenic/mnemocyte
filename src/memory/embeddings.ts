@@ -1,4 +1,4 @@
-import { MnemocyteError, ProviderError } from "../errors.js";
+import { isMnemocyteError, MnemocyteError, ProviderError } from "../errors.js";
 import { throwIfAborted, withResilience } from "../resilience.js";
 import type {
 	Embedder,
@@ -17,22 +17,22 @@ function validateEmbedding(
 	dimensions: number,
 ): void {
 	if (embedding.length !== dimensions) {
-		throw new MnemocyteError(
-			"Embedder returned an embedding with unexpected dimensions.",
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: "Embedder returned an embedding with unexpected dimensions.",
+			code: "EMBEDDING",
+		});
 	}
 	if (embedding.some((component) => !Number.isFinite(component))) {
-		throw new MnemocyteError(
-			"Embedder returned an embedding with non-finite values.",
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: "Embedder returned an embedding with non-finite values.",
+			code: "EMBEDDING",
+		});
 	}
 	if (embedding.every((component) => component === 0)) {
-		throw new MnemocyteError(
-			"Embedder returned an embedding with zero norm.",
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: "Embedder returned an embedding with zero norm.",
+			code: "EMBEDDING",
+		});
 	}
 }
 
@@ -48,7 +48,10 @@ export async function embedOne(
 		"Failed to embed text.",
 	);
 	if (!embedding) {
-		throw new MnemocyteError("Embedder returned no embedding.", "EMBEDDING");
+		throw new MnemocyteError({
+			message: "Embedder returned no embedding.",
+			code: "EMBEDDING",
+		});
 	}
 	return embedding;
 }
@@ -114,18 +117,22 @@ async function embedChunk(
 	} catch (error) {
 		if (
 			error instanceof ProviderError ||
-			(error instanceof MnemocyteError &&
+			(isMnemocyteError(error) &&
 				(error.code === "TIMEOUT" || error.code === "ABORTED"))
 		) {
 			throw error;
 		}
-		throw new MnemocyteError(failureMessage, "EMBEDDING", error);
+		throw new MnemocyteError({
+			message: failureMessage,
+			code: "EMBEDDING",
+			cause: error,
+		});
 	}
 	if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
-		throw new MnemocyteError(
-			`Embedder returned ${Array.isArray(embeddings) ? embeddings.length : "no"} embeddings for ${texts.length} ${texts.length === 1 ? "text" : "texts"}.`,
-			"EMBEDDING",
-		);
+		throw new MnemocyteError({
+			message: `Embedder returned ${Array.isArray(embeddings) ? embeddings.length : "no"} embeddings for ${texts.length} ${texts.length === 1 ? "text" : "texts"}.`,
+			code: "EMBEDDING",
+		});
 	}
 	for (const embedding of embeddings) {
 		validateEmbedding(embedding, embedder.dimensions);

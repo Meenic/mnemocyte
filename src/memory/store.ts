@@ -286,10 +286,11 @@ export function assertPruneFilterHasSelector(
 	filter: ValidatedPruneFilter,
 ): void {
 	if (!hasPruneSelector(filter)) {
-		throw new MnemocyteError(
-			"prune requires at least one selector besides its scope (expired, superseded, createdBefore, notAccessedSince, kinds, tags, or maxImportance). Use deleteScope to delete a whole scope.",
-			"VALIDATION",
-		);
+		throw new MnemocyteError({
+			message:
+				"prune requires at least one selector besides its scope (expired, superseded, createdBefore, notAccessedSince, kinds, tags, or maxImportance). Use deleteScope to delete a whole scope.",
+			code: "VALIDATION",
+		});
 	}
 }
 

@@ -389,12 +389,16 @@ whole database. Before `add`, `addMany`, `search`, `context`,
 `findDuplicates` and an `update` that changes content, Mnemocyte checks the configured embedder against it,
 before calling the embedder:
 
-- A different `dimensions` throws `"CONFIG"`.
-- A different `model` throws `"CONFIG"`.
+- A different `dimensions` throws `"CONFIG"` with reason
+  `"DIMENSIONS_MISMATCH"`. Configure an embedder with the installation's
+  dimensions (many models take a `dimensions` option), or install in a fresh
+  database; `migrate` does not change an existing installation's dimension.
+- A different `model` throws `"CONFIG"` with reason `"MODEL_MISMATCH"`.
 - An empty installation records the configured model on its first such call.
 - If stored rows hold more than one model, the model stays unrecorded and
-  these calls throw `"MIGRATION"`.
-- If the `installation` row is missing, these calls throw `"MIGRATION"`.
+  these calls throw `"MIGRATION"` with reason `"MIXED_MODELS"`.
+- If the `installation` row is missing, these calls throw `"MIGRATION"`
+  with reason `"INSTALLATION_INVALID"`.
   `migrate` writes the row only when it creates the schema and does not
   restore a deleted one. Insert it again with the installation's dimensions
   and vector type (`halfvec` above 2,000 dimensions); the model is recorded

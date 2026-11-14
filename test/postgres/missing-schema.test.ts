@@ -69,6 +69,7 @@ describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 		const added = await expectMnemocyteError(
 			memory.add({ scope, content: "Before migrate." }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 		expectMigrateHint(added, "42P01");
 		expect(added.message).toContain("mnemocyte_meta");
@@ -76,12 +77,14 @@ describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 		const searched = await expectMnemocyteError(
 			memory.search({ scope, query: "Before" }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 		expectMigrateHint(searched, "42P01");
 
 		const listed = await expectMnemocyteError(
 			memory.list({ scope }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 		expectMigrateHint(listed, "42P01");
 		expect(listed.message).toContain("mnemocyte_memories");
@@ -100,12 +103,14 @@ describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 		const listed = await expectMnemocyteError(
 			memory.list({ scope }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 		expectMigrateHint(listed, "42703");
 
 		const added = await expectMnemocyteError(
 			memory.add({ scope, content: "On an old schema." }),
 			"MIGRATION",
+			"SCHEMA_MISSING",
 		);
 		expectMigrateHint(added, "42703");
 		expect(added.message).toContain("vector_type");
@@ -128,6 +133,7 @@ describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 		const error = await expectMnemocyteError(
 			memory.search({ scope, query: "anything" }),
 			"MIGRATION",
+			"INSTALLATION_INVALID",
 		);
 		expect(error.message).toContain('mnemocyte_meta has no "installation" row');
 		expect(error.message).toContain(

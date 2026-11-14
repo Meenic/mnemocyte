@@ -36,19 +36,22 @@ export function assertSqlExecutor(
 		executor === null ||
 		typeof executor.query !== "function"
 	) {
-		throw new MnemocyteError(
-			"client must be a SqlExecutor with a query function.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message: "client must be a SqlExecutor with a query function.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 	if (
 		typeof executor.transaction !== "function" &&
 		typeof executor.batch !== "function"
 	) {
-		throw new MnemocyteError(
-			"client must implement SqlExecutor.transaction or SqlExecutor.batch.",
-			"CONFIG",
-		);
+		throw new MnemocyteError({
+			message:
+				"client must implement SqlExecutor.transaction or SqlExecutor.batch.",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
 	}
 }
 
@@ -76,10 +79,10 @@ export async function runAtomically(
 	if (db.batch) {
 		const results = await db.batch(statements, options);
 		if (!Array.isArray(results) || results.length !== statements.length) {
-			throw new MnemocyteError(
-				`SqlExecutor.batch returned ${Array.isArray(results) ? results.length : "no"} results for ${statements.length} statements.`,
-				"DB",
-			);
+			throw new MnemocyteError({
+				message: `SqlExecutor.batch returned ${Array.isArray(results) ? results.length : "no"} results for ${statements.length} statements.`,
+				code: "DB",
+			});
 		}
 		return results;
 	}
@@ -92,8 +95,10 @@ export async function runAtomically(
 			return results;
 		});
 	}
-	throw new MnemocyteError(
-		"client must implement SqlExecutor.transaction or SqlExecutor.batch.",
-		"CONFIG",
-	);
+	throw new MnemocyteError({
+		message:
+			"client must implement SqlExecutor.transaction or SqlExecutor.batch.",
+		code: "CONFIG",
+		reason: "INVALID_OPTION",
+	});
 }

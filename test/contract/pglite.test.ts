@@ -128,6 +128,7 @@ describe("migrate on a PGlite without pgvector enabled", () => {
 			await expectMnemocyteError(
 				migrate({ memory, dryRun: true }),
 				"MIGRATION",
+				"PGVECTOR_UNAVAILABLE",
 			);
 			await expect(
 				migrate({ memory, dryRun: true, createExtension: true }),

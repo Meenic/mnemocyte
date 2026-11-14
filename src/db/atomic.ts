@@ -37,7 +37,7 @@ export function assertSqlExecutor(
 		typeof executor.query !== "function"
 	) {
 		throw new MnemocyteError(
-			"client must be a SqlExecutor with a query function, for example postgresJs(sql).",
+			"client must be a SqlExecutor with a query function.",
 			"CONFIG",
 		);
 	}

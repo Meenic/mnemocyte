@@ -204,9 +204,8 @@ under `strict_order`.
 
 `consolidate({ scope, survivorId, supersededIds, mergeTags = true })` marks
 each loser `superseded_by = survivorId`. It graduated from `experimental` in
-0.8 with the same behavior; `experimental.consolidate` on unbound and bound
-clients is a deprecated alias of it, removed in 1.0. It runs in three
-steps:
+0.8 with the same behavior; the deprecated `experimental.consolidate` alias
+was removed for 1.0. It runs in three steps:
 
 1. Shared validation: a valid scope, non-empty, distinct `supersededIds`,
    survivor not in the list.

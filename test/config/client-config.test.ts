@@ -1,4 +1,3 @@
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
 	createMemory,
 	isMnemocyteError,
@@ -6,7 +5,6 @@ import {
 	type MnemocyteStoreConfig,
 } from "mnemocyte";
 import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test } from "vitest";
 import { testScope } from "../helpers.js";
 
@@ -78,9 +76,9 @@ describe("client configuration", () => {
 		expectConfigError(client, "CONFIG");
 	});
 
-	test("rejects a Drizzle instance without a postgres.js client as CONFIG", () => {
+	test("rejects a Drizzle instance without a supported client as CONFIG", () => {
 		expectConfigError(
-			() => drizzleStore({} as PostgresJsDatabase<Record<string, unknown>>),
+			() => postgresStore({ client: { $client: {} } as never }),
 			"CONFIG",
 		);
 	});

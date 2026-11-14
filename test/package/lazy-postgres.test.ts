@@ -3,6 +3,7 @@ import {
 	access,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	realpath,
 	rename,
@@ -89,7 +90,7 @@ describe("lazy Postgres package loading", () => {
 		}
 	});
 
-	test.each(["dist/index.mjs", "dist/postgres.mjs", "dist/stores/drizzle.mjs"])(
+	test.each(["dist/index.mjs", "dist/postgres.mjs"])(
 		"keeps database packages out of the static imports of %s",
 		async (entry) => {
 			const source = await readFile(resolve(entry), "utf8");
@@ -107,7 +108,6 @@ describe("lazy Postgres package loading", () => {
 		"dist/embedders/voyage.mjs",
 		"dist/embedders/cohere.mjs",
 		"dist/embedders/google.mjs",
-		"dist/stores/drizzle.mjs",
 	])("keeps ai out of the static import graph of %s", async (entry) => {
 		for (const file of await staticImportGraph(resolve(entry))) {
 			const source = await readFile(file, "utf8");
@@ -181,6 +181,18 @@ describe("lazy Postgres package loading", () => {
 				readFile(resolve("migrations", "fresh-install.sql")),
 			]);
 			expect(packedFreshInstall).toEqual(sourceFreshInstall);
+			// Only the SQL ships from migrations/; the template, the journal
+			// and the old renderer stay in the repository.
+			const packedRoot = join(nodeModules, "mnemocyte");
+			expect((await readdir(join(packedRoot, "migrations"))).sort()).toEqual(
+				(await readdir(resolve("migrations")))
+					.filter((name) => name.endsWith(".sql"))
+					.sort(),
+			);
+			await Promise.all([
+				expectPathMissing(join(packedRoot, "dist", "cli.d.mts")),
+				expectPathMissing(join(packedRoot, "dist", "stores")),
+			]);
 
 			const drivers = ["drizzle-orm", "postgres", "pg", "@electric-sql", "ai"];
 			await Promise.all(

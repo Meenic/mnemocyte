@@ -7,11 +7,18 @@ export default defineConfig({
 		"src/cli.ts",
 		"src/postgres.ts",
 		"src/embedders/*.ts",
-		"src/stores/*.ts",
 	],
 	sourcemap: true,
 	dts: { sourcemap: false },
 	plugins: [
+		{
+			// The bin is not an export, so its declaration file would be an
+			// empty `export {}` that nothing references.
+			name: "drop-cli-declarations",
+			generateBundle(_options, bundle) {
+				delete bundle["cli.d.mts"];
+			},
+		},
 		{
 			// With `sourcemap` on, every chunk gets a sourceMappingURL comment,
 			// but rolldown-plugin-dts drops the .d.mts maps without removing it.

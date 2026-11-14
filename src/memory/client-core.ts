@@ -963,8 +963,6 @@ export function createMemoryClient(
 	return {
 		...client,
 		experimental: {
-			// Deprecated alias of `consolidate`, removed in 1.0.
-			consolidate: (input) => client.consolidate(input),
 			findDuplicatesPage(input) {
 				return observe(
 					config,

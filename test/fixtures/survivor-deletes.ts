@@ -192,8 +192,7 @@ export async function verifySurvivorDeletes(
 	}
 
 	{
-		// Bound clients take `consolidate` and `dependents` too; the deprecated
-		// `experimental.consolidate` still works.
+		// Bound clients take `consolidate` and `dependents` too.
 		const bound = client.for(scopeFor("bound"));
 		const [survivor, loser, late] = await bound.addMany({
 			memories: [
@@ -209,7 +208,7 @@ export async function verifySurvivorDeletes(
 			}),
 		).resolves.toMatchObject({ supersededCount: 1 });
 		await expect(
-			bound.experimental.consolidate({
+			bound.consolidate({
 				survivorId: expectDefined(survivor).id,
 				supersededIds: [expectDefined(late).id],
 			}),

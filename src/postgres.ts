@@ -23,7 +23,6 @@ export type {
 	PGliteQueryResult,
 	PGliteTransaction,
 } from "./sql/pglite.js";
-export { type PostgresJsExecutor, postgresJs } from "./sql/postgres-js.js";
 
 /** Options for {@link postgresStore}. */
 export interface PostgresStoreOptions {

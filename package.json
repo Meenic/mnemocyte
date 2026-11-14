@@ -7,7 +7,7 @@
 	"sideEffects": false,
 	"files": [
 		"dist",
-		"migrations"
+		"migrations/*.sql"
 	],
 	"exports": {
 		".": {
@@ -45,10 +45,6 @@
 		"./postgres": {
 			"types": "./dist/postgres.d.mts",
 			"default": "./dist/postgres.mjs"
-		},
-		"./stores/drizzle": {
-			"types": "./dist/stores/drizzle.d.mts",
-			"default": "./dist/stores/drizzle.mjs"
 		}
 	},
 	"types": "./dist/index.d.mts",
@@ -80,7 +76,6 @@
 		"lint:fix": "biome check --write .",
 		"lint:package": "pnpm build && node scripts/check-package.mjs",
 		"format": "biome format --write",
-		"migration:render": "node migrations/render-initial.mjs",
 		"migration:bundle": "node scripts/bundle-migrations.mjs",
 		"pack:check": "pnpm pack --dry-run",
 		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"

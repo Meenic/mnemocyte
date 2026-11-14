@@ -23,8 +23,8 @@ import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/goog
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
+import * as postgresEntry from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import { describe, expect, test } from "vitest";
 import { testScope } from "../helpers.js";
 
@@ -33,9 +33,8 @@ describe("package exports", () => {
 		expect(typeof createMemory).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
 		expect(typeof migrate).toBe("function");
-		expect(typeof drizzleStore).toBe("function");
-		expect(typeof postgresJs).toBe("function");
 		expect(typeof postgresStore).toBe("function");
+		expect(Object.keys(postgresEntry)).toEqual(["postgresStore"]);
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 		expect(openaiCompatibleEmbedder).toBe(directOpenAICompatibleEmbedder);

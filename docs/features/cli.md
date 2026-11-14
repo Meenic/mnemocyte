@@ -8,8 +8,10 @@ The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`. The user reference is
 - `package.json` has `"bin": { "mnemocyte": "./dist/cli.mjs" }`. The bin is
   not in `exports`: nothing in `src/cli/` is public API.
 - `src/cli.ts` is a tsdown entry. Its `#!/usr/bin/env node` line is kept in
-  `dist/cli.mjs`, and tsdown marks the file executable. tsdown also writes
-  an empty `dist/cli.d.mts`, which nothing references.
+  `dist/cli.mjs`, and tsdown marks the file executable. The
+  `drop-cli-declarations` plugin in `tsdown.config.ts` deletes the empty
+  `dist/cli.d.mts` tsdown would write, which nothing references; a
+  separate build for the bin would instead duplicate the shared chunks.
 - No new dependency. Arguments are parsed with `node:util` `parseArgs`,
   the prompt is `node:readline`, the `.env` file is read with
   `process.loadEnvFile`.
@@ -217,8 +219,8 @@ Exit 1 on a problem. A report that cannot be read (no connection) is exit
 `renderInitialSchema(dimensions)`, the string the runner applies on a fresh
 install and that `fresh-install.sql` holds at 1536. `--dimensions` alone
 imports nothing else; without it the memory file is loaded for
-`embedder.dimensions`. `migrations/render-initial.mjs` still ships, for
-anyone who calls it by path, and `pnpm migration:render` still uses it.
+`embedder.dimensions`. It replaced `migrations/render-initial.mjs`, which
+was removed for 1.0.
 
 ## Exit
 

@@ -558,9 +558,8 @@ search, list, context and duplicate search unless `includeSuperseded` is set.
 - While a memory points to the survivor, `delete` keeps the survivor unless
   you pass `dependents` (see [`delete`](#delete-and-deletescope)).
 
-`consolidate` graduated from `experimental` in 0.8.
-`experimental.consolidate` still works as a deprecated alias and is removed
-in 1.0.
+`consolidate` graduated from `experimental` in 0.8; the
+`experimental.consolidate` alias is gone.
 
 ## `listAuditLog`
 
@@ -787,7 +786,7 @@ session, so pass `namespace: "default"` to keep reading them.
 | `forget({ entityId, memoryId })` | `delete({ scope, id })` |
 | `forgetAll({ entityId })` | `deleteScope({ scope })`; also deletes the scope's audit events |
 | `prune({ entityId?, … })` | `prune({ scope, … })` or `prune({ allNamespaces: true, … })`, plus a selector besides the scope |
-| `findDuplicates`, `listAuditLog`, `experimental.consolidate` with `entityId` | the same methods with `scope` |
+| `findDuplicates`, `listAuditLog`, `experimental.consolidate` with `entityId` | `findDuplicates`, `listAuditLog`, `consolidate` with `scope` |
 | `stats({ entityId })` / `stats()` | `stats({ scope })` / `stats({ allNamespaces: true })`, one `MemoryStats` type |
 | `type`, `types`, `MemoryType` | `kind`, `kinds`, `MemoryKind` |
 | `memory.entityId`, `event.entityId` | `memory.scope.entityId`, `event.scope.entityId` |

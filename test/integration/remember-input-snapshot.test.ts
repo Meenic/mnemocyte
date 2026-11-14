@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { verifyMetadataTraversalCounts } from "../fixtures/metadata-traversals.js";
@@ -58,7 +58,7 @@ describe("Postgres remember input snapshots", () => {
 			await applyMigrations(sql);
 			const gate = createGatedEmbedder("mnemocyte-integration-test", 1536);
 			const client = createMemory({
-				store: postgresStore({ client: postgresJs(sql) }),
+				store: postgresStore({ client: sql }),
 				embedder: gate.embedder,
 			});
 
@@ -84,7 +84,7 @@ describe("Postgres remember input snapshots", () => {
 				1536,
 			);
 			const client = createMemory({
-				store: postgresStore({ client: postgresJs(sql) }),
+				store: postgresStore({ client: sql }),
 				embedder: counter.embedder,
 			});
 
@@ -110,7 +110,7 @@ describe("Postgres remember input snapshots", () => {
 				1536,
 			);
 			const client = createMemory({
-				store: postgresStore({ client: postgresJs(sql) }),
+				store: postgresStore({ client: sql }),
 				embedder: counter.embedder,
 				audit: { enabled: true },
 			});

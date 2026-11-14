@@ -1,14 +1,13 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createMemory, type Embedder, migrate } from "mnemocyte";
+import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
+import postgres from "postgres";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
 	type PostgresJsExecutor,
 	postgresJs,
-	postgresStore,
-	type SqlExecutor,
-} from "mnemocyte/postgres";
-import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+} from "../../src/sql/postgres-js.js";
 import { testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
@@ -228,7 +227,7 @@ describe.skipIf(!databaseUrl)("Postgres filtered vector search", () => {
 	beforeAll(async () => {
 		await sql`CREATE EXTENSION IF NOT EXISTS vector`;
 		await migrate({
-			store: postgresStore({ client: postgresJs(sql) }),
+			store: postgresStore({ client: sql }),
 			dimensions: 1536,
 		});
 	});

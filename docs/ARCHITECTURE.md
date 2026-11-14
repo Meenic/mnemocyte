@@ -324,7 +324,8 @@ Dated 2026-10-26 unless noted.
     because PGlite has its shape. A `pg.Client` is rejected: a transaction
     needs a connection of its own, which only a pool hands out. The input
     stays `postgresStore({ client })`, keeping the single-object-parameter
-    rule; `postgresJs()` and `drizzleStore()` stay, not deprecated. `pg` and
+    rule; `postgresJs()` and `drizzleStore()` stay, not deprecated
+    (reversed by decision 38: both were removed for 1.0). `pg` and
     `@electric-sql/pglite` became optional peers like `postgres` and
     `drizzle-orm`, and the contract suite runs on PGlite in `pnpm test`.
 22. **Bound scopes** (2026-11-13): `createMemory({ namespace })` is a
@@ -545,7 +546,8 @@ Dated 2026-10-26 unless noted.
 30. **Stable consolidation** (2026-11-13, landed): `consolidate` moved to
     `MemoryClient` and `BoundMemoryClient` with its one-statement
     `SELECT … FOR UPDATE` design unchanged. `experimental.consolidate`
-    stays as a deprecated alias until 1.0, so 0.8 breaks nothing.
+    stays as a deprecated alias until 1.0, so 0.8 breaks nothing (removed
+    with decision 38).
     `delete` takes `dependents: "reject" | "restore" | "delete"`, default
     `"reject"`. `"delete"` goes beyond the per-call choice planned here
     (repoint to null or reject) because `forgetMemory` needs it: search
@@ -731,6 +733,11 @@ Dated 2026-10-26 unless noted.
     - `postgresJs()`, `drizzleStore()` and `mnemocyte/stores/drizzle` go
       in 1.0 rather than staying deprecated through 1.x. They break the
       single-object rule, and `store: client` covers them (decision 23).
+      (Landed with `chore/drop-legacy-surface`, together with the
+      `experimental.consolidate` alias, the schema template, the renderer
+      and the journal leaving the tarball. A Drizzle instance annotated as
+      `PostgresJsDatabase`, which omits `$client`, passes `db.$client`;
+      the maintainer chose that over a `drizzle-orm` type import.)
     - Errors gain a `reason` for the cases one `code` covers, and
       `isMnemocyteError` checks a `Symbol.for` brand. The AI SDK
       (`isInstance`) and Better Auth (`isAPIError`) both use a guard

@@ -126,7 +126,6 @@ export function createScopedClient(
 		for: (scope) =>
 			bindScope(core, validateScope(withNamespace(scope, namespace)), context),
 		experimental: {
-			consolidate: (input) => client.consolidate(input),
 			findDuplicatesPage: (input) =>
 				core.experimental.findDuplicatesPage(
 					withScopeNamespace(input, namespace) as FindDuplicatesPageInput,
@@ -228,7 +227,6 @@ function bindScope(
 				core.consolidate({ ...value, scope }),
 			),
 		experimental: {
-			consolidate: (input) => bound.consolidate(input),
 			findDuplicatesPage: (input) =>
 				run("findDuplicatesPage", input, true, (value) =>
 					core.experimental.findDuplicatesPage({ ...value, scope }),

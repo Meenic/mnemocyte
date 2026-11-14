@@ -14,8 +14,7 @@ Feature areas:
 - [features/postgres.md](./features/postgres.md): schema, migrations and
   the `migrate()` runner, installation metadata, connections (`SqlExecutor`,
   client detection, the lazily loaded backend for `store: client`, the
-  postgres.js, node-postgres and PGlite adapters, `postgresStore`,
-  `drizzleStore(db)`).
+  postgres.js, node-postgres and PGlite adapters, `postgresStore`).
 - [features/scopes.md](./features/scopes.md): scopes and their matching
   rules, the default namespace and bound clients, keyed `add`, `get`,
   `list` pagination, `update`, `deleteScope`, the client lifecycle.
@@ -62,7 +61,7 @@ src/
   index.ts              root entry: createMemory, migrate, errors, public types
   client.ts             createMemory: config checks, store (resolveStore | in-memory), overloads for namespace
   migrate.ts            migrate(): validates input, resolves { memory } or { store } (resolveStore), calls the store's migrate
-  postgres.ts           `mnemocyte/postgres` entry: postgresStore, postgresJs, client types
+  postgres.ts           `mnemocyte/postgres` entry: postgresStore, client types
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
   ai-sdk-tools.ts       memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
   ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
@@ -83,7 +82,7 @@ src/
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     store-input.ts      resolveStore: a store config, or a client detected by shape → lazy store
-    store-config.ts     the opaque store config envelope from postgresStore() and drizzleStore()
+    store-config.ts     the opaque store config envelope from postgresStore()
     lazy-store.ts       MemoryStore that loads the real one on its first call
     postgres-backend.ts dynamic import() target: client → Postgres MemoryStore
     validation.ts       runtime input and config validation
@@ -97,7 +96,7 @@ src/
     executor.ts         SqlExecutor: query, optional transaction and batch
     detect.ts           detectClient: shape checks, PostgresClient types (no adapters, in the root entry)
     clients.ts          executorFor / toSqlExecutor: detected client → its adapter
-    postgres-js.ts      postgresJs(sql): the postgres.js adapter
+    postgres-js.ts      the postgres.js adapter (internal)
     node-postgres.ts    the node-postgres Pool adapter
     pglite.ts           the PGlite adapter
     scoped.ts           transaction executor with savepoints (pg, PGlite)
@@ -112,8 +111,7 @@ src/
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
-  stores/drizzle.ts     drizzleStore(db)
-migrations/             SQL migrations, template, renderer, migration journal
+migrations/             numbered SQL migrations, fresh-install.sql, the schema template
 scripts/                bundle-migrations.mjs, check-package.mjs
 test/                   unit, package, integration, fixtures, benchmarks
 ```
@@ -211,12 +209,10 @@ Exports:
   `MemorySaveOptions` types; `extractMemories` and its
   `ExtractMemoriesInput` and `ExtractMemoriesOptions` types; needs the `ai`
   peer.
-- `mnemocyte/postgres`: `postgresStore({ client })`, `postgresJs(sql)` and the
-  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresJsExecutor`,
-  `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
+- `mnemocyte/postgres`: `postgresStore({ client })` and the
+  `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
-- `mnemocyte/stores/drizzle`: `drizzleStore(db)` and `DrizzleClient`.
 - The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`, with `--config`,
   `--dimensions`, `--env-file`, `--yes`, `--dry-run` and `--out`. Its
   commands, flags and exit codes (0, 1, 2) are public; its modules are not
@@ -231,10 +227,8 @@ uses top-level `await`, so `dist/` must not.
 
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
-`listAuditLog`, `pruneAuditLog`, `stats`, `consolidate`, `for` and the
-deprecated `experimental.consolidate` alias (removed in 1.0), plus
-`experimental.findDuplicatesPage`. There is no
-`close()`.
+`listAuditLog`, `pruneAuditLog`, `stats`, `consolidate` and `for`, plus
+`experimental.findDuplicatesPage`. There is no `close()`.
 `for(scope)` returns a `BoundMemoryClient` with the same methods minus
 `scope`, `allNamespaces` and `for`, plus a read-only `scope`.
 

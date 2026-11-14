@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError, testScope } from "../helpers.js";
@@ -96,7 +96,7 @@ describe("Postgres embedding-model compatibility", () => {
 
 				const matchingCalls: string[] = [];
 				const matchingClient = createMemory({
-					store: postgresStore({ client: postgresJs(sql) }),
+					store: postgresStore({ client: sql }),
 					embedder: createEmbedder(installationModel, matchingCalls),
 				});
 				await matchingClient.add({
@@ -117,7 +117,7 @@ describe("Postgres embedding-model compatibility", () => {
 
 				const incompatibleCalls: string[] = [];
 				const incompatibleClient = createMemory({
-					store: postgresStore({ client: postgresJs(sql) }),
+					store: postgresStore({ client: sql }),
 					embedder: createEmbedder(incompatibleModel, incompatibleCalls),
 				});
 				await expectMnemocyteError(
@@ -146,7 +146,7 @@ describe("Postgres embedding-model compatibility", () => {
 				`;
 				const repairCalls: string[] = [];
 				const repairClient = createMemory({
-					store: postgresStore({ client: postgresJs(sql) }),
+					store: postgresStore({ client: sql }),
 					embedder: createEmbedder(installationModel, repairCalls),
 				});
 				await expect(
@@ -191,7 +191,7 @@ describe("Postgres embedding-model compatibility", () => {
 					WHERE key = 'installation'
 				`;
 				const mixedClient = createMemory({
-					store: postgresStore({ client: postgresJs(sql) }),
+					store: postgresStore({ client: sql }),
 					embedder: createEmbedder(installationModel, []),
 				});
 				const error = await expectMnemocyteError(

@@ -227,7 +227,7 @@ branch each; `docs/v1` comes last.
   optional, plus `allNamespaces: true`. Landed with a cursor that keeps
   the timestamp's microseconds, so entity pages still read the scope
   index; pages across entities sort.
-- [ ] `chore/drop-legacy-surface`: remove `experimental.consolidate` (the
+- [x] `chore/drop-legacy-surface`: remove `experimental.consolidate` (the
   deprecated alias, as promised for 1.0), `postgresJs()`, `drizzleStore()`
   and the `mnemocyte/stores/drizzle` subpath, which take positional
   arguments and duplicate `store: client`; `postgresStore({ client })`
@@ -235,6 +235,9 @@ branch each; `docs/v1` comes last.
   `migrations/render-initial.mjs` (replaced by `mnemocyte sql`),
   `migrations/meta/_journal.json` and the empty `dist/cli.d.mts` from the
   tarball; the numbered SQL files and `fresh-install.sql` keep shipping.
+  Landed with `pnpm migration:bundle` reading the numbered files directly
+  and also rendering `fresh-install.sql`; the template stays in the
+  repository as the bundle's source.
 - [ ] `fix/strict-options`: unknown keys in `createMemory`'s config, the
   embedder options and the AI SDK options throw `"CONFIG"` instead of being
   ignored. TypeScript catches a misspelled key only in an object literal;

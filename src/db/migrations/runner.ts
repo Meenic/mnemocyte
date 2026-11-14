@@ -18,8 +18,9 @@ import {
 export const MIGRATION_LOCK_KEY = "7885351518266947956";
 
 // pgvector's HNSW index supports `vector` up to 2,000 dimensions; above that
-// the column is `halfvec`. Same rule as migrations/render-initial.mjs; the
-// 4,000-dimension `halfvec` limit is checked by `assertMigrateDimensions`.
+// the column is `halfvec`. scripts/bundle-migrations.mjs renders
+// fresh-install.sql with the same rule; the 4,000-dimension `halfvec` limit
+// is checked by `assertMigrateDimensions`.
 const MAX_VECTOR_DIMENSIONS = 2000;
 
 const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
@@ -70,7 +71,7 @@ export function splitStatements(sql: string): string[] {
 		.filter((statement) => statement.length > 0);
 }
 
-/** The final schema for `dimensions`, as `render-initial.mjs` renders it. */
+/** The final schema for `dimensions`: the template with `halfvec` above 2,000. */
 export function renderInitialSchema(dimensions: number): string {
 	const vectorType = dimensions > MAX_VECTOR_DIMENSIONS ? "halfvec" : "vector";
 	return INITIAL_SCHEMA_TEMPLATE.replaceAll(

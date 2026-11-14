@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { exerciseConsolidationDeletePolicy } from "../fixtures/consolidation-delete-policy.js";
@@ -58,7 +58,7 @@ async function runPostgresPolicyScenario(url: string) {
 	await applyMigration(admin, "0003_schema_v2.sql", ["42701"]);
 
 	const client = createMemory({
-		store: postgresStore({ client: postgresJs(storeSql) }),
+		store: postgresStore({ client: storeSql }),
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,

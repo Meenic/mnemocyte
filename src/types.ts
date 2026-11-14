@@ -306,10 +306,9 @@ declare const mnemocyteStoreConfigBrand: unique symbol;
 /**
  * Opaque storage-adapter value accepted by {@link MemoryConfig.store}.
  *
- * Obtain this value from a supported adapter factory such as `postgresStore()`
- * from `mnemocyte/postgres` or `drizzleStore()` from
- * `mnemocyte/stores/drizzle`. The underlying `MemoryStore` contract stays
- * internal; this type intentionally exposes no adapter implementation methods.
+ * Obtain this value from `postgresStore({ client })` in `mnemocyte/postgres`.
+ * The underlying `MemoryStore` contract stays internal; this type
+ * intentionally exposes no adapter implementation methods.
  */
 export interface MnemocyteStoreConfig {
 	readonly [mnemocyteStoreConfigBrand]: true;
@@ -363,8 +362,7 @@ export type MigrateInput =
 			/**
 			 * The database to migrate: the app's database client (postgres.js, a
 			 * node-postgres `Pool`, PGlite, Drizzle over one of them, or a
-			 * `SqlExecutor`), or a store from `postgresStore()` or
-			 * `drizzleStore()`.
+			 * `SqlExecutor`), or a store from `postgresStore()`.
 			 */
 			store: MnemocyteStoreConfig | PostgresClient;
 			/**
@@ -417,10 +415,9 @@ export interface MemoryConfig {
 	 * Where memories live: the database client the app already owns (a
 	 * postgres.js `sql` function, a node-postgres `Pool`, a PGlite instance,
 	 * a Drizzle instance over one of them, or a `SqlExecutor`), recognised by
-	 * its shape, or a store from `postgresStore({ client })` or
-	 * `drizzleStore(db)`. Mnemocyte never closes the client. The Postgres
-	 * backend is imported on the first call that uses it. When omitted, an
-	 * in-memory backend is used.
+	 * its shape, or a store from `postgresStore({ client })`. Mnemocyte never
+	 * closes the client. The Postgres backend is imported on the first call
+	 * that uses it. When omitted, an in-memory backend is used.
 	 */
 	store?: MnemocyteStoreConfig | PostgresClient;
 	/** Required embedder used to vectorise content for storage and retrieval. */
@@ -1494,14 +1491,6 @@ export interface ExperimentalMemoryClient<
 	DefaultNamespace extends boolean = false,
 > {
 	/**
-	 * Same as {@link MemoryClient.consolidate}.
-	 *
-	 * @deprecated Use {@link MemoryClient.consolidate}. Removed in 1.0.
-	 */
-	consolidate(
-		input: ConsolidateInput<DefaultNamespace>,
-	): Promise<ConsolidateResult>;
-	/**
 	 * {@link MemoryClient.findDuplicates} in pages, so each call is bounded
 	 * and a run can be resumed: a page compares up to `batchSize` memories
 	 * after the cursor, in id order, with every memory of the scope, and
@@ -1622,12 +1611,6 @@ export interface BoundMemoryClient {
  * @experimental Members may change or be removed in a minor release.
  */
 export interface BoundExperimentalMemoryClient {
-	/**
-	 * Same as {@link BoundMemoryClient.consolidate}.
-	 *
-	 * @deprecated Use {@link BoundMemoryClient.consolidate}. Removed in 1.0.
-	 */
-	consolidate(input: BoundConsolidateInput): Promise<ConsolidateResult>;
 	/**
 	 * {@link ExperimentalMemoryClient.findDuplicatesPage} at the bound
 	 * scope.

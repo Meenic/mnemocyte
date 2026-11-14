@@ -6,7 +6,7 @@ import {
 	type MemoryClient,
 	type RetrievalConfig,
 } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { expectDefined, testScope } from "../helpers.js";
@@ -102,7 +102,7 @@ describe("Postgres hybrid ranking", () => {
 		const entityId = `ranking_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 		entityIds.push(entityId);
 		const client = createMemory({
-			store: postgresStore({ client: postgresJs(sql) }),
+			store: postgresStore({ client: sql }),
 			embedder: {
 				model: "mnemocyte-integration-test",
 				dimensions: DIMENSIONS,

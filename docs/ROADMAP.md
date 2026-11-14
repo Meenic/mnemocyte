@@ -209,6 +209,10 @@ it.
   the missing-schema hint from `fix/migration-hint` names the command.
   Landed with `module.registerHooks` for the resolve hook and `.env`
   loading (decision 36).
+- [x] `chore/drop-drizzle-kit`: the CLI and `migrate()` apply migrations,
+  so the `drizzle-kit` dev dependency, `drizzle.config.ts`, the
+  `db:migrate` script and the drizzle-kit snapshots in `migrations/meta/`
+  go. The journal stays: `migration:bundle` reads it.
 - [ ] `feat/cli-init`: `npx mnemocyte init` writes a `memory.ts` for the
   driver it finds in `package.json` (`postgres`, `pg`,
   `@electric-sql/pglite`, `drizzle-orm`) in the first of the folders the

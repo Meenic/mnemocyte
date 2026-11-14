@@ -99,6 +99,13 @@ behavioural changes documented in their entries.
 - **`experimental.consolidate`** on unbound and bound clients. It calls
   `consolidate` and is removed in 1.0.
 
+### Removed
+
+- **drizzle-kit snapshots from the package.** `migrations/meta/` now ships
+  only `_journal.json`; the three `*_snapshot.json` files (about 20 KB) are
+  gone. Applying the shipped migrations with drizzle-kit or drizzle-orm's
+  `migrate` still works, since both read only the journal and the SQL files.
+
 ## [0.7.0] - 2026-11-13
 
 ### Added

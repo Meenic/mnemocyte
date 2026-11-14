@@ -10,9 +10,9 @@ it automatically must read it too.
   credentials or API keys.
 - Never run anything against a database without asking first. That includes
   `pnpm test:integration`, `pnpm bench:retrieval` with `DATABASE_URL` set,
-  `pnpm db:migrate` and `psql`. Say what the run needs and wait for the
-  maintainer to provide a disposable database.
-- The integration tests and `drizzle.config.ts` load `.env` when
+  `mnemocyte migrate`, `mnemocyte check` and `psql`. Say what the run needs
+  and wait for the maintainer to provide a disposable database.
+- The integration tests and the `mnemocyte` CLI load `.env` when
   `DATABASE_URL` is unset. Always set `DATABASE_URL` explicitly for them.
 - Never publish packages, push tags or create GitHub releases. Agents may run
   validation, edit `CHANGELOG.md` and draft release text in the format in

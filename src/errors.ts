@@ -11,7 +11,8 @@
  *   Always has a {@link MnemocyteError.reason}.
  * - `"MIGRATION"`: the schema, its metadata or pgvector is not usable.
  *   Always has a {@link MnemocyteError.reason}.
- * - `"TIMEOUT"`: a provider call exceeded its configured timeout.
+ * - `"TIMEOUT"`: an embedder attempt exceeded `provider.timeoutMs`, or
+ *   `extractMemories` exceeded its `timeoutMs`.
  * - `"ABORTED"`: the operation was cancelled via an `AbortSignal`.
  *
  * A minor release may add codes, so a `switch` over them needs a `default`.

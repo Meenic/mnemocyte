@@ -787,6 +787,18 @@ Dated 2026-10-26 unless noted.
       `docs/guide/upgrading.md`, one section per release, and the docs drop
       their pre-1.0 wording in `docs/v1` rather than in the release PR.
     The final export review found no change beyond decisions 38 and 39.
+    (2026-11-15, revised with `docs/api-review`) The promise also leaves out
+    the wording of the text `mnemocyte/ai-sdk` gives the model (tool and
+    field descriptions, the middleware's preamble line, the extraction
+    prompt), as it does `context()` wording; tool names, input fields and
+    results stay covered. `MemoryPrompt`, `MemoryLanguageModel`,
+    `MemoryWrappedModel`, `MemoryFinishReason` and `AiSdkProviderOptions`,
+    and the `ai` types other AI SDK types use, follow the installed `ai`
+    peer. The experimental exemption names its root exports
+    (`FindDuplicatesPageInput`, `BoundFindDuplicatesPageInput`,
+    `DuplicatePage`, `ExperimentalMemoryClient`,
+    `BoundExperimentalMemoryClient`) and the `"findDuplicatesPage"`
+    member of `MnemocyteOperation`.
 40. **Time filters name their field** (2026-11-15, landed): the maintainer
     chose, with `fix/created-filters`, to rename `search`'s `before` /
     `after` to `createdBefore` / `createdAfter`, the name `prune` already

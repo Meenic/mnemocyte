@@ -37,7 +37,7 @@ import type { MemoryClient, MemoryConfig } from "./types.js";
  * ```ts
  * import postgres from "postgres";
  *
- * const sql = postgres(process.env.DATABASE_URL);
+ * const sql = postgres(process.env.DATABASE_URL!);
  * const memory = createMemory({
  *   namespace: "my-app",
  *   store: sql,

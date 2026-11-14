@@ -276,9 +276,11 @@ Design rules for the public surface:
   `bindScope` (`memory/scope-binding.ts`), and a `Bound…Input` type.
 - From 1.0, breaking changes ship only in a major, with a `CHANGELOG.md`
   entry and a section in `docs/guide/upgrading.md`. `guide/api.md`
-  "Stability" lists what semver covers (decision 39): not `experimental.*`,
-  messages, CLI text, `context()` wording or score values. Additive changes
-  and the open unions above go in a minor.
+  "Stability" lists what semver covers (decision 39): not `experimental.*`
+  and its types, messages, CLI text, `context()` wording, the text the AI
+  SDK integration gives the model, or score values; types derived from
+  `ai` follow the peer. Additive changes and the open unions above go in a
+  minor.
 
 ## Testing
 

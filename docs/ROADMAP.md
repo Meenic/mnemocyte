@@ -326,7 +326,7 @@ reopened; its additive findings are in "After 1.0".
   `tokenCounter` stay unchecked. Bound inputs share the core check, and
   bound `stats()` now rejects any key. Decision 40's rename check became
   the `renamed` map of `search`'s list.
-- [ ] `docs/api-review`: documentation fixes from the review; no code
+- [x] `docs/api-review`: documentation fixes from the review; no code
   change.
   - Stability (`guide/api.md`, revising decision 39): text the model reads
     (tool descriptions, the middleware preamble, the extraction prompt) may

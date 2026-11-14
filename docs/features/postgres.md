@@ -165,9 +165,12 @@ Files in `migrations/`:
 | `0002_add_embedding_model.sql` | Adds `mnemocyte_meta.embedding_model` and backfills it when the stored memories use exactly one model. |
 | `0003_schema_v2.sql` | Scope columns, `key`, `type` → `kind`, text ids → uuid, `content_tsv`, the new indexes, `mnemocyte_meta.vector_type`. |
 | `fresh-install.sql` | The final schema of `0000`→`0003` in one file, rendered at 1536 dimensions. Only for an empty database. |
-| `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. |
-| `render-initial.mjs` | `--dimensions N [--out file]`: renders the template, with `halfvec` above 2,000 dimensions; rejects more than 4,000. `mnemocyte sql` prints the same text and is what the guides name; the script stays for callers by path and `pnpm migration:render`. |
-| `meta/_journal.json` | The ordered list of numbered migrations, in drizzle-kit's journal format. `pnpm migration:bundle` reads it to write `bundled.ts`. |
+| `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. Repository only: `mnemocyte sql --dimensions N` prints it rendered. |
+
+The tarball ships `migrations/*.sql` only (`files` in `package.json`); a
+package test checks the packed folder against the repository's `.sql`
+files. The numbered migrations are the files named `NNNN_name.sql`, in
+order, with no gap from `0000`; there is no journal.
 
 `0003` in detail:
 
@@ -208,12 +211,10 @@ Install paths:
 two drift, and an integration test compares its resulting catalog (columns
 in order, constraints, indexes, metadata) with the `0000`→`0003` sequence.
 
-To change the schema: write the next numbered migration by hand, add it to
-`meta/_journal.json`, update the template so a fresh install matches the
-upgraded catalog column for column, re-render `fresh-install.sql` with
-`pnpm migration:render --dimensions 1536 --out migrations/fresh-install.sql`,
-and regenerate the bundled module with `pnpm migration:bundle`. Teach
-`installedVersion` in `src/db/migrations/runner.ts` the object the new
+To change the schema: write the next numbered migration by hand, update the
+template so a fresh install matches the upgraded catalog column for column,
+and run `pnpm migration:bundle`, which regenerates the bundled module and
+`fresh-install.sql`. Teach `installedVersion` in `src/db/migrations/runner.ts` the object the new
 migration adds, so untracked schemas at that level are still adopted. There is no Drizzle schema to generate from: the
 table definitions in `src/db/schema.ts` were removed with `0003`, because
 drizzle-kit cannot express the dimension-dependent vector type, and their
@@ -224,8 +225,8 @@ inferred types blocked `isolatedDeclarations`.
 `migrate(input)` is exported from the root `mnemocyte` import and calls the
 store's `migrate` method; the Postgres one is `runPostgresMigrations` in
 `src/db/migrations/runner.ts`. The root bundle contains no SQL: it reaches
-the runner only through a store from `mnemocyte/postgres` or
-`mnemocyte/stores/drizzle`.
+the runner only through a store from `mnemocyte/postgres` or the lazily
+loaded backend of `store: client`.
 
 - **Input.** Either `{ memory }` or `{ store, dimensions? }`, plus
   `createExtension?`, `dryRun?` and `signal?`; both or neither of `memory`
@@ -240,8 +241,9 @@ the runner only through a store from `mnemocyte/postgres` or
   `embedder.dimensions`. An in-memory store resolves with empty lists.
 
 - **Bundled SQL.** `scripts/bundle-migrations.mjs` (`pnpm migration:bundle`)
-  writes every journal entry and the template into `bundled.ts` as template
-  literals. Reading `migrations/` at runtime through `import.meta.url` would
+  writes every numbered migration and the template into `bundled.ts` as
+  template literals, failing on a gap or a repeated number, and renders
+  `fresh-install.sql` from the template at 1536 dimensions. Reading `migrations/` at runtime through `import.meta.url` would
   break in bundlers and serverless builds that do not copy the folder. Unit
   tests fail when the module differs from the script's output or from the
   `.sql` files, and when `renderInitialSchema(1536)` differs from
@@ -501,8 +503,9 @@ interface SqlExecutor {
   non-interactive transaction: Neon's HTTP `sql.transaction([...])` and D1's
   `batch()` take a list of statements and return a list of results. A
   `set_config(…, true)` in one statement applies to the later ones.
-- `postgresJs(sql)` (`mnemocyte/postgres`) wraps a postgres.js 3.4.9+ or
-  4.x client and returns a `PostgresJsExecutor` with both optional methods.
+- The postgres.js adapter (`postgresJs` in `src/sql/postgres-js.ts`,
+  internal since 1.0) wraps a postgres.js 3.4.9+ or 4.x client in an
+  executor with both optional methods.
   `query` is `sql.unsafe(text, params)` with `$1…` placeholders (`unsafe`
   defaults to `prepare: false` on both majors); `transaction` is
   `sql.begin`, or `sql.savepoint` inside a transaction (on 4.x a
@@ -526,16 +529,18 @@ interface SqlExecutor {
   and throws `"ABORTED"`; postgres.js rolls back.
 - `createMemory({ store: client })` and `migrate({ store: client })`
   resolve `store` in `resolveStore` (`src/memory/store-input.ts`): a store
-  config from `postgresStore()` or `drizzleStore()` first, then a client;
+  config from `postgresStore()` first, then a client;
   see [client detection](#client-detection) and
   [lazy loading](#lazy-loading).
 - `postgresStore({ client })` turns a client into a store config through
   `toSqlExecutor` (`src/sql/clients.ts`), eagerly: the `mnemocyte/postgres`
   entry imports the backend statically.
-- `drizzleStore(db)` (`mnemocyte/stores/drizzle`) is
-  `postgresStore({ client: db })` for a Drizzle instance; its parameter type
-  also accepts `PostgresJsDatabase`, which does not declare `$client`. A
-  value without `$client` throws `"CONFIG"`.
+- A Drizzle instance goes in as `store: db` or `postgresStore({ client: db })`.
+  `DrizzleClient` requires `$client`, which drizzle-orm's
+  `PostgresJsDatabase` type does not declare; an instance annotated with it
+  passes `db.$client` or lets `drizzle()` infer its type. `drizzleStore(db)`
+  and `mnemocyte/stores/drizzle`, which accepted that annotation, were
+  removed for 1.0 (ARCHITECTURE decision 38).
 - TLS, pool size, timeouts and `prepare` are whatever the caller configured.
   `unsafe` does not create named prepared statements, so transaction-mode
   poolers work as they are.
@@ -585,8 +590,7 @@ connection, which only `pool.connect()` gives without taking over the
 caller's client. Everything else throws `"CONFIG"` listing the accepted
 clients. Messages name what the caller passed: `client` for
 `postgresStore` and `toSqlExecutor`, `store` for `createMemory` and
-`migrate`, whose unrecognised-value message also names `postgresStore()`
-and `drizzleStore()`.
+`migrate`, whose unrecognised-value message also names `postgresStore()`.
 
 The public types are structural (`PostgresJsClient`, a union of the
 `begin` and `savepoint` shapes, `NodePostgresPool`,

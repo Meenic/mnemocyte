@@ -5,8 +5,7 @@ import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as drizzleSql } from "drizzle-orm/sql";
 import { createMemory, type MemoryClient } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { testScope } from "../helpers.js";
@@ -93,7 +92,7 @@ async function exerciseRepresentativePath(
 	};
 }
 
-describe("drizzleStore integration", () => {
+describe("Drizzle store integration", () => {
 	test.skipIf(!databaseUrl)(
 		"reuses a caller-owned postgres.js Drizzle instance after client close",
 		async () => {
@@ -104,11 +103,11 @@ describe("drizzleStore integration", () => {
 			const callerEntityId = `drizzle_store_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			const postgresEntityId = `${callerEntityId}_postgres`;
 			const callerClient = createMemory({
-				store: drizzleStore(callerDb),
+				store: callerDb,
 				embedder,
 			});
 			const postgresClient = createMemory({
-				store: postgresStore({ client: postgresJs(callerSql) }),
+				store: postgresStore({ client: callerSql }),
 				embedder,
 			});
 			let callerClosed = false;

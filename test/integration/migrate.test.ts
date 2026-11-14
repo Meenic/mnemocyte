@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory, type Embedder, migrate } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { expectMnemocyteError, testScope } from "../helpers.js";
@@ -92,7 +92,7 @@ function fakeEmbedder(dimensions: number): Embedder {
 	};
 }
 
-const store = postgresStore({ client: postgresJs(sql) });
+const store = postgresStore({ client: sql });
 
 describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 	beforeEach(async () => {
@@ -193,7 +193,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 	test("applies each migration once when two callers race", async () => {
 		const other = postgres(databaseUrl ?? "", { max: 2 });
 		try {
-			const otherStore = postgresStore({ client: postgresJs(other) });
+			const otherStore = postgresStore({ client: other });
 
 			const results = await Promise.all([
 				migrate({ store, dimensions: 1536 }),
@@ -260,7 +260,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 		await sql`DROP EXTENSION vector`;
 		const other = postgres(databaseUrl ?? "", { max: 2 });
 		try {
-			const otherStore = postgresStore({ client: postgresJs(other) });
+			const otherStore = postgresStore({ client: other });
 
 			const results = await Promise.all([
 				migrate({ store, dimensions: 1536, createExtension: true }),

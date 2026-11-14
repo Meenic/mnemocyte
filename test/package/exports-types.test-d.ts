@@ -10,10 +10,7 @@ import {
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
-import type {
-	drizzle as drizzlePostgresJs,
-	PostgresJsDatabase,
-} from "drizzle-orm/postgres-js";
+import type { drizzle as drizzlePostgresJs } from "drizzle-orm/postgres-js";
 import type {
 	AddInput,
 	AddManyInput,
@@ -140,15 +137,12 @@ import {
 	type PGliteClient,
 	type PostgresClient,
 	type PostgresJsClient,
-	type PostgresJsExecutor,
 	type PostgresStoreOptions,
-	postgresJs,
 	postgresStore,
 	type SqlExecutor,
 	type SqlQueryOptions,
 	type SqlStatement,
 } from "mnemocyte/postgres";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
 import type { Client, Pool } from "pg";
 import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import type {
@@ -179,23 +173,11 @@ const embedder: Embedder = {
 	embed: async (texts) => texts.map(() => [1]),
 };
 const config: MemoryConfig = { embedder, retrieval };
-declare const callerDatabase: PostgresJsDatabase<{
-	applicationTable: unknown;
-}>;
-const callerStore: MnemocyteStoreConfig = drizzleStore(callerDatabase);
-const callerStoreConfig: MemoryConfig = {
-	embedder,
-	store: callerStore,
-};
-declare const callerSql: Parameters<typeof postgresJs>[0];
-const executor: SqlExecutor = postgresJs(callerSql);
+declare const executor: SqlExecutor;
 const queryOptions: SqlQueryOptions = { signal: new AbortController().signal };
-const postgresJsExecutor: PostgresJsExecutor = postgresJs(callerSql);
 const statements: SqlStatement[] = [{ sql: "SELECT $1", params: [1] }];
-const batched: Promise<Record<string, unknown>[][]> = postgresJsExecutor.batch(
-	statements,
-	queryOptions,
-);
+const batched: Promise<Record<string, unknown>[][]> | undefined =
+	executor.batch?.(statements, queryOptions);
 // An executor may implement batch without transaction (stateless drivers).
 const batchOnlyExecutor: SqlExecutor = {
 	query: async () => [],
@@ -233,11 +215,14 @@ const driverClients: PostgresClient[] = [
 for (const driverClient of driverClients) {
 	postgresStore({ client: driverClient });
 }
-const drizzleStores: MnemocyteStoreConfig[] = [
-	drizzleStore(drizzleOverPostgresJs),
-	drizzleStore(drizzleOverPool),
-	drizzleStore(drizzleOverPGlite),
-];
+// The store the app's Drizzle instance becomes, written out.
+const callerStore: MnemocyteStoreConfig = postgresStore({
+	client: drizzleOverPostgresJs,
+});
+const callerStoreConfig: MemoryConfig = {
+	embedder,
+	store: callerStore,
+};
 // A node-postgres Client type-checks (its query fits SqlExecutor's, whose
 // other methods are optional) and is rejected at runtime with "CONFIG".
 postgresStore({ client: nodePostgresClient });
@@ -279,7 +264,6 @@ void postgresJsClient;
 void nodePostgresPoolClient;
 void pgliteClient;
 void drizzleClient;
-void drizzleStores;
 const postgresConfig: MemoryConfig = {
 	embedder,
 	store: postgresStore(postgresOptions),
@@ -480,6 +464,8 @@ void duplicatePage.then(
 );
 // @ts-expect-error A page takes no limit; it returns every pair it owns.
 void experimental.findDuplicatesPage({ scope, limit: 10 });
+// @ts-expect-error The deprecated consolidate alias is gone; use consolidate.
+void experimental.consolidate;
 const consolidated: Promise<ConsolidateResult> =
 	client.consolidate(consolidate);
 const dependentsPolicy: DependentsPolicy = "restore";
@@ -687,7 +673,8 @@ const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
 void boundConsolidated;
 void bound.delete({ id: "a", dependents: "reject" });
 const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
-void boundExperimental.consolidate({ survivorId: "a", supersededIds: ["b"] });
+// @ts-expect-error The deprecated consolidate alias is gone; use bound.consolidate.
+void boundExperimental.consolidate;
 const boundPageInput: BoundFindDuplicatesPageInput = { batchSize: 100 };
 void boundExperimental.findDuplicatesPage(boundPageInput);
 void boundExperimental.findDuplicatesPage();

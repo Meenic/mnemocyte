@@ -1,6 +1,6 @@
-import { postgresJs } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, test } from "vitest";
+import { postgresJs } from "../../src/sql/postgres-js.js";
 import {
 	auditPhase,
 	type BenchContext,

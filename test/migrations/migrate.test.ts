@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import {
 	createMemory,
@@ -721,14 +721,15 @@ describe("migrate({ dryRun })", () => {
 });
 
 describe("bundled migrations", () => {
-	test("match the SQL files and the Drizzle journal", async () => {
-		const journal = JSON.parse(
-			await readFile("migrations/meta/_journal.json", "utf8"),
-		) as { entries: { idx: number; tag: string }[] };
+	test("match the numbered SQL files, in order", async () => {
+		const files = (await readdir("migrations"))
+			.filter((name) => /^\d{4}_.+\.sql$/.test(name))
+			.sort();
 
-		expect(
-			MIGRATIONS.map(({ version, name }) => ({ idx: version, tag: name })),
-		).toEqual(journal.entries.map(({ idx, tag }) => ({ idx, tag })));
+		expect(MIGRATIONS.map(({ name }) => `${name}.sql`)).toEqual(files);
+		expect(MIGRATIONS.map(({ version }) => version)).toEqual(
+			files.map((_, index) => index),
+		);
 		for (const migration of MIGRATIONS) {
 			expect(migration.sql).toBe(
 				await readFile(`migrations/${migration.name}.sql`, "utf8"),
@@ -749,6 +750,30 @@ describe("bundled migrations", () => {
 		expect(renderInitialSchema(1536)).toBe(
 			await readFile("migrations/fresh-install.sql", "utf8"),
 		);
+	});
+
+	test("keep vector at exactly 2,000 dimensions", () => {
+		const schema = renderInitialSchema(2000);
+
+		expect(schema).toContain('"embedding" vector(2000)');
+		expect(schema).toContain('USING hnsw ("embedding" vector_cosine_ops)');
+		expect(schema).toContain("VALUES ('installation', 2000, 'vector')");
+	});
+
+	test("include the installation-model repair and schema v2", () => {
+		const repair = MIGRATIONS[2]?.sql ?? "";
+		const schemaV2 = MIGRATIONS[3]?.sql ?? "";
+
+		expect(repair).toContain(
+			'ALTER TABLE "mnemocyte_meta" ADD COLUMN "embedding_model" text;',
+		);
+		expect(repair).toContain('count(DISTINCT "embedding_model") = 1');
+		expect(schemaV2).toContain(
+			'ADD COLUMN "content_tsv" tsvector GENERATED ALWAYS AS',
+		);
+		expect(schemaV2).toContain('RENAME COLUMN "type" TO "kind"');
+		expect(schemaV2).toContain('md5("id")::uuid');
+		expect(schemaV2).toContain("NULLS NOT DISTINCT");
 	});
 
 	test("split into statements at the Drizzle breakpoints", () => {

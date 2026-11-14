@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { postgresJs } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { postgresJs } from "../../src/sql/postgres-js.js";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
 const envPath = resolve(".env");

@@ -4,7 +4,7 @@ import {
 	migrate,
 	type NewMemory,
 } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import {
@@ -158,7 +158,7 @@ describe("retrieval benchmarks", () => {
 				for (const memoryCount of POSTGRES_SIZES) {
 					const entry = {
 						client: createMemory({
-							store: postgresStore({ client: postgresJs(storeSql) }),
+							store: postgresStore({ client: storeSql }),
 							embedder: postgresEmbedder,
 							retrieval: retrievalConfig,
 						}),

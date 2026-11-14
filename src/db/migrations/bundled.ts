@@ -7,7 +7,7 @@ export interface BundledMigration {
 	readonly sql: string;
 }
 
-/** The numbered migrations, in order, as `migrations/meta/_journal.json` lists them. */
+/** The numbered migrations in `migrations/`, in order. */
 export const MIGRATIONS: readonly BundledMigration[] = [
 	{
 		version: 0,

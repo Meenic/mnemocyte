@@ -1,5 +1,4 @@
 import { postgresStore } from "mnemocyte/postgres";
-import { drizzleStore } from "mnemocyte/stores/drizzle";
 import { describe, expect, test, vi } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
@@ -161,16 +160,14 @@ describe("client detection", () => {
 		);
 	});
 
-	test("postgresStore and drizzleStore throw CONFIG synchronously", async () => {
+	test("postgresStore throws CONFIG synchronously", async () => {
 		expect(() => postgresStore({ client: {} as never })).toThrow();
 		await expectMnemocyteError(
 			Promise.resolve().then(() => postgresStore({ client: {} as never })),
 			"CONFIG",
 		);
-		await expectMnemocyteError(
-			Promise.resolve().then(() => drizzleStore({} as never)),
-			"CONFIG",
-		);
-		expect(() => drizzleStore({ $client: fakePool() })).not.toThrow();
+		expect(() =>
+			postgresStore({ client: { $client: fakePool() } }),
+		).not.toThrow();
 	});
 });

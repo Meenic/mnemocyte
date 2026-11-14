@@ -1,35 +1,41 @@
 #!/usr/bin/env node
 // Writes src/db/migrations/bundled.ts from the SQL files in migrations/, so
 // `migrate()` ships the same SQL without reading files at runtime (bundlers
-// and serverless builds do not copy migrations/). With --stdout it prints the
-// module instead, which the drift test compares with the checked-in file.
-import { readFile, writeFile } from "node:fs/promises";
+// and serverless builds do not copy migrations/), and renders
+// migrations/fresh-install.sql from the template at 1536 dimensions. With
+// --stdout it prints the module instead and writes nothing, which the drift
+// test compares with the checked-in file.
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const migrationsDir = resolve(root, "migrations");
 const outFile = resolve(root, "src/db/migrations/bundled.ts");
+const freshInstallFile = resolve(migrationsDir, "fresh-install.sql");
 
 async function readSql(name) {
 	const text = await readFile(resolve(migrationsDir, name), "utf8");
 	return text.replaceAll("\r\n", "\n");
 }
 
-const journal = JSON.parse(
-	await readFile(resolve(migrationsDir, "meta/_journal.json"), "utf8"),
-);
-
+// The numbered migrations are the files named NNNN_name.sql, in order. The
+// numbers must run from 0000 without a gap or a repeat.
+const files = (await readdir(migrationsDir))
+	.filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name))
+	.sort();
 const migrations = [];
-for (const entry of journal.entries) {
-	const prefix = String(entry.idx).padStart(4, "0");
-	if (!entry.tag.startsWith(`${prefix}_`)) {
-		throw new Error(`Journal entry ${entry.idx} has tag ${entry.tag}.`);
+for (const [index, file] of files.entries()) {
+	const version = Number(file.slice(0, 4));
+	if (version !== index) {
+		throw new Error(
+			`Expected migration ${String(index).padStart(4, "0")}, found ${file}.`,
+		);
 	}
 	migrations.push({
-		version: entry.idx,
-		name: entry.tag,
-		sql: await readSql(`${entry.tag}.sql`),
+		version,
+		name: file.slice(0, -".sql".length),
+		sql: await readSql(file),
 	});
 }
 const template = await readSql("0000_initial.sql.template");
@@ -60,7 +66,7 @@ export interface BundledMigration {
 	readonly sql: string;
 }
 
-/** The numbered migrations, in order, as \`migrations/meta/_journal.json\` lists them. */
+/** The numbered migrations in \`migrations/\`, in order. */
 export const MIGRATIONS: readonly BundledMigration[] = [
 ${entries}];
 
@@ -68,8 +74,15 @@ ${entries}];
 export const INITIAL_SCHEMA_TEMPLATE: string = ${templateLiteral(template)};
 `;
 
+// 1536 dimensions is at most 2,000, so the column is `vector`; the same
+// rule as `renderInitialSchema` in src/db/migrations/runner.ts.
+const freshInstall = template
+	.replaceAll("{{EMBEDDING_DIMENSIONS}}", "1536")
+	.replaceAll("{{VECTOR_TYPE}}", "vector");
+
 if (process.argv.includes("--stdout")) {
 	process.stdout.write(module);
 } else {
 	await writeFile(outFile, module);
+	await writeFile(freshInstallFile, freshInstall);
 }

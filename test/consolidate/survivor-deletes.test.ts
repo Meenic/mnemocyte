@@ -76,28 +76,13 @@ describe("survivor-aware deletes (in-memory)", () => {
 	});
 });
 
-describe("deprecated experimental.consolidate", () => {
-	test("is the same method as consolidate", async () => {
+describe("experimental", () => {
+	test("no longer has the consolidate alias", () => {
 		const memory = inMemoryClient();
-		const scope = testScope("alias");
-		const [survivor, loser] = await memory.addMany({
-			scope,
-			memories: [{ content: "Alias survivor." }, { content: "Alias loser." }],
-		});
-		const input = {
-			scope,
-			survivorId: expectDefined(survivor).id,
-			supersededIds: [expectDefined(loser).id],
-		};
-		await expect(memory.experimental.consolidate(input)).resolves.toEqual({
-			survivorId: input.survivorId,
-			supersededCount: 1,
-			supersededIds: input.supersededIds,
-		});
-		// A retry through the stable method is the usual idempotent no-op.
-		await expect(memory.consolidate(input)).resolves.toMatchObject({
-			supersededCount: 0,
-		});
+		expect(Object.keys(memory.experimental)).toEqual(["findDuplicatesPage"]);
+		expect(Object.keys(memory.for(testScope("alias")).experimental)).toEqual([
+			"findDuplicatesPage",
+		]);
 	});
 });
 

@@ -268,11 +268,10 @@ Mnemocyte runs its own SQL on `db.$client` and shares its pool. Supported:
 `drizzle-orm/postgres-js`, `drizzle-orm/node-postgres` with a `Pool`, and
 `drizzle-orm/pglite`; any other Drizzle driver throws `"CONFIG"`. Your
 Drizzle schema does not need to include Mnemocyte's tables, but the
-migrations must be applied. `drizzleStore(db)` from
-`mnemocyte/stores/drizzle` does the same and keeps working. TypeScript
-types that omit `$client` (such as an instance annotated as
-`PostgresJsDatabase`) are accepted by `drizzleStore`; for `store` and
-`postgresStore`, let the type be inferred from `drizzle()`.
+migrations must be applied. Let the type be inferred from `drizzle()`:
+drizzle-orm's `PostgresJsDatabase` type does not declare `$client`, so an
+instance annotated with it does not type-check as `store`. Pass
+`db.$client` instead, which is the same postgres.js client.
 
 ### postgres.js 3 and 4
 
@@ -323,8 +322,7 @@ the other two (`"CONFIG"` otherwise):
 When both exist, Mnemocyte uses `batch`. `migrate` needs `transaction`, so
 run it over a regular connection. Drivers are checked first, so an executor
 object must not also have PGlite's `exec` or a pool's `connect` and
-`totalCount`. `postgresJs(sql)` still wraps a postgres.js client as an
-executor, for code written before detection.
+`totalCount`.
 
 ## Upgrade an existing installation
 

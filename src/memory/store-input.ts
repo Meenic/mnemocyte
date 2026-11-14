@@ -9,7 +9,7 @@ import {
 
 /**
  * Resolve the `store` of `createMemory` or `migrate`: a store config from
- * `postgresStore()` or `drizzleStore()` first, then a database client
+ * `postgresStore()` first, then a database client
  * recognised by shape (ARCHITECTURE decisions 21 and 23).
  *
  * A client gets a lazy Postgres store whose backend is imported on its
@@ -26,7 +26,7 @@ export function resolveStore(value: unknown): MemoryStore {
 	const detected = detectClient(value, "store");
 	if (!detected) {
 		throw new MnemocyteError(
-			`store must come from postgresStore() or drizzleStore(), or be a database client: ${SUPPORTED_CLIENTS}.`,
+			`store must come from postgresStore() or be a database client: ${SUPPORTED_CLIENTS}.`,
 			"CONFIG",
 		);
 	}

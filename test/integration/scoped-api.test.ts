@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import {
@@ -72,7 +72,7 @@ async function withClient(
 	let embedCalls = 0;
 	await applyMigrations(sql);
 	const client = createMemory({
-		store: postgresStore({ client: postgresJs(sql) }),
+		store: postgresStore({ client: sql }),
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
 import { expectMnemocyteError, testScope } from "../helpers.js";
@@ -180,7 +180,7 @@ async function runCancellationScenario(databaseUrl: string) {
 	await admin`DELETE FROM mnemocyte_events WHERE entity_id = ${entityId}`;
 
 	const client = createMemory({
-		store: postgresStore({ client: postgresJs(storeSql) }),
+		store: postgresStore({ client: storeSql }),
 		embedder: {
 			model: "mnemocyte-integration-test",
 			dimensions: 1536,

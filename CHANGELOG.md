@@ -33,6 +33,40 @@ behavioural changes documented in their entries.
   reads an index. Bound clients list within their scope and reject
   `allNamespaces`.
 
+### Removed
+
+- **Breaking: `postgresJs()` and the `PostgresJsExecutor` type.** Pass the
+  postgres.js client itself; Mnemocyte recognises it.
+
+  ```ts
+  // 0.8
+  const store = postgresStore({ client: postgresJs(sql) });
+  // now
+  const store = postgresStore({ client: sql }); // or createMemory({ store: sql, embedder })
+  ```
+
+- **Breaking: `drizzleStore()` and the `mnemocyte/stores/drizzle` subpath.**
+  Pass the Drizzle instance as `store: db` or `postgresStore({ client: db })`.
+  An instance annotated as drizzle-orm's `PostgresJsDatabase`, which does
+  not declare `$client`, passes `db.$client` or lets `drizzle()` infer its
+  type.
+
+  ```ts
+  // 0.8
+  import { drizzleStore } from "mnemocyte/stores/drizzle";
+  const memory = createMemory({ store: drizzleStore(db), embedder });
+  // now
+  const memory = createMemory({ store: db, embedder });
+  ```
+
+- **Breaking: `experimental.consolidate`**, deprecated in 0.8, on unbound
+  and bound clients. Call `consolidate` with the same input.
+- **Breaking: `migrations/render-initial.mjs`, `migrations/meta/_journal.json`
+  and `migrations/0000_initial.sql.template` are no longer in the package.**
+  `mnemocyte sql --dimensions <n>` prints the rendered schema. The numbered
+  SQL files and `fresh-install.sql` still ship. The empty `dist/cli.d.mts`
+  is gone too.
+
 ## [0.8.0] - 2026-11-14
 
 ### Added

@@ -2,13 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory, type Embedder, type NewMemory } from "mnemocyte";
-import {
-	postgresJs,
-	postgresStore,
-	type SqlExecutor,
-} from "mnemocyte/postgres";
+import { postgresStore, type SqlExecutor } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { postgresJs } from "../../src/sql/postgres-js.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const envPath = resolve(".env");
@@ -94,7 +91,7 @@ describe.skipIf(!databaseUrl)("Postgres batch writes", () => {
 	test("addMany writes 1,000 memories in four INSERT chunks", async () => {
 		const scope = testScope(`${entityPrefix}_many`);
 		const client = createMemory({
-			store: postgresStore({ client: postgresJs(sql) }),
+			store: postgresStore({ client: sql }),
 			embedder,
 			audit: { enabled: true },
 		});
@@ -120,7 +117,7 @@ describe.skipIf(!databaseUrl)("Postgres batch writes", () => {
 	test("a failing last chunk rolls back every chunk", async () => {
 		const scope = testScope(`${entityPrefix}_rollback`);
 		const client = createMemory({
-			store: postgresStore({ client: postgresJs(sql) }),
+			store: postgresStore({ client: sql }),
 			embedder,
 		});
 		const batch = memories("rollback", 1000);

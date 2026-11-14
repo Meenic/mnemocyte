@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createMemory } from "mnemocyte";
-import { postgresJs, postgresStore } from "mnemocyte/postgres";
+import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
 import { verifyAuditPages } from "../fixtures/audit-cursor.js";
@@ -56,7 +56,7 @@ describe("Postgres audit cursor pagination", () => {
 			];
 			await applyMigrations(sql);
 			const client = createMemory({
-				store: postgresStore({ client: postgresJs(sql) }),
+				store: postgresStore({ client: sql }),
 				embedder: {
 					model: "mnemocyte-integration-test",
 					dimensions: 1536,

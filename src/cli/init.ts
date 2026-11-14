@@ -1,0 +1,448 @@
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { parseEnv } from "node:util";
+import type { CliArgs } from "./args.js";
+import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
+import { findMemoryFile } from "./memory-file.js";
+
+/** The memory files `init` writes, one per driver setup. */
+export type InitDriver =
+	| "drizzle-postgres"
+	| "drizzle-pg"
+	| "drizzle-pglite"
+	| "postgres"
+	| "pg"
+	| "pglite"
+	| "in-memory";
+
+/** The driver packages `init` looks for in `package.json`. */
+export const DRIVER_PACKAGES: readonly string[] = [
+	"drizzle-orm",
+	"postgres",
+	"pg",
+	"@electric-sql/pglite",
+];
+
+const PGVECTOR_PACKAGE = "@electric-sql/pglite-pgvector";
+
+/** The file `init` writes, relative to the project. */
+export const INIT_FILE = "memory.ts";
+
+/** Used when `package.json` has no `name`, as in the getting-started guide. */
+export const DEFAULT_NAMESPACE = "my-agent";
+
+const LABELS: Readonly<Record<InitDriver, string>> = {
+	"drizzle-postgres": "Drizzle on postgres.js",
+	"drizzle-pg": "Drizzle on node-postgres",
+	"drizzle-pglite": "Drizzle on PGlite",
+	postgres: "postgres.js",
+	pg: "node-postgres",
+	pglite: "PGlite",
+	"in-memory": "in-memory, no database",
+};
+
+/** What `init` picked from the project's packages. */
+export interface DriverChoice {
+	readonly driver: InitDriver;
+	/** How the output names the setup, such as "Drizzle on postgres.js". */
+	readonly label: string;
+	/** The driver packages in `package.json`, in {@link DRIVER_PACKAGES} order. */
+	readonly found: readonly string[];
+	/** Packages the written file imports that `package.json` does not list. */
+	readonly missing: readonly string[];
+}
+
+/**
+ * Pick the memory file for a project's packages. Drizzle wins and wraps
+ * the driver next to it (postgres.js, then `pg`, then PGlite; postgres.js
+ * when it has none); without Drizzle the order is postgres.js, `pg`,
+ * PGlite; without any driver the file uses the in-memory backend.
+ */
+export function chooseDriver(packages: ReadonlySet<string>): DriverChoice {
+	const found = DRIVER_PACKAGES.filter((name) => packages.has(name));
+	const has = (name: string) => packages.has(name);
+	let driver: InitDriver;
+	if (has("drizzle-orm")) {
+		driver = has("postgres")
+			? "drizzle-postgres"
+			: has("pg")
+				? "drizzle-pg"
+				: has("@electric-sql/pglite")
+					? "drizzle-pglite"
+					: "drizzle-postgres";
+	} else if (has("postgres")) {
+		driver = "postgres";
+	} else if (has("pg")) {
+		driver = "pg";
+	} else if (has("@electric-sql/pglite")) {
+		driver = "pglite";
+	} else {
+		driver = "in-memory";
+	}
+	const missing: string[] = [];
+	if (driver === "drizzle-postgres" && !has("postgres")) {
+		missing.push("postgres");
+	}
+	if (
+		(driver === "pglite" || driver === "drizzle-pglite") &&
+		!has(PGVECTOR_PACKAGE)
+	) {
+		missing.push(PGVECTOR_PACKAGE);
+	}
+	return { driver, label: LABELS[driver], found, missing };
+}
+
+/** Whether the setup needs `DATABASE_URL` (a server, not PGlite or memory). */
+export function usesDatabaseUrl(driver: InitDriver): boolean {
+	return (
+		driver === "drizzle-postgres" ||
+		driver === "drizzle-pg" ||
+		driver === "postgres" ||
+		driver === "pg"
+	);
+}
+
+interface Template {
+	readonly imports: readonly string[];
+	/** The lines that create the database client, or none. */
+	readonly setup?: string;
+	/** The `store` expression, or none for the in-memory backend. */
+	readonly store?: string;
+	/** The body of `closeDatabase()`, or none. */
+	readonly close?: string;
+}
+
+const MNEMOCYTE_IMPORTS = [
+	'import { createMemory } from "mnemocyte";',
+	'import { openaiEmbedder } from "mnemocyte/embedders";',
+];
+
+const POSTGRES_SETUP = "const sql = postgres(process.env.DATABASE_URL!);";
+const PG_SETUP =
+	"const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });";
+const PGLITE_SETUP = (name: string) =>
+	`const ${name} = await PGlite.create({
+  dataDir: "./memory-data",
+  extensions: { vector },
+});`;
+const PGLITE_IMPORTS = [
+	'import { PGlite } from "@electric-sql/pglite";',
+	'import { vector } from "@electric-sql/pglite-pgvector";',
+];
+
+// The getting-started guide shows each of these files; a unit test checks
+// that every template is one of its code blocks.
+const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
+	"drizzle-postgres": {
+		imports: [
+			'import { drizzle } from "drizzle-orm/postgres-js";',
+			...MNEMOCYTE_IMPORTS,
+			'import postgres from "postgres";',
+		],
+		setup: `${POSTGRES_SETUP}\nexport const db = drizzle({ client: sql });`,
+		store: "db",
+		close: "await sql.end();",
+	},
+	"drizzle-pg": {
+		imports: [
+			'import { drizzle } from "drizzle-orm/node-postgres";',
+			...MNEMOCYTE_IMPORTS,
+			'import pg from "pg";',
+		],
+		setup: `${PG_SETUP}\nexport const db = drizzle({ client: pool });`,
+		store: "db",
+		close: "await pool.end();",
+	},
+	"drizzle-pglite": {
+		imports: [
+			...PGLITE_IMPORTS,
+			'import { drizzle } from "drizzle-orm/pglite";',
+			...MNEMOCYTE_IMPORTS,
+		],
+		setup: `${PGLITE_SETUP("client")}\nexport const db = drizzle({ client });`,
+		store: "db",
+		close: "await client.close();",
+	},
+	postgres: {
+		imports: [...MNEMOCYTE_IMPORTS, 'import postgres from "postgres";'],
+		setup: POSTGRES_SETUP,
+		store: "sql",
+		close: "await sql.end();",
+	},
+	pg: {
+		imports: [...MNEMOCYTE_IMPORTS, 'import pg from "pg";'],
+		setup: PG_SETUP,
+		store: "pool",
+		close: "await pool.end();",
+	},
+	pglite: {
+		imports: [...PGLITE_IMPORTS, ...MNEMOCYTE_IMPORTS],
+		setup: PGLITE_SETUP("db"),
+		store: "db",
+		close: "await db.close();",
+	},
+	"in-memory": { imports: MNEMOCYTE_IMPORTS },
+};
+
+/** The `memory.ts` `init` writes for a driver and namespace. */
+export function renderMemoryFile(input: {
+	driver: InitDriver;
+	namespace: string;
+}): string {
+	const { imports, setup, store, close } = TEMPLATES[input.driver];
+	const lines = [
+		imports.join("\n"),
+		"",
+		...(setup === undefined ? [] : [setup, ""]),
+		"export const memory = createMemory({",
+		`  namespace: ${JSON.stringify(input.namespace)},`,
+		...(store === undefined ? [] : [`  store: ${store},`]),
+		'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+		"});",
+		"",
+		close === undefined
+			? "export async function closeDatabase() {}"
+			: `export async function closeDatabase() {\n  ${close}\n}`,
+	];
+	return `${lines.join("\n")}\n`;
+}
+
+/** What `init` does to `.env`. */
+export type EnvChange =
+	| { readonly action: "none" }
+	| { readonly action: "create"; readonly text: string }
+	| { readonly action: "append"; readonly text: string };
+
+export const ENV_VARIABLE = "OPENAI_API_KEY";
+
+/**
+ * Plan the `.env` change for its current content, or `null` when there is
+ * no file: nothing when `OPENAI_API_KEY` is defined (even empty), else one
+ * line in the file's own line ending, after a line break when the last line
+ * has none.
+ */
+export function planEnvChange(content: string | null): EnvChange {
+	if (content === null) {
+		return { action: "create", text: `${ENV_VARIABLE}=\n` };
+	}
+	if (parseEnv(content)[ENV_VARIABLE] !== undefined) {
+		return { action: "none" };
+	}
+	const eol = content.includes("\r\n") ? "\r\n" : "\n";
+	const separator = content === "" || content.endsWith("\n") ? "" : eol;
+	return { action: "append", text: `${separator}${ENV_VARIABLE}=${eol}` };
+}
+
+/** Whether a `.gitignore` has a line that ignores `.env` in the root. */
+export function ignoresEnvFile(gitignore: string): boolean {
+	return gitignore
+		.split(/\r?\n/)
+		.some((line) => /^\/?(\.env\*?|\*\.env|\*)$/.test(line.trim()));
+}
+
+/** The install command for the project's package manager, by lockfile. */
+export async function installCommand(
+	cwd: string,
+	packages: readonly string[],
+): Promise<string> {
+	const lockfiles: readonly [string, string][] = [
+		["pnpm-lock.yaml", "pnpm add"],
+		["yarn.lock", "yarn add"],
+		["bun.lock", "bun add"],
+		["bun.lockb", "bun add"],
+	];
+	for (const [lockfile, command] of lockfiles) {
+		if ((await readText(join(cwd, lockfile))) !== null) {
+			return `${command} ${packages.join(" ")}`;
+		}
+	}
+	return `npm install ${packages.join(" ")}`;
+}
+
+async function readText(path: string): Promise<string | null> {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (isCode(error, "ENOENT") || isCode(error, "EISDIR")) {
+			return null;
+		}
+		throw error;
+	}
+}
+
+function isCode(error: unknown, code: string): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === code
+	);
+}
+
+interface PackageJson {
+	readonly name?: unknown;
+	readonly type?: unknown;
+	readonly dependencies?: unknown;
+	readonly devDependencies?: unknown;
+}
+
+async function readPackageJson(cwd: string): Promise<PackageJson> {
+	const text = await readText(join(cwd, "package.json"));
+	if (text === null) {
+		throw new CliError(
+			"No package.json in this folder. Run mnemocyte init in your project's root folder.",
+			EXIT_USAGE,
+		);
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch (error) {
+		throw new CliError("package.json is not valid JSON.", EXIT_USAGE, error);
+	}
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new CliError("package.json is not a JSON object.", EXIT_USAGE);
+	}
+	return parsed;
+}
+
+function packageNames(pkg: PackageJson): Set<string> {
+	const names = new Set<string>();
+	for (const field of [pkg.dependencies, pkg.devDependencies]) {
+		if (typeof field === "object" && field !== null) {
+			for (const name of Object.keys(field)) {
+				names.add(name);
+			}
+		}
+	}
+	return names;
+}
+
+/**
+ * `mnemocyte init`: write a `memory.ts` for the driver in `package.json`
+ * and add `OPENAI_API_KEY=` to `.env` when it is not defined there. It
+ * never overwrites a file: an existing memory file anywhere the CLI looks
+ * is left as is, and `memory.ts` is created with `O_EXCL` (`flag: "wx"`),
+ * so a file that appears in the meantime is not replaced either. Every
+ * change is printed; `--dry-run` prints them and writes nothing.
+ *
+ * @returns The exit code.
+ * @throws {CliError} With exit code 2 when there is no readable
+ * `package.json`.
+ */
+export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
+	const { cwd } = io;
+	const dryRun = args.dryRun;
+	const pkg = await readPackageJson(cwd);
+	const out: string[] = [];
+	const next: string[] = [];
+
+	// The memory file. One that already exists anywhere the CLI looks is
+	// kept: a new ./memory.ts would hide src/memory.ts from the CLI.
+	const existing = findMemoryFile(cwd);
+	let choice: DriverChoice | undefined;
+	if (existing !== null) {
+		out.push(`${displayPath(cwd, existing)} exists, left as is.`);
+	} else {
+		choice = chooseDriver(packageNames(pkg));
+		const namespace =
+			typeof pkg.name === "string" && pkg.name !== ""
+				? pkg.name
+				: DEFAULT_NAMESPACE;
+		const content = renderMemoryFile({ driver: choice.driver, namespace });
+		if (choice.driver === "in-memory") {
+			out.push(
+				`No database driver in package.json (${DRIVER_PACKAGES.join(", ")}): using the in-memory backend, whose memories are gone when the process exits. To use Postgres later, install a driver, delete ${INIT_FILE} and run mnemocyte init again.`,
+			);
+		} else {
+			out.push(
+				`Found ${choice.found.join(", ")} in package.json: using ${choice.label}.`,
+			);
+		}
+		if (dryRun) {
+			out.push(`Would write ${INIT_FILE}:`, "", content);
+		} else if (await createFile(join(cwd, INIT_FILE), content)) {
+			out.push(`Wrote ${INIT_FILE}`);
+		} else {
+			out.push(`${INIT_FILE} exists, left as is.`);
+			choice = undefined;
+		}
+	}
+
+	// .env
+	const envPath = join(cwd, ".env");
+	const envContent = await readText(envPath);
+	const change = planEnvChange(envContent);
+	const env = envContent === null ? {} : parseEnv(envContent);
+	if (change.action === "none") {
+		out.push(`.env already defines ${ENV_VARIABLE}, left as is.`);
+	} else {
+		const verb = change.action === "create" ? "create .env with" : "add";
+		if (dryRun) {
+			out.push(
+				`Would ${verb} ${ENV_VARIABLE}=${change.action === "append" ? " to .env" : ""}`,
+			);
+		} else {
+			if (change.action === "create") {
+				await writeFile(envPath, change.text, { flag: "wx" });
+				out.push(`Created .env with ${ENV_VARIABLE}=`);
+			} else {
+				await appendFile(envPath, change.text);
+				out.push(`Added ${ENV_VARIABLE}= to .env`);
+			}
+		}
+		const gitignore = await readText(join(cwd, ".gitignore"));
+		if (gitignore === null || !ignoresEnvFile(gitignore)) {
+			out.push(
+				"note: .gitignore does not list .env; add it before you put a key in the file.",
+			);
+		}
+	}
+
+	if (choice !== undefined && pkg.type !== "module") {
+		out.push(
+			`note: package.json has no "type": "module". Node still loads ${INIT_FILE} as an ES module but warns on every run; set it with: npm pkg set type=module`,
+		);
+	}
+
+	// What is left for the user.
+	if (choice !== undefined && choice.missing.length > 0) {
+		next.push(`Install: ${await installCommand(cwd, choice.missing)}`);
+	}
+	if (!env[ENV_VARIABLE]) {
+		next.push(`Put your OpenAI API key after ${ENV_VARIABLE}= in .env`);
+	}
+	if (choice !== undefined && usesDatabaseUrl(choice.driver)) {
+		if (env.DATABASE_URL === undefined) {
+			next.push("Add DATABASE_URL=postgres://… to .env");
+		}
+	}
+	if (choice !== undefined && choice.driver !== "in-memory") {
+		next.push("Create the schema: npx mnemocyte migrate");
+	}
+
+	io.write(`${out.join("\n")}\n`);
+	if (next.length > 0) {
+		io.write(
+			`\nNext${dryRun ? ", after a real run" : ""}:\n${next.map((line) => `  ${line}`).join("\n")}\n`,
+		);
+	}
+	return 0;
+}
+
+/** Create a file that does not exist; false when it does. */
+async function createFile(path: string, content: string): Promise<boolean> {
+	try {
+		await writeFile(path, content, { flag: "wx" });
+		return true;
+	} catch (error) {
+		if (isCode(error, "EEXIST")) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+function displayPath(cwd: string, file: string): string {
+	return relative(cwd, file).replaceAll("\\", "/") || file;
+}

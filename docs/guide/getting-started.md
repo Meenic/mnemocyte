@@ -112,6 +112,14 @@ export async function closeDatabase() {
   database client stays yours, so `closeDatabase()` ends it when a script
   is done.
 
+`npx mnemocyte init` writes this file for you: it picks this version or one
+from [Other drivers](#other-drivers) for the driver in your `package.json`
+(Drizzle first, then `postgres`, `pg` and PGlite; without one, the
+[in-memory version](#prototype-without-a-database)), sets `namespace` to your package's name, and
+adds `OPENAI_API_KEY=` to `.env` when it is not there. It never overwrites
+a file; `--dry-run` shows what it would do. See the [CLI
+guide](./cli.md#init).
+
 ### Use Ollama instead of OpenAI
 
 `openaiCompatibleEmbedder` calls any OpenAI-compatible endpoint. For a
@@ -313,8 +321,56 @@ export async function closeDatabase() {
 ```
 
 Mnemocyte runs its own SQL on the Drizzle instance's client, so your Drizzle
-schema does not need its tables. `drizzle-orm/node-postgres` (over a `Pool`)
-and `drizzle-orm/pglite` work the same way.
+schema does not need its tables.
+
+Drizzle over node-postgres (`pnpm add drizzle-orm pg`):
+
+```ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import { createMemory } from "mnemocyte";
+import { openaiEmbedder } from "mnemocyte/embedders";
+import pg from "pg";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle({ client: pool });
+
+export const memory = createMemory({
+  namespace: "my-agent",
+  store: db,
+  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
+});
+
+export async function closeDatabase() {
+  await pool.end();
+}
+```
+
+Drizzle over PGlite (`pnpm add drizzle-orm @electric-sql/pglite
+@electric-sql/pglite-pgvector`; see [PGlite](#pglite) below):
+
+```ts
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite-pgvector";
+import { drizzle } from "drizzle-orm/pglite";
+import { createMemory } from "mnemocyte";
+import { openaiEmbedder } from "mnemocyte/embedders";
+
+const client = await PGlite.create({
+  dataDir: "./memory-data",
+  extensions: { vector },
+});
+export const db = drizzle({ client });
+
+export const memory = createMemory({
+  namespace: "my-agent",
+  store: db,
+  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
+});
+
+export async function closeDatabase() {
+  await client.close();
+}
+```
 
 ### PGlite
 
@@ -378,7 +434,7 @@ to 5 with the same calls.
 ## Next
 
 - [API reference](./api.md): every method, scopes and errors.
-- [CLI](./cli.md): `mnemocyte migrate`, `check` and `sql`.
+- [CLI](./cli.md): `mnemocyte init`, `migrate`, `check` and `sql`.
 - [Postgres](./postgres.md): drivers, poolers, `migrate`, upgrades and
   indexes.
 - [Embedders](./embedders.md): custom embedders, timeouts and retries.

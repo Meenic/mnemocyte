@@ -1,6 +1,6 @@
 # CLI
 
-The `mnemocyte` bin: `migrate`, `check` and `sql`. The user reference is
+The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`. The user reference is
 [guide/cli.md](../guide/cli.md); this page is how it is built and why.
 
 ## Packaging
@@ -33,6 +33,7 @@ src/cli/
   resolve-hook.ts        the resolve hook for a TypeScript app's imports
   tsconfig.ts            JSON with comments, `extends`, `paths`
   target.ts              .env, then a memory file or DATABASE_URL → what a command runs against
+  init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
   migrate.ts             migrateTarget / migrateCommand
   check.ts               evaluateInstallation, describeInstallation, checkTarget / checkCommand
   sql.ts                 sqlCommand
@@ -116,6 +117,50 @@ and the "no driver import" package tests hold. The client is created with
 `max: 1` and no notice output, wrapped by `resolveStore`, and ended by the
 command.
 
+## `init`
+
+`initCommand` reads `package.json` and nothing else of the app: it loads
+no memory file and no `.env` into the environment, and it connects to
+nothing, so it takes only `--dry-run` (`--config`, `--env-file` and
+`--dimensions` are usage errors).
+
+- **Driver.** `chooseDriver` (pure) looks at the keys of `dependencies`
+  and `devDependencies`. `drizzle-orm` wins and wraps `postgres`, else
+  `pg`, else `@electric-sql/pglite`, else `postgres` with an install hint;
+  without Drizzle the order is `postgres`, `pg`, PGlite; without a driver
+  it is the in-memory file (the maintainer's choices, decision 37). A
+  PGlite file without `@electric-sql/pglite-pgvector` listed gets an
+  install hint too, in the package manager the lockfile names.
+- **Templates.** `renderMemoryFile` builds each file from its imports,
+  client setup, `store` expression and `closeDatabase` body.
+  `test/cli/init.test.ts` takes every `memory.ts` block from
+  `docs/guide/getting-started.md` and checks that the seven templates,
+  with namespace `"my-agent"`, are exactly those blocks, so the guide and
+  `init` cannot drift. The namespace is `package.json` `name` through
+  `JSON.stringify`.
+- **No overwrite.** `findMemoryFile` runs first: a file anywhere the CLI
+  looks is kept, because a new `./memory.ts` would hide `src/memory.ts`
+  from `migrate`. `memory.ts` and a new `.env` are then created with
+  `writeFile(…, { flag: "wx" })`, which is `O_CREAT | O_EXCL`: the
+  operating system refuses if the file appeared after the check. An
+  `EEXIST` on `memory.ts` is reported as "exists, left as is".
+- **`.env`.** `planEnvChange` (pure) parses the file with `util.parseEnv`
+  (from Node 20.12; no longer experimental from 22.21 and 24.10, and
+  Node's own `.env` parser, so `export` and quotes read as
+  `process.loadEnvFile` reads them). A defined `OPENAI_API_KEY`, even
+  empty, means no change; otherwise one line is appended in the file's
+  own line ending (CRLF when the file has one), after a line break when
+  the last line has none. `.gitignore` is only read: a line `.env`,
+  `/.env`, `.env*`, `*.env` or `*` counts as ignoring it.
+- **`"type"`.** Without `"type": "module"`, Node loads an ESM `memory.ts`
+  through syntax detection and prints `MODULE_TYPELESS_PACKAGE_JSON` on
+  every run (observed on 24.22), so `init` prints a note.
+- **Output.** One line per change or kept file on stdout, then a "Next"
+  list built from what is missing: install hints, an empty key,
+  `DATABASE_URL` for a server driver when `.env` has none, `migrate`.
+  `--dry-run` prints the file's content instead of writing it. The exit
+  code is 0 unless `package.json` is missing or not a JSON object (2).
+
 ## `migrate`
 
 `migrateTarget` calls the public `migrate()`:
@@ -185,7 +230,8 @@ Windows and an immediate exit can cut output short.
 
 ## Tests
 
-- `test/cli/` (unit): argument parsing, `parseJsonc`, `paths` through
+- `test/cli/` (unit): argument parsing, `init` (driver choice, templates
+  against the guide, `.env` plans, runs in temporary folders), `parseJsonc`, `paths` through
   `extends`, import candidates and `resolveAppImport` on temporary folders,
   memory file lookup, every `check` verdict, `main` for help, usage errors
   and `sql`, and error printing.
@@ -200,7 +246,9 @@ Windows and an immediate exit can cut output short.
   goes through `check`, `migrate --dry-run`, `migrate` without a terminal,
   `migrate --yes`, `check` and `sql`, with `.env` supplying the embedder's
   size. This is the test of type stripping and the resolve hook on each CI
-  Node version. It also checks the shebang, the `bin` field, that the bin
+  Node version. Two more projects (PGlite, and Drizzle on PGlite) run
+  `init --dry-run`, `init`, then `sql`, `migrate --yes` and `check` on the
+  file `init` wrote, and `init` again. It also checks the shebang, the `bin` field, that the bin
   imports no driver, and the load errors.
 - `test/integration/cli.test.ts`: `main` in process against real Postgres
   through `DATABASE_URL`: fresh install, the missing `--dimensions`,

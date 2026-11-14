@@ -22,6 +22,12 @@ behavioural changes documented in their entries.
   folder is read first. Without a memory file, `migrate` and `check`
   connect to `DATABASE_URL` with the `postgres` package. See the
   [CLI guide](docs/guide/cli.md).
+- **`npx mnemocyte init`.** Writes a `memory.ts` for the driver in
+  `package.json` (Drizzle over the driver next to it, else `postgres`,
+  `pg` or PGlite; the in-memory backend without one), named after your
+  package, and adds `OPENAI_API_KEY=` to `.env` when it is not defined
+  there. It never overwrites a file, prints every change, and has
+  `--dry-run`.
 - **`consolidate` is stable.** `memory.consolidate` and
   `boundClient.consolidate` replace `experimental.consolidate`, with the
   same input, result and one-statement locking.

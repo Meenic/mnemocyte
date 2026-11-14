@@ -2,7 +2,13 @@ import { parseArgs } from "node:util";
 import { assertMigrateDimensions } from "../memory/validation.js";
 import { CliError, EXIT_USAGE } from "./io.js";
 
-export type CliCommand = "migrate" | "check" | "sql" | "help" | "version";
+export type CliCommand =
+	| "init"
+	| "migrate"
+	| "check"
+	| "sql"
+	| "help"
+	| "version";
 
 /** The command line, validated. */
 export interface CliArgs {
@@ -15,7 +21,7 @@ export interface CliArgs {
 	readonly dimensions?: number;
 	/** `--yes`: enable pgvector without asking. */
 	readonly yes: boolean;
-	/** `--dry-run`: report what `migrate` would do. */
+	/** `--dry-run`: report what `migrate` or `init` would do. */
 	readonly dryRun: boolean;
 	/** `--out`: where `sql` writes instead of standard output. */
 	readonly out?: string;
@@ -24,6 +30,7 @@ export interface CliArgs {
 export const USAGE: string = `Usage: mnemocyte <command> [options]
 
 Commands
+  init      Write a memory.ts for the driver in package.json
   migrate   Create or upgrade the Mnemocyte schema
   check     Report pgvector, migrations and dimensions; exit 1 on a problem
   sql       Print the fresh-install schema, without a database
@@ -34,7 +41,7 @@ Options
       --dimensions <n>   Embedding dimensions, when no memory file gives them
       --env-file <path>  Load this file instead of ./.env
   -y, --yes              migrate: enable pgvector without asking
-      --dry-run          migrate: show what would run and change nothing
+      --dry-run          migrate, init: show what would run and change nothing
       --out <file>       sql: write to a file instead of standard output
   -h, --help             Show this help
   -v, --version          Show the version
@@ -43,14 +50,22 @@ Without a memory file, migrate and check connect to DATABASE_URL with the
 "postgres" package and take the embedding size from --dimensions.
 `;
 
-const COMMANDS: ReadonlySet<string> = new Set(["migrate", "check", "sql"]);
+const COMMANDS: ReadonlySet<string> = new Set([
+	"init",
+	"migrate",
+	"check",
+	"sql",
+]);
 
-/** Flags that only one command reads; anywhere else they are a mistake. */
+/** Flags that only some commands read; anywhere else they are a mistake. */
 const COMMAND_FLAGS = {
-	yes: "migrate",
-	"dry-run": "migrate",
-	out: "sql",
-} as const;
+	yes: ["migrate"],
+	"dry-run": ["migrate", "init"],
+	out: ["sql"],
+} as const satisfies Record<string, readonly CliCommand[]>;
+
+/** Flags every command but `init` reads: it loads no memory file. */
+const NOT_FOR_INIT = ["config", "env-file", "dimensions"] as const;
 
 function usageError(message: string): CliError {
 	return new CliError(message, EXIT_USAGE);
@@ -94,20 +109,29 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	}
 	const [command, ...rest] = positionals;
 	if (command === undefined) {
-		throw usageError("Name a command: migrate, check or sql.");
+		throw usageError("Name a command: init, migrate, check or sql.");
 	}
 	if (!COMMANDS.has(command)) {
 		throw usageError(
-			`Unknown command "${command}". Commands: migrate, check, sql.`,
+			`Unknown command "${command}". Commands: init, migrate, check, sql.`,
 		);
 	}
 	if (rest.length > 0) {
 		throw usageError(`Unexpected argument "${rest[0]}".`);
 	}
 	for (const flag of ["yes", "dry-run", "out"] as const) {
-		const owner = COMMAND_FLAGS[flag];
-		if (values[flag] !== undefined && owner !== command) {
-			throw usageError(`--${flag} applies to ${owner}, not to ${command}.`);
+		const owners: readonly string[] = COMMAND_FLAGS[flag];
+		if (values[flag] !== undefined && !owners.includes(command)) {
+			throw usageError(
+				`--${flag} applies to ${owners.join(" and ")}, not to ${command}.`,
+			);
+		}
+	}
+	if (command === "init") {
+		for (const flag of NOT_FOR_INIT) {
+			if (values[flag] !== undefined) {
+				throw usageError(`--${flag} does not apply to init.`);
+			}
 		}
 	}
 	for (const flag of ["config", "env-file", "out"] as const) {

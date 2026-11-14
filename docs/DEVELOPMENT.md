@@ -30,7 +30,8 @@ Feature areas:
   observability.
 - [features/cli.md](./features/cli.md): the `mnemocyte` bin: loading the
   app's memory file (type stripping, the resolve hook, tsconfig `paths`),
-  `.env`, the `DATABASE_URL` fallback, `migrate`, `check` and `sql`.
+  `.env`, the `DATABASE_URL` fallback, `init`, `migrate`, `check` and
+  `sql`.
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
   validation and scope boundary; `memoryMiddleware` and `withMemory`;
   extraction with `save: { model }` and `extractMemories`.
@@ -67,7 +68,7 @@ src/
   ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
   ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
-  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, migrate, check, sql
+  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
@@ -216,7 +217,7 @@ Exports:
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
 - `mnemocyte/stores/drizzle`: `drizzleStore(db)` and `DrizzleClient`.
-- The `mnemocyte` bin: `migrate`, `check` and `sql`, with `--config`,
+- The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`, with `--config`,
   `--dimensions`, `--env-file`, `--yes`, `--dry-run` and `--out`. Its
   commands, flags and exit codes (0, 1, 2) are public; its modules are not
   exported. See [features/cli.md](./features/cli.md).

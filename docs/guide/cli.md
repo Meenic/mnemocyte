@@ -1,11 +1,13 @@
 # CLI
 
-`mnemocyte` is a command that ships with the package. It creates and
-upgrades the Postgres schema, checks an installation, and prints the schema
-as SQL. It uses the memory client your app already exports, so the command
-and the app share one database client and one embedder.
+`mnemocyte` is a command that ships with the package. It writes a starting
+memory file, creates and upgrades the Postgres schema, checks an
+installation, and prints the schema as SQL. It uses the memory client your
+app already exports, so the command and the app share one database client
+and one embedder.
 
 ```bash
+npx mnemocyte init
 npx mnemocyte migrate
 npx mnemocyte check
 npx mnemocyte sql --dimensions 1536
@@ -95,6 +97,53 @@ DATABASE_URL=postgres://… npx mnemocyte migrate --dimensions 1536
 installation and `check` work without it. Without the `postgres` package
 the command stops with an install hint.
 
+## `init`
+
+```bash
+npx mnemocyte init [--dry-run]
+```
+
+Writes `memory.ts` in the project root, the file `migrate` and `check`
+then load, and adds `OPENAI_API_KEY=` to `.env`. Run it in the folder with
+your `package.json`.
+
+```txt
+Found drizzle-orm, postgres in package.json: using Drizzle on postgres.js.
+Wrote memory.ts
+Created .env with OPENAI_API_KEY=
+
+Next:
+  Put your OpenAI API key after OPENAI_API_KEY= in .env
+  Add DATABASE_URL=postgres://… to .env
+  Create the schema: npx mnemocyte migrate
+```
+
+- **The driver** comes from `dependencies` and `devDependencies`. With
+  `drizzle-orm`, the file uses Drizzle over the driver next to it:
+  `postgres`, else `pg`, else `@electric-sql/pglite` (`postgres` when there
+  is none, with an install hint). Without Drizzle the order is `postgres`,
+  `pg`, `@electric-sql/pglite`. Without any of them the file uses the
+  in-memory backend; to switch later, install a driver, delete
+  `memory.ts` and run `init` again.
+- **The file** is the matching one from
+  [Getting started](./getting-started.md#4-write-memoryts) with
+  `openaiEmbedder` and `text-embedding-3-small`, and `namespace` set to
+  your package's `name` (`"my-agent"` without one). Change the embedder
+  before the first `migrate`: the schema is created for its dimensions.
+- **`.env`.** When `OPENAI_API_KEY` is not defined there (an empty value
+  counts as defined), `init` appends the line, or creates `.env` with it.
+  Other lines are not touched. It prints a note when `.gitignore` does not
+  list `.env`.
+- **It never overwrites.** A memory file that already exists anywhere
+  `migrate` looks (`memory.ts`, `.mts`, `.js` or `.mjs` in the root,
+  `lib/`, `src/` or `src/lib/`) is left as is, and so is a defined
+  `OPENAI_API_KEY`; a second run changes nothing.
+- **`--dry-run`** prints the file and the `.env` change and writes
+  nothing.
+- **`"type": "module"`.** Without it in `package.json`, Node still loads
+  `memory.ts` as an ES module but warns on every run, so `init` prints a
+  note with `npm pkg set type=module`.
+
 ## `migrate`
 
 ```bash
@@ -176,9 +225,9 @@ dimensions the column is `halfvec`. How to apply the file is in the
 
 | Code | Meaning |
 |---|---|
-| 0 | Done; `check` found no problem. |
+| 0 | Done; `check` found no problem; `init` also when it left existing files as they were. |
 | 1 | `check` found a problem, `migrate` failed or pgvector was not enabled. |
-| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, or, for `check`, a database it cannot read. |
+| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, or, for `check`, a database it cannot read. |
 
 Errors go to standard error as `mnemocyte: <message>`, followed by the
 database driver's own message as `cause:`.

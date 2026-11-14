@@ -97,7 +97,11 @@ describe("observability hooks", () => {
 						event.phase === "start" &&
 						inputToMutate
 					) {
-						inputToMutate.tags?.splice(0, 1, "mutated-by-hook");
+						(inputToMutate.tags as string[] | undefined)?.splice(
+							0,
+							1,
+							"mutated-by-hook",
+						);
 						inputToMutate.expiresAt?.setUTCFullYear(2040);
 						const nested = inputToMutate.metadata?.nested;
 						if (

@@ -52,7 +52,7 @@ describe("package exports", () => {
 		// The embedders entry shares the root's error class.
 		expect(() =>
 			directOpenAICompatibleEmbedder({
-				baseUrl: "",
+				baseURL: "",
 				model: "m",
 				dimensions: 1,
 			}),

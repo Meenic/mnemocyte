@@ -24,6 +24,9 @@ const memory = createMemory({
 ```
 
 Configuration is validated synchronously; invalid values throw `"CONFIG"`.
+So does a key `createMemory` does not take, in the config or in a nested
+object such as `retrieval.fusion`: a misspelled option fails at startup
+instead of being ignored. A key set to `undefined` counts as absent.
 `store` is the database client your app already has (a postgres.js `sql`,
 a `pg` Pool, a PGlite instance, a Drizzle instance over one of them, or a
 `SqlExecutor`), recognised by its shape, or a store from `postgresStore()`.

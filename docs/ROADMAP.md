@@ -238,7 +238,7 @@ branch each; `docs/v1` comes last.
   Landed with `pnpm migration:bundle` reading the numbered files directly
   and also rendering `fresh-install.sql`; the template stays in the
   repository as the bundle's source.
-- [ ] `fix/strict-options`: unknown keys in `createMemory`'s config, the
+- [x] `fix/strict-options`: unknown keys in `createMemory`'s config, the
   embedder options and the AI SDK options throw `"CONFIG"` instead of being
   ignored. TypeScript catches a misspelled key only in an object literal;
   from JavaScript, or with options built elsewhere,
@@ -246,7 +246,10 @@ branch each; `docs/v1` comes last.
   `OPENAI_API_KEY` to api.openai.com.
   Rename `baseUrl` to `baseURL`, the AI SDK's spelling, and the extraction
   `timeout` to `timeoutMs`, like `provider.timeoutMs`. `kinds` and `tags`
-  inputs become `readonly` arrays everywhere (additive).
+  inputs become `readonly` arrays everywhere (additive). Landed checking
+  every nested settings object too, with a pointed error for the two old
+  names; `extractMemories` still accepts `finishReason`, so a spread
+  `MemoryTurn` works.
 - [ ] `feat/error-reasons`: a stable `reason` on `MnemocyteError` for the
   cases one code covers today (`CONFLICT`: key in use, consolidation link;
   `CONFIG`: bad config, embedder or dimensions that do not match the

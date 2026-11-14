@@ -1,5 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import { createHttpEmbedder, resolveApiKey } from "../http-embedder.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
 
 const KNOWN_MODEL_DIMENSIONS: Record<string, number> = {
@@ -32,7 +33,7 @@ export interface OpenAIEmbedderOptions {
 	 * `https://api.openai.com/v1`. For other providers, use
 	 * `openaiCompatibleEmbedder`.
 	 */
-	readonly baseUrl?: string;
+	readonly baseURL?: string;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number;
 }
@@ -93,6 +94,12 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
  * and known model sizes.
  */
 export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
+	assertKnownKeys(
+		"openaiEmbedder",
+		options,
+		["apiKey", "model", "dimensions", "baseURL", "maxBatch"],
+		RENAMED_BASE_URL,
+	);
 	const apiKey = resolveApiKey(
 		options.apiKey,
 		"OPENAI_API_KEY",
@@ -102,7 +109,7 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 	return createHttpEmbedder({
 		name: "openaiEmbedder",
 		provider: "OpenAI",
-		baseUrl: options.baseUrl ?? "https://api.openai.com/v1",
+		baseURL: options.baseURL ?? "https://api.openai.com/v1",
 		model: options.model,
 		dimensions: embedderDimensions,
 		apiKey,

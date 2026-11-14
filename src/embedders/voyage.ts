@@ -3,12 +3,13 @@ import {
 	type KnownModelSize,
 	parseIndexedEmbeddings,
 	resolveApiKey,
-	resolveBaseUrl,
+	resolveBaseURL,
 	resolveBoolean,
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
 } from "../http-embedder.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
 
 const NAME = "voyageEmbedder";
@@ -51,7 +52,7 @@ export interface VoyageEmbedderOptions {
 	 */
 	readonly truncate?: boolean;
 	/** API base URL. Defaults to `https://api.voyageai.com/v1`. */
-	readonly baseUrl?: string;
+	readonly baseURL?: string;
 	/**
 	 * Most texts per request. Defaults to `100`. Voyage also caps the tokens
 	 * per request (120K for `voyage-4-large`), so lower it for long texts.
@@ -70,6 +71,12 @@ export interface VoyageEmbedderOptions {
  * ```
  */
 export function voyageEmbedder(options: VoyageEmbedderOptions): Embedder {
+	assertKnownKeys(
+		"voyageEmbedder",
+		options,
+		["apiKey", "model", "dimensions", "truncate", "baseURL", "maxBatch"],
+		RENAMED_BASE_URL,
+	);
 	const apiKey = resolveApiKey(options.apiKey, "VOYAGE_API_KEY", NAME);
 	const model = resolveModel(options.model, NAME);
 	const size = resolveModelDimensions({
@@ -79,8 +86,8 @@ export function voyageEmbedder(options: VoyageEmbedderOptions): Embedder {
 		known: KNOWN_MODELS,
 	});
 	const truncation = resolveBoolean(options.truncate, "truncate", NAME, true);
-	const baseUrl = resolveBaseUrl(
-		options.baseUrl ?? "https://api.voyageai.com/v1",
+	const baseURL = resolveBaseURL(
+		options.baseURL ?? "https://api.voyageai.com/v1",
 		NAME,
 	);
 	return createFetchEmbedder({
@@ -89,7 +96,7 @@ export function voyageEmbedder(options: VoyageEmbedderOptions): Embedder {
 		model,
 		dimensions: size.dimensions,
 		maxBatch: resolveMaxBatch(options.maxBatch, NAME, undefined),
-		url: `${baseUrl}/embeddings`,
+		url: `${baseURL}/embeddings`,
 		headers: { authorization: `Bearer ${apiKey}` },
 		buildBody(texts, purpose) {
 			return {

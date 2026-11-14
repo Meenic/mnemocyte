@@ -5,12 +5,13 @@ import {
 	isRecord,
 	type KnownModelSize,
 	resolveApiKey,
-	resolveBaseUrl,
+	resolveBaseURL,
 	resolveBoolean,
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
 } from "../http-embedder.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
 
 const NAME = "cohereEmbedder";
@@ -56,7 +57,7 @@ export interface CohereEmbedderOptions {
 	 */
 	readonly truncate?: boolean;
 	/** API base URL. Defaults to `https://api.cohere.com/v2`. */
-	readonly baseUrl?: string;
+	readonly baseURL?: string;
 	/** Most texts per request, at most 96 (Cohere's limit). Defaults to `96`. */
 	readonly maxBatch?: number;
 }
@@ -73,6 +74,12 @@ export interface CohereEmbedderOptions {
  * ```
  */
 export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
+	assertKnownKeys(
+		"cohereEmbedder",
+		options,
+		["apiKey", "model", "dimensions", "truncate", "baseURL", "maxBatch"],
+		RENAMED_BASE_URL,
+	);
 	const apiKey = resolveApiKey(options.apiKey, "COHERE_API_KEY", NAME);
 	const model = resolveModel(options.model, NAME);
 	const size = resolveModelDimensions({
@@ -82,8 +89,8 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 		known: KNOWN_MODELS,
 	});
 	const truncate = resolveBoolean(options.truncate, "truncate", NAME, true);
-	const baseUrl = resolveBaseUrl(
-		options.baseUrl ?? "https://api.cohere.com/v2",
+	const baseURL = resolveBaseURL(
+		options.baseURL ?? "https://api.cohere.com/v2",
 		NAME,
 	);
 	return createFetchEmbedder({
@@ -97,7 +104,7 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 			COHERE_MAX_BATCH,
 			COHERE_MAX_BATCH,
 		),
-		url: `${baseUrl}/embed`,
+		url: `${baseURL}/embed`,
 		headers: { authorization: `Bearer ${apiKey}` },
 		buildBody(texts, purpose) {
 			return {

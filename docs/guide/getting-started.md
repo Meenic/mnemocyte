@@ -129,7 +129,7 @@ local [Ollama](https://ollama.com) with `ollama pull nomic-embed-text`:
 import { openaiCompatibleEmbedder } from "mnemocyte/embedders";
 
 embedder: openaiCompatibleEmbedder({
-  baseUrl: "http://localhost:11434/v1",
+  baseURL: "http://localhost:11434/v1",
   model: "nomic-embed-text",
   dimensions: 768,
   // nomic-embed-text expects these prefixes on queries and documents

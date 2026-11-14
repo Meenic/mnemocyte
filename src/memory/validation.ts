@@ -1,4 +1,5 @@
 import { MnemocyteError } from "../errors.js";
+import { assertKnownKeys } from "../options.js";
 import { DEFAULT_BOOSTS, DEFAULT_FUSION } from "../retrieval/scorer.js";
 import type {
 	ConsolidateInput,
@@ -10,6 +11,7 @@ import type {
 	FindDuplicatesPageInput,
 	ImportanceLevel,
 	ListAuditLogInput,
+	MemoryConfig,
 	MemoryKind,
 	MigrateInput,
 	NewMemory,
@@ -276,6 +278,58 @@ function assertNonNegativeFiniteConfigValue(
 			"CONFIG",
 		);
 	}
+}
+
+/**
+ * Reject a key `createMemory` does not take, in the config and in each
+ * nested settings object. Free-form values (the embedder, the store) are
+ * not looked into.
+ */
+export function assertKnownConfigKeys(config: MemoryConfig): void {
+	assertKnownKeys("createMemory config", config, [
+		"namespace",
+		"store",
+		"embedder",
+		"defaults",
+		"retrieval",
+		"observability",
+		"provider",
+		"audit",
+	]);
+	assertKnownKeys("createMemory defaults", config.defaults ?? {}, [
+		"limit",
+		"minScore",
+	]);
+	assertKnownKeys("createMemory retrieval", config.retrieval ?? {}, [
+		"fusion",
+		"boosts",
+		"recencyHalfLifeDays",
+		"candidateMultiplier",
+		"trackAccess",
+	]);
+	assertKnownKeys(
+		"createMemory retrieval.fusion",
+		config.retrieval?.fusion ?? {},
+		["k", "vector", "lexical"],
+	);
+	assertKnownKeys(
+		"createMemory retrieval.boosts",
+		config.retrieval?.boosts ?? {},
+		["recency", "importance"],
+	);
+	assertKnownKeys("createMemory observability", config.observability ?? {}, [
+		"onEvent",
+		"onError",
+	]);
+	assertKnownKeys("createMemory provider", config.provider ?? {}, [
+		"timeoutMs",
+		"retries",
+		"baseDelayMs",
+		"maxDelayMs",
+		"maxRetryAfterMs",
+		"shouldRetry",
+	]);
+	assertKnownKeys("createMemory audit", config.audit ?? {}, ["enabled"]);
 }
 
 export function validateRetrievalConfig(

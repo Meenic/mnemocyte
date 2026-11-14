@@ -496,7 +496,7 @@ Dated 2026-10-26 unless noted.
     claims stay. Failures go to `onError({ phase: "save" })`, not a new
     `onEvent` operation: the middleware cannot reach the client's
     `onEvent` (27), and the search and write already report there. The
-    extraction has its own `timeout` (30 s) instead of the request's
+    extraction has its own `timeoutMs` (30 s) instead of the request's
     `abortSignal`, which has nothing left to cancel. `waitUntil` receives
     a promise that never rejects, for serverless platforms. A
     `"provider/model"` string is accepted, unlike `withMemory`'s `model`,
@@ -729,7 +729,12 @@ Dated 2026-10-26 unless noted.
       key only in an object literal; from JavaScript, or with options built
       elsewhere, a misspelled `baseURL` today sends content to the
       provider's default endpoint. Rejecting unknown keys after 1.0 would be
-      a breaking change.
+      a breaking change. (Landed with `fix/strict-options`: the config, its
+      nested settings objects, `postgresStore`, the embedders and the AI SDK
+      options are checked by `assertKnownKeys`, and a key set to `undefined`
+      counts as absent. `baseUrl` became `baseURL`, the AI SDK's spelling,
+      and the extraction `timeout` became `timeoutMs`; the error for either
+      old name says what replaced it.)
     - `postgresJs()`, `drizzleStore()` and `mnemocyte/stores/drizzle` go
       in 1.0 rather than staying deprecated through 1.x. They break the
       single-object rule, and `store: client` covers them (decision 23).

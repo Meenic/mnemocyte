@@ -1,5 +1,6 @@
 import { createPostgresStore } from "./memory/postgres.js";
 import { createMnemocyteStoreConfig } from "./memory/store-config.js";
+import { assertKnownKeys } from "./options.js";
 import { type PostgresClient, toSqlExecutor } from "./sql/clients.js";
 import type { MnemocyteStoreConfig } from "./types.js";
 
@@ -60,6 +61,7 @@ export interface PostgresStoreOptions {
 export function postgresStore(
 	options: PostgresStoreOptions,
 ): MnemocyteStoreConfig {
+	assertKnownKeys("postgresStore", options, ["client"]);
 	return createMnemocyteStoreConfig(
 		createPostgresStore(toSqlExecutor(options.client)),
 	);

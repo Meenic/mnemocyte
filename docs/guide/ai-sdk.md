@@ -39,6 +39,10 @@ own session or auth, never from the request body.
 Passing the unbound client (`memory` instead of `memory.for(...)`) throws
 `"CONFIG"`.
 
+Every function here throws `"CONFIG"` for an option it does not take,
+including the keys of `context` and `save`. `extractMemories` also takes a
+`MemoryTurn` spread into its input, so `finishReason` is allowed.
+
 ### `searchMemories`
 
 | Input | |
@@ -305,7 +309,7 @@ account numbers or id numbers.
 | `model` | Required. A model object, or a `"provider/model"` id for the AI SDK's global provider (the AI Gateway by default). A small, fast model is usually enough. |
 | `instructions` | Added after the built-in rules, such as `"Only remember dietary preferences."` At most 4,000 characters. |
 | `maxMemories` | Most memories stored per turn, 1–20. Defaults to 10. |
-| `timeout` | Milliseconds for the whole extraction. Defaults to 30,000. |
+| `timeoutMs` | Milliseconds for the whole extraction. Defaults to 30,000. |
 | `waitUntil` | Receives each extraction's promise. Pass your platform's `waitUntil`, or the function may stop before the extraction finishes. |
 
 Extraction never changes the response and never fails it. A failure (the

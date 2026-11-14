@@ -1,15 +1,16 @@
 import { MnemocyteError } from "../errors.js";
 import { createHttpEmbedder, type PurposeHints } from "../http-embedder.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
 
 export type { PurposeHint, PurposeHints } from "../http-embedder.js";
 
 export interface OpenAICompatibleEmbedderOptions {
 	/**
-	 * Base URL of the API; requests go to `{baseUrl}/embeddings`. For example
+	 * Base URL of the API; requests go to `{baseURL}/embeddings`. For example
 	 * `http://localhost:11434/v1` for Ollama.
 	 */
-	readonly baseUrl: string;
+	readonly baseURL: string;
 	/** Embedding model id, as the server names it. */
 	readonly model: string;
 	/** Length of the vectors the model returns. */
@@ -49,7 +50,7 @@ export interface OpenAICompatibleEmbedderOptions {
  * @example
  * ```ts
  * const embedder = openaiCompatibleEmbedder({
- *   baseUrl: "http://localhost:11434/v1",
+ *   baseURL: "http://localhost:11434/v1",
  *   model: "nomic-embed-text",
  *   dimensions: 768,
  *   purposes: {
@@ -62,6 +63,21 @@ export interface OpenAICompatibleEmbedderOptions {
 export function openaiCompatibleEmbedder(
 	options: OpenAICompatibleEmbedderOptions,
 ): Embedder {
+	assertKnownKeys(
+		"openaiCompatibleEmbedder",
+		options,
+		[
+			"baseURL",
+			"model",
+			"dimensions",
+			"apiKey",
+			"headers",
+			"maxBatch",
+			"sendDimensions",
+			"purposes",
+		],
+		RENAMED_BASE_URL,
+	);
 	if (
 		options.sendDimensions !== undefined &&
 		typeof options.sendDimensions !== "boolean"
@@ -74,7 +90,7 @@ export function openaiCompatibleEmbedder(
 	return createHttpEmbedder({
 		name: "openaiCompatibleEmbedder",
 		provider: "Embedding provider",
-		baseUrl: options.baseUrl,
+		baseURL: options.baseURL,
 		model: options.model,
 		dimensions: options.dimensions,
 		apiKey: options.apiKey,

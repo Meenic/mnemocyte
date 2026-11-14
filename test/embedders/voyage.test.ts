@@ -55,14 +55,14 @@ describe("voyageEmbedder", () => {
 		});
 	});
 
-	test("prefers apiKey and sends output_dimension, truncation and baseUrl", async () => {
+	test("prefers apiKey and sends output_dimension, truncation and baseURL", async () => {
 		vi.stubEnv("VOYAGE_API_KEY", "env-key");
 		const embedder = voyageEmbedder({
 			apiKey: "explicit-key",
 			model: "voyage-3.5-lite",
 			dimensions: 256,
 			truncate: false,
-			baseUrl: "https://proxy.example/voyage/v1/",
+			baseURL: "https://proxy.example/voyage/v1/",
 			maxBatch: 20,
 		});
 		expect(embedder).toMatchObject({ dimensions: 256, maxBatch: 20 });
@@ -125,7 +125,7 @@ describe("voyageEmbedder", () => {
 			{ apiKey: "k", model: "voyage-4", truncate: "yes" },
 		],
 		["a zero maxBatch", { apiKey: "k", model: "voyage-4", maxBatch: 0 }],
-		["a relative baseUrl", { apiKey: "k", model: "voyage-4", baseUrl: "/v1" }],
+		["a relative baseURL", { apiKey: "k", model: "voyage-4", baseURL: "/v1" }],
 	])("rejects %s with CONFIG", (_label, options) => {
 		vi.stubEnv("VOYAGE_API_KEY", "");
 		expect(() =>

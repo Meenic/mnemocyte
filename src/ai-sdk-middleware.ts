@@ -8,6 +8,7 @@ import {
 } from "./ai-sdk-extraction.js";
 import { isMnemocyteError, MnemocyteError } from "./errors.js";
 import { MAX_CONTENT_LENGTH } from "./memory/limits.js";
+import { assertKnownKeys } from "./options.js";
 import type { BoundContextInput, BoundMemoryClient } from "./types.js";
 
 type TransformParams = NonNullable<LanguageModelMiddleware["transformParams"]>;
@@ -151,6 +152,21 @@ const RESERVED_CONTEXT_FIELDS: readonly string[] = [
 	"scope",
 	"allNamespaces",
 ];
+/** The `context()` settings the middleware passes on, as `context` keys. */
+const CONTEXT_FIELDS: readonly string[] = [
+	"exactAgent",
+	"exactSession",
+	"format",
+	"maxTokens",
+	"limit",
+	"minScore",
+	"kinds",
+	"tags",
+	"includeSuperseded",
+	"includeExpired",
+	"trackAccess",
+	"tokenCounter",
+];
 /** Finish reasons after which there is no response to save. */
 const UNSAVED_FINISH_REASONS: ReadonlySet<string> = new Set([
 	"tool-calls",
@@ -192,7 +208,7 @@ function resolveSave(
 		);
 	}
 	return {
-		...resolveExtractionOptions(`${name} save`, save),
+		...resolveExtractionOptions(`${name} save`, save, ["waitUntil"]),
 		waitUntil: optionalFunction(name, "save.waitUntil", save.waitUntil),
 	};
 }
@@ -219,10 +235,23 @@ function optionalFunction<T>(
 	return value as T | undefined;
 }
 
-function resolveOptions(name: string, options: unknown): ResolvedOptions {
+function resolveOptions(
+	name: string,
+	options: unknown,
+	otherKeys: readonly string[],
+): ResolvedOptions {
 	if (!isRecord(options)) {
 		throw configError(name, "requires an options object.");
 	}
+	assertKnownKeys(name, options, [
+		"memory",
+		"placement",
+		"context",
+		"query",
+		"save",
+		"onError",
+		...otherKeys,
+	]);
 	const { memory, placement = "user", context } = options;
 	if (!isBoundClient(memory)) {
 		throw configError(
@@ -245,6 +274,9 @@ function resolveOptions(name: string, options: unknown): ResolvedOptions {
 					: `context.${field} is not accepted.`,
 			);
 		}
+	}
+	if (context !== undefined) {
+		assertKnownKeys(`${name} context`, context, CONTEXT_FIELDS);
 	}
 	return {
 		memory,
@@ -353,7 +385,7 @@ function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
 export function memoryMiddleware(
 	options: MemoryMiddlewareOptions,
 ): LanguageModelMiddleware {
-	return createMiddleware(resolveOptions("memoryMiddleware", options));
+	return createMiddleware(resolveOptions("memoryMiddleware", options, []));
 }
 
 function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
@@ -531,7 +563,7 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
  * ```
  */
 export function withMemory(options: WithMemoryOptions): MemoryWrappedModel {
-	const resolved = resolveOptions("withMemory", options);
+	const resolved = resolveOptions("withMemory", options, ["model"]);
 	const { model } = options;
 	if (typeof model === "string") {
 		throw configError(

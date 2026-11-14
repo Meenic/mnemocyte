@@ -1,4 +1,5 @@
 import { MnemocyteError, type ProviderError } from "./errors.js";
+import { assertKnownKeys } from "./options.js";
 import { createProviderError, parseErrorBody } from "./provider-error.js";
 import type {
 	Embedder,
@@ -38,7 +39,7 @@ export interface HttpEmbedderConfig {
 	readonly name: string;
 	/** Provider name used in response errors, such as `"OpenAI"`. */
 	readonly provider: string;
-	readonly baseUrl: string;
+	readonly baseURL: string;
 	readonly model: string;
 	readonly dimensions: number;
 	readonly apiKey: string | undefined;
@@ -75,17 +76,17 @@ export function assertPositiveInteger(
 	}
 }
 
-export function resolveBaseUrl(baseUrl: unknown, name: string): string {
-	if (typeof baseUrl !== "string" || baseUrl.trim().length === 0) {
-		throw new MnemocyteError(`${name} requires a baseUrl.`, "CONFIG");
+export function resolveBaseURL(baseURL: unknown, name: string): string {
+	if (typeof baseURL !== "string" || baseURL.trim().length === 0) {
+		throw new MnemocyteError(`${name} requires a baseURL.`, "CONFIG");
 	}
-	if (!URL.canParse(baseUrl)) {
+	if (!URL.canParse(baseURL)) {
 		throw new MnemocyteError(
-			`${name} baseUrl must be an absolute URL.`,
+			`${name} baseURL must be an absolute URL.`,
 			"CONFIG",
 		);
 	}
-	return baseUrl.replace(/\/+$/, "");
+	return baseURL.replace(/\/+$/, "");
 }
 
 function resolveHeaders(
@@ -125,6 +126,7 @@ function resolveHint(
 			"CONFIG",
 		);
 	}
+	assertKnownKeys(`${name} purposes.${purpose}`, hint, ["prefix", "body"]);
 	const { prefix, body } = hint;
 	if (prefix !== undefined && typeof prefix !== "string") {
 		throw new MnemocyteError(
@@ -167,6 +169,9 @@ function resolvePurposes(
 ): Record<EmbeddingPurpose, ResolvedHint> {
 	if (purposes !== undefined && !isRecord(purposes)) {
 		throw new MnemocyteError(`${name} purposes must be an object.`, "CONFIG");
+	}
+	if (purposes !== undefined) {
+		assertKnownKeys(`${name} purposes`, purposes, ["query", "document"]);
 	}
 	return {
 		query: resolveHint(purposes?.query, "query", name),
@@ -511,13 +516,13 @@ export function resolveMaxBatch(
 }
 
 /**
- * Build an {@link Embedder} for an OpenAI-shaped `POST {baseUrl}/embeddings`
+ * Build an {@link Embedder} for an OpenAI-shaped `POST {baseURL}/embeddings`
  * endpoint with `fetch`. Options are checked and snapshotted here, so a
  * mistake throws `"CONFIG"` when the embedder is created.
  */
 export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 	const { name, provider, dimensions, sendDimensions } = config;
-	const baseUrl = resolveBaseUrl(config.baseUrl, name);
+	const baseURL = resolveBaseURL(config.baseURL, name);
 	const model = resolveModel(config.model, name);
 	assertPositiveInteger(dimensions, "dimensions", name);
 	const maxBatch = resolveMaxBatch(config.maxBatch, name, undefined);
@@ -544,7 +549,7 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 		model,
 		dimensions,
 		maxBatch,
-		url: `${baseUrl}/embeddings`,
+		url: `${baseURL}/embeddings`,
 		headers,
 		buildBody(texts, purpose) {
 			const hint = hints[purpose];

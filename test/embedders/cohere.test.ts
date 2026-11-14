@@ -50,13 +50,13 @@ describe("cohereEmbedder", () => {
 		expect(lastBody()).toMatchObject({ input_type: "search_query" });
 	});
 
-	test("sends output_dimension, truncate NONE and the baseUrl", async () => {
+	test("sends output_dimension, truncate NONE and the baseURL", async () => {
 		const embedder = cohereEmbedder({
 			apiKey: "explicit-key",
 			model: "embed-v5.0-fast",
 			dimensions: 768,
 			truncate: false,
-			baseUrl: "https://proxy.example/cohere/v2",
+			baseURL: "https://proxy.example/cohere/v2",
 			maxBatch: 50,
 		});
 		expect(embedder).toMatchObject({ dimensions: 768, maxBatch: 50 });

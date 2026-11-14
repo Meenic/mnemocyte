@@ -149,7 +149,11 @@ plugin in `tsdown.config.ts` strips that comment.
   fixtures in `test/fixtures/`.
 - Validation runs before any embedder or storage call. Invalid input throws
   `MnemocyteError` with code `"VALIDATION"`; invalid configuration throws
-  `"CONFIG"` synchronously from `createMemory`.
+  `"CONFIG"` synchronously from `createMemory`. Config and option objects
+  reject unknown keys through `assertKnownKeys` (`src/options.ts`), so a
+  new option must be added to its list; an object that carries free-form
+  JSON (`providerOptions`, `purposes[*].body`, `headers`) is not checked
+  inside.
 - Input sizes are capped in `memory/limits.ts`, the same on every backend:
   `limit` 1–1,000, `content` and `query` 32,000 characters, 64 tags of 128
   characters, metadata 64 KiB as UTF-8 JSON and 32 levels deep (checked

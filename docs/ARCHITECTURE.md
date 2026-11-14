@@ -715,3 +715,25 @@ Dated 2026-10-26 unless noted.
     the project root, the first folder the CLI searches; an existing
     memory file anywhere the CLI searches is kept, and files are created
     with `O_EXCL`, so `init` never overwrites.
+38. **1.0 freeze review** (2026-11-14): the maintainer chose, for the
+    surface 1.0 freezes:
+    - `namespace` keeps its name. It already reads as "tenant or app" in
+      the docs, and a rename would touch every scope of every app for no
+      change in behaviour.
+    - `search` and `findDuplicates` keep returning arrays. Only
+      `listAuditLog`, which pages, becomes an object with an opaque
+      `nextCursor`, like `list`.
+    - Unknown option keys throw `"CONFIG"`. TypeScript flags a misspelled
+      key only in an object literal; from JavaScript, or with options built
+      elsewhere, a misspelled `baseURL` today sends content to the
+      provider's default endpoint. Rejecting unknown keys after 1.0 would be
+      a breaking change.
+    - `postgresJs()`, `drizzleStore()` and `mnemocyte/stores/drizzle` go
+      in 1.0 rather than staying deprecated through 1.x. They break the
+      single-object rule, and `store: client` covers them (decision 23).
+    - Errors gain a `reason` for the cases one `code` covers, and
+      `isMnemocyteError` checks a `Symbol.for` brand. The AI SDK
+      (`isInstance`) and Better Auth (`isAPIError`) both use a guard
+      because `instanceof` fails across duplicate package copies.
+    The resulting items are in Phase 4 of ROADMAP.md. The review's
+    additive findings wait until after 1.0.

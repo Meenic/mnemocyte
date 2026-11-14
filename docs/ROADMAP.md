@@ -5,13 +5,6 @@ the first unchecked item. The design behind each item is in
 [ARCHITECTURE.md](./ARCHITECTURE.md). Tick an item in the PR that completes
 it.
 
-## Open decisions
-
-- Rename `namespace` to `tenant` before 1.0? Other libraries use
-  "namespace" for different things (Supermemory: the user; LangGraph: a
-  key path), and ours means the tenant or app. A rename is breaking; the
-  alternative is calling it "tenant or app" everywhere in the docs.
-
 ## Phase 0: reset (0.5.x)
 
 - [x] `docs/reset-workflow`: CLAUDE.md, AGENTS.md, DEVELOPMENT.md and feature
@@ -222,8 +215,60 @@ it.
 
 ## Phase 4: 1.0
 
+The breaking changes from the freeze review (decision 38) land first, one
+branch each; `docs/v1` comes last.
+
+- [ ] `feat/audit-log-pages`: `listAuditLog` returns
+  `{ events, nextCursor }` and takes an opaque `cursor`, like `list`,
+  instead of an array paged with `beforeCursor` / `afterCursor`; `before`
+  and `after` stay as filters. `AuditEvent.type`, typed as a union of the
+  five event names, replaces `description` (the column keeps its name).
+  `listAuditLog` takes a selector like `pruneAuditLog`: `entityId`
+  optional, plus `allNamespaces: true`.
+- [ ] `chore/drop-legacy-surface`: remove `experimental.consolidate` (the
+  deprecated alias, as promised for 1.0), `postgresJs()`, `drizzleStore()`
+  and the `mnemocyte/stores/drizzle` subpath, which take positional
+  arguments and duplicate `store: client`; `postgresStore({ client })`
+  stays. Drop `migrations/0000_initial.sql.template`,
+  `migrations/render-initial.mjs` (replaced by `mnemocyte sql`),
+  `migrations/meta/_journal.json` and the empty `dist/cli.d.mts` from the
+  tarball; the numbered SQL files and `fresh-install.sql` keep shipping.
+- [ ] `fix/strict-options`: unknown keys in `createMemory`'s config, the
+  embedder options and the AI SDK options throw `"CONFIG"` instead of being
+  ignored. TypeScript catches a misspelled key only in an object literal;
+  from JavaScript, or with options built elsewhere,
+  `openaiEmbedder({ baseURL })` today sends the texts and
+  `OPENAI_API_KEY` to api.openai.com.
+  Rename `baseUrl` to `baseURL`, the AI SDK's spelling, and the extraction
+  `timeout` to `timeoutMs`, like `provider.timeoutMs`. `kinds` and `tags`
+  inputs become `readonly` arrays everywhere (additive).
+- [ ] `feat/error-reasons`: a stable `reason` on `MnemocyteError` for the
+  cases one code covers today (`CONFLICT`: key in use, consolidation link;
+  `CONFIG`: bad config, embedder or dimensions that do not match the
+  installation; `MIGRATION`: missing schema, mixed models, failed
+  migration), so callers never match on messages. `isMnemocyteError`
+  checks a `Symbol.for` brand instead of `instanceof`, so two copies of the
+  package recognise each other's errors. Document which unions may gain
+  members in a minor (error codes and reasons, observability operations,
+  backends, audit event types) and fix the 0.5 example in the
+  `MnemocyteError` JSDoc. The dimensions-mismatch `"CONFIG"` message says
+  to "render and apply a migration for the selected embedding dimension",
+  which does not exist (`migrate` rejects a different dimension on an
+  existing installation); it should name what does work.
 - [ ] `docs/v1`: API freeze review, README and feature docs pass, upgrade
-  guide from 0.5.
+  guide from 0.5. Also: decision 3's list of what 1.0 covers (the Voyage,
+  Cohere and Gemini embedders, middleware, extraction, the CLI's commands,
+  flags and exit codes but not its text); the recall numbers in
+  `guide/limitations.md` (88% / 60% are `strict_order` runs; the benchmark
+  build gives 95.8% / 80.7% with `relaxed_order`, and recall varies between
+  index builds) and its "renderer" wording; the stale "Phase 1" note in
+  `features/postgres.md` "Known problems"; `init` in the README's setup
+  line. New limitations: the English text search configuration is fixed
+  in the schema, so other languages get English stemming and stop words;
+  switching embedding models has no supported path beyond re-embedding or
+  deleting rows by hand ("Repair mixed models" in `guide/postgres.md`);
+  and how an update from 0.7 behaves (prune with dependents, approximate
+  `findDuplicates`, hooks not awaited).
 
 ## Cut first if time runs short
 
@@ -239,3 +284,10 @@ it.
   users manage the tables with `drizzle-kit`.
 - A `schemaName` option to keep the tables outside `public`.
 - OpenTelemetry integration on the observability hooks.
+- Additive items from the freeze review: a context method that also
+  returns the memories it used; `before` / `after` on `list` and
+  `context`; `signal` on `stats`; `agentId` / `sessionId` on observability
+  events; a custom `fetch` on the fetch-based embedders; `--json` for
+  `check` and `migrate --dry-run`; an install-time text search
+  configuration; an indexed memory id on audit events for per-memory
+  history.

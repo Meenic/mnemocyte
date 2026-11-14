@@ -303,13 +303,23 @@ reopened; its additive findings are in "After 1.0".
   fields, since `Required<>` keeps an explicit `undefined`. The internal
   `...(x === undefined ? {} : { x })` spreads stay, as the maintainer chose:
   most feed internal store types that stay exact on purpose.
-- [ ] `fix/created-filters`: one name for the creation-time filter.
+- [x] `fix/created-filters`: one name for the creation-time filter.
   `search` filters `createdAt` with `before` / `after`, `prune` with
   `createdBefore`, and `listAuditLog` / `pruneAuditLog` use `before` /
   `after` for the event time. Either rename `search`'s pair to
   `createdBefore` / `createdAfter` (breaking, so before 1.0) or keep it and
   record why; the maintainer decides. The "After 1.0" filters on `list`
-  and `context` take the chosen name.
+  and `context` take the chosen name. Landed as a rename (decision 40);
+  the internal `StoreMemoryFilter` took the same names. Method inputs are
+  not checked for unknown keys, so `before` / `after` on `search` throw
+  `"VALIDATION"` naming the new key, as the maintainer chose.
+- [ ] `fix/strict-inputs`: unknown keys on method inputs. Config and
+  embedder options throw `"CONFIG"` for a key they do not take (decision
+  38), but method inputs ignore one, so a misspelled `kind` on `search` or
+  `expird` on `prune` is silently dropped and the call matches more than
+  asked. Rejecting them after 1.0 would be breaking. Decide whether method
+  inputs throw `"VALIDATION"` for unknown keys before 1.0, and whether the
+  bound client's inputs share the check.
 - [ ] `docs/api-review`: documentation fixes from the review; no code
   change.
   - Stability (`guide/api.md`, revising decision 39): text the model reads
@@ -354,8 +364,8 @@ reopened; its additive findings are in "After 1.0".
 - A `schemaName` option to keep the tables outside `public`.
 - OpenTelemetry integration on the observability hooks.
 - Additive items from the freeze review: a context method that also
-  returns the memories it used; `before` / `after` on `list` and
-  `context`; `signal` on `stats`; `agentId` / `sessionId` on observability
+  returns the memories it used; `createdBefore` / `createdAfter` on
+  `list` and `context`; `signal` on `stats`; `agentId` / `sessionId` on observability
   events; a custom `fetch` on the fetch-based embedders; `--json` for
   `check` and `migrate --dry-run`; an install-time text search
   configuration; an indexed memory id on audit events for per-memory

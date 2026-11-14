@@ -134,6 +134,18 @@ to one scope whose methods take no `scope`; see
   openaiEmbedder({ model, baseURL: "https://proxy.example/v1" });
   ```
 
+- **`search` filters `createdAt` with `createdBefore` / `createdAfter`**,
+  the name `prune` already uses. `before` and `after` throw
+  `"VALIDATION"` naming the new key. `listAuditLog` and `pruneAuditLog`
+  keep `before` / `after`.
+
+  ```ts
+  // 0.8
+  await memory.search({ scope, query, after: lastWeek });
+  // 1.0
+  await memory.search({ scope, query, createdAfter: lastWeek });
+  ```
+
 - **`listAuditLog` pages like `list`.** It returns `{ events, nextCursor }`
   and takes `cursor`; `beforeCursor`, `afterCursor` and `AuditLogCursor` are
   gone. `entityId` is optional, and `allNamespaces: true` lists every

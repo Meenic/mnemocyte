@@ -20,6 +20,7 @@ import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
+	verifyCreatedFilters,
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
 	verifyListPaging,
@@ -356,6 +357,11 @@ export function describeStoreContract(
 		test("get and scope validation", async () => {
 			const { memory, namespace } = client("get");
 			await verifyGetAndScopeValidation(memory, namespace);
+		});
+
+		test("search created filters", async () => {
+			const { memory, namespace } = client("created");
+			await verifyCreatedFilters(memory, namespace);
 		});
 
 		test("default namespace and bound clients", async () => {

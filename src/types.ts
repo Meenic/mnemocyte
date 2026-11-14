@@ -800,10 +800,13 @@ export interface SearchInput<DefaultNamespace extends boolean = false>
 	kinds?: readonly MemoryKind[] | undefined;
 	/** Require results to include all of these tags. */
 	tags?: readonly string[] | undefined;
-	/** Only include memories created strictly before this date. */
-	before?: Date | undefined;
-	/** Only include memories created strictly after this date. */
-	after?: Date | undefined;
+	/**
+	 * Only include memories whose `createdAt` is strictly before this date.
+	 * Same name as {@link PruneSelectors.createdBefore}.
+	 */
+	createdBefore?: Date | undefined;
+	/** Only include memories whose `createdAt` is strictly after this date. */
+	createdAfter?: Date | undefined;
 	/** Include memories that have been superseded. @defaultValue `false` */
 	includeSuperseded?: boolean | undefined;
 	/** Include memories whose `expiresAt` has passed. @defaultValue `false` */

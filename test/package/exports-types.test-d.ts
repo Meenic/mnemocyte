@@ -341,8 +341,12 @@ const search: SearchInput = {
 	scope,
 	query: "query",
 	kinds: [kind],
+	createdBefore: new Date(),
+	createdAfter: new Date(0),
 	exactAgent: true,
 };
+// @ts-expect-error search's created filters are createdBefore / createdAfter.
+const searchBefore: SearchInput = { scope, query: "query", before: new Date() };
 const update: UpdateInput = {
 	scope,
 	id: "id",
@@ -618,6 +622,7 @@ void addMany;
 void client.add(add);
 void client.addMany(addMany);
 void search;
+void searchBefore;
 void update;
 void prune;
 void pruneAll;

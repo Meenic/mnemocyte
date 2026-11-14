@@ -146,6 +146,23 @@ to one scope whose methods take no `scope`; see
   await memory.search({ scope, query, createdAfter: lastWeek });
   ```
 
+- **Unknown keys on method inputs throw `"VALIDATION"`**, in the input of
+  every client method (bound clients included) and `migrate`, in its
+  `scope`, and in each `addMany` memory. A misspelled key used to be
+  ignored, so `deleteScope({ scope: { namespace, entityId, sessionID } })`
+  erased the entity in every session and `migrate({ memory, dryrun: true })`
+  applied the migrations. An input object reused across methods now has to
+  carry only the keys each one takes:
+
+  ```ts
+  // 0.8: maxTokens was ignored by search
+  const input = { scope, query, maxTokens: 800 };
+  await memory.search(input);
+  // 1.0
+  const { maxTokens, ...searchInput } = input;
+  await memory.search(searchInput);
+  ```
+
 - **`listAuditLog` pages like `list`.** It returns `{ events, nextCursor }`
   and takes `cursor`; `beforeCursor`, `afterCursor` and `AuditLogCursor` are
   gone. `entityId` is optional, and `allNamespaces: true` lists every

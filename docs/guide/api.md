@@ -5,7 +5,10 @@ one object parameter, and every method that can run long accepts
 `signal: AbortSignal`. An optional field set to `undefined` means the same as
 leaving it out, and the types allow it under `exactOptionalPropertyTypes`, so
 a `cursor` or `signal` that may be `undefined` passes straight through.
-Failures are `MnemocyteError` with a stable `code` (see [errors](#errors)).
+A key a method does not take throws `"VALIDATION"`, even set to
+`undefined`, in the input, its `scope` and each `addMany` memory, so a
+misspelled filter never widens a read or a delete; `metadata` and
+`tokenCounter` keep whatever keys they hold. Failures are `MnemocyteError` with a stable `code` (see [errors](#errors)).
 Upgrading from 0.x? See [upgrading.md](./upgrading.md).
 
 ## `createMemory`
@@ -769,7 +772,7 @@ try {
 | Code | Thrown when |
 |---|---|
 | `CONFIG` | Invalid configuration, or the embedder does not match the Postgres installation. Has a `reason`. |
-| `VALIDATION` | Invalid method input, including a missing or malformed scope. Nothing was embedded or stored. |
+| `VALIDATION` | Invalid method input, including a missing or malformed scope and a key the method or the scope does not take. Nothing was embedded or stored. |
 | `EMBEDDING` | The embedder threw or returned invalid vectors. A provider's error status throws a `ProviderError` with `status` and the response body as `cause` (see [embedders.md](./embedders.md#provider-errors)). |
 | `TIMEOUT` | An embedder attempt exceeded `provider.timeoutMs`. |
 | `ABORTED` | The caller's `AbortSignal` fired. |
@@ -829,6 +832,10 @@ over them needs a `default` branch: `MnemocyteErrorCode`,
 `MnemocyteBackend` and `AuditEventType`. The other unions (`MemoryKind`,
 `ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
 `MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
+
+A minor release may add optional input keys. Unknown keys throw, so code
+that uses one fails on an older version with `"VALIDATION"` instead of
+running without it.
 
 ## Upgrading
 

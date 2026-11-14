@@ -313,13 +313,19 @@ reopened; its additive findings are in "After 1.0".
   the internal `StoreMemoryFilter` took the same names. Method inputs are
   not checked for unknown keys, so `before` / `after` on `search` throw
   `"VALIDATION"` naming the new key, as the maintainer chose.
-- [ ] `fix/strict-inputs`: unknown keys on method inputs. Config and
+- [x] `fix/strict-inputs`: unknown keys on method inputs. Config and
   embedder options throw `"CONFIG"` for a key they do not take (decision
   38), but method inputs ignore one, so a misspelled `kind` on `search` or
   `expird` on `prune` is silently dropped and the call matches more than
   asked. Rejecting them after 1.0 would be breaking. Decide whether method
   inputs throw `"VALIDATION"` for unknown keys before 1.0, and whether the
-  bound client's inputs share the check.
+  bound client's inputs share the check. Landed as `"VALIDATION"` without
+  a reason (decision 41), as the maintainer chose, on every method input,
+  `scope` and `addMany` memory, and on `migrate`'s input, which a
+  misspelled `dryRun` would otherwise run for real; `metadata` and
+  `tokenCounter` stay unchecked. Bound inputs share the core check, and
+  bound `stats()` now rejects any key. Decision 40's rename check became
+  the `renamed` map of `search`'s list.
 - [ ] `docs/api-review`: documentation fixes from the review; no code
   change.
   - Stability (`guide/api.md`, revising decision 39): text the model reads

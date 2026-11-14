@@ -66,9 +66,11 @@ import type {
 } from "./store.js";
 import {
 	assertDistinctKeys,
+	assertInputKeys,
 	assertKey,
 	assertLimit,
 	assertMinScore,
+	assertNewMemoryKeys,
 	assertNonEmptyString,
 	assertOptionalSignal,
 	contextInputToSearchInput,
@@ -383,11 +385,14 @@ export function createMemoryClient(
 			store.backend,
 			"add",
 			scopeMetadata(input),
-			() => ({
-				scope: validateScope(input.scope),
-				memory: snapshotNewMemory(input),
-				signal: input.signal,
-			}),
+			() => {
+				assertInputKeys("add", input);
+				return {
+					scope: validateScope(input.scope),
+					memory: snapshotNewMemory(input),
+					signal: input.signal,
+				};
+			},
 			async ({ scope, memory, signal }) => {
 				validateNewMemory(memory);
 				assertOptionalSignal(signal);
@@ -426,6 +431,7 @@ export function createMemoryClient(
 			"addMany",
 			{ ...scopeMetadata(input), ...(count === undefined ? {} : { count }) },
 			() => {
+				assertInputKeys("addMany", input);
 				const scope = validateScope(input.scope);
 				if (!Array.isArray(input.memories)) {
 					throw new MnemocyteError({
@@ -439,6 +445,9 @@ export function createMemoryClient(
 						code: "VALIDATION",
 					});
 				}
+				input.memories.forEach((memory: unknown, index) => {
+					assertNewMemoryKeys(memory, `memories[${index}]`);
+				});
 				return {
 					scope,
 					memories: input.memories.map(snapshotNewMemory),
@@ -589,6 +598,7 @@ export function createMemoryClient(
 				"get",
 				scopeMetadata(input),
 				async () => {
+					assertInputKeys("get", input);
 					const visibility = validateVisibility(input);
 					assertOptionalSignal(input.signal);
 					throwIfAborted(input.signal);
@@ -628,6 +638,7 @@ export function createMemoryClient(
 				"list",
 				scopeMetadata(input),
 				async () => {
+					assertInputKeys("list", input);
 					const visibility = validateVisibility(input);
 					validateListFilter(input);
 					throwIfAborted(input.signal);
@@ -667,10 +678,13 @@ export function createMemoryClient(
 					...scopeMetadata(input),
 					...(typeof input?.id === "string" ? { memoryId: input.id } : {}),
 				},
-				() => ({
-					scope: validateScope(input.scope),
-					fields: snapshotUpdateFields(input),
-				}),
+				() => {
+					assertInputKeys("update", input);
+					return {
+						scope: validateScope(input.scope),
+						fields: snapshotUpdateFields(input),
+					};
+				},
 				async ({ scope, fields }) => {
 					assertNonEmptyString(input.id, "id");
 					validateUpdateFields(fields);
@@ -754,6 +768,7 @@ export function createMemoryClient(
 				"deleteScope",
 				scopeMetadata(input),
 				async () => {
+					assertInputKeys("deleteScope", input);
 					const selector = validateEntitySelector(input?.scope);
 					assertOptionalSignal(input.signal);
 					throwIfAborted(input.signal);
@@ -887,6 +902,7 @@ export function createMemoryClient(
 				"stats",
 				scopeMetadata(input),
 				async () => {
+					assertInputKeys("stats", input);
 					const selector = validateSelectorInput(input);
 					return store.stats(selector, new Date());
 				},

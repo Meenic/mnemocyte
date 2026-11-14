@@ -1,19 +1,26 @@
 import { MnemocyteError } from "../errors.js";
-import { assertKnownKeys } from "../options.js";
+import { assertKnownKeys, unknownKeyMessage } from "../options.js";
 import { resolveBoosts, resolveFusion } from "../retrieval/scorer.js";
 import type {
+	AddInput,
+	AddManyInput,
 	ConsolidateInput,
 	ContextInput,
 	DeleteInput,
+	DeleteScopeInput,
 	DependentsPolicy,
 	Embedder,
 	FindDuplicatesInput,
 	FindDuplicatesPageInput,
+	GetInput,
 	ImportanceLevel,
 	ListAuditLogInput,
+	ListInput,
 	MemoryConfig,
 	MemoryKind,
+	MemoryScope,
 	MigrateInput,
+	MnemocyteOperation,
 	NewMemory,
 	ProviderResilienceConfig,
 	PruneAuditLogInput,
@@ -21,6 +28,8 @@ import type {
 	RetrievalConfig,
 	ScopedReadOptions,
 	SearchInput,
+	StatsInput,
+	UpdateInput,
 } from "../types.js";
 import {
 	DEFAULT_AUDIT_PRUNE_BATCH,
@@ -140,6 +149,226 @@ function inputError(
 	return code === "CONFIG"
 		? new MnemocyteError({ message, code, reason: "INVALID_OPTION" })
 		: new MnemocyteError({ message, code });
+}
+
+/** Every key of `T`, including those of each member of a union. */
+type AllKeys<T> = T extends unknown ? keyof T : never;
+
+/**
+ * The keys a method input takes. The record type makes the compiler reject a
+ * key the input type lacks and require each one it has, so the list follows
+ * the type.
+ */
+function inputKeys<T>(keys: Record<AllKeys<T>, true>): readonly string[] {
+	return Object.freeze(Object.keys(keys));
+}
+
+/**
+ * Throw `"VALIDATION"` when `value` has a key that is not in `accepted`.
+ *
+ * TypeScript flags a misspelled key only in an object literal; from
+ * JavaScript, or with an input built elsewhere, an ignored `kind` filter or
+ * scope `sessionId` would make the call match more than asked, and a
+ * `deleteScope` or `prune` delete more. A key set to `undefined` still
+ * counts. `name` prefixes the message (`search`, `scope`, `memories[2]`);
+ * `renamed` maps a key an earlier version took to its current name.
+ */
+export function assertKnownInputKeys(
+	name: string,
+	value: unknown,
+	accepted: readonly string[],
+	renamed: Readonly<Record<string, string>> = {},
+): void {
+	const message = unknownKeyMessage(name, value, accepted, renamed, "key");
+	if (message !== undefined) {
+		throw new MnemocyteError({ message, code: "VALIDATION" });
+	}
+}
+
+const SCOPE_KEYS = inputKeys<MemoryScope>({
+	namespace: true,
+	entityId: true,
+	agentId: true,
+	sessionId: true,
+});
+
+const NEW_MEMORY_FIELDS = {
+	content: true,
+	key: true,
+	kind: true,
+	importance: true,
+	tags: true,
+	source: true,
+	metadata: true,
+	confidence: true,
+	expiresAt: true,
+} as const satisfies Record<keyof NewMemory, true>;
+
+const NEW_MEMORY_KEYS = inputKeys<NewMemory>(NEW_MEMORY_FIELDS);
+
+const READ_SCOPE_FIELDS = {
+	scope: true,
+	exactAgent: true,
+	exactSession: true,
+} as const;
+
+const FILTER_FIELDS = {
+	kinds: true,
+	tags: true,
+	includeSuperseded: true,
+	includeExpired: true,
+} as const;
+
+/** The methods whose input {@link assertInputKeys} checks. */
+export type CheckedInput =
+	| Exclude<MnemocyteOperation, "trackAccess">
+	| "migrate";
+
+/** The keys each method input takes, by method name. */
+const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
+	add: inputKeys<AddInput>({ ...NEW_MEMORY_FIELDS, scope: true, signal: true }),
+	addMany: inputKeys<AddManyInput>({
+		scope: true,
+		memories: true,
+		signal: true,
+	}),
+	search: inputKeys<SearchInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		query: true,
+		limit: true,
+		minScore: true,
+		createdBefore: true,
+		createdAfter: true,
+		explain: true,
+		trackAccess: true,
+		signal: true,
+	}),
+	get: inputKeys<GetInput>({
+		...READ_SCOPE_FIELDS,
+		id: true,
+		key: true,
+		signal: true,
+	}),
+	list: inputKeys<ListInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		limit: true,
+		cursor: true,
+		signal: true,
+	}),
+	update: inputKeys<UpdateInput>({
+		...NEW_MEMORY_FIELDS,
+		scope: true,
+		id: true,
+		signal: true,
+	}),
+	delete: inputKeys<DeleteInput>({
+		scope: true,
+		id: true,
+		dependents: true,
+		signal: true,
+	}),
+	deleteScope: inputKeys<DeleteScopeInput>({ scope: true, signal: true }),
+	context: inputKeys<ContextInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		query: true,
+		format: true,
+		maxTokens: true,
+		limit: true,
+		minScore: true,
+		trackAccess: true,
+		tokenCounter: true,
+		signal: true,
+	}),
+	prune: inputKeys<PruneInput>({
+		scope: true,
+		allNamespaces: true,
+		expired: true,
+		superseded: true,
+		createdBefore: true,
+		notAccessedSince: true,
+		kinds: true,
+		tags: true,
+		maxImportance: true,
+		dryRun: true,
+		signal: true,
+	}),
+	findDuplicates: inputKeys<FindDuplicatesInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		threshold: true,
+		limit: true,
+		neighbors: true,
+		signal: true,
+	}),
+	findDuplicatesPage: inputKeys<FindDuplicatesPageInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		threshold: true,
+		neighbors: true,
+		batchSize: true,
+		cursor: true,
+		signal: true,
+	}),
+	listAuditLog: inputKeys<ListAuditLogInput>({
+		scope: true,
+		allNamespaces: true,
+		limit: true,
+		cursor: true,
+		before: true,
+		after: true,
+		signal: true,
+	}),
+	pruneAuditLog: inputKeys<PruneAuditLogInput>({
+		scope: true,
+		allNamespaces: true,
+		before: true,
+		batchSize: true,
+		dryRun: true,
+		signal: true,
+	}),
+	stats: inputKeys<StatsInput>({ scope: true, allNamespaces: true }),
+	consolidate: inputKeys<ConsolidateInput>({
+		scope: true,
+		survivorId: true,
+		supersededIds: true,
+		mergeTags: true,
+		signal: true,
+	}),
+	migrate: inputKeys<MigrateInput>({
+		memory: true,
+		store: true,
+		dimensions: true,
+		createExtension: true,
+		dryRun: true,
+		signal: true,
+	}),
+};
+
+/** Keys `search` took before 1.0, by their current name (decision 40). */
+const RENAMED_SEARCH_FILTERS: Readonly<Record<string, string>> = {
+	before: "createdBefore",
+	after: "createdAfter",
+};
+
+/**
+ * Throw `"VALIDATION"` when the input of `method` has a key the method does
+ * not take. `search` names the replacement of `before` and `after`.
+ */
+export function assertInputKeys(method: CheckedInput, input: unknown): void {
+	assertKnownInputKeys(
+		method,
+		input,
+		INPUT_KEYS[method],
+		method === "search" ? RENAMED_SEARCH_FILTERS : {},
+	);
+}
+
+/** Throw `"VALIDATION"` when a memory of `addMany` has an unknown key. */
+export function assertNewMemoryKeys(value: unknown, field: string): void {
+	assertKnownInputKeys(field, value, NEW_MEMORY_KEYS);
 }
 
 function assertValidDate(value: unknown, field: string): asserts value is Date {
@@ -483,6 +712,7 @@ function optionalScopeField(value: unknown, field: string): string | null {
  */
 export function validateScope(value: unknown, field = "scope"): StoreScope {
 	assertObject(value, field);
+	assertKnownInputKeys(field, value, SCOPE_KEYS);
 	const scope = value as Record<string, unknown>;
 	assertScopeField(scope.namespace, `${field}.namespace`);
 	assertScopeField(scope.entityId, `${field}.entityId`);
@@ -528,6 +758,7 @@ function selectorFromScope(
 	requireEntity: boolean,
 ): StoreSelector {
 	assertObject(value, field);
+	assertKnownInputKeys(field, value, SCOPE_KEYS);
 	const scope = value as Record<string, unknown>;
 	assertScopeField(scope.namespace, `${field}.namespace`);
 	if (requireEntity || scope.entityId !== undefined) {
@@ -693,35 +924,8 @@ function validateMemoryFilterFields(input: {
 	assertOptionalBoolean(input.includeExpired, "includeExpired");
 }
 
-/** Keys `search` took before 1.0, by their current name. */
-const RENAMED_SEARCH_FILTERS: Readonly<Record<string, string>> = {
-	before: "createdBefore",
-	after: "createdAfter",
-};
-
-/**
- * Throw `"VALIDATION"` when `input` has a key an earlier version took.
- *
- * Method inputs are not checked for unknown keys, so a renamed filter would
- * otherwise be ignored and the call would match more than asked. A key set
- * to `undefined` still counts, as in `assertKnownKeys`.
- */
-function assertNotRenamed(
-	name: string,
-	input: object,
-	renamed: Readonly<Record<string, string>>,
-): void {
-	for (const [key, replacement] of Object.entries(renamed)) {
-		if (Object.hasOwn(input, key)) {
-			throw new MnemocyteError({
-				message: `${name} does not accept "${key}": it was renamed "${replacement}".`,
-				code: "VALIDATION",
-			});
-		}
-	}
-}
-
 export function validateSearchInput(input: SearchInput): StoreVisibility {
+	assertInputKeys("search", input);
 	const visibility = validateVisibility(input);
 	assertContent(input.query, "query");
 	if (input.limit !== undefined) {
@@ -731,7 +935,6 @@ export function validateSearchInput(input: SearchInput): StoreVisibility {
 		assertMinScore(input.minScore);
 	}
 	validateMemoryFilterFields(input);
-	assertNotRenamed("search", input, RENAMED_SEARCH_FILTERS);
 	if (input.createdBefore !== undefined) {
 		assertValidDate(input.createdBefore, "createdBefore");
 	}
@@ -760,6 +963,7 @@ export function validateListFilter(input: {
 }
 
 export function validateContextInput(input: ContextInput): void {
+	assertInputKeys("context", input);
 	assertOptionalTrackAccess(input.trackAccess);
 	if (
 		input.format !== undefined &&
@@ -876,6 +1080,7 @@ export function validateUpdateFields(input: PreparedUpdateFields): void {
  * normalization leaves no selector besides the scope.
  */
 export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
+	assertInputKeys("prune", input);
 	const selector = validateSelectorInput(input);
 	for (const [field, value] of [
 		["expired", input.expired],
@@ -954,6 +1159,7 @@ export function validatePruneInput(input: PruneInput): ValidatedPruneFilter {
 export function validatePruneAuditLogInput(
 	input: PruneAuditLogInput,
 ): StoreAuditPruneInput {
+	assertInputKeys("pruneAuditLog", input);
 	const selector = validateSelectorInput(input);
 	if (input.before === undefined) {
 		throw new MnemocyteError({
@@ -988,6 +1194,7 @@ export function validatePruneAuditLogInput(
 export function validateFindDuplicatesInput(
 	input: FindDuplicatesInput,
 ): StoreVisibility {
+	assertInputKeys("findDuplicates", input);
 	const visibility = validateDuplicateSearch(input);
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
@@ -1002,6 +1209,7 @@ export function validateFindDuplicatesInput(
 export function validateFindDuplicatesPageInput(
 	input: FindDuplicatesPageInput,
 ): { visibility: StoreVisibility; batchSize: number } {
+	assertInputKeys("findDuplicatesPage", input);
 	const visibility = validateDuplicateSearch(input);
 	const batchSize = input.batchSize ?? DEFAULT_DUPLICATE_BATCH_SIZE;
 	if (
@@ -1064,6 +1272,7 @@ export function validateDeleteInput(input: DeleteInput): {
 	scope: StoreScope;
 	dependents: DependentsPolicy;
 } {
+	assertInputKeys("delete", input);
 	const scope = validateScope(input.scope);
 	assertNonEmptyString(input.id, "id");
 	if (
@@ -1087,6 +1296,7 @@ export function validateDeleteInput(input: DeleteInput): {
  * without the survivor) and return its scope.
  */
 export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
+	assertInputKeys("consolidate", input);
 	const scope = validateScope(input.scope);
 	assertNonEmptyString(input.survivorId, "survivorId");
 	if (!Array.isArray(input.supersededIds)) {
@@ -1131,6 +1341,7 @@ export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
 export function validateListAuditLogInput(
 	input: ListAuditLogInput,
 ): StoreSelector {
+	assertInputKeys("listAuditLog", input);
 	const selector = validateSelectorInput(input);
 	if (input.limit !== undefined) {
 		assertLimit(input.limit);
@@ -1160,6 +1371,7 @@ export function validateMigrateInput(input: MigrateInput): void {
 			code: "VALIDATION",
 		});
 	}
+	assertInputKeys("migrate", input);
 	const hasMemory = input.memory !== undefined;
 	const hasStore = input.store !== undefined;
 	if (hasMemory === hasStore) {

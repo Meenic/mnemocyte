@@ -793,7 +793,29 @@ Dated 2026-10-26 unless noted.
     used. A memory has four times (`createdAt`, `updatedAt`,
     `lastAccessedAt`, `expiresAt`), so a bare `before` on `list` or
     `context` after 1.0 would be ambiguous; an audit event has one, so
-    `listAuditLog` and `pruneAuditLog` keep `before` / `after`. Method
-    inputs are not checked for unknown keys, so the old names throw
-    `"VALIDATION"` naming the new ones rather than being ignored, which
-    would widen the search. The check stays through 1.x.
+    `listAuditLog` and `pruneAuditLog` keep `before` / `after`. The old
+    names throw `"VALIDATION"` naming the new ones rather than being
+    ignored, which would widen the search. The check stays through 1.x;
+    since decision 41 it is the `renamed` map of `search`'s key check.
+41. **Method inputs reject unknown keys** (2026-11-15, landed): the
+    maintainer chose, with `fix/strict-inputs`, to extend decision 38 from
+    options to method inputs before 1.0, since adding it later would break
+    callers. An ignored key fails open: a misspelled `kinds` widens a
+    search, a scope `sessionID` makes `deleteScope` erase every session, a
+    selector `entityID` makes `prune` cover the namespace, and
+    `migrate({ dryrun: true })` applies the migrations.
+    - The code is `"VALIDATION"`, without a reason: it is a bad call, not a
+      bad setup, nothing was embedded or stored, and decision 40's renamed
+      keys already throw it. Reasons stay on `"CONFIG"`, `"CONFLICT"` and
+      `"MIGRATION"` only.
+    - Checked: every method input (plain, default-namespace and bound
+      clients, `experimental.findDuplicatesPage`, `migrate`), `scope`
+      (including `for()`) and each `addMany` memory. Not checked inside:
+      `metadata`, which is the caller's JSON, `tokenCounter`, which may be
+      a class instance, and `signal`. A key set to `undefined` counts, as
+      in decision 38.
+    - The key check runs first, so a misspelled required key reports
+      itself rather than the missing field. Bound inputs reach it through
+      the core; bound `stats()` passes its input on so any key throws.
+    - A minor may add an optional key; code using it fails on an older
+      version with `"VALIDATION"` instead of running without it.

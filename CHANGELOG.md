@@ -71,6 +71,15 @@ marked **Breaking** in their entries. What semver covers is in
   // now
   await memory.search({ scope, query, createdAfter: lastWeek });
   ```
+- **Breaking: unknown keys on method inputs throw `"VALIDATION"`.** Every
+  client method, on plain, default-namespace and bound clients, and
+  `migrate` reject a key they do not take, even set to `undefined`, and so
+  do `scope` (also in `for()`) and each memory of `addMany`, before
+  anything is embedded or stored. A misspelled `kinds` used to widen a
+  search, a misspelled scope `sessionId` made `deleteScope` erase every
+  session, and `migrate({ dryrun: true })` ran for real. `metadata` and
+  `tokenCounter` are not checked inside. A bound client's `stats()` rejects
+  any key, since it takes none.
 - **`kinds` and `tags` inputs take `readonly` arrays** in `add`, `update`,
   `search`, `list`, `context`, `prune` and `findDuplicates`, and in the
   `searchMemories` tool's input type. Plain arrays still work.

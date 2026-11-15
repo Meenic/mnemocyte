@@ -222,9 +222,7 @@ function bindScope(
 			run("pruneAuditLog", input, false, (value) =>
 				core.pruneAuditLog({ ...value, scope }),
 			),
-		// Takes no input; one passed from untyped code is still checked, so
-		// any key it has throws "VALIDATION" in the core.
-		stats: (input?: object) =>
+		stats: (input) =>
 			run("stats", input, true, (value) => core.stats({ ...value, scope })),
 		consolidate: (input) =>
 			run("consolidate", input, false, (value) =>

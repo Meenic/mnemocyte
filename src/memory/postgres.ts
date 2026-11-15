@@ -716,9 +716,9 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				return { supersededIds: result.supersededIds };
 			});
 		},
-		async stats(selector, now) {
+		async stats(selector, now, options) {
 			return runPostgresOperation(() =>
-				getMemoryStatsCounts(client, selector, now),
+				getMemoryStatsCounts(client, selector, now, options?.signal),
 			);
 		},
 	};

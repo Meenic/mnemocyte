@@ -15,6 +15,34 @@ function createClient() {
 	});
 }
 
+/** A signal that aborts on its `abortAt`-th `aborted` read, mid-scan. */
+function abortOnCheck(
+	abortAt: number,
+	reason: string,
+): { signal: AbortSignal; checks: () => number } {
+	const controller = new AbortController();
+	let checks = 0;
+	const signal = {
+		get aborted() {
+			checks += 1;
+			if (checks === abortAt) {
+				controller.abort(reason);
+			}
+			return controller.signal.aborted;
+		},
+		get reason() {
+			return controller.signal.reason;
+		},
+		addEventListener: controller.signal.addEventListener.bind(
+			controller.signal,
+		),
+		removeEventListener: controller.signal.removeEventListener.bind(
+			controller.signal,
+		),
+	} as unknown as AbortSignal;
+	return { signal, checks: () => checks };
+}
+
 describe("operation cancellation", () => {
 	test("pre-aborted maintenance operations reject before store work", async () => {
 		const client = createClient();
@@ -57,6 +85,19 @@ describe("operation cancellation", () => {
 			"ABORTED",
 		);
 
+		await expectMnemocyteError(
+			client.stats({ scope: testScope("alice"), signal: controller.signal }),
+			"ABORTED",
+		);
+		await expectMnemocyteError(
+			client.stats({ allNamespaces: true, signal: controller.signal }),
+			"ABORTED",
+		);
+		await expectMnemocyteError(
+			client.for(testScope("alice")).stats({ signal: controller.signal }),
+			"ABORTED",
+		);
+
 		await expect(
 			client.stats({ scope: testScope("alice") }),
 		).resolves.toMatchObject({
@@ -64,6 +105,28 @@ describe("operation cancellation", () => {
 			supersededMemoryCount: 0,
 		});
 	});
+
+	test.each(["unbound", "bound"])(
+		"checks cancellation during an in-memory stats scan (%s)",
+		async (kind) => {
+			const client = createClient();
+			await client.addMany({
+				scope: testScope("stats"),
+				memories: Array.from({ length: 12 }, (_, index) => ({
+					content: `memory ${index}`,
+				})),
+			});
+			const { signal, checks } = abortOnCheck(6, "cancel during stats");
+
+			await expectMnemocyteError(
+				kind === "bound"
+					? client.for(testScope("stats")).stats({ signal })
+					: client.stats({ scope: testScope("stats"), signal }),
+				"ABORTED",
+			);
+			expect(checks()).toBeGreaterThanOrEqual(6);
+		},
+	);
 
 	test("checks cancellation during an in-memory prune scan before deletion", async () => {
 		const client = createClient();
@@ -74,26 +137,7 @@ describe("operation cancellation", () => {
 				content: `memory ${index}`,
 			})),
 		});
-		const controller = new AbortController();
-		let abortChecks = 0;
-		const signal = {
-			get aborted() {
-				abortChecks += 1;
-				if (abortChecks === 6) {
-					controller.abort("cancel during scan");
-				}
-				return controller.signal.aborted;
-			},
-			get reason() {
-				return controller.signal.reason;
-			},
-			addEventListener: controller.signal.addEventListener.bind(
-				controller.signal,
-			),
-			removeEventListener: controller.signal.removeEventListener.bind(
-				controller.signal,
-			),
-		} as unknown as AbortSignal;
+		const { signal, checks } = abortOnCheck(6, "cancel during scan");
 
 		await expectMnemocyteError(
 			client.prune({
@@ -103,7 +147,7 @@ describe("operation cancellation", () => {
 			}),
 			"ABORTED",
 		);
-		expect(abortChecks).toBeGreaterThanOrEqual(6);
+		expect(checks()).toBeGreaterThanOrEqual(6);
 		await expect(
 			client.stats({ scope: testScope("scan") }),
 		).resolves.toMatchObject({

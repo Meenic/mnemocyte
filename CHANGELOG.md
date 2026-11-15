@@ -21,6 +21,12 @@ marked **Breaking** in their entries. What semver covers is in
   with two copies of the package, including a 1.0.x copy, where
   `instanceof ProviderError` fails. It replaces checking `code` and
   `status` by hand.
+- **`signal` on `stats`.** `stats({ scope, signal })` and the bound
+  `stats({ signal })` stop with `"ABORTED"` when the signal aborts. On
+  Postgres with postgres.js the count query is cancelled while it runs;
+  node-postgres and PGlite check the signal before sending it. The bound
+  input is exported as `BoundStatsInput`. Bound `stats()` with no argument
+  works as before.
 
 ### Fixed
 

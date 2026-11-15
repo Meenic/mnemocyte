@@ -907,7 +907,9 @@ export function createMemoryClient(
 				async () => {
 					assertInputKeys("stats", input);
 					const selector = validateSelectorInput(input);
-					return store.stats(selector, new Date());
+					assertOptionalSignal(input.signal);
+					throwIfAborted(input.signal);
+					return store.stats(selector, new Date(), storeOptions(input.signal));
 				},
 			);
 		},

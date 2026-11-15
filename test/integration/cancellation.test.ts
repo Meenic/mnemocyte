@@ -233,6 +233,14 @@ async function runCancellationScenario(databaseUrl: string) {
 			}),
 			"ABORTED",
 		);
+		await expectMnemocyteError(
+			client.stats({ scope: testScope(entityId), signal: preAborted.signal }),
+			"ABORTED",
+		);
+		await expectMnemocyteError(
+			client.for(testScope(entityId)).stats({ signal: preAborted.signal }),
+			"ABORTED",
+		);
 		await expect(
 			client.stats({ scope: testScope(entityId) }),
 		).resolves.toMatchObject({

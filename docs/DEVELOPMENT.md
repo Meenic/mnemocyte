@@ -286,7 +286,9 @@ Design rules for the public surface:
 - A time filter on memories names its field: `createdBefore` /
   `createdAfter` (`search`, `prune`), `notAccessedSince`. Bare `before` /
   `after` are for audit events, which have one time (decision 40).
-- Every long-running method accepts `signal: AbortSignal`.
+- Every long-running method accepts `signal: AbortSignal`, on the bound
+  client too: bound `stats`, whose only option is `signal`, takes an
+  optional `BoundStatsInput`.
 - New or unproven behavior goes under `experimental` first.
 - Every method that reads or writes memories takes a `scope` (or is bound
   to one); a global operation needs `allNamespaces: true`, which bound

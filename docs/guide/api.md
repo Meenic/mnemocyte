@@ -162,8 +162,9 @@ await user.deleteScope();                                  // erase the user
   matches any value: `user.deleteScope()` erases the user across every
   agent and session.
 - Methods whose options are all optional (`list`, `deleteScope`,
-  `findDuplicates`, `listAuditLog`, `experimental.findDuplicatesPage`)
-  can be called without an argument. `stats()` takes none.
+  `findDuplicates`, `listAuditLog`, `stats`,
+  `experimental.findDuplicatesPage`) can be called without an argument.
+  Bound `stats` takes only `signal`.
 - A bound client has no `allNamespaces` and no `for`. A `scope` or
   `allNamespaces` field passed from untyped code throws `"VALIDATION"`, so
   a call cannot leave the bound scope.
@@ -697,6 +698,13 @@ const all = await memory.stats({ allNamespaces: true });
 Counts the memories a scope selector (or `allNamespaces: true`) selects,
 with the same matching as `prune`. Active means neither expired nor
 superseded. `entityCount` counts distinct entities per namespace.
+
+Pass `signal` to cancel the count, on a bound client too:
+
+```ts
+const user = memory.for({ entityId: "user_123" });
+const counts = await user.stats({ signal: AbortSignal.timeout(2_000) });
+```
 
 ## `migrate`
 

@@ -203,13 +203,21 @@ describe("unknown keys on method inputs", () => {
 		}
 	});
 
-	test("bound stats takes no input", async () => {
+	test("bound stats takes only a signal", async () => {
 		const { memory } = setup();
 		const stats = methodOf(memory.for(scope), "stats");
 		await expect(stats({ namespace: NAMESPACE })).rejects.toThrow(
 			'stats does not accept "namespace".',
 		);
-		await expect(stats({})).resolves.toMatchObject({ memoryCount: 0 });
+		for (const input of [
+			undefined,
+			{},
+			{ signal: undefined },
+			{ signal: new AbortController().signal },
+		]) {
+			await expect(stats(input)).resolves.toMatchObject({ memoryCount: 0 });
+		}
+		await expectMnemocyteError(stats({ signal: "abort" }), "VALIDATION");
 	});
 
 	test("migrate throws VALIDATION for an unknown key", async () => {

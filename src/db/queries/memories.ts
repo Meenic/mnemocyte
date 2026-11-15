@@ -597,6 +597,7 @@ export async function getMemoryStatsCounts(
 	db: SqlExecutor,
 	selector: StoreSelector,
 	now: Date,
+	signal?: AbortSignal,
 ): Promise<GlobalMemoryStatsCounts> {
 	const params = createSqlParams();
 	const conditions = selectorConditions(params, selector);
@@ -606,6 +607,7 @@ export async function getMemoryStatsCounts(
 		FROM mnemocyte_memories
 		WHERE ${conditions}`,
 		params.values,
+		signal ? { signal } : undefined,
 	);
 	return rows[0] ?? { entityCount: 0, ...emptyMemoryStatsCounts() };
 }

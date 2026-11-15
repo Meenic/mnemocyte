@@ -740,8 +740,8 @@ ids) use the same trick.
 
 ## Cancellation
 
-`prune`, `findDuplicates`, `listAuditLog`, `consolidate` and its preflight
-lookups pass their signal to `SqlExecutor.query`, and the `addMany` insert
+`prune`, `findDuplicates`, `listAuditLog`, `stats`, `consolidate` and its
+preflight lookups pass their signal to `SqlExecutor.query`, and the `addMany` insert
 passes it to `query`, `batch` or each statement of its transaction, and the postgres.js adapter
 sends `query.cancel()` when it aborts, on both majors. postgres.js 4 also
 has `query.signal(abortSignal)`, which only calls the same `cancel()`, so

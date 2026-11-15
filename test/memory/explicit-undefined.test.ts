@@ -275,7 +275,7 @@ describe("method inputs", () => {
 		});
 		expect(pruned.matchedCount).toBe(listed.events.length);
 
-		const stats = await memory.stats({ scope: selector });
+		const stats = await memory.stats({ scope: selector, signal: undefined });
 		expect(stats.memoryCount).toBe(3);
 	});
 
@@ -349,6 +349,8 @@ describe("method inputs", () => {
 		expect(ids(page.memories)).toEqual([added.id]);
 		const searched = await bound.search({ query: "tea", limit: undefined });
 		expect(ids(searched)).toEqual([added.id]);
+		const stats = await bound.stats({ signal: undefined });
+		expect(stats.memoryCount).toBe(1);
 	});
 });
 

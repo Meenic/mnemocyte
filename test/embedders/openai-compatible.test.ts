@@ -192,6 +192,23 @@ describe("openaiCompatibleEmbedder", () => {
 		).toThrow(expect.objectContaining({ code: "CONFIG" }));
 	});
 
+	test("rejects an invalid header value without quoting it", () => {
+		expect(() =>
+			openaiCompatibleEmbedder({
+				...BASE,
+				headers: { "api-key": "secret\r\nx-injected: 1" },
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+				message:
+					'openaiCompatibleEmbedder header "api-key" is not a valid HTTP header.',
+				cause: undefined,
+			}),
+		);
+	});
+
 	test("rejects a call without a purpose with VALIDATION", async () => {
 		const embedder = openaiCompatibleEmbedder(BASE);
 		const untyped = embedder.embed as (texts: string[]) => Promise<number[][]>;

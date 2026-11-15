@@ -32,6 +32,22 @@ marked **Breaking** in their entries. What semver covers is in
   SDK embedder's `purposes` type is `AiSdkPurposeHints`, matching
   `PurposeHints` from `mnemocyte/embedders`. Both are the same types as
   before, so existing code compiles unchanged.
+- **`headers` on `openaiEmbedder`, `voyageEmbedder`, `cohereEmbedder` and
+  `googleEmbedder`.** Pass extra request headers for a proxy or AI gateway,
+  such as `cf-aig-authorization` for Cloudflare AI Gateway, or a provider
+  header such as `OpenAI-Project` or Cohere's `X-Client-Name`. It works as
+  on `openaiCompatibleEmbedder`: names are sent in lower case, and the
+  embedder's own API key header and `content-type` replace a copy in
+  `headers`. When a gateway wants its key in `authorization`, pass it as
+  `apiKey`.
+
+### Changed
+
+- **Invalid `headers` throw `"CONFIG"` when the embedder is created.** A
+  header name or value HTTP does not allow, such as a name with a space or
+  a value with a line break, used to fail with a `TypeError` from `fetch`
+  on the first `embed`. `openaiCompatibleEmbedder` and the four above now
+  reject it up front; the error names the header, not its value.
 
 ### Deprecated
 

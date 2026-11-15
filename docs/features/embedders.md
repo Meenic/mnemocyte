@@ -59,7 +59,18 @@ non-2xx response a `ProviderError` and a non-JSON success body
 `"EMBEDDING"`. Each embedder checks and snapshots its options when it is
 created (`"CONFIG"`), with the shared helpers in the same file
 (`resolveApiKey`, `resolveModel`, `resolveModelDimensions`,
-`resolveBoolean`, `resolveMaxBatch`, `resolveBaseUrl`).
+`resolveBoolean`, `resolveMaxBatch`, `resolveBaseUrl`, `resolveHeaders`).
+
+Every HTTP embedder takes `headers` for proxies and gateways.
+`resolveHeaders` requires an object of string values, checks each pair
+with `new Headers()` so a name or value `fetch` would reject throws
+`"CONFIG"` at creation (the message names the header but not its value,
+and has no `cause`, since the `TypeError` quotes the value), and copies it
+with lower-cased names. The embedder spreads its own key header after it
+and `createFetchEmbedder` adds `content-type` last, so those two replace a
+caller's copy (decision 43 in [ARCHITECTURE.md](../ARCHITECTURE.md)). Any
+other header, including `authorization` on `googleEmbedder`, is sent as
+given.
 
 `createHttpEmbedder` is the OpenAI-shaped one behind `openaiEmbedder` and
 `openaiCompatibleEmbedder`: `POST {baseURL}/embeddings`, and a response with
@@ -102,8 +113,9 @@ is `createHttpEmbedder` with OpenAI's defaults:
   (3072), `text-embedding-ada-002` (1536). The `3-*` models accept a
   `dimensions` override, which is then sent; unknown models require
   `dimensions`, which is sent too.
-- `baseURL` defaults to `https://api.openai.com/v1`; `maxBatch` is passed
-  through. There are no purpose hints: OpenAI models are symmetric.
+- `baseURL` defaults to `https://api.openai.com/v1`; `headers` and
+  `maxBatch` are passed through. There are no purpose hints: OpenAI models
+  are symmetric.
 
 ### `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder`
 
@@ -116,7 +128,7 @@ provider's request and response (decision 29 in
 |---|---|---|---|
 | Request | `POST {baseURL}/embeddings` | `POST {baseURL}/embed` | `POST {baseURL}/models/{model}:batchEmbedContents` |
 | `baseURL` default | `https://api.voyageai.com/v1` | `https://api.cohere.com/v2` | `https://generativelanguage.googleapis.com/v1beta` |
-| Auth | `authorization: Bearer …` | `authorization: Bearer …` | `x-goog-api-key` |
+| Auth (replaces a caller's copy) | `authorization: Bearer …` | `authorization: Bearer …` | `x-goog-api-key` |
 | Key default | `VOYAGE_API_KEY` | `COHERE_API_KEY` | `GEMINI_API_KEY` |
 | Texts | `input` | `texts` | one `requests[]` item per text: `model: "models/{id}"`, `content.parts[{ text }]` |
 | Purpose | `input_type` `query` / `document` | `input_type` `search_query` / `search_document` | `embedContentConfig.taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`; text prefixes for `gemini-embedding-2` |

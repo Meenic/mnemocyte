@@ -36,7 +36,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 
 ## Embedders
 
-- [ ] `feat/embedder-headers`: `headers` on the OpenAI, Voyage, Cohere and
+- [x] `feat/embedder-headers`: `headers` on the OpenAI, Voyage, Cohere and
   Gemini embedders, as `openaiCompatibleEmbedder` already has, for proxies
   and gateways.
 - [ ] `feat/embedder-fetch`: a custom `fetch` on every fetch-based embedder,

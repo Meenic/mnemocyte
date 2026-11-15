@@ -20,7 +20,11 @@ export interface OpenAICompatibleEmbedderOptions {
 	 * need no key, such as a local Ollama or LM Studio.
 	 */
 	readonly apiKey?: string | undefined;
-	/** Extra request headers, such as `{ "api-key": "…" }` for Azure. */
+	/**
+	 * Extra request headers, such as `{ "api-key": "…" }` for Azure.
+	 * `content-type`, and `authorization` when `apiKey` is set, are set by
+	 * the embedder and replace a caller's copy.
+	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;

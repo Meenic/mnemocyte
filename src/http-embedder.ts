@@ -95,7 +95,12 @@ export function resolveBaseURL(baseURL: unknown, name: string): string {
 	return baseURL.replace(/\/+$/, "");
 }
 
-function resolveHeaders(
+/**
+ * Check and snapshot a caller's `headers` option: an object of string
+ * values with names and values `fetch` accepts, lower-cased so the
+ * embedder's own headers, spread after it, replace a caller's copy.
+ */
+export function resolveHeaders(
 	headers: unknown,
 	name: string,
 ): Record<string, string> {
@@ -114,6 +119,18 @@ function resolveHeaders(
 		if (typeof value !== "string") {
 			throw new MnemocyteError({
 				message: `${name} header "${key}" must be a string.`,
+				code: "CONFIG",
+				reason: "INVALID_OPTION",
+			});
+		}
+		try {
+			// `fetch` would throw the same TypeError on the first call.
+			new Headers([[key, value]]);
+		} catch {
+			// No cause: the TypeError's message quotes the value, which may
+			// be a key.
+			throw new MnemocyteError({
+				message: `${name} header "${key}" is not a valid HTTP header.`,
 				code: "CONFIG",
 				reason: "INVALID_OPTION",
 			});

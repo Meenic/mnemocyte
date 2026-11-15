@@ -85,6 +85,29 @@ describe("voyageEmbedder", () => {
 		});
 	});
 
+	test("sends extra headers lower-cased, with its own key and content-type winning", async () => {
+		const headers: Record<string, string> = {
+			"cf-aig-authorization": "Bearer gateway-token",
+			Authorization: "Bearer caller-key",
+			"Content-Type": "text/plain",
+		};
+		const embedder = voyageEmbedder({
+			apiKey: "voyage-key",
+			model: "voyage-4",
+			headers,
+		});
+		headers["cf-aig-authorization"] = "changed";
+
+		respondJson(voyageResponse([[1]]));
+		await embedder.embed(["a"], { purpose: "query" });
+
+		expect(lastRequest().init.headers).toEqual({
+			"cf-aig-authorization": "Bearer gateway-token",
+			authorization: "Bearer voyage-key",
+			"content-type": "application/json",
+		});
+	});
+
 	test("does not send dimensions for fixed-size or unknown models", async () => {
 		const fixed = voyageEmbedder({
 			apiKey: "k",
@@ -126,6 +149,15 @@ describe("voyageEmbedder", () => {
 		],
 		["a zero maxBatch", { apiKey: "k", model: "voyage-4", maxBatch: 0 }],
 		["a relative baseURL", { apiKey: "k", model: "voyage-4", baseURL: "/v1" }],
+		["non-object headers", { apiKey: "k", model: "voyage-4", headers: [] }],
+		[
+			"a non-string header",
+			{ apiKey: "k", model: "voyage-4", headers: { "x-a": 1 } },
+		],
+		[
+			"an invalid header name",
+			{ apiKey: "k", model: "voyage-4", headers: { "x a": "v" } },
+		],
 	])("rejects %s with CONFIG", (_label, options) => {
 		vi.stubEnv("VOYAGE_API_KEY", "");
 		expect(() =>

@@ -128,7 +128,8 @@ The contract with `purpose` and `maxBatch`, `openaiCompatibleEmbedder`,
 `ProviderError` with the provider's body as `cause`, and status-based
 retries with jitter and `Retry-After` have landed (decision 25), and so
 have the AI SDK embedder, `aiSdkEmbedder`, and fetch-only Voyage, Cohere
-and Gemini API embedders (decision 29); see
+and Gemini API embedders (decision 29), and `headers` on every HTTP
+embedder (decision 43); see
 [features/embedders.md](./features/embedders.md).
 
 ## AI SDK integration
@@ -872,3 +873,24 @@ Dated 2026-10-26 unless noted.
     cost is that the old names can no longer be augmented as interfaces.
     `BoundMemoryClient.prune` takes `BoundPruneInput`, the same type as
     before.
+43. **Embedder headers: ours win** (2026-11-15, landed): the maintainer
+    chose, with `feat/embedder-headers`, to give `openaiEmbedder`,
+    `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder` the `headers`
+    option `openaiCompatibleEmbedder` has, with the same rule: names are
+    lower-cased, and `content-type` and the header that carries `apiKey`
+    (`authorization`, or `x-goog-api-key` for Gemini) replace a caller's
+    copy. The gateways checked keep their own key out of the provider's
+    slot (Cloudflare AI Gateway's `cf-aig-authorization`, Portkey's
+    `x-portkey-api-key`) or take it in `authorization`, where it can be
+    passed as `apiKey` (LiteLLM, Helicone), so none needs to replace ours.
+    Letting a caller replace the key header, or rejecting a clash with
+    `"CONFIG"`, would make the four differ from `openaiCompatibleEmbedder`,
+    and changing the rule later would break callers. On Gemini a caller's
+    `authorization` is not ours and is sent next to `x-goog-api-key`.
+    Headers are checked with `new Headers()` when the embedder is created,
+    so a name or value `fetch` would reject throws `"CONFIG"` instead of a
+    `TypeError` on the first call; the error names the header but carries
+    neither its value nor the `TypeError`, which quotes it. Left open: a
+    gateway that holds the provider key itself (Cloudflare's stored keys,
+    Portkey's managed providers) still gets an `authorization` or
+    `x-goog-api-key` from the four, which require a key.

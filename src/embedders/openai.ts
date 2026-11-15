@@ -34,6 +34,11 @@ export interface OpenAIEmbedderOptions {
 	 * `openaiCompatibleEmbedder`.
 	 */
 	readonly baseURL?: string | undefined;
+	/**
+	 * Extra request headers, for proxies and gateways. `authorization` and
+	 * `content-type` are set by the embedder and replace a caller's copy.
+	 */
+	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -100,7 +105,7 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 	assertKnownKeys(
 		"openaiEmbedder",
 		options,
-		["apiKey", "model", "dimensions", "baseURL", "maxBatch"],
+		["apiKey", "model", "dimensions", "baseURL", "headers", "maxBatch"],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(
@@ -116,7 +121,7 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 		model: options.model,
 		dimensions: embedderDimensions,
 		apiKey,
-		headers: undefined,
+		headers: options.headers,
 		maxBatch: options.maxBatch,
 		sendDimensions: requestDimensions !== undefined,
 		purposes: undefined,

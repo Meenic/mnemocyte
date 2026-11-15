@@ -7,6 +7,7 @@ import {
 	resolveApiKey,
 	resolveBaseURL,
 	resolveBoolean,
+	resolveHeaders,
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
@@ -74,6 +75,12 @@ export interface GoogleEmbedderOptions {
 	 * `https://generativelanguage.googleapis.com/v1beta`.
 	 */
 	readonly baseURL?: string | undefined;
+	/**
+	 * Extra request headers, for proxies and gateways. `x-goog-api-key` and
+	 * `content-type` are set by the embedder and replace a caller's copy;
+	 * an `authorization` header is sent as given.
+	 */
+	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -99,10 +106,19 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 	assertKnownKeys(
 		"googleEmbedder",
 		options,
-		["apiKey", "model", "dimensions", "truncate", "baseURL", "maxBatch"],
+		[
+			"apiKey",
+			"model",
+			"dimensions",
+			"truncate",
+			"baseURL",
+			"headers",
+			"maxBatch",
+		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(options.apiKey, "GEMINI_API_KEY", NAME);
+	const headers = resolveHeaders(options.headers, NAME);
 	const given = resolveModel(options.model, NAME);
 	const model = given.startsWith("models/")
 		? resolveModel(given.slice("models/".length), NAME)
@@ -128,7 +144,7 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 		dimensions: size.dimensions,
 		maxBatch: resolveMaxBatch(options.maxBatch, NAME, 100),
 		url: `${baseURL}/models/${encodeURIComponent(model)}:batchEmbedContents`,
-		headers: { "x-goog-api-key": apiKey },
+		headers: { ...headers, "x-goog-api-key": apiKey },
 		buildBody(texts, purpose) {
 			const prefix = purposeStyle === "prefix" ? PREFIXES[purpose] : "";
 			const config = {

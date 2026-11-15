@@ -7,6 +7,7 @@ import {
 	resolveApiKey,
 	resolveBaseURL,
 	resolveBoolean,
+	resolveHeaders,
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
@@ -58,6 +59,12 @@ export interface CohereEmbedderOptions {
 	readonly truncate?: boolean | undefined;
 	/** API base URL. Defaults to `https://api.cohere.com/v2`. */
 	readonly baseURL?: string | undefined;
+	/**
+	 * Extra request headers, for proxies and gateways, or Cohere's
+	 * `X-Client-Name`. `authorization` and `content-type` are set by the
+	 * embedder and replace a caller's copy.
+	 */
+	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/** Most texts per request, at most 96 (Cohere's limit). Defaults to `96`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -77,10 +84,19 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 	assertKnownKeys(
 		"cohereEmbedder",
 		options,
-		["apiKey", "model", "dimensions", "truncate", "baseURL", "maxBatch"],
+		[
+			"apiKey",
+			"model",
+			"dimensions",
+			"truncate",
+			"baseURL",
+			"headers",
+			"maxBatch",
+		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(options.apiKey, "COHERE_API_KEY", NAME);
+	const headers = resolveHeaders(options.headers, NAME);
 	const model = resolveModel(options.model, NAME);
 	const size = resolveModelDimensions({
 		name: NAME,
@@ -105,7 +121,7 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 			COHERE_MAX_BATCH,
 		),
 		url: `${baseURL}/embed`,
-		headers: { authorization: `Bearer ${apiKey}` },
+		headers: { ...headers, authorization: `Bearer ${apiKey}` },
 		buildBody(texts, purpose) {
 			return {
 				model,

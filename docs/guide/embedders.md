@@ -70,6 +70,7 @@ const embedder = openaiEmbedder({ model: "text-embedding-3-small" });
 | `apiKey` | `process.env.OPENAI_API_KEY` | A missing key throws `"CONFIG"`. |
 | `dimensions` | the model's | Required for models the helper does not know. |
 | `baseURL` | `https://api.openai.com/v1` | Another OpenAI endpoint, such as a proxy. |
+| `headers` | none | Extra request headers, such as `OpenAI-Project` or a gateway's own (see [Proxies and gateways](#proxies-and-gateways)). |
 | `maxBatch` | 100 | Most texts per request. |
 
 Known models: `text-embedding-3-small` (1536), `text-embedding-3-large`
@@ -105,7 +106,7 @@ const embedder = openaiCompatibleEmbedder({
 | `model` | required | The model id as the server names it. |
 | `dimensions` | required | The length of the vectors the model returns. |
 | `apiKey` | none | Sent as `Authorization: Bearer …`. Local servers need none. |
-| `headers` | none | Extra headers, such as `{ "api-key": key }` for Azure. |
+| `headers` | none | Extra headers, such as `{ "api-key": key }` for Azure (see [Proxies and gateways](#proxies-and-gateways)). |
 | `maxBatch` | 100 | Most texts per request. |
 | `sendDimensions` | `false` | Send `dimensions` in the request, for models that can shorten their vectors. Servers reject it for models that cannot. |
 | `purposes` | none | How to mark queries and documents (below). |
@@ -157,6 +158,7 @@ const google = googleEmbedder({
 | `dimensions` | the model's | A smaller size, for models that offer one (below). Required for models the helper does not know. |
 | `truncate` | `true` | Cut texts longer than the model's context instead of failing the request. |
 | `baseURL` | the provider's API | Another endpoint, such as a proxy. |
+| `headers` | none | Extra request headers, such as Cohere's `X-Client-Name` or a gateway's own (see [Proxies and gateways](#proxies-and-gateways)). |
 | `maxBatch` | 100 (Cohere: 96) | Most texts per request. Cohere accepts at most 96. |
 
 Known models:
@@ -212,6 +214,41 @@ get `taskType`.
 
 They are also available as `mnemocyte/embedders/voyage`,
 `mnemocyte/embedders/cohere` and `mnemocyte/embedders/google`.
+
+## Proxies and gateways
+
+To send embedding requests through a proxy or an AI gateway, point
+`baseURL` at it and put the headers it needs in `headers`. All five
+embedders above take both.
+
+```ts
+import { openaiEmbedder } from "mnemocyte/embedders";
+
+const embedder = openaiEmbedder({
+  model: "text-embedding-3-small",
+  baseURL: "https://gateway.example.com/openai/v1",
+  headers: { "x-gateway-key": process.env.GATEWAY_KEY! },
+});
+```
+
+Header names are sent in lower case. Each embedder sets `content-type` and
+the header that carries its API key, and those replace a copy in `headers`:
+
+| Embedder | API key header |
+|---|---|
+| `openaiEmbedder`, `voyageEmbedder`, `cohereEmbedder` | `authorization` |
+| `openaiCompatibleEmbedder` | `authorization`, only when `apiKey` is set |
+| `googleEmbedder` | `x-goog-api-key` |
+
+Most gateways take their own key in a header of their own, such as
+Cloudflare AI Gateway's `cf-aig-authorization`, and the provider key stays
+in `apiKey`. When a gateway wants its key in `authorization` instead (a
+LiteLLM proxy, for example), pass that key as `apiKey`. `googleEmbedder`
+sends an `authorization` from `headers` as you wrote it, next to its
+`x-goog-api-key`.
+
+The headers are checked when the embedder is created: a value that is not
+a string, or a name or value HTTP does not allow, throws `"CONFIG"`.
 
 ## `aiSdkEmbedder`
 

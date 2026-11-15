@@ -2,7 +2,7 @@
 
 # Mnemocyte
 
-Memory for TypeScript AI apps that lives in the app's own database: no
+Memory for TypeScript AI apps. It lives in the app's own database: no
 service, no API key, no provider SDK. Callers bring the embedder and the
 database; Mnemocyte adds scoped storage, hybrid recall, prompt-ready context
 and maintenance (prune, dedup, consolidation, audit).

@@ -38,15 +38,22 @@ a Postgres + pgvector `DATABASE_URL` (see the safety rules above).
 
 ## Documentation
 
-- `README.md` is for users only and stays short: install, quickstart,
-  Postgres setup, an API list, embedders and links. The full user reference
-  lives in `docs/guide/*.md`; its links in `README.md` are absolute GitHub
-  URLs, because npm shows the README but does not ship `docs/`.
+- `README.md` is the front page, not a guide: what Mnemocyte is, install,
+  one short example, what it works with and links. Setup steps, API lists
+  and other reference live in `docs/guide/*.md`. Links from `README.md` are
+  relative (`docs/guide/api.md`); npm turns them into GitHub links through
+  the `repository` field, so `docs/` does not need to ship.
   `docs/DEVELOPMENT.md` and `docs/features/*.md` describe what is built, for
   contributors. `docs/ARCHITECTURE.md` holds
   the target design and dated decisions and must never describe behavior the
   code does differently. `docs/ROADMAP.md` is the work queue.
   `CHANGELOG.md` records releases.
+- The tagline is "Memory for TypeScript AI apps." Keep it the same in
+  `README.md`, the `package.json` description and the GitHub About text.
+- User docs read like a friend explaining it: short sentences, everyday
+  verbs (save, find, remember, clean up), code early and limitations stated
+  plainly. Skip hype words such as "powerful", "seamless", "comprehensive"
+  or "next-generation", and "no X, no Y" lists.
 - Do not add audit, verification or summary reports to the repository. Put
   findings in the PR, or turn them into roadmap items.
 - Keep limitations concrete: what works, what fails and how, what is planned.

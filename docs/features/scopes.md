@@ -91,9 +91,9 @@ scope take `DefaultNamespace extends boolean = false`. `ScopeInput<true>` is
 `MemoryClient`. Bound inputs are `Omit<…, "scope">` aliases, except
 `BoundGetInput` and `BoundStatsInput`, which `GetInput` and `StatsInput`
 are built from because `Omit` does not distribute over their unions (id or
-key; scope or `allNamespaces`), and `prune`, which takes
-`PruneSelectors`. `MigrateInput.memory` is
-`MemoryClient<boolean> | BoundMemoryClient`.
+key; scope or `allNamespaces`), and `BoundPruneInput`, which `PruneInput`
+is built from (`PruneSelectors` is its deprecated alias).
+`MigrateInput.memory` is `MemoryClient<boolean> | BoundMemoryClient`.
 
 ## Keyed `add`
 

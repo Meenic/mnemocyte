@@ -22,6 +22,7 @@ import type {
 	BoundFindDuplicatesPageInput,
 	BoundGetInput,
 	BoundMemoryClient,
+	BoundPruneInput,
 	BoundStatsInput,
 	ConsolidateInput,
 	ConsolidateResult,
@@ -58,6 +59,7 @@ import type {
 	OptionalNamespaceScope,
 	OptionalNamespaceSelector,
 	PruneInput,
+	PruneSelectors,
 	RetrievalBoosts,
 	RetrievalConfig,
 	RetrievalExplanation,
@@ -83,6 +85,7 @@ import {
 import {
 	type AiSdkEmbedderOptions,
 	type AiSdkProviderOptions,
+	type AiSdkPurposeHints,
 	type AiSdkPurposeOptions,
 	aiSdkEmbedder,
 	type ExtractMemoriesInput,
@@ -584,10 +587,14 @@ const gatewayEmbedder: Embedder = aiSdkEmbedder({
 const aiSdkProviderOptions: AiSdkProviderOptions = {
 	google: { outputDimensionality: 768 },
 };
-const aiSdkPurposes: AiSdkPurposeOptions = {
+const aiSdkPurposes: AiSdkPurposeHints = {
 	query: { google: { taskType: "RETRIEVAL_QUERY" } },
 	document: { google: { taskType: "RETRIEVAL_DOCUMENT" } },
 };
+// The deprecated name is the same type.
+const aiSdkPurposesOld: AiSdkPurposeOptions = aiSdkPurposes;
+const aiSdkPurposesNew: AiSdkPurposeHints = aiSdkPurposesOld;
+void aiSdkPurposesNew;
 const aiSdkOptions: AiSdkEmbedderOptions = {
 	model: new MockEmbeddingModelV4({ modelId: "gemini-embedding-001" }),
 	dimensions: 768,
@@ -745,6 +752,20 @@ const boundStatsScoped: BoundStatsInput = { scope };
 void boundStatsScoped;
 const boundErased: Promise<{ deletedCount: number }> = bound.deleteScope();
 void bound.prune({ expired: true, dryRun: true });
+const boundPruneInput: BoundPruneInput = {
+	superseded: true,
+	signal: new AbortController().signal,
+};
+void bound.prune(boundPruneInput);
+// The deprecated name is the same type.
+const pruneSelectors: PruneSelectors = boundPruneInput;
+const boundPruneFromOld: BoundPruneInput = pruneSelectors;
+void boundPruneFromOld;
+const pruneFromBound: PruneInput = { ...boundPruneInput, scope: selector };
+void pruneFromBound;
+// @ts-expect-error BoundPruneInput has no scope.
+const boundPruneScoped: BoundPruneInput = { scope, expired: true };
+void boundPruneScoped;
 const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
 	survivorId: "a",
 	supersededIds: ["b"],

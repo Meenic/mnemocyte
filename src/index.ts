@@ -68,6 +68,7 @@ export type {
 	BoundListInput,
 	BoundMemoryClient,
 	BoundPruneAuditLogInput,
+	BoundPruneInput,
 	BoundSearchInput,
 	BoundStatsInput,
 	BoundUpdateInput,

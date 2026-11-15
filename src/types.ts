@@ -811,7 +811,7 @@ export interface SearchInput<DefaultNamespace extends boolean = false>
 	tags?: readonly string[] | undefined;
 	/**
 	 * Only include memories whose `createdAt` is strictly before this date.
-	 * Same name as {@link PruneSelectors.createdBefore}.
+	 * Same name as {@link BoundPruneInput.createdBefore}.
 	 */
 	createdBefore?: Date | undefined;
 	/** Only include memories whose `createdAt` is strictly after this date. */
@@ -1017,10 +1017,11 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 }
 
 /**
- * Selectors shared by {@link PruneInput}. At least one must be effective;
- * `false` flags and empty arrays do not count.
+ * Input for {@link BoundMemoryClient.prune}, and the selectors and options
+ * {@link PruneInput} adds to a scope. At least one selector must be
+ * effective; `false` flags and empty arrays do not count.
  */
-export interface PruneSelectors {
+export interface BoundPruneInput {
 	/** Match memories whose `expiresAt` is in the past. */
 	expired?: boolean | undefined;
 	/** Match memories that have been superseded (`supersededBy !== null`). */
@@ -1053,12 +1054,19 @@ export interface PruneSelectors {
 }
 
 /**
+ * The selectors and options of {@link PruneInput}.
+ *
+ * @deprecated Use {@link BoundPruneInput}, the same type. Kept through 1.x.
+ */
+export type PruneSelectors = BoundPruneInput;
+
+/**
  * Input for {@link MemoryClient.prune}: a {@link ScopeSelector}, or
  * `allNamespaces: true` for the whole installation, plus at least one
  * selector. Selectors are combined with AND.
  */
 export type PruneInput<DefaultNamespace extends boolean = false> =
-	PruneSelectors &
+	BoundPruneInput &
 		(
 			| {
 					scope: ScopeSelectorInput<DefaultNamespace>;
@@ -1078,7 +1086,7 @@ export interface PruneResult {
 	 * normal runs and `0` for `dryRun` runs.
 	 */
 	deletedCount: number;
-	/** `true` when {@link PruneSelectors.dryRun} was set. */
+	/** `true` when {@link BoundPruneInput.dryRun} was set. */
 	dryRun: boolean;
 }
 
@@ -1678,7 +1686,7 @@ export interface BoundMemoryClient {
 	/** {@link MemoryClient.context} at the bound scope. */
 	context(input: BoundContextInput): Promise<string>;
 	/** {@link MemoryClient.prune} within the bound scope. */
-	prune(input: PruneSelectors): Promise<PruneResult>;
+	prune(input: BoundPruneInput): Promise<PruneResult>;
 	/** {@link MemoryClient.findDuplicates} at the bound scope. */
 	findDuplicates(input?: BoundFindDuplicatesInput): Promise<DuplicatePair[]>;
 	/** {@link MemoryClient.consolidate} at the bound scope. */

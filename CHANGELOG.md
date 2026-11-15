@@ -27,6 +27,17 @@ marked **Breaking** in their entries. What semver covers is in
   node-postgres and PGlite check the signal before sending it. The bound
   input is exported as `BoundStatsInput`. Bound `stats()` with no argument
   works as before.
+- **`BoundPruneInput` and `AiSdkPurposeHints`.** Bound `prune` now names
+  its input `BoundPruneInput`, like every other bound method, and the AI
+  SDK embedder's `purposes` type is `AiSdkPurposeHints`, matching
+  `PurposeHints` from `mnemocyte/embedders`. Both are the same types as
+  before, so existing code compiles unchanged.
+
+### Deprecated
+
+- **`PruneSelectors` and `AiSdkPurposeOptions`.** They stay as aliases of
+  `BoundPruneInput` and `AiSdkPurposeHints` through 1.x and go in 2.0.
+  Your editor marks them; switch to the new names when you touch the code.
 
 ### Fixed
 

@@ -219,7 +219,8 @@ Exports:
   and `/google` export one each. `ProviderError`, `EmbedOptions` and `EmbeddingPurpose`
   come from the root.
 - `mnemocyte/ai-sdk`: `aiSdkEmbedder` and its `AiSdkEmbedderOptions`,
-  `AiSdkProviderOptions` and `AiSdkPurposeOptions` types; `memoryTools` and
+  `AiSdkProviderOptions` and `AiSdkPurposeHints` (with its deprecated
+  alias `AiSdkPurposeOptions`) types; `memoryTools` and
   its `MemoryToolsOptions`, `MemoryTools`, `SearchMemoriesInput`,
   `SearchMemoriesOutput`, `FoundMemory`, `SaveMemoryInput`,
   `SaveMemoryOutput`, `ForgetMemoryInput` and `ForgetMemoryOutput` types;
@@ -296,6 +297,11 @@ Design rules for the public surface:
 - A new method that takes a `scope` gets a `DefaultNamespace` type
   parameter on its input, a wrapper in `createScopedClient` and one in
   `bindScope` (`memory/scope-binding.ts`), and a `Bound…Input` type.
+- A public type renamed in 1.x keeps its old name as a `@deprecated` type
+  alias until the next major. The new name is the declaration, so hovers
+  and errors show it (TypeScript does not keep the name of an alias to an
+  interface): `PruneSelectors` is an alias of `BoundPruneInput`, and
+  `AiSdkPurposeOptions` of `AiSdkPurposeHints` (decision 42).
 - From 1.0, breaking changes ship only in a major, with a `CHANGELOG.md`
   entry and a section in `docs/guide/upgrading.md`. `guide/api.md`
   "Stability" lists what semver covers (decision 39): not `experimental.*`

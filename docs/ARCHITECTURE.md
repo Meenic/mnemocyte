@@ -861,3 +861,14 @@ Dated 2026-10-26 unless noted.
       the core; bound `stats()` passes its input on so any key throws.
     - A minor may add an optional key; code using it fails on an older
       version with `"VALIDATION"` instead of running without it.
+42. **Matching input names** (2026-11-15, landed): the maintainer chose,
+    with `feat/input-aliases`, `BoundPruneInput` for the bound `prune`
+    input, matching the `Bound…Input` of every other bound method, and
+    `AiSdkPurposeHints` for the AI SDK embedder's `purposes`, pairing with
+    the embedders' `PurposeHint` / `PurposeHints` under the entry's `AiSdk`
+    prefix; the embedders' names stay. The old names, `PruneSelectors` and
+    `AiSdkPurposeOptions`, are `@deprecated` type aliases through 1.x and
+    go in 2.0. The new names are the interfaces, so hovers show them; the
+    cost is that the old names can no longer be augmented as interfaces.
+    `BoundMemoryClient.prune` takes `BoundPruneInput`, the same type as
+    before.

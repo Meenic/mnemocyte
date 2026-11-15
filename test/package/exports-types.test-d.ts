@@ -955,6 +955,24 @@ async function passThrough(
 	});
 }
 
+// A custom embedder passes a parsed optional retry wait straight through.
+function providerFailure(status: number, retryAfterMs?: number) {
+	return new ProviderError({ message: "busy", status, retryAfterMs });
+}
+
+// EmbedOptions is what Mnemocyte passes into an embedder, so it stays exact:
+// an embedder that ignores `purpose` and declares only a bare
+// `signal?: AbortSignal` must still be an Embedder under
+// exactOptionalPropertyTypes. Widening EmbedOptions.signal breaks this one.
+const exactOptionsEmbedder: Embedder = {
+	model: "m",
+	dimensions: 2,
+	async embed(texts: readonly string[], options: { signal?: AbortSignal }) {
+		void options;
+		return texts.map(() => [1, 0]);
+	},
+};
+
 // Config built from environment variables, which are `string | undefined`.
 declare const env: Record<string, string | undefined>;
 const envConfig: MemoryConfig = {
@@ -983,6 +1001,8 @@ const undefinedPrune: PruneInput = { scope: undefined, expired: true };
 const explainedK: number = ({} as RetrievalExplanation).fusion.k;
 void pageThrough;
 void passThrough;
+void providerFailure;
+void exactOptionsEmbedder;
 void undefinedEntity;
 void undefinedPrune;
 void explainedK;

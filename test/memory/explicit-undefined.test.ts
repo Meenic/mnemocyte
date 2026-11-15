@@ -6,6 +6,7 @@ import {
 	type MemoryClient,
 	type MemoryConfig,
 	migrate,
+	ProviderError,
 } from "mnemocyte";
 import {
 	aiSdkEmbedder,
@@ -439,6 +440,35 @@ describe("embedders", () => {
 		expect(new Headers(lastRequest().init.headers).has("authorization")).toBe(
 			false,
 		);
+	});
+
+	test("a ProviderError with retryAfterMs undefined backs off as usual", async () => {
+		const error = new ProviderError({
+			message: "busy",
+			status: 503,
+			retryAfterMs: undefined,
+		});
+		expect(error.retryAfterMs).toBeUndefined();
+
+		let calls = 0;
+		const inner = createEmbedder();
+		const memory = createMemory({
+			embedder: {
+				model: inner.model,
+				dimensions: inner.dimensions,
+				async embed(texts, options) {
+					calls += 1;
+					if (calls === 1) {
+						throw error;
+					}
+					return inner.embed(texts, options);
+				},
+			},
+			// A numeric wait over 0 ms would be thrown at once.
+			provider: { baseDelayMs: 1, maxDelayMs: 1, maxRetryAfterMs: 0 },
+		});
+		await memory.add({ scope, content: "Likes tea." });
+		expect(calls).toBe(2);
 	});
 
 	test.each([

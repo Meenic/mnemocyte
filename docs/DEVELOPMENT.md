@@ -260,10 +260,13 @@ Design rules for the public surface:
   treats `undefined` as absent: read them with `?? default` or
   `!== undefined`, never spread them over defaults. Under
   `exactOptionalPropertyTypes` a bare `?: T` rejects a `T | undefined`
-  variable. Result and event types the package produces keep `?: T`;
-  internal store types stay exact, so the store never sees a key set to
-  `undefined`. `test/memory/explicit-undefined.test.ts` and the export type
-  test check both sides.
+  variable. Result and event types the package produces keep `?: T`, and
+  so do types it passes into user code, such as `EmbedOptions`: an embedder
+  that declares its options as `{ signal?: AbortSignal }` stops being an
+  `Embedder` if `signal` gains `| undefined`. Internal store types stay
+  exact, so the store never sees a key set to `undefined`.
+  `test/memory/explicit-undefined.test.ts` and the export type test check
+  both sides.
 - Errors are `MnemocyteError` with a stable `code`, and a `reason` on every
   `"CONFIG"`, `"CONFLICT"` and `"MIGRATION"` (the constructor input requires
   one, so the compiler catches a throw without it); callers branch on those,

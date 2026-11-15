@@ -1,6 +1,6 @@
 import { generateText, jsonSchema, type LanguageModel, Output } from "ai";
 import type { MemoryPrompt } from "./ai-sdk-middleware.js";
-import { MnemocyteError } from "./errors.js";
+import { isMnemocyteError, MnemocyteError } from "./errors.js";
 import { assertKnownKeys } from "./options.js";
 import type {
 	BoundMemoryClient,
@@ -44,7 +44,7 @@ export interface ExtractMemoriesInput extends ExtractMemoriesOptions {
 	readonly prompt: MemoryPrompt;
 	/** The response to the last user message (`MemoryTurn.text`). */
 	readonly text: string;
-	/** Cancels the extraction. */
+	/** Cancels the extraction; it then fails with `"ABORTED"`. */
 	readonly signal?: AbortSignal | undefined;
 }
 
@@ -133,6 +133,7 @@ Rules:
 - Write each memory as one short, standalone sentence about the user, in the language the user wrote in, for example "Lives in Lisbon." or "Prefers answers without emoji."
 - If an existing memory already says the same thing, do not return it.
 - If the user changed something an existing memory with a key states, return the new version with that same key. Otherwise give each memory a new short snake_case key that names what it is about, such as home_city or preferred_language.
+- A key names the topic, never the value: home_city, not lives_in_berlin. The content is the sentence, never the key.
 - kind is one of: fact (a stable statement about the user), preference (how they like things done), instruction (a standing request for how the assistant should respond), backstory (long-lived background about their life or work).
 - importance is low, normal or high. Use high only for things the assistant must not get wrong, such as allergies.
 - Usually there is nothing worth saving: then return an empty memories array.`;
@@ -416,16 +417,66 @@ const OUTPUT_SCHEMA = jsonSchema<ExtractionOutput>(
 	{ validate: validateOutput },
 );
 
-/** The last occurrence of each key, in first-seen order, at most `limit`. */
+/**
+ * Content compared for sameness: NFKC, lower case, whitespace collapsed,
+ * one trailing period dropped.
+ */
+function normalizeContent(content: string): string {
+	return content
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/\.$/, "")
+		.trimEnd();
+}
+
+/**
+ * Whether storing `item` would add nothing: content that is only its key
+ * (`lives_in_berlin`), a memory the model was shown returned unchanged under
+ * its own key, or the content of a shown memory under another key or none
+ * (a fact `saveMemory` stored this turn). A shown memory under the same key
+ * with a new kind or importance is an update and is kept.
+ */
+function addsNothing(
+	item: ExtractedMemory,
+	shown: readonly MemoryWithScore[],
+	bound: BoundMemoryClient,
+): boolean {
+	if (!/\s/.test(item.content) && normalizeKey(item.content) === item.key) {
+		return true;
+	}
+	const content = normalizeContent(item.content);
+	const key = `${EXTRACTED_KEY_PREFIX}${item.key}`;
+	return shown.some((memory) => {
+		if (normalizeContent(memory.content) !== content) {
+			return false;
+		}
+		const sameKey = memory.key === key && sameScope(memory, bound);
+		return (
+			!sameKey ||
+			(memory.kind === item.kind && memory.importance === item.importance)
+		);
+	});
+}
+
+/**
+ * The last occurrence of each key, in first-seen order, without the items
+ * that would add nothing ({@link addsNothing}), at most `limit`.
+ */
 function selectMemories(
 	memories: readonly ExtractedMemory[],
 	limit: number,
+	shown: readonly MemoryWithScore[],
+	bound: BoundMemoryClient,
 ): ExtractedMemory[] {
 	const byKey = new Map<string, ExtractedMemory>();
 	for (const memory of memories) {
 		byKey.set(memory.key, memory);
 	}
-	return [...byKey.values()].slice(0, limit);
+	return [...byKey.values()]
+		.filter((memory) => !addsNothing(memory, shown, bound))
+		.slice(0, limit);
 }
 
 function combineSignals(
@@ -447,10 +498,17 @@ function combineSignals(
  * and `addMany` upserts by key, so a changed fact updates in place.
  * Memories get `source: "extractMemories"`.
  *
+ * Items that would add nothing are skipped, not stored: content that is only
+ * the key, a memory the model was shown returned unchanged, and the content
+ * of a shown memory under another key (such as one `saveMemory` stored this
+ * turn). A shown memory under the same key with a new kind or importance is
+ * updated.
+ *
  * Returns the stored memories (new or updated); `[]` when the model found
- * nothing or the prompt has no user text. Fails with `"TIMEOUT"` after
- * `timeoutMs` ms and with the AI SDK's `NoObjectGeneratedError` when the
- * model's output does not match the schema. Requires the `ai` package.
+ * nothing new or the prompt has no user text. Fails with `"TIMEOUT"` after
+ * `timeoutMs` ms, with `"ABORTED"` when `signal` aborts, and with the AI
+ * SDK's `NoObjectGeneratedError` when the model's output does not match the
+ * schema. Requires the `ai` package.
  *
  * @example
  * ```ts
@@ -554,7 +612,12 @@ export async function runExtraction(
 			abortSignal: signal,
 			providerOptions: { [EXTRACTION_MARKER]: { extraction: true } },
 		});
-		const selected = selectMemories(output.memories, maxMemories);
+		const selected = selectMemories(
+			output.memories,
+			maxMemories,
+			existing,
+			memory,
+		);
 		if (selected.length === 0) {
 			return [];
 		}
@@ -573,6 +636,18 @@ export async function runExtraction(
 			throw new MnemocyteError({
 				message: `extractMemories timed out after ${timeoutMs} ms.`,
 				code: "TIMEOUT",
+				cause: error,
+			});
+		}
+		// The AI SDK rethrows the caller's abort as its own error; every other
+		// step of the package reports it as "ABORTED".
+		if (
+			input.signal?.aborted === true &&
+			!(isMnemocyteError(error) && error.code === "ABORTED")
+		) {
+			throw new MnemocyteError({
+				message: "Operation was aborted.",
+				code: "ABORTED",
 				cause: error,
 			});
 		}

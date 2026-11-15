@@ -110,7 +110,7 @@ describe("CLI commands (PGlite)", () => {
 		expect(await migrateTarget(target(), args(), io)).toBe(1);
 		expect(io.questions).toHaveLength(1);
 		expect(io.stderr()).toBe(
-			"pgvector was not enabled. Have a database admin run:\n\n  CREATE EXTENSION IF NOT EXISTS vector;\n\nthen run mnemocyte migrate again.\n",
+			"pgvector was not enabled. To enable it, have a database admin run:\n\n  CREATE EXTENSION IF NOT EXISTS vector;\n\nthen run mnemocyte migrate again.\n",
 		);
 		expect(await hasPgvector()).toBe(false);
 		expect((await check(target())).stdout).toContain(
@@ -122,7 +122,7 @@ describe("CLI commands (PGlite)", () => {
 		const io = createTestIo(".", undefined);
 		expect(await migrateTarget(target(), args(), io)).toBe(1);
 		expect(io.stderr()).toContain(
-			"there is no terminal to ask on. Pass --yes to enable it, or: Have a database admin run:",
+			"there is no terminal to ask on. Pass --yes to enable it, or have a database admin run:",
 		);
 		expect(await hasPgvector()).toBe(false);
 	});
@@ -210,6 +210,9 @@ describe("CLI commands (PGlite)", () => {
 		const flag = await check(target(), { dimensions: 16 });
 		expect(flag.code).toBe(1);
 		expect(flag.stdout).toContain("2 problems found");
+		expect(flag.stdout).toContain(
+			"problem: The installation stores 8-dimension embeddings, but --dimensions is 16.",
+		);
 		expect(flag.stdout).toContain(
 			"problem: --dimensions is 16, but the embedder in memory.ts has 8 dimensions.",
 		);

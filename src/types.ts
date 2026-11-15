@@ -1226,8 +1226,8 @@ export interface DuplicatePage {
 }
 
 /**
- * A pair of memories that are likely duplicates. Unordered; each pair is
- * returned once.
+ * A pair of memories that are likely duplicates, returned once: `a` is the
+ * memory with the smaller id.
  */
 export interface DuplicatePair {
 	/** One of the two memories in the duplicate pair. */
@@ -1415,8 +1415,9 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 */
 	add(input: AddInput<DefaultNamespace>): Promise<Memory>;
 	/**
-	 * Store several memories of one scope with one embedder call and one
-	 * statement. Returns them in input order.
+	 * Store several memories of one scope: embed them in batches of the
+	 * embedder's `maxBatch`, then write them all or none. Returns them in
+	 * input order.
 	 */
 	addMany(input: AddManyInput<DefaultNamespace>): Promise<Memory[]>;
 	/**
@@ -1487,10 +1488,11 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * superseded memory when audit is enabled.
 	 *
 	 * @throws {MnemocyteError} `"VALIDATION"` for empty or duplicate
-	 * `supersededIds`, a `survivorId` inside `supersededIds`, or a survivor
-	 * that is itself superseded; `"NOT_FOUND"` if a memory is not visible at
-	 * the scope; `"CONFLICT"` if a memory points to a different survivor or
-	 * the survivor changed before the write. Nothing is written on any error.
+	 * `supersededIds` or a `survivorId` inside `supersededIds`;
+	 * `"NOT_FOUND"` if a memory is not visible at the scope; `"CONFLICT"`
+	 * with reason `"CONSOLIDATION_CHANGED"` if the survivor is itself
+	 * superseded (before or during the call) or a memory points to a
+	 * different survivor. Nothing is written on any error.
 	 */
 	consolidate(
 		input: ConsolidateInput<DefaultNamespace>,

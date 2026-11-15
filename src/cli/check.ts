@@ -10,6 +10,11 @@ const INSTALLATION_GUIDE_URL =
 /** What the app is configured with, to compare with the installation. */
 export interface ExpectedInstallation {
 	readonly dimensions?: number;
+	/**
+	 * Where `dimensions` came from, for the message: the `--dimensions` flag
+	 * or the memory file's embedder. @defaultValue `"embedder"`
+	 */
+	readonly dimensionsFrom?: "flag" | "embedder";
 	readonly model?: string;
 }
 
@@ -73,7 +78,7 @@ export function evaluateInstallation(
 		column.dimensions !== expected.dimensions
 	) {
 		problems.push(
-			`The installation stores ${column.dimensions}-dimension embeddings, but the embedder has ${expected.dimensions} dimensions. An installation keeps one embedding size.`,
+			`The installation stores ${column.dimensions}-dimension embeddings, but ${expected.dimensionsFrom === "flag" ? `--dimensions is ${expected.dimensions}` : `the embedder has ${expected.dimensions} dimensions`}. An installation keeps one embedding size.`,
 		);
 	}
 
@@ -183,6 +188,7 @@ export async function checkTarget(
 	const dimensions = args.dimensions ?? embedder?.dimensions;
 	const verdict = evaluateInstallation(report, {
 		...(dimensions === undefined ? {} : { dimensions }),
+		dimensionsFrom: args.dimensions === undefined ? "embedder" : "flag",
 		...(embedder === undefined ? {} : { model: embedder.model }),
 	});
 	if (

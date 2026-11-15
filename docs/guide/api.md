@@ -275,8 +275,9 @@ fails, nothing is stored. Its `signal` covers the whole batch.
 that memory instead of inserting one: content, kind, importance, tags,
 source, metadata, confidence, expiry and the embedding are replaced (omitted
 fields go back to their defaults), and `id`, `createdAt`, the access counts
-and any consolidation link are kept. Use it to store facts that change, such
-as a user's timezone, without duplicates:
+and any consolidation link are kept. Search's recency boost uses
+`createdAt`, so an updated fact ranks as old as its first version. Use it to
+store facts that change, such as a user's timezone, without duplicates:
 
 ```ts
 await memory.add({ scope, key: "timezone", content: "Timezone is Europe/Berlin." });
@@ -561,11 +562,14 @@ default, adds their tags to the survivor. Superseded memories are left out of
 search, list, context and duplicate search unless `includeSuperseded` is set.
 
 - `supersededIds` must be non-empty and distinct, and must not contain the
-  survivor (`"VALIDATION"`). The survivor must not itself be superseded
-  (`"VALIDATION"`). Every id must be visible at the scope (`"NOT_FOUND"`).
+  survivor (`"VALIDATION"`). Every id must be visible at the scope
+  (`"NOT_FOUND"`).
+- The survivor must be active: one that is itself superseded, already or by
+  a concurrent call, throws `"CONFLICT"` with reason
+  `"CONSOLIDATION_CHANGED"`.
 - Repeating a call is a no-op for memories that already point to this
   survivor. A memory that points to a different survivor makes the whole call
-  throw `"CONFLICT"`.
+  throw `"CONFLICT"` / `"CONSOLIDATION_CHANGED"`.
 - The call is all-or-nothing: on any conflict no memory, tag or audit event
   changes. Concurrent calls are safe.
 - While a memory points to the survivor, `delete` keeps the survivor unless
@@ -845,7 +849,8 @@ API if testing finds a problem. It does not cover:
 A minor release may add members to these unions, so a `switch`
 over them needs a `default` branch: `MnemocyteErrorCode`,
 `MnemocyteErrorReason`, `MnemocyteOperation` (observability events),
-`MnemocyteBackend` and `AuditEventType`. The other unions (`MemoryKind`,
+`MnemocyteBackend`, `AuditEventType` and `MemoryMiddlewareError.phase`
+(`"context"`, `"save"`). The other unions (`MemoryKind`,
 `ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
 `MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
 

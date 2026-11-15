@@ -142,7 +142,10 @@ them.
 - **Matching depends on the model.** A changed fact updates in place only
   when the model reuses the key it sees. It sees up to 20 memories from a
   search for the user's message; a stored fact the search does not return
-  can be stored again under a new key.
+  can be stored again under a new key. A model that writes the value into
+  the key (`lives_in_berlin`) makes a new key when the value changes;
+  content that is only the key is skipped, but such a key with a real
+  sentence is stored.
 - **The model decides what is saved.** The extraction prompt tells it to
   save only what the user stated and never secrets, but a model can still
   get this wrong, and what the user writes, including a prompt injection,

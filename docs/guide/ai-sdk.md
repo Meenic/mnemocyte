@@ -20,7 +20,7 @@ pnpm add ai
 ```ts
 import { generateText, stepCountIs } from "ai";
 import { memoryTools } from "mnemocyte/ai-sdk";
-import { memory } from "./memory";
+import { memory } from "./memory.ts";
 
 const { text } = await generateText({
   model: "openai/gpt-6.1-sol",
@@ -135,7 +135,7 @@ call; use `memoryMiddleware` directly to combine it with other middleware.
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { withMemory } from "mnemocyte/ai-sdk";
-import { memory } from "./memory";
+import { memory } from "./memory.ts";
 
 const result = streamText({
   model: withMemory({
@@ -176,8 +176,11 @@ it is. The context is added to what the model receives only, never to your
 In a multi-step call (tools with `stopWhen`), every step is a model call
 with the same last user message. The middleware reuses the context of the
 last query, so the steps embed once; a memory saved by a tool mid-turn
-appears from the next turn on. Create the middleware per request, from the
-`memory.for(...)` of that request, as in the examples.
+appears from the next turn on. A failed `context()` is kept the same way:
+it reaches `onError` once, and the AI SDK's retries of the model call and
+the later steps run without memory instead of failing again. A new query
+tries again; an abort is never kept. Create the middleware per request,
+from the `memory.for(...)` of that request, as in the examples.
 
 ### Options
 
@@ -293,7 +296,8 @@ gets:
   skips facts you already have.
 
 It returns structured output (`generateText` with `Output.object`), so the
-model must support it. Each memory gets one short sentence, a kind
+model must support it (see [local models](#local-models) for Ollama and
+other OpenAI-compatible servers). Each memory gets one short sentence, a kind
 (`fact`, `preference`, `instruction` or `backstory`), an importance
 (`low`, `normal` or `high`) and a snake_case key such as `home_city`.
 Mnemocyte stores them with `addMany` under the key `extracted:home_city`
@@ -304,12 +308,26 @@ The model is told to save only what the user said or confirmed, never
 something only the assistant said, and never passwords, keys, card or
 account numbers or id numbers.
 
+Small models often return what they were shown. Items that would add
+nothing are skipped, not stored, and are not errors:
+
+- a memory the model was shown, returned under its own key with the same
+  content, kind and importance (it is not re-embedded and its `updatedAt`
+  stays);
+- the content of a shown memory under another key or none, such as a fact
+  `saveMemory` stored earlier in the turn;
+- content that is only the key, such as `lives_in_berlin`.
+
+Content counts as the same after case, Unicode form, whitespace and a
+final period are ignored. A shown memory returned under its own key with a
+new kind or importance is updated.
+
 | Option | |
 |---|---|
 | `model` | Required. A model object, or a `"provider/model"` id for the AI SDK's global provider (the AI Gateway by default). A small, fast model is usually enough. |
 | `instructions` | Added after the built-in rules, such as `"Only remember dietary preferences."` At most 4,000 characters. |
 | `maxMemories` | Most memories stored per turn, 1–20. Defaults to 10. |
-| `timeoutMs` | Milliseconds for the whole extraction. Defaults to 30,000. |
+| `timeoutMs` | Milliseconds for the whole extraction: the search, the model call and the write. Defaults to 30,000; raise it for local or self-hosted models. |
 | `waitUntil` | Receives each extraction's promise. Pass your platform's `waitUntil`, or the function may stop before the extraction finishes. |
 
 Extraction never changes the response and never fails it. A failure (the
@@ -328,6 +346,37 @@ See [limitations](./limitations.md#extraction).
 Passing a model wrapped with `withMemory` as the extraction model is
 safe: the middleware recognises its own extraction calls and leaves them
 alone.
+
+#### Local models
+
+With Ollama, LM Studio or vLLM through `@ai-sdk/openai-compatible`, set
+`supportsStructuredOutputs: true`. Without it the provider drops the JSON
+schema (the AI SDK warns that `responseFormat` is not supported), the model
+answers in a shape of its own, and every extraction fails with
+`NoObjectGeneratedError`, which under `withMemory` reaches only `onError`.
+
+```ts
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+
+const ollama = createOpenAICompatible({
+  name: "ollama",
+  baseURL: "http://localhost:11434/v1",
+  supportsStructuredOutputs: true,
+});
+
+const model = withMemory({
+  model: ollama("qwen3:4b-instruct"),
+  memory: user,
+  save: { model: ollama("qwen3:4b-instruct"), timeoutMs: 120_000, waitUntil },
+  onError: ({ phase, error }) => logger.warn({ phase, error }),
+});
+```
+
+A local server often runs one request at a time, so an extraction waits
+behind the chat calls and the timeout runs while it waits: with four
+parallel requests on a CPU-only Ollama, half of the extractions hit the
+default 30 s. Prefer an instruct model; a thinking-only build (Ollama's
+`qwen3:4b` tag) spends thousands of tokens on every call.
 
 #### `extractMemories`
 
@@ -350,8 +399,9 @@ const model = withMemory({
 It takes `model`, `memory` (a bound client), `prompt` and `text` (as in
 the turn), the options above except `waitUntil`, and an optional `signal`.
 It returns the stored memories, new or updated, and `[]` when there was
-nothing to store. Unlike the middleware, it throws: `"CONFIG"` for bad
-options or an unbound client, `"TIMEOUT"`, the AI SDK's
+nothing new to store. Unlike the middleware, it throws: `"CONFIG"` for bad
+options or an unbound client, `"TIMEOUT"`, `"ABORTED"` when `signal`
+aborts (during the model call too), the AI SDK's
 `NoObjectGeneratedError` for output that does not match the schema, and
 any error of the model, the embedder or the database.
 
@@ -360,7 +410,8 @@ any error of the model, the embedder or the database.
 If `context()` fails (the embedder or the database is down), the error goes
 to `onError` with `phase: "context"`, and the model call runs without
 memory; the client's `onEvent` also records it as a failed `"context"`
-operation. Aborting the call is different: an aborted `abortSignal` cancels
+operation. Retries and later steps with the same query do not run it again
+(see above). Aborting the call is different: an aborted `abortSignal` cancels
 `context()` and the call throws, without calling the model.
 
 A `save` hook that throws or rejects, and a failed extraction, go to

@@ -270,6 +270,112 @@ describe("extractMemories", () => {
 		]);
 	});
 
+	test("skips what it was shown, unchanged or under another key", async () => {
+		const memory = createClient();
+		const alice = memory.for({ entityId: "alice" });
+		// saveMemory stored the fact this turn, without a key.
+		const saved = await alice.add({ content: "Has a cat named Miso." });
+		const model = new MockLanguageModelV4({
+			doGenerate: [
+				extractionResult([lisbon]),
+				extractionResult([
+					// Returned unchanged under its own key.
+					{ ...lisbon, content: "  lives in   LISBON " },
+					// The saveMemory fact again, under a key of its own.
+					{
+						key: "pet_cat",
+						content: "Has a cat named Miso",
+						kind: "fact",
+						importance: "normal",
+					},
+				]),
+			],
+		});
+		const [first] = await extractMemories({
+			model,
+			memory: alice,
+			prompt: [user("I live in Lisbon.")],
+			text: "Nice.",
+		});
+		const stored = expectDefined(first);
+
+		await expect(
+			extractMemories({
+				model,
+				memory: alice,
+				prompt: [user("Please remember that I have a cat named Miso.")],
+				text: "I will remember Miso.",
+			}),
+		).resolves.toEqual([]);
+		const { memories } = await alice.list();
+		expect(memories.map((item) => item.id).sort()).toEqual(
+			[saved.id, stored.id].sort(),
+		);
+		const lisbonNow = expectDefined(await alice.get({ id: stored.id }));
+		expect(lisbonNow.updatedAt).toEqual(stored.updatedAt);
+		expect(lisbonNow.content).toBe("Lives in Lisbon.");
+	});
+
+	test("updates a shown memory whose importance or kind changed", async () => {
+		const memory = createClient();
+		const alice = memory.for({ entityId: "alice" });
+		const model = new MockLanguageModelV4({
+			doGenerate: [
+				extractionResult([lisbon]),
+				extractionResult([{ ...lisbon, importance: "high" }]),
+			],
+		});
+		const [first] = await extractMemories({
+			model,
+			memory: alice,
+			prompt: [user("I live in Lisbon.")],
+			text: "Nice.",
+		});
+		const [second] = await extractMemories({
+			model,
+			memory: alice,
+			prompt: [user("Never forget that I live in Lisbon.")],
+			text: "Noted.",
+		});
+		expect(expectDefined(second).id).toBe(expectDefined(first).id);
+		expect(second?.importance).toBe("high");
+	});
+
+	test("skips content that is only its key", async () => {
+		const memory = createClient();
+		const alice = memory.for({ entityId: "alice" });
+		const model = new MockLanguageModelV4({
+			doGenerate: extractionResult([
+				{
+					key: "lives_in_berlin",
+					content: "lives_in_berlin",
+					kind: "fact",
+					importance: "normal",
+				},
+				{
+					key: "drinks_tea",
+					content: "Drinks-Tea",
+					kind: "preference",
+					importance: "normal",
+				},
+				{
+					key: "units",
+					content: "Uses metric units.",
+					kind: "preference",
+					importance: "normal",
+				},
+			]),
+		});
+		const stored = await extractMemories({
+			model,
+			memory: alice,
+			prompt: [user("I live in Berlin, drink tea and use metric units.")],
+			text: "Got it.",
+		});
+		expect(stored.map((item) => item.key)).toEqual(["extracted:units"]);
+		expect(await alice.stats()).toMatchObject({ memoryCount: 1 });
+	});
+
 	test("never overwrites a key the application chose", async () => {
 		const memory = createClient();
 		const alice = memory.for({ entityId: "alice" });
@@ -430,6 +536,46 @@ describe("extractMemories", () => {
 			"TIMEOUT",
 		);
 		expect(error.message).toContain("20 ms");
+	});
+
+	test("fails with ABORTED when the caller aborts during the model call", async () => {
+		const memory = createClient();
+		const alice = memory.for({ entityId: "alice" });
+		const controller = new AbortController();
+		const model = new MockLanguageModelV4({
+			doGenerate: ({ abortSignal }) =>
+				new Promise((_resolve, reject) => {
+					abortSignal?.addEventListener("abort", () =>
+						reject(abortSignal.reason),
+					);
+					controller.abort();
+				}),
+		});
+
+		const error = await expectMnemocyteError(
+			extractMemories({
+				model,
+				memory: alice,
+				prompt: [user("I live in Lisbon.")],
+				text: "Nice.",
+				signal: controller.signal,
+			}),
+			"ABORTED",
+		);
+		expect(error.cause).toBeDefined();
+		expect(await alice.stats()).toMatchObject({ memoryCount: 0 });
+
+		// Aborted before it starts: the search reports it the same way.
+		await expectMnemocyteError(
+			extractMemories({
+				model,
+				memory: alice,
+				prompt: [user("I live in Lisbon.")],
+				text: "Nice.",
+				signal: controller.signal,
+			}),
+			"ABORTED",
+		);
 	});
 
 	test("rejects bad settings with CONFIG", async () => {

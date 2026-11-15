@@ -332,8 +332,9 @@ stop promptly only if the embedder forwards the signal to `fetch`.
 `observability.onEvent(event)` receives one `start` and one `success` or
 `error` event per public operation, and per access write of a tracked search
 (`"trackAccess"`), with `operation`, `backend`, `timestamp`,
-`durationMs`, and `namespace`, `entityId`, `memoryId`, `count` where they
-apply. The hook
+`durationMs`, and `namespace`, `entityId`, `agentId`, `sessionId`,
+`memoryId`, `count` where they apply (the scope fields are in
+[scopes.md](./scopes.md#observability)). The hook
 is called synchronously and **not awaited** (`observability.ts`): events of a
 call are delivered in order, but async hook work may overlap, and a
 synchronous hook still blocks. A throw or rejection goes to the optional

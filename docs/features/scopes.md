@@ -266,12 +266,25 @@ database client right after a search still gets the write.
 
 ## Observability
 
-Every operation's events carry the `namespace` and `entityId` of its scope,
-read from the raw input (after the default namespace is filled in, or from
-the bound scope) so a malformed call still reports them. Operations
-are `add`, `addMany`, `search`, `get`, `list`, `update`, `delete`,
-`deleteScope`, `context`, `prune`, `findDuplicates`, `listAuditLog`,
+Every operation's events carry the `namespace`, `entityId`, `agentId` and
+`sessionId` of its scope. `scopeMetadata` (`memory/client-core.ts`) reads
+them from the raw input (after the default namespace is filled in, or from
+the bound scope), keeping each field that is a string, so a malformed call
+still reports what it can. Two paths build them from a validated scope with
+`scopeObservation` (`observability.ts`): the access write, whose
+`StoreScope` holds `null` for an omitted agent or session, and a rejected
+bound input. Operations are `add`, `addMany`, `search`, `get`, `list`,
+`update`, `delete`, `deleteScope`, `context`, `contextWithMemories`,
+`prune`, `findDuplicates`, `findDuplicatesPage`, `listAuditLog`,
 `pruneAuditLog`, `consolidate`, `stats` and `trackAccess`.
+
+An agent or session the scope does not name is left out of the event, never
+`null`. The same omission means "shared memories only" on a visibility read
+and "every agent" on a selector, so `null` would have two meanings; absent
+says only that the call named none, and keeps the fields `string | undefined`
+like `entityId`. Selector operations report the fields their selector sets,
+which are the agent and session they match exactly; `allNamespaces: true`
+calls have no scope and report none of the four.
 
 ## Tests
 
@@ -295,5 +308,8 @@ clients, selection for `stats`, `prune`, `listAuditLog` and
 `deleteScope`, rejected `scope` and `allNamespaces` fields, `for()`
 validation and `migrate({ memory })` with a bound client. The unit file adds
 the `"CONFIG"` check on `namespace`, observation events, input snapshots
-and `consolidate`; `test/package/exports-types.test-d.ts` checks the
+and `consolidate`; `test/observability/scope-fields.test.ts` checks the
+scope fields of every operation's events on the plain, default-namespace
+and bound clients, with and without an agent and session, for selectors,
+`allNamespaces` calls and failed calls; `test/package/exports-types.test-d.ts` checks the
 overloads and the bound types.

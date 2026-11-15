@@ -62,6 +62,13 @@ marked **Breaking** in their entries. What semver covers is in
   `context` applies them in its search, so `limit` and `maxTokens` are
   spent only on matching memories. An invalid date throws `"VALIDATION"`,
   and so do bare `before` / `after`, which name no field.
+- **`agentId` and `sessionId` on observability events.** Events now carry
+  the agent and session of the call's scope next to `namespace` and
+  `entityId`, on the plain, default-namespace and bound clients, so a
+  trace or metric can be split by agent or session. A scope without an
+  agent or session leaves the field out. `prune`, `deleteScope`, `stats`,
+  `listAuditLog` and `pruneAuditLog` report the agent and session their
+  selector names; calls with `allNamespaces: true` report no scope.
 
 ### Changed
 

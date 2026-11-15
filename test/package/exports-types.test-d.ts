@@ -62,6 +62,7 @@ import type {
 	MnemocyteErrorCode,
 	MnemocyteErrorInput,
 	MnemocyteErrorReason,
+	MnemocyteObservation,
 	MnemocyteStoreConfig,
 	NewMemory,
 	OptionalNamespaceScope,
@@ -1176,6 +1177,18 @@ aiSdkEmbedder({ model: "openai/text-embedding-3-small", maxBatch: undefined });
 const undefinedEntity: MemoryScope = { namespace: "app", entityId: undefined };
 // @ts-expect-error prune still needs a scope or allNamespaces.
 const undefinedPrune: PruneInput = { scope: undefined, expired: true };
+// Observation scope fields are optional strings, never null.
+const observedAgent: string | undefined = ({} as MnemocyteObservation).agentId;
+const observedSession: string | undefined = ({} as MnemocyteObservation)
+	.sessionId;
+const nullAgent: MnemocyteObservation = {
+	operation: "add",
+	phase: "start",
+	backend: "in-memory",
+	timestamp: new Date(),
+	// @ts-expect-error An observation never carries a null agent.
+	agentId: null,
+};
 // Resolved retrieval settings stay plain numbers.
 const explainedK: number = ({} as RetrievalExplanation).fusion.k;
 void pageThrough;
@@ -1185,3 +1198,6 @@ void exactOptionsEmbedder;
 void undefinedEntity;
 void undefinedPrune;
 void explainedK;
+void observedAgent;
+void observedSession;
+void nullAgent;

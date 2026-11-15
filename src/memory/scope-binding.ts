@@ -1,5 +1,5 @@
 import { MnemocyteError } from "../errors.js";
-import { observe } from "../observability.js";
+import { observe, scopeObservation } from "../observability.js";
 import type {
 	AddInput,
 	AddManyInput,
@@ -151,7 +151,7 @@ function bindScope(
 		...(validated.agentId === null ? {} : { agentId: validated.agentId }),
 		...(validated.sessionId === null ? {} : { sessionId: validated.sessionId }),
 	});
-	const metadata = { namespace: scope.namespace, entityId: scope.entityId };
+	const metadata = scopeObservation(scope);
 
 	/**
 	 * Run `call` with the caller's input, or reject it through the usual

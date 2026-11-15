@@ -522,8 +522,23 @@ const memory = createMemory({
 Each public operation emits one `start` event, then one `success` or `error`
 event; so does the access write of a tracked search (`"trackAccess"`, see
 [search](./api.md#search)), with `operation`, `phase`, `backend`, `timestamp`,
-`durationMs`, and `namespace`, `entityId`, `memoryId`, `count` or `error`
-where they apply.
+`durationMs`, and `namespace`, `entityId`, `agentId`, `sessionId`,
+`memoryId`, `count` or `error` where they apply.
+
+The scope fields come from the scope the call used, including the default
+namespace and the scope of a bound client. `agentId` and `sessionId` appear
+only when that scope names them. For `prune`, `deleteScope`, `stats`,
+`listAuditLog` and `pruneAuditLog` they are the agent and session the call
+selects, and a call with `allNamespaces: true` carries no scope fields:
+
+```ts
+onEvent(event) {
+  metrics.timing("memory.op", event.durationMs, {
+    operation: event.operation,
+    agent: event.agentId ?? "none",
+  });
+},
+```
 
 `onEvent` is never awaited, so a slow or failing hook cannot delay or fail a
 call. Events are delivered in order (`start`, then `success` or `error`), but

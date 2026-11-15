@@ -4,6 +4,7 @@ import {
 	type ObservationMetadata,
 	observe,
 	observePrepared,
+	scopeObservation,
 } from "../observability.js";
 import { throwIfAborted } from "../resilience.js";
 import {
@@ -123,13 +124,17 @@ function scopeMetadata(input: unknown): ObservationMetadata {
 	if (typeof scope !== "object" || scope === null) {
 		return {};
 	}
-	const { namespace, entityId } = scope as {
+	const { namespace, entityId, agentId, sessionId } = scope as {
 		namespace?: unknown;
 		entityId?: unknown;
+		agentId?: unknown;
+		sessionId?: unknown;
 	};
 	return {
 		...(typeof namespace === "string" ? { namespace } : {}),
 		...(typeof entityId === "string" ? { entityId } : {}),
+		...(typeof agentId === "string" ? { agentId } : {}),
+		...(typeof sessionId === "string" ? { sessionId } : {}),
 	};
 }
 
@@ -363,11 +368,7 @@ export function createMemoryClient(
 			config,
 			store.backend,
 			"trackAccess",
-			{
-				namespace: visibility.scope.namespace,
-				entityId: visibility.scope.entityId,
-				count: memoryIds.length,
-			},
+			{ ...scopeObservation(visibility.scope), count: memoryIds.length },
 			async () => {
 				const result = await outcome;
 				if (!result.ok) {

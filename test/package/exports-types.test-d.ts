@@ -519,10 +519,12 @@ void client.delete({ scope, id: "mem_a", dependents: "cascade" });
 const openaiOptions: OpenAIEmbedderOptions = {
 	model: "text-embedding-3-small",
 	dimensions: 1536,
+	headers: { "OpenAI-Project": "proj_1" },
 };
 const openai = openaiEmbedder(openaiOptions);
 const directOpenaiOptions: DirectOpenAIEmbedderOptions = {
 	model: "text-embedding-3-small",
+	headers: undefined,
 };
 const directOpenai = directOpenAIEmbedder(directOpenaiOptions);
 const passage: PurposeHint = { body: { input_type: "passage" } };
@@ -534,6 +536,7 @@ const compatibleOptions: OpenAICompatibleEmbedderOptions = {
 	baseURL: "http://localhost:11434/v1",
 	model: "nomic-embed-text",
 	dimensions: 768,
+	headers: { "x-team": "memory" },
 	maxBatch: 64,
 	purposes: hints,
 };
@@ -544,12 +547,14 @@ const voyageOptions: VoyageEmbedderOptions = {
 	model: "voyage-4",
 	dimensions: 512,
 	truncate: false,
+	headers: { "cf-aig-authorization": "Bearer token" },
 };
 const voyage: Embedder = voyageEmbedder(voyageOptions);
 const directVoyage: Embedder = directVoyageEmbedder({ model: "voyage-4" });
 const cohereOptions: CohereEmbedderOptions = {
 	model: "embed-v4.0",
 	maxBatch: 48,
+	headers: { "X-Client-Name": "memory-app" },
 };
 const cohere: Embedder = cohereEmbedder(cohereOptions);
 const directCohere: Embedder = directCohereEmbedder({ model: "embed-v4.0" });
@@ -557,6 +562,7 @@ const googleOptions: GoogleEmbedderOptions = {
 	model: "gemini-embedding-001",
 	dimensions: 768,
 	baseURL: "https://generativelanguage.googleapis.com/v1beta",
+	headers: { authorization: "Bearer gateway-token" },
 };
 const google: Embedder = googleEmbedder(googleOptions);
 const directGoogle: Embedder = directGoogleEmbedder({
@@ -566,6 +572,8 @@ const directGoogle: Embedder = directGoogleEmbedder({
 voyageEmbedder({ dimensions: 1024 });
 // @ts-expect-error truncate is a boolean
 cohereEmbedder({ model: "embed-v4.0", truncate: "END" });
+// @ts-expect-error header values are strings
+googleEmbedder({ model: "gemini-embedding-001", headers: { "x-a": 1 } });
 const purpose: EmbeddingPurpose = "query";
 const embedOptions: EmbedOptions = { purpose };
 void compatible.embed(["x"], embedOptions);

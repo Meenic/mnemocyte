@@ -59,6 +59,27 @@ describe("googleEmbedder", () => {
 		});
 	});
 
+	test("sends extra headers, an authorization as given, with its own key and content-type winning", async () => {
+		const embedder = googleEmbedder({
+			apiKey: "gemini-key",
+			model: "gemini-embedding-001",
+			headers: {
+				Authorization: "Bearer gateway-token",
+				"X-Goog-Api-Key": "caller-key",
+				"Content-Type": "text/plain",
+			},
+		});
+
+		respondJson(googleResponse([[1]]));
+		await embedder.embed(["a"], { purpose: "query" });
+
+		expect(lastRequest().init.headers).toEqual({
+			authorization: "Bearer gateway-token",
+			"x-goog-api-key": "gemini-key",
+			"content-type": "application/json",
+		});
+	});
+
 	test("marks gemini-embedding-2 purposes with text prefixes, not taskType", async () => {
 		const embedder = googleEmbedder({
 			apiKey: "k",
@@ -149,6 +170,26 @@ describe("googleEmbedder", () => {
 		[
 			"a non-boolean truncate",
 			{ apiKey: "k", model: "gemini-embedding-001", truncate: 1 },
+		],
+		[
+			"non-object headers",
+			{ apiKey: "k", model: "gemini-embedding-001", headers: null },
+		],
+		[
+			"a non-string header",
+			{
+				apiKey: "k",
+				model: "gemini-embedding-001",
+				headers: { "x-a": undefined },
+			},
+		],
+		[
+			"an invalid header name",
+			{
+				apiKey: "k",
+				model: "gemini-embedding-001",
+				headers: { "x:a": "v" },
+			},
 		],
 	])("rejects %s with CONFIG", (_label, options) => {
 		vi.stubEnv("GEMINI_API_KEY", "");

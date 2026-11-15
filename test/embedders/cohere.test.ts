@@ -75,6 +75,27 @@ describe("cohereEmbedder", () => {
 		});
 	});
 
+	test("sends extra headers lower-cased, with its own key and content-type winning", async () => {
+		const embedder = cohereEmbedder({
+			apiKey: "cohere-key",
+			model: "embed-v4.0",
+			headers: {
+				"X-Client-Name": "memory-app",
+				authorization: "Bearer caller-key",
+				"content-type": "text/plain",
+			},
+		});
+
+		respondJson(cohereResponse([[1]]));
+		await embedder.embed(["a"], { purpose: "document" });
+
+		expect(lastRequest().init.headers).toEqual({
+			"x-client-name": "memory-app",
+			authorization: "Bearer cohere-key",
+			"content-type": "application/json",
+		});
+	});
+
 	test("knows the fixed v3 sizes and sends none", async () => {
 		const light = cohereEmbedder({
 			apiKey: "k",
@@ -102,6 +123,18 @@ describe("cohereEmbedder", () => {
 		[
 			"a non-boolean truncate",
 			{ apiKey: "k", model: "embed-v4.0", truncate: "END" },
+		],
+		[
+			"non-object headers",
+			{ apiKey: "k", model: "embed-v4.0", headers: "x-a: 1" },
+		],
+		[
+			"a non-string header",
+			{ apiKey: "k", model: "embed-v4.0", headers: { "x-a": true } },
+		],
+		[
+			"an invalid header value",
+			{ apiKey: "k", model: "embed-v4.0", headers: { "x-a": "a\nb" } },
 		],
 	])("rejects %s with CONFIG", (_label, options) => {
 		vi.stubEnv("COHERE_API_KEY", "");

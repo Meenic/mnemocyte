@@ -303,4 +303,40 @@ describe("openaiEmbedder", () => {
 			encoding_format: "float",
 		});
 	});
+
+	test("sends extra headers lower-cased, with its own key and content-type winning", async () => {
+		const embedder = openaiEmbedder({
+			apiKey: "openai-key",
+			model: "text-embedding-3-small",
+			headers: {
+				"OpenAI-Project": "proj_1",
+				Authorization: "Bearer caller-key",
+				"content-type": "text/plain",
+			},
+		});
+
+		mockEmbeddingResponse([{ index: 0, embedding: [1] }]);
+		await embedder.embed(["a"], { purpose: "document" });
+
+		const [, init] = fetchMock.mock.calls.at(-1) ?? [];
+		expect(init?.headers).toEqual({
+			"openai-project": "proj_1",
+			authorization: "Bearer openai-key",
+			"content-type": "application/json",
+		});
+	});
+
+	test.each([
+		["non-object headers", []],
+		["a non-string header", { "x-a": 1 }],
+		["an invalid header name", { "x a": "v" }],
+	])("rejects %s with CONFIG", (_label, headers) => {
+		expect(() =>
+			openaiEmbedder({
+				apiKey: "k",
+				model: "text-embedding-3-small",
+				headers: headers as unknown as Record<string, string>,
+			}),
+		).toThrow(expect.objectContaining({ code: "CONFIG" }));
+	});
 });

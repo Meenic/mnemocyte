@@ -1,38 +1,20 @@
 import { type CliArgs, parseCliArgs, USAGE } from "./args.js";
 import { checkCommand } from "./check.js";
 import { initCommand } from "./init.js";
-import { CliError, type CliIo } from "./io.js";
+import { CliError, type CliIo, errorCauses } from "./io.js";
+import { errorJson, writeJson } from "./json.js";
 import { migrateCommand } from "./migrate.js";
 import { sqlCommand } from "./sql.js";
 
-/** How many `cause` links an error report follows. */
-const MAX_CAUSE_DEPTH = 3;
-
 /**
- * An error as the CLI prints it: its message, then each `cause`. A
- * `MnemocyteError` keeps the driver's error as its cause, and that is where
- * "connection refused" or "permission denied" is.
+ * An error as the CLI prints it: its message, then each `cause` (see
+ * {@link errorCauses}).
  */
 export function describeError(error: unknown): string {
 	const lines = [
 		`mnemocyte: ${error instanceof Error ? error.message : String(error)}`,
+		...errorCauses(error).map((cause) => `  cause: ${cause}`),
 	];
-	let cause: unknown = error instanceof Error ? error.cause : undefined;
-	for (let depth = 0; depth < MAX_CAUSE_DEPTH && cause != null; depth += 1) {
-		let detail: string;
-		if (cause instanceof Error) {
-			const code =
-				"code" in cause && typeof cause.code === "string" ? cause.code : "";
-			detail = cause.message.trim().replace(/\s+/g, " ") || code;
-		} else {
-			detail = String(cause);
-		}
-		// A message that already quotes its cause is not repeated.
-		if (detail !== "" && !lines.some((line) => line.includes(detail))) {
-			lines.push(`  cause: ${detail}`);
-		}
-		cause = cause instanceof Error ? cause.cause : undefined;
-	}
 	return `${lines.join("\n")}\n`;
 }
 
@@ -77,6 +59,11 @@ export async function main(
 	try {
 		return await run(args, io, version);
 	} catch (error) {
+		// With --json, standard output still gets one result to read, and the
+		// text goes to standard error for the log as without it.
+		if (args.json && (args.command === "check" || args.command === "migrate")) {
+			writeJson(io, errorJson(args.command, error));
+		}
 		io.error(describeError(error));
 		return error instanceof CliError ? error.exitCode : 1;
 	}

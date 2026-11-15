@@ -3,6 +3,7 @@ import { migrate } from "../migrate.js";
 import type { MigrateResult } from "../types.js";
 import type { CliArgs } from "./args.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
+import { type MigratePlanJson, writeJson } from "./json.js";
 import { type CliTarget, resolveTarget } from "./target.js";
 
 const CREATE_EXTENSION_HELP = `have a database admin run:
@@ -57,32 +58,19 @@ function describe(result: MigrateResult, dryRun: boolean): string {
 }
 
 /**
- * `mnemocyte migrate` against a resolved target: apply what is missing.
+ * What a real run would do: `migrate()` as a dry run with
+ * `createExtension`, whose `extensionCreated` says whether pgvector is
+ * missing.
  *
- * It first runs `migrate()` as a dry run with `createExtension`, whose
- * `extensionCreated` says whether pgvector is missing. Enabling it needs a
- * privileged role and changes the database beyond Mnemocyte's tables, so
- * the command asks first; `--yes` answers for CI. On "no", or without a
- * terminal to ask on, it prints the statement for an admin and exits 1.
- *
- * @returns The exit code.
+ * @throws {CliError} With exit code 2 when a fresh `DATABASE_URL` install
+ * has no `--dimensions`.
  */
-export async function migrateTarget(
+async function planMigrate(
 	target: CliTarget,
 	args: CliArgs,
-	io: CliIo,
-): Promise<number> {
-	io.write(`Using ${target.label}\n`);
-	if (target.store.backend === "in-memory") {
-		io.write(
-			"This client uses the in-memory backend; there is no schema to migrate.\n",
-		);
-		return 0;
-	}
-
-	let plan: MigrateResult;
+): Promise<MigrateResult> {
 	try {
-		plan = await runMigrate(target, args.dimensions, {
+		return await runMigrate(target, args.dimensions, {
 			createExtension: true,
 			dryRun: true,
 		});
@@ -101,6 +89,65 @@ export async function migrateTarget(
 		}
 		throw error;
 	}
+}
+
+/** `migrate --dry-run --json`: the plan as one {@link MigratePlanJson} line. */
+async function printPlanJson(
+	target: CliTarget,
+	args: CliArgs,
+	io: CliIo,
+): Promise<number> {
+	const plan: MigrateResult =
+		target.store.backend === "in-memory"
+			? { applied: [], adopted: [], extensionCreated: false }
+			: await planMigrate(target, args);
+	writeJson(io, {
+		command: "migrate",
+		ok: true,
+		dryRun: true,
+		target: target.label,
+		backend: target.store.backend,
+		applied: plan.applied,
+		adopted: plan.adopted,
+		extensionCreated: plan.extensionCreated,
+		upToDate:
+			plan.applied.length === 0 &&
+			plan.adopted.length === 0 &&
+			!plan.extensionCreated,
+	} satisfies MigratePlanJson);
+	return 0;
+}
+
+/**
+ * `mnemocyte migrate` against a resolved target: apply what is missing.
+ *
+ * It first runs `migrate()` as a dry run with `createExtension`, whose
+ * `extensionCreated` says whether pgvector is missing. Enabling it needs a
+ * privileged role and changes the database beyond Mnemocyte's tables, so
+ * the command asks first; `--yes` answers for CI. On "no", or without a
+ * terminal to ask on, it prints the statement for an admin and exits 1.
+ * `--json`, which comes with `--dry-run`, prints the plan as one
+ * {@link MigratePlanJson} line instead of the text.
+ *
+ * @returns The exit code.
+ */
+export async function migrateTarget(
+	target: CliTarget,
+	args: CliArgs,
+	io: CliIo,
+): Promise<number> {
+	if (args.json) {
+		return printPlanJson(target, args, io);
+	}
+	io.write(`Using ${target.label}\n`);
+	if (target.store.backend === "in-memory") {
+		io.write(
+			"This client uses the in-memory backend; there is no schema to migrate.\n",
+		);
+		return 0;
+	}
+
+	const plan = await planMigrate(target, args);
 	if (args.dryRun) {
 		io.write(describe(plan, true));
 		return 0;

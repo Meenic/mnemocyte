@@ -922,7 +922,8 @@ API documented in these guides waits for a major release. That covers the
 client and its methods, the in-memory and Postgres backends with the four
 built-in drivers, `postgresStore` and the documented `SqlExecutor`
 interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
-commands, flags and exit codes. It does not cover:
+commands, flags and exit codes, and the fields and codes of its
+[`--json` output](./cli.md#json-output). It does not cover:
 
 - anything under `experimental` (`experimental.findDuplicatesPage` and
   `experimental.contextWithMemories`), which may change or go in a minor
@@ -933,8 +934,8 @@ commands, flags and exit codes. It does not cover:
   `ExperimentalMemoryClient`, `BoundExperimentalMemoryClient`, and the
   `"findDuplicatesPage"` and `"contextWithMemories"` members of
   `MnemocyteOperation`;
-- error messages and the CLI's output text; branch on `code` and `reason`,
-  and on exit codes;
+- error messages and the CLI's output text, including `message` in its
+  JSON; branch on `code` and `reason`, and on exit codes;
 - the exact wording of `context()` output. The formats, the guarantee that
   memory content cannot break out of its block, and the `maxTokens` budget
   are covered;

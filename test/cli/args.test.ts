@@ -18,6 +18,7 @@ describe("parseCliArgs", () => {
 			command: "migrate",
 			yes: false,
 			dryRun: false,
+			json: false,
 		});
 		expect(
 			parseCliArgs([
@@ -38,12 +39,14 @@ describe("parseCliArgs", () => {
 			dimensions: 768,
 			yes: true,
 			dryRun: true,
+			json: false,
 		});
 		expect(parseCliArgs(["check", "-c", "memory.ts"])).toEqual({
 			command: "check",
 			config: "memory.ts",
 			yes: false,
 			dryRun: false,
+			json: false,
 		});
 		expect(
 			parseCliArgs(["sql", "--dimensions=3072", "--out", "schema.sql"]),
@@ -53,14 +56,30 @@ describe("parseCliArgs", () => {
 			out: "schema.sql",
 			yes: false,
 			dryRun: false,
+			json: false,
 		});
 		expect(parseCliArgs(["-y", "migrate"]).yes).toBe(true);
 		expect(parseCliArgs(["init"])).toEqual({
 			command: "init",
 			yes: false,
 			dryRun: false,
+			json: false,
 		});
 		expect(parseCliArgs(["init", "--dry-run"]).dryRun).toBe(true);
+	});
+
+	test("--json goes with check and with migrate --dry-run", () => {
+		expect(parseCliArgs(["check", "--json"])).toEqual({
+			command: "check",
+			yes: false,
+			dryRun: false,
+			json: true,
+		});
+		expect(parseCliArgs(["migrate", "--json", "--dry-run"])).toMatchObject({
+			command: "migrate",
+			dryRun: true,
+			json: true,
+		});
 	});
 
 	test("help and version win over a command", () => {
@@ -90,6 +109,10 @@ describe("parseCliArgs", () => {
 		[["migrate", "--out", "x.sql"], "--out applies to sql, not to migrate."],
 		[["migrate", "--config="], "--config needs a path."],
 		[["migrate", "--config"], "--config"],
+		[["sql", "--json"], "--json applies to check and migrate, not to sql."],
+		[["init", "--json"], "--json applies to check and migrate, not to init."],
+		[["migrate", "--json"], "--json on migrate needs --dry-run."],
+		[["migrate", "--json", "--yes"], "--json on migrate needs --dry-run."],
 	])("rejects %j with exit code 2", (argv, message) => {
 		const error = usageError(argv);
 		expect(error.exitCode).toBe(2);

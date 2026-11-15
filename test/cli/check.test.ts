@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
 	describeInstallation,
 	evaluateInstallation,
+	installationJson,
 } from "../../src/cli/check.js";
 import type { InstallationReport } from "../../src/db/migrations/inspect.js";
 
@@ -25,6 +26,11 @@ const HEALTHY: InstallationReport = {
 
 const APP = { dimensions: 1536, model: "text-embedding-3-small" };
 
+/** A finding with this code whose message contains `text`. */
+function finding(code: string, text: string) {
+	return { code, message: expect.stringContaining(text) };
+}
+
 describe("evaluateInstallation", () => {
 	test("a current installation that matches the app passes", () => {
 		expect(evaluateInstallation(HEALTHY, APP)).toEqual({
@@ -44,14 +50,14 @@ describe("evaluateInstallation", () => {
 			APP,
 		);
 		expect(missing.problems).toEqual([
-			expect.stringContaining("pgvector is not enabled"),
+			finding("PGVECTOR_MISSING", "pgvector is not enabled"),
 		]);
 		const old = evaluateInstallation(
 			{ ...HEALTHY, pgvectorVersion: "0.7.4" },
 			APP,
 		);
 		expect(old.problems).toEqual([
-			expect.stringContaining("needs pgvector 0.8.0 or later"),
+			finding("PGVECTOR_OUTDATED", "needs pgvector 0.8.0 or later"),
 		]);
 	});
 
@@ -61,7 +67,10 @@ describe("evaluateInstallation", () => {
 			APP,
 		);
 		expect(none.problems).toEqual([
-			"Mnemocyte's tables are not installed. Run mnemocyte migrate.",
+			{
+				code: "NOT_INSTALLED",
+				message: "Mnemocyte's tables are not installed. Run mnemocyte migrate.",
+			},
 		]);
 
 		const pending = evaluateInstallation(
@@ -77,7 +86,11 @@ describe("evaluateInstallation", () => {
 			APP,
 		);
 		expect(pending.problems).toEqual([
-			"1 migration is pending (0003_schema_v2). Run mnemocyte migrate.",
+			{
+				code: "MIGRATIONS_PENDING",
+				message:
+					"1 migration is pending (0003_schema_v2). Run mnemocyte migrate.",
+			},
 		]);
 
 		const two = evaluateInstallation(
@@ -93,9 +106,15 @@ describe("evaluateInstallation", () => {
 			APP,
 		);
 		expect(two.problems).toEqual([
-			"2 migrations are pending (0002_add_embedding_model, 0003_schema_v2). Run mnemocyte migrate.",
+			{
+				code: "MIGRATIONS_PENDING",
+				message:
+					"2 migrations are pending (0002_add_embedding_model, 0003_schema_v2). Run mnemocyte migrate.",
+			},
 		]);
-		expect(two.notes).toHaveLength(1);
+		expect(two.notes).toEqual([
+			finding("SCHEMA_UNTRACKED", "installed without migrate"),
+		]);
 
 		const invalid = evaluateInstallation(
 			{
@@ -105,7 +124,9 @@ describe("evaluateInstallation", () => {
 			},
 			APP,
 		);
-		expect(invalid.problems).toEqual(["matches no migration"]);
+		expect(invalid.problems).toEqual([
+			{ code: "SCHEMA_INVALID", message: "matches no migration" },
+		]);
 	});
 
 	test("a current schema installed without migrate passes with a note", () => {
@@ -118,7 +139,7 @@ describe("evaluateInstallation", () => {
 		);
 		expect(verdict.problems).toEqual([]);
 		expect(verdict.notes).toEqual([
-			expect.stringContaining("installed without migrate"),
+			finding("SCHEMA_UNTRACKED", "installed without migrate"),
 		]);
 	});
 
@@ -126,14 +147,22 @@ describe("evaluateInstallation", () => {
 		expect(
 			evaluateInstallation(HEALTHY, { ...APP, dimensions: 768 }).problems,
 		).toEqual([
-			"The installation stores 1536-dimension embeddings, but the embedder has 768 dimensions. An installation keeps one embedding size.",
+			{
+				code: "DIMENSIONS_MISMATCH",
+				message:
+					"The installation stores 1536-dimension embeddings, but the embedder has 768 dimensions. An installation keeps one embedding size.",
+			},
 		]);
 		// From --dimensions, without a memory file: no embedder to name.
 		expect(
 			evaluateInstallation(HEALTHY, { dimensions: 768, dimensionsFrom: "flag" })
 				.problems,
 		).toEqual([
-			"The installation stores 1536-dimension embeddings, but --dimensions is 768. An installation keeps one embedding size.",
+			{
+				code: "DIMENSIONS_MISMATCH",
+				message:
+					"The installation stores 1536-dimension embeddings, but --dimensions is 768. An installation keeps one embedding size.",
+			},
 		]);
 		const behind = evaluateInstallation(
 			{
@@ -147,13 +176,16 @@ describe("evaluateInstallation", () => {
 			},
 			{ dimensions: 768 },
 		);
-		expect(behind.problems).toHaveLength(2);
+		expect(behind.problems.map((problem) => problem.code)).toEqual([
+			"MIGRATIONS_PENDING",
+			"DIMENSIONS_MISMATCH",
+		]);
 	});
 
 	test("a missing or inconsistent installation row is a problem", () => {
 		expect(
 			evaluateInstallation({ ...HEALTHY, meta: null }, APP).problems,
-		).toEqual([expect.stringContaining('no "installation" row')]);
+		).toEqual([finding("INSTALLATION_ROW_MISSING", 'no "installation" row')]);
 		expect(
 			evaluateInstallation(
 				{
@@ -164,7 +196,11 @@ describe("evaluateInstallation", () => {
 				APP,
 			).problems,
 		).toEqual([
-			"mnemocyte_meta records halfvec(768), but the embedding column is vector(1536). Correct the installation row to match the column.",
+			{
+				code: "INSTALLATION_ROW_MISMATCH",
+				message:
+					"mnemocyte_meta records halfvec(768), but the embedding column is vector(1536). Correct the installation row to match the column.",
+			},
 		]);
 	});
 
@@ -172,7 +208,11 @@ describe("evaluateInstallation", () => {
 		expect(
 			evaluateInstallation(HEALTHY, { ...APP, model: "voyage-4" }).problems,
 		).toEqual([
-			'The installation\'s embedding model is "text-embedding-3-small", but the embedder\'s is "voyage-4". An installation keeps one embedding model.',
+			{
+				code: "MODEL_MISMATCH",
+				message:
+					'The installation\'s embedding model is "text-embedding-3-small", but the embedder\'s is "voyage-4". An installation keeps one embedding model.',
+			},
 		]);
 
 		const unrecorded = {
@@ -184,7 +224,9 @@ describe("evaluateInstallation", () => {
 			evaluateInstallation({ ...unrecorded, storedModels: [] }, APP),
 		).toEqual({
 			problems: [],
-			notes: [expect.stringContaining("No embedding model is recorded yet")],
+			notes: [
+				finding("MODEL_NOT_RECORDED", "No embedding model is recorded yet"),
+			],
 		});
 		// One stored model: that is what the client records, then compares.
 		expect(
@@ -196,13 +238,13 @@ describe("evaluateInstallation", () => {
 		expect(
 			evaluateInstallation({ ...unrecorded, storedModels: ["voyage-4"] }, APP)
 				.problems,
-		).toEqual([expect.stringContaining('embedding model is "voyage-4"')]);
+		).toEqual([finding("MODEL_MISMATCH", 'embedding model is "voyage-4"')]);
 		expect(
 			evaluateInstallation(
 				{ ...unrecorded, storedModels: ["voyage-4", "other"] },
 				APP,
 			).problems,
-		).toEqual([expect.stringContaining("the stored memories use several")]);
+		).toEqual([finding("MODEL_AMBIGUOUS", "the stored memories use several")]);
 	});
 });
 
@@ -242,5 +284,53 @@ describe("describeInstallation", () => {
 			"dimensions  3072 (halfvec)",
 			"model       -",
 		]);
+	});
+});
+
+describe("installationJson", () => {
+	test("gives the same facts with null for what is missing", () => {
+		expect(installationJson(HEALTHY)).toEqual({
+			pgvectorVersion: "0.8.7",
+			migrations: { state: "tracked", applied: ALL, pending: [] },
+			dimensions: 1536,
+			vectorType: "vector",
+			model: "text-embedding-3-small",
+		});
+		expect(
+			installationJson({
+				pgvectorVersion: null,
+				migrations: { state: "none" },
+				column: null,
+			}),
+		).toEqual({
+			pgvectorVersion: null,
+			migrations: { state: "none", applied: [], pending: [] },
+			dimensions: null,
+			vectorType: null,
+			model: null,
+		});
+	});
+
+	test("always lists applied and pending, and reads the model like the client", () => {
+		expect(
+			installationJson({
+				...HEALTHY,
+				migrations: { state: "invalid", reason: "matches no migration" },
+			}).migrations,
+		).toEqual({ state: "invalid", applied: [], pending: [] });
+		expect(
+			installationJson({
+				...HEALTHY,
+				meta: { dimensions: 1536, model: null, vectorType: "vector" },
+				storedModels: ["voyage-4"],
+			}).model,
+		).toBe("voyage-4");
+		expect(
+			installationJson({
+				...HEALTHY,
+				meta: { dimensions: 1536, model: null, vectorType: "vector" },
+				storedModels: [],
+			}).model,
+		).toBeNull();
 	});
 });

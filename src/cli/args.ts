@@ -23,6 +23,8 @@ export interface CliArgs {
 	readonly yes: boolean;
 	/** `--dry-run`: report what `migrate` or `init` would do. */
 	readonly dryRun: boolean;
+	/** `--json`: print one JSON result for `check` or `migrate --dry-run`. */
+	readonly json: boolean;
 	/** `--out`: where `sql` writes instead of standard output. */
 	readonly out?: string;
 }
@@ -42,6 +44,7 @@ Options
       --env-file <path>  Load this file instead of ./.env
   -y, --yes              migrate: enable pgvector without asking
       --dry-run          migrate, init: show what would run and change nothing
+      --json             check, migrate --dry-run: print the result as JSON
       --out <file>       sql: write to a file instead of standard output
   -h, --help             Show this help
   -v, --version          Show the version
@@ -61,6 +64,7 @@ const COMMANDS: ReadonlySet<string> = new Set([
 const COMMAND_FLAGS = {
 	yes: ["migrate"],
 	"dry-run": ["migrate", "init"],
+	json: ["check", "migrate"],
 	out: ["sql"],
 } as const satisfies Record<string, readonly CliCommand[]>;
 
@@ -102,10 +106,10 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	const { values, positionals } = parsed;
 
 	if (values.help === true || positionals[0] === "help") {
-		return { command: "help", yes: false, dryRun: false };
+		return { command: "help", yes: false, dryRun: false, json: false };
 	}
 	if (values.version === true) {
-		return { command: "version", yes: false, dryRun: false };
+		return { command: "version", yes: false, dryRun: false, json: false };
 	}
 	const [command, ...rest] = positionals;
 	if (command === undefined) {
@@ -119,13 +123,22 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	if (rest.length > 0) {
 		throw usageError(`Unexpected argument "${rest[0]}".`);
 	}
-	for (const flag of ["yes", "dry-run", "out"] as const) {
+	for (const flag of ["yes", "dry-run", "json", "out"] as const) {
 		const owners: readonly string[] = COMMAND_FLAGS[flag];
 		if (values[flag] !== undefined && !owners.includes(command)) {
 			throw usageError(
 				`--${flag} applies to ${owners.join(" and ")}, not to ${command}.`,
 			);
 		}
+	}
+	// A real migrate can ask about pgvector on standard output, which would
+	// break the JSON, so --json reports only the plan.
+	if (
+		command === "migrate" &&
+		values.json === true &&
+		values["dry-run"] !== true
+	) {
+		throw usageError("--json on migrate needs --dry-run.");
 	}
 	if (command === "init") {
 		for (const flag of NOT_FOR_INIT) {
@@ -144,6 +157,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 		command: command as CliCommand,
 		yes: values.yes === true,
 		dryRun: values["dry-run"] === true,
+		json: values.json === true,
 		...(values.config === undefined ? {} : { config: values.config }),
 		...(values["env-file"] === undefined
 			? {}
@@ -166,6 +180,7 @@ function parse(argv: readonly string[]) {
 			"env-file": { type: "string" },
 			yes: { type: "boolean", short: "y" },
 			"dry-run": { type: "boolean" },
+			json: { type: "boolean" },
 			out: { type: "string" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },

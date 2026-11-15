@@ -184,6 +184,9 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 - **`init`.** Landed: `mnemocyte init` writes a `memory.ts` for the
   driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env`
   (decision 37); see [features/cli.md](./features/cli.md#init).
+- **`--json`.** Landed: `check --json` and `migrate --dry-run --json`
+  print one JSON result for CI (decision 47); see
+  [features/cli.md](./features/cli.md#--json).
 - **Missing-schema errors.** Landed: the `"MIGRATION"` error for a missing
   table or column names `mnemocyte migrate` and links the Postgres
   guide, as described in [features/postgres.md](./features/postgres.md#errors).
@@ -949,3 +952,23 @@ Dated 2026-10-26 unless noted.
     string, so the two methods cannot render differently. Left open:
     access tracking marks every search result, the omitted ones included,
     for both methods.
+47. **CLI JSON output** (2026-11-16, landed): the maintainer chose, with
+    `feat/cli-json`, a `--json` flag on `check` and `migrate --dry-run`
+    that prints one JSON object on one line, last on stdout, with the exit
+    codes unchanged:
+    - Stable from the start, unlike `experimental.*`: CI is the reason it
+      exists. Semver covers field names, their types and the codes;
+      `message` text stays out, as decision 39 says of error messages and
+      the CLI's text. Minors may add fields and codes.
+    - camelCase fields and an envelope of `command`, `ok`, `target` and
+      `backend`. `check` reports `installation` (migration lists always
+      present, `null` for what is missing) and `problems` and `notes` as
+      `{ code, message }`, with UPPER_SNAKE codes like `MnemocyteError`'s,
+      one per branch of `evaluateInstallation`. The `migrate` plan is
+      `MigrateResult` plus `upToDate`.
+    - Errors after parsing also print JSON (`error.message`, `code` and
+      `reason` of the first `MnemocyteError` in the chain, `causes`), and
+      the text still goes to stderr. A bad command line prints none.
+    - `migrate --json` needs `--dry-run`: a real run may ask on stdout.
+      Allowing it later, without a prompt, is additive. `init` and `sql`
+      get no `--json`, and no roadmap item is added until someone asks.

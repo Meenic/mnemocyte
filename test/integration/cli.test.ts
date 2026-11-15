@@ -205,6 +205,21 @@ describe.skipIf(!databaseUrl)("CLI on Postgres through DATABASE_URL", () => {
 			expect(checked.io.stderr()).toContain("cause:");
 			expect(checked.io.stderr()).not.toContain("postgres:postgres@");
 
+			const json = await run(["check", "--json"]);
+			expect(json.code).toBe(2);
+			const result = JSON.parse(json.io.stdout()) as {
+				error: { causes: string[] };
+			};
+			expect(result).toMatchObject({
+				command: "check",
+				ok: false,
+				error: {
+					message: "Could not read the database, so nothing was checked.",
+				},
+			});
+			expect(result.error.causes.length).toBeGreaterThan(0);
+			expect(json.io.stdout()).not.toContain("postgres:postgres@");
+
 			const migrated = await run(["migrate", "--dimensions", "768"]);
 			expect(migrated.code).toBe(1);
 			expect(migrated.io.stderr()).toContain("cause:");

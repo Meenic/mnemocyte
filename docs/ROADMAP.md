@@ -23,7 +23,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
   [DEVELOPMENT.md](./DEVELOPMENT.md)).
 - [x] `feat/package-json-export`: `"./package.json"` in `exports`, so tools
   can read the installed version.
-- [ ] `feat/is-provider-error`: an `isProviderError` guard next to
+- [x] `feat/is-provider-error`: an `isProviderError` guard next to
   `isMnemocyteError`, on the same brand; `guide/embedders.md` uses it instead
   of checking `code` and `status` by hand.
 - [ ] `feat/stats-signal`: `signal` on `stats`, and a bound

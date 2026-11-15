@@ -1,5 +1,7 @@
 import {
 	createMemory,
+	isMnemocyteError,
+	isProviderError,
 	MnemocyteError,
 	migrate,
 	ProviderError,
@@ -55,6 +57,12 @@ describe("package exports", () => {
 		);
 
 		expect(typeof ProviderError).toBe("function");
+		expect(
+			isProviderError(new ProviderError({ message: "x", status: 503 })),
+		).toBe(true);
+		expect(
+			isMnemocyteError(new ProviderError({ message: "x", status: 503 })),
+		).toBe(true);
 		// The embedders entry shares the root's error class.
 		expect(() =>
 			directOpenAICompatibleEmbedder({

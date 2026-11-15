@@ -1,4 +1,8 @@
-import { isMnemocyteError, MnemocyteError, ProviderError } from "../errors.js";
+import {
+	isMnemocyteError,
+	isProviderError,
+	MnemocyteError,
+} from "../errors.js";
 import { throwIfAborted, withResilience } from "../resilience.js";
 import type {
 	Embedder,
@@ -116,7 +120,7 @@ async function embedChunk(
 		);
 	} catch (error) {
 		if (
-			error instanceof ProviderError ||
+			isProviderError(error) ||
 			(isMnemocyteError(error) &&
 				(error.code === "TIMEOUT" || error.code === "ABORTED"))
 		) {

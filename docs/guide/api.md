@@ -799,8 +799,11 @@ two fusion weights must not both be 0. Invalid values throw `"CONFIG"`.
 Every method throws `MnemocyteError`. Branch on `code` and `reason`, never
 on the message. `isMnemocyteError(error)` narrows an `unknown`. It checks a
 `Symbol.for("mnemocyte.error")` brand rather than `instanceof`, so it also
-recognizes errors from a second installed copy of the package. `cause`
-holds the underlying driver or provider error when there is one.
+recognizes errors from a second installed copy of the package.
+`isProviderError(error)` works the same way and narrows to a
+`ProviderError`, with its `status` and `retryAfterMs` (see
+[embedders.md](./embedders.md#provider-errors)). `cause` holds the
+underlying driver or provider error when there is one.
 
 ```ts
 import { isMnemocyteError } from "mnemocyte";

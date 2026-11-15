@@ -9,6 +9,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
+The first stable release. The code is the one 1.0.0-rc.2 shipped; this
+release adds the rewritten README and guides. From here the API documented
+in `docs/guide/` follows semantic versioning, and a breaking change waits
+for 2.0.
+
 ### Documentation
 
 - **README and guides rewritten for a first-time user.** The README has a
@@ -1353,7 +1360,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.2...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.2...v1.0.0
 [1.0.0-rc.2]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/Meenic/mnemocyte/compare/v0.8.0...v1.0.0-rc.1
 [0.8.0]: https://github.com/Meenic/mnemocyte/compare/v0.7.0...v0.8.0

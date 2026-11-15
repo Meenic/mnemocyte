@@ -441,6 +441,50 @@ the Ollama app passes again against the packed branch. Where an item says
   keeps a failure in the same one-entry cache as a result, so a new query
   tries again. The extraction prompt gained a rule that a key names the
   topic, not the value.
+- [ ] `docs/readme-guide-refactor`: rewrite `README.md` and `docs/guide/*.md`
+  for a first-time user while rc.2 is in use, in one PR before the 1.0.0
+  release PR (npm shows the tarball's README). Docs only; a code bug found
+  on the way becomes rc.3.
+  - Style: plain developer prose, a little formal. Short sentences, one
+    command per task, a one-line label before each code block, reference
+    detail linked rather than repeated; Ollama's README is the model for
+    shape, not wording. No "no X, no Y" phrasing.
+  - README: a plain tagline that says the memory lives in the app's own
+    database (replaces "Infrastructure-native memory…", the Phase 1
+    choice), then install, a quickstart that fits one screen with its
+    imports, Postgres in a few commands, AI SDK, a short scopes note before
+    anything uses `memory.for`, the API list and one docs list. No 0.8
+    `latest` note once 1.0.0 ships.
+  - Getting started: the steps keep their numbers and anchors but carry
+    only what the step needs; the Ollama and `init` notes become short
+    asides, and the driver variants stay as a compact "Other drivers"
+    section of install line plus `memory.ts` block each
+    (`test/cli/init.test.ts` matches those blocks to the `init`
+    templates).
+  - Say each thing once: `migrate` and pgvector live in `postgres.md` and
+    `cli.md`, the scope-selection rule in `api.md#scopes`, drivers in
+    `postgres.md#connect`; other pages give one sentence and a link.
+  - `api.md`: a method index at the top, the input rules moved out of the
+    opening paragraph, `migrate` after the client methods, and a short
+    `createMemory` options table linking to the timeout, cancellation and
+    observability sections, which stay in `embedders.md`.
+  - 0.x history moves to `upgrading.md`: "Upgrading to 0.6" from
+    `postgres.md`, "Updating from 0.7" from `limitations.md`, and
+    since-version notes in `api.md`. `limitations.md` regroups "Deleting"
+    by topic, and `ai-sdk.md`'s two "Errors and cancellation" headings get
+    distinct names.
+  - Stable: every `docs/guide/*.md` file name, and every heading anchor
+    linked from outside the page: `api.md#stability` (rc READMEs),
+    `postgres.md#install-the-schema` and
+    `#one-embedding-model-per-installation` (error messages and `check`),
+    the `CHANGELOG.md` links, and the anchors guides link to each other.
+    A heading that moves or is renamed keeps its old anchor with an
+    `<a id="old-anchor"></a>` line before the new heading.
+  - Checked: a script lists every `#anchor` linked from the README,
+    `CHANGELOG.md`, `src/`, the guides and the rc.1 / rc.2 READMEs and
+    fails on one that no heading or `<a id>` provides; every code block is
+    read against the current exports; `pnpm checktypes`, `lint`, `test`
+    and `build`.
 
 ## Cut first if time runs short
 

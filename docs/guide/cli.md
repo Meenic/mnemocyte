@@ -7,15 +7,18 @@ app already exports, so the command and the app share one database client
 and one embedder.
 
 ```bash
-npx mnemocyte init
-npx mnemocyte migrate
-npx mnemocyte check
-npx mnemocyte sql --dimensions 1536
+pnpm exec mnemocyte init
+pnpm exec mnemocyte migrate
+pnpm exec mnemocyte check
+pnpm exec mnemocyte sql --dimensions 1536
 ```
 
-`npx` runs the copy installed in your project; `pnpm exec mnemocyte` and
-`yarn mnemocyte` do the same. It needs Node.js 22.18 or newer, like the
-package.
+These guides use pnpm. Each package manager runs the copy installed in
+your project: `pnpm exec mnemocyte` with pnpm, `npx mnemocyte` with npm and
+`yarn mnemocyte` with Yarn. Use the one your project uses. In a project
+whose `package.json` names pnpm in `devEngines`, which `pnpm init` writes,
+npm refuses to run `npx` and fails with `EBADDEVENGINES`. The command needs
+Node.js 22.18 or newer, like the package.
 
 ## The memory file
 
@@ -90,7 +93,7 @@ When there is no memory file, `migrate` and `check` connect to
 embedding size from `--dimensions`:
 
 ```bash
-DATABASE_URL=postgres://… npx mnemocyte migrate --dimensions 1536
+DATABASE_URL=postgres://… pnpm exec mnemocyte migrate --dimensions 1536
 ```
 
 `--dimensions` is required only to create the schema; upgrading an existing
@@ -100,7 +103,7 @@ the command stops with an install hint.
 ## `init`
 
 ```bash
-npx mnemocyte init [--dry-run]
+pnpm exec mnemocyte init [--dry-run]
 ```
 
 Writes `memory.ts` in the project root, the file `migrate` and `check`
@@ -117,6 +120,9 @@ Next:
   Add DATABASE_URL=postgres://… to .env
   Create the schema: npx mnemocyte migrate
 ```
+
+The last hint always names `npx`; in a pnpm project, run
+`pnpm exec mnemocyte migrate`.
 
 - **The driver** comes from `dependencies` and `devDependencies`. With
   `drizzle-orm`, the file uses Drizzle over the driver next to it:
@@ -147,7 +153,7 @@ Next:
 ## `migrate`
 
 ```bash
-npx mnemocyte migrate [--config <path>] [--yes] [--dry-run] [--dimensions <n>]
+pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run] [--dimensions <n>]
 ```
 
 Creates the schema in an empty database and applies pending migrations to
@@ -174,7 +180,7 @@ Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_s
 ## `check`
 
 ```bash
-npx mnemocyte check [--config <path>] [--dimensions <n>]
+pnpm exec mnemocyte check [--config <path>] [--dimensions <n>]
 ```
 
 Reads the database and reports what is installed. It changes nothing.
@@ -211,7 +217,7 @@ database's own state is judged, plus `--dimensions` when given.
 ## `sql`
 
 ```bash
-npx mnemocyte sql --dimensions 768 --out migrations/mnemocyte.sql
+pnpm exec mnemocyte sql --dimensions 768 --out migrations/mnemocyte.sql
 ```
 
 Prints the schema a fresh install creates, for teams that apply SQL with
@@ -235,11 +241,11 @@ database driver's own message as `cause:`.
 ## In CI
 
 ```yaml
-- run: npx mnemocyte migrate --yes
+- run: pnpm exec mnemocyte migrate --yes
   env:
     DATABASE_URL: ${{ secrets.DATABASE_URL }}
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-- run: npx mnemocyte check
+- run: pnpm exec mnemocyte check
   env:
     DATABASE_URL: ${{ secrets.DATABASE_URL }}
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

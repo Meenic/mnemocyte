@@ -1,15 +1,28 @@
 # API reference
 
-Every client method, its options and the rules it enforces. Each method takes
-one object parameter, and every method that can run long accepts
-`signal: AbortSignal`. An optional field set to `undefined` means the same as
-leaving it out, and the types allow it under `exactOptionalPropertyTypes`, so
-a `cursor` or `signal` that may be `undefined` passes straight through.
-A key a method does not take throws `"VALIDATION"`, even set to
-`undefined`, in the input, its `scope` and each `addMany` memory, so a
-misspelled filter never widens a read or a delete; `metadata` and
-`tokenCounter` keep whatever keys they hold. Failures are `MnemocyteError` with a stable `code` (see [errors](#errors)).
-Upgrading from 0.x? See [upgrading.md](./upgrading.md).
+Every client method, its options and the rules it enforces. Upgrading from
+0.x? See [upgrading.md](./upgrading.md).
+
+| Method | What it does |
+|---|---|
+| [`createMemory`](#creatememory) | Creates the client. |
+| [`for`](#bound-scopes) | Returns a client bound to one scope. |
+| [`add`, `addMany`](#add-and-addmany) | Stores memories; a `key` updates in place. |
+| [`search`](#search) | Ranked memories for a query. |
+| [`get`](#get) | One memory by id or key. |
+| [`list`](#list) | Pages through memories, newest first. |
+| [`update`](#update) | Changes fields of one memory. |
+| [`context`](#context) | Search results rendered as prompt text. |
+| [`delete`, `deleteScope`](#delete-and-deletescope) | Removes one memory, or everything in a scope. |
+| [`prune`](#prune) | Deletes memories that match selectors. |
+| [`findDuplicates`](#findduplicates) | Pairs of near-identical memories. |
+| [`consolidate`](#consolidate) | Marks duplicates as replaced by a survivor. |
+| [`listAuditLog`](#listauditlog) | Pages through the audit log. |
+| [`pruneAuditLog`](#pruneauditlog) | Deletes old audit events. |
+| [`stats`](#stats) | Counts memories in a selection. |
+| [`migrate`](#migrate) | Creates or upgrades the Postgres schema. |
+
+Failures are `MnemocyteError` with a stable `code`; see [errors](#errors).
 
 ## `createMemory`
 
@@ -17,85 +30,52 @@ Upgrading from 0.x? See [upgrading.md](./upgrading.md).
 import { createMemory } from "mnemocyte";
 
 const memory = createMemory({
-  embedder,                          // required, see embedders.md
-  namespace: "my-app",               // optional; see Scopes
-  store: sql,                        // optional; your database client, in-memory when omitted
-  defaults: { limit: 10, minScore: 0 },
-  retrieval: { /* see Retrieval tuning */ },
-  provider: { /* see embedders.md */ },
-  observability: { onEvent(event) {} },
-  audit: { enabled: true },
+  embedder,
+  namespace: "my-app",
+  store: sql,
 });
 ```
 
-Configuration is validated synchronously; invalid values throw `"CONFIG"`.
-So does a key `createMemory` does not take, in the config or in a nested
-object such as `retrieval.fusion`: a misspelled option fails at startup
-instead of being ignored. A key set to `undefined` counts as absent.
-`store` is the database client your app already has (a postgres.js `sql`,
-a `pg` Pool, a PGlite instance, a Drizzle instance over one of them, or a
-`SqlExecutor`), recognised by its shape, or a store from `postgresStore()`.
-A value that is none of these throws `"CONFIG"` right away. The Postgres
-code loads on the first call that needs it. Without `store` the client
-keeps memories in process memory, which suits tests and prototypes. For
-persistent storage see [postgres.md](./postgres.md).
+| Option | Default | |
+|---|---|---|
+| `embedder` | required | See [embedders.md](./embedders.md). |
+| `namespace` | none | The namespace for scopes that leave it out; see [default namespace](#default-namespace). |
+| `store` | in-memory | Your database client; see [connect](./postgres.md#connect). |
+| `defaults` | `{ limit: 10, minScore: 0 }` | Defaults for `search` and `context`. |
+| `retrieval` | see [retrieval tuning](#retrieval-tuning) | Ranking and access tracking. |
+| `provider` | see [timeouts and retries](./embedders.md#timeouts-and-retries) | Embedder timeouts and retries. |
+| `observability` | none | `onEvent` and `onError` hooks; see [observability](./embedders.md#observability). |
+| `audit` | `{ enabled: false }` | Records an audit event for every change; see [`listAuditLog`](#listauditlog). |
 
-The client holds no connections or timers, so there is no `close()`: with
-Postgres, the database client you passed in is yours to end, and the
-in-memory store is garbage-collected with the client.
+The configuration is checked when `createMemory` runs. An invalid value
+throws `"CONFIG"`, and so does a key `createMemory` does not take, in the
+config or in a nested object such as `retrieval.fusion`, so a misspelled
+option fails at startup. A key set to `undefined` counts as absent.
 
-## `migrate`
+`store` takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a
+Drizzle instance over one of them, a `SqlExecutor`, or a store from
+`postgresStore()`; anything else throws `"CONFIG"` right away. Without
+`store`, memories live in process memory, which suits tests and
+prototypes.
 
-```ts
-import { migrate } from "mnemocyte";
+The client holds no connections or timers, so it has no `close()`. With
+Postgres, the database client you passed in is yours to end.
 
-const { applied, adopted, extensionCreated } = await migrate({
-  memory,                 // the client from createMemory()
-  createExtension: true,  // optional; enable pgvector if it is missing
-  dryRun: false,          // optional; report what would happen, change nothing
-  signal,                 // optional
-});
+## Input rules
 
-// Without a memory client at hand, pass the database client and the
-// dimensions instead:
-await migrate({ store: sql, dimensions: 1536 });
-```
+These hold for every method:
 
-Creates or upgrades the Postgres schema and records each migration in
-`mnemocyte_migrations`. `applied` lists the migrations this call ran;
-`adopted` lists those it found already applied in a schema installed without
-`migrate` (with `psql` or drizzle-kit) and recorded without running;
-`extensionCreated` says whether it ran `CREATE EXTENSION vector`. Calling
-it again applies nothing. Each migration runs in its own transaction behind
-an advisory lock, so concurrent calls from several app instances wait for
-each other and apply every migration once. See
-[postgres.md](./postgres.md#install-the-schema) for what each case does.
-
-- Pass exactly one of `memory` and `store` (`"VALIDATION"` otherwise).
-  With `memory`, the client's store is migrated and `embedder.dimensions`
-  is the dimensions; a `dimensions` that differs from it throws `"CONFIG"`.
-  With an in-memory client there is nothing to migrate.
-- `dimensions` is an integer from 1 to 4,000. It is required when the
-  database has no Mnemocyte tables (`"VALIDATION"` otherwise) and fixes the
-  embedding column: `vector` up to 2,000, `halfvec` above. On an existing
-  installation a different value throws `"CONFIG"` before anything runs.
-- pgvector must be enabled before a fresh install. With
-  `createExtension: true`, `migrate` runs `CREATE EXTENSION IF NOT EXISTS
-  vector` when it is missing, in the same transaction as the schema. That
-  needs a superuser or the provider's admin role; without it, or when the
-  server does not have pgvector installed, it throws `"MIGRATION"` with a
-  message naming the step, and nothing is created. Without the option a
-  missing pgvector throws `"MIGRATION"`.
-- `dryRun: true` reads the database in one read-only transaction and returns
-  what a run would return, changing nothing (the extension included). It
-  throws what a real run would throw before its first change; a migration
-  that would fail partway through is only found by running it.
-- A failing migration rolls back and throws `"MIGRATION"` with the driver
-  error as `cause`; migrations that committed before it stay applied.
-- A schema that matches no migration (for example a half-applied file run
-  with plain `psql -f`) throws `"MIGRATION"` without changing anything.
-- An abort cancels the running statement and rolls back the current
-  migration.
+- Each method takes one object parameter.
+- A missing optional field and one set to `undefined` mean the same, and
+  the types allow `undefined` under `exactOptionalPropertyTypes`, so a
+  `cursor` or `signal` that may be `undefined` passes straight through.
+- A key the method does not take throws `"VALIDATION"`, even when set to
+  `undefined`. This holds in the input, in its `scope` and in each
+  `addMany` memory, so a misspelled filter never widens a read or a delete.
+  `metadata` and `tokenCounter` keep whatever keys they hold.
+- On the unbound client, a `null` or missing input throws `"VALIDATION"`.
+- Every method that can run long accepts `signal: AbortSignal`; see
+  [cancellation](./embedders.md#cancellation).
 
 ## Scopes
 
@@ -113,12 +93,12 @@ const scope = {
 Each field is a non-empty string of at most 256 bytes in UTF-8; anything
 else throws `"VALIDATION"`.
 
-**Writes** (`add`, `addMany`) store the memory in exactly that scope. Leaving
-out `agentId` makes the memory shared by every agent; leaving out
+**Writes** (`add`, `addMany`) store the memory in exactly that scope.
+Leaving out `agentId` makes the memory shared by every agent; leaving out
 `sessionId` keeps it outside any session.
 
-**Reads** (`search`, `get`, `list`, `context`, `findDuplicates`) and changes
-by id (`update`, `delete`, `consolidate`) see the scope plus
+**Reads** (`search`, `get`, `list`, `context`, `findDuplicates`) and
+changes by id (`update`, `delete`, `consolidate`) see the scope plus
 shared memories:
 
 | Scope of the call | Sees memories with |
@@ -127,24 +107,24 @@ shared memories:
 | `+ agentId: "a"` | agent `a` or no agent; no session |
 | `+ agentId: "a", sessionId: "s"` | agent `a` or none, and session `s` or none |
 
-`exactAgent: true` drops the memories with no agent, and `exactSession: true`
-those with no session. Another entity, another namespace or another agent is
-never visible.
+`exactAgent: true` drops the memories with no agent, and
+`exactSession: true` those with no session. Another entity, another
+namespace or another agent is never visible.
 
 **Bulk operations** (`deleteScope`, `prune`, `stats`, `listAuditLog`,
-`pruneAuditLog`) select
-instead: a field that is set must match exactly, and an omitted `agentId` or
-`sessionId` matches any value. So `deleteScope({ scope: { namespace,
-entityId } })` erases the entity across every agent and session.
-`deleteScope` is the one bulk operation that requires `entityId` and has
-no `allNamespaces`: an erasure names the entity it erases, so a whole
-namespace or installation is never one call away.
+`pruneAuditLog`) select instead: a field that is set must match exactly,
+and an omitted `agentId` or `sessionId` matches any value. So
+`deleteScope({ scope: { namespace, entityId } })` erases the entity across
+every agent and session. `deleteScope` is the one bulk operation that
+requires `entityId` and has no `allNamespaces`: an erasure names the
+entity it erases, so a whole namespace or installation is never one call
+away.
 
 ### Default namespace
 
 `createMemory({ namespace })` sets a namespace for every call whose scope
-leaves it out. A scope that names its own namespace wins, so a multi-tenant
-app can still pass one per call:
+leaves it out. A scope that names its own namespace wins, so a
+multi-tenant app can still pass one per call:
 
 ```ts
 const memory = createMemory({ namespace: "my-app", store, embedder });
@@ -178,16 +158,16 @@ await user.deleteScope();                                  // erase the user
 - Reads and changes by id follow the visibility rules above: `agent` sees
   the support agent's memories plus shared ones.
 - `deleteScope`, `prune`, `stats`, `listAuditLog` and `pruneAuditLog`
-  select within the bound scope, where an omitted `agentId` or `sessionId` matches any
-  value: `user.deleteScope()` erases the user across every agent and
-  session.
+  select within the bound scope, where an omitted `agentId` or `sessionId`
+  matches any value: `user.deleteScope()` erases the user across every
+  agent and session.
 - Methods whose options are all optional (`list`, `deleteScope`,
   `findDuplicates`, `listAuditLog`, `experimental.findDuplicatesPage`)
   can be called without an argument. `stats()` takes none.
 - A bound client has no `allNamespaces` and no `for`. A `scope` or
-  `allNamespaces` field passed from untyped code throws `"VALIDATION"`
-  instead of being ignored, so a call cannot leave the bound scope.
-- `for()` validates and copies the scope when it is called: a malformed
+  `allNamespaces` field passed from untyped code throws `"VALIDATION"`, so
+  a call cannot leave the bound scope.
+- `for()` checks and copies the scope when it is called: a malformed
   scope, or one without a namespace on a client without a default, throws
   `"VALIDATION"` at once. `bound.scope` is the frozen copy.
 - The bound client shares the parent's store, embedder and configuration,
@@ -216,11 +196,11 @@ sessionId }`, with `null` for an omitted agent or session), `createdAt`,
 `supersededAt`, `embeddingModel` and `embeddingDimensions`. Ids are UUIDv7
 strings.
 
-`metadata` must be JSON data (`JsonObject` / `JsonValue` are exported).
+`metadata` must be JSON data (`JsonObject` and `JsonValue` are exported).
 `undefined`, functions, bigints, non-finite numbers, class instances and
-cyclic objects throw `"VALIDATION"`. Tags, metadata and dates are copied when
-you call a method, and returned records are copies, so later mutations on
-either side change nothing.
+cyclic objects throw `"VALIDATION"`. Tags, metadata and dates are copied
+when you call a method, and returned records are copies, so later changes
+on either side have no effect.
 
 ## Input limits
 
@@ -239,9 +219,9 @@ database is called, on every backend:
 | `batchSize` (`pruneAuditLog`) | 1 to 10,000 |
 | `batchSize` (`experimental.findDuplicatesPage`) | 1 to 1,000 |
 
-32,000 characters is about 8,000 tokens, the input limit of common embedding
-models. The key and scope limits keep the scope + key index entry within what
-a Postgres btree index accepts.
+32,000 characters is about 8,000 tokens, the input limit of common
+embedding models. The key and scope limits keep the scope + key index
+entry within what a Postgres btree index accepts.
 
 ## `add` and `addMany`
 
@@ -264,20 +244,20 @@ const added = await memory.addMany({
 });
 ```
 
-Input is validated before the embedder is called. `addMany` stores up to
-1,000 memories in one scope and returns the records in input order. It calls
-the embedder with at most `maxBatch` texts at a time (100 unless the
-embedder sets it), one call after another, then
-writes every memory in one transaction: when an embedder call or a write
-fails, nothing is stored. Its `signal` covers the whole batch.
+Input is checked before the embedder is called. `addMany` stores up to
+1,000 memories in one scope and returns the records in input order. It
+calls the embedder with at most `maxBatch` texts at a time (100 unless the
+embedder sets it), one call after another, then writes every memory in one
+transaction: when an embedder call or a write fails, nothing is stored.
+Its `signal` covers the whole batch.
 
-**Keys.** With a `key` that already exists in the exact scope, `add` updates
-that memory instead of inserting one: content, kind, importance, tags,
-source, metadata, confidence, expiry and the embedding are replaced (omitted
-fields go back to their defaults), and `id`, `createdAt`, the access counts
-and any consolidation link are kept. Search's recency boost uses
-`createdAt`, so an updated fact ranks as old as its first version. Use it to
-store facts that change, such as a user's timezone, without duplicates:
+**Keys.** With a `key` that already exists in the exact scope, `add`
+updates that memory instead of inserting one. Content, kind, importance,
+tags, source, metadata, confidence, expiry and the embedding are replaced
+(omitted fields go back to their defaults), and `id`, `createdAt`, the
+access counts and any consolidation link are kept. Search's recency boost
+uses `createdAt`, so an updated fact ranks as old as its first version.
+Use keys to store facts that change, such as a user's timezone:
 
 ```ts
 await memory.add({ scope, key: "timezone", content: "Timezone is Europe/Berlin." });
@@ -287,8 +267,9 @@ await memory.add({ scope, key: "timezone", content: "Timezone is Asia/Tokyo." })
 
 Keys are unique per exact scope: the same key under another agent, session
 or entity is a different memory. Concurrent adds with one key end in one
-memory. A key may appear only once per `addMany` call (`"VALIDATION"`). With
-audit enabled, an add that updated a memory is recorded as `memory.updated`.
+memory. A key may appear only once per `addMany` call (`"VALIDATION"`).
+With audit enabled, an add that updated a memory is recorded as
+`memory.updated`.
 
 ## `search`
 
@@ -316,17 +297,18 @@ const results = await memory.search({
 
 Search runs a vector search and a lexical (keyword) search, fuses the two
 rankings and applies small recency and importance boosts (see
-[retrieval tuning](#retrieval-tuning)). Each result carries `score` (0 to 1)
-and `scores`, plus `explanation` when `explain` is set.
+[retrieval tuning](#retrieval-tuning)). Each result carries `score` (0 to
+1) and `scores`, plus `explanation` when `explain` is set.
 
-With access tracking on (`retrieval.trackAccess: true`, or `trackAccess` on
-the call), search increments `accessCount` and sets `lastAccessedAt` on the
-returned memories. The write starts as search returns and search does not
-wait for it, so the returned records show the values from before this
+With access tracking on (`retrieval.trackAccess: true`, or `trackAccess`
+on the call), search increments `accessCount` and sets `lastAccessedAt` on
+the returned memories. The write starts as search returns and search does
+not wait for it, so the returned records show the values from before this
 search. If it fails, search still succeeds and `onEvent` receives a
 `"trackAccess"` error event. Memories deleted in the meantime are skipped.
-`updatedAt` never changes on search, and access counts do not affect ranking.
-With tracking off, `accessCount` stays 0 and `lastAccessedAt` stays null.
+`updatedAt` never changes on search, and access counts do not affect
+ranking. With tracking off, `accessCount` stays 0 and `lastAccessedAt`
+stays null.
 
 ## `get`
 
@@ -336,8 +318,9 @@ const byKey = await memory.get({ scope, key: "timezone" });
 ```
 
 Returns the memory or `null`. By `id`, any memory visible at the scope is
-found; by `key`, only the exact scope is searched, because that is where keys
-are unique. Pass exactly one of `id` and `key` (`"VALIDATION"` otherwise).
+found; by `key`, only the exact scope is searched, because that is where
+keys are unique. Pass exactly one of `id` and `key` (`"VALIDATION"`
+otherwise).
 
 ## `list`
 
@@ -379,8 +362,8 @@ scope cannot change: delete the memory and add it in the new scope.
 - `"NOT_FOUND"` when no memory with that id is visible at the scope.
 - `"CONFLICT"` when the new `key` is already used in the memory's scope.
 
-The write is one statement, so a concurrent update or delete cannot leave a
-half-applied change.
+The write is one statement, so a concurrent update or delete cannot leave
+a half-applied change.
 
 ## `context`
 
@@ -394,20 +377,21 @@ const context = await memory.context({
 ```
 
 Runs a search and renders the results as a string to put in a prompt, or
-returns `""` when no memory matches. It accepts search's `limit`, `minScore`, `kinds`, `tags`, `includeSuperseded`,
-`includeExpired`, `exactAgent`, `exactSession` and `trackAccess`, with
-the same defaults (`limit` and `minScore` fall back to the config's
-`defaults`), plus:
+returns `""` when no memory matches. It accepts search's `limit`,
+`minScore`, `kinds`, `tags`, `includeSuperseded`, `includeExpired`,
+`exactAgent`, `exactSession` and `trackAccess`, with the same defaults,
+plus:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content
-  cannot break out of its block: Markdown and plain text use a fence longer
-  than any run in the content, and XML escapes it. The query is not echoed
-  into the output; it is already in your prompt.
-- `maxTokens`: positive integer, default 1200. The result always fits; when
-  memories are left out, a line says how many. If nothing fits, the result is
-  part of that line or an empty string.
-- `tokenCounter`: `{ count(text): number }`. The default estimates one token
-  per four characters; pass your model's tokenizer for exact budgets.
+  cannot break out of its block: Markdown and plain text use a fence
+  longer than any run in the content, and XML escapes it. The query is not
+  repeated in the output; it is already in your prompt.
+- `maxTokens`: positive integer, default 1200. The result always fits;
+  when memories are left out, a line says how many. If nothing fits, the
+  result is part of that line or an empty string.
+- `tokenCounter`: `{ count(text): number }`. The default estimates one
+  token per four characters; pass your model's tokenizer for exact
+  budgets.
 
 ## `delete` and `deleteScope`
 
@@ -421,8 +405,8 @@ const { deletedCount } = await memory.deleteScope({
 
 `delete` removes one memory visible at the scope and throws `"NOT_FOUND"`
 when there is none. When the memory is a consolidation survivor (other
-memories' `supersededBy` points at it), `dependents` decides what happens to
-those memories:
+memories' `supersededBy` points at it), `dependents` decides what happens
+to those memories:
 
 | `dependents` | Effect |
 |---|---|
@@ -435,19 +419,20 @@ await memory.delete({ scope, id: survivor.id, dependents: "delete" });
 ```
 
 With `"restore"` or `"delete"`, a dependent that is not visible at the
-call's scope (for example one agent's memory consolidated into a memory
-shared by all agents, deleted at the entity scope) makes the call throw
-`"CONFLICT"` and change nothing. Each call is one statement on Postgres.
+call's scope makes the call throw `"CONFLICT"` and change nothing; for
+example, one agent's memory consolidated into a memory shared by all
+agents, deleted at the entity scope. Each call is one statement on
+Postgres.
 
 `deleteScope` deletes every memory the scope selects, and the audit events
 recorded for it, in one statement. An omitted `agentId` or `sessionId`
-matches any value, so `{ namespace, entityId }` erases the entity across all
-agents and sessions, which is what an erasure request needs; add `agentId` or
-`sessionId` to clear only that agent's or session's memories (shared ones
-stay). Consolidation links between deleted memories do not block it. It
-throws `"CONFLICT"` and deletes nothing when a memory outside the selection
-still points at one inside it. No audit event is recorded for the erasure;
-log it yourself if you need a record.
+matches any value, so `{ namespace, entityId }` erases the entity across
+all agents and sessions, which is what an erasure request needs. Add
+`agentId` or `sessionId` to clear only that agent's or session's memories;
+shared ones stay. Consolidation links between deleted memories do not
+block it. It throws `"CONFLICT"` and deletes nothing when a memory outside
+the selection still points at one inside it. The erasure itself records
+no audit event; log it yourself if you need a record.
 
 ## `prune`
 
@@ -479,15 +464,15 @@ Then at least one of these selectors, combined with AND:
 | `tags` | Every listed tag. |
 | `maxImportance` | At or below this importance. |
 
-`false` flags and empty arrays do not count. Input without a scope or without
-a selector throws `"VALIDATION"` and deletes nothing; to delete a whole
-scope, use `deleteScope`. `dryRun: true` only counts.
+`false` flags and empty arrays do not count. Input without a scope or
+without a selector throws `"VALIDATION"` and deletes nothing; to delete a
+whole scope, use `deleteScope`. `dryRun: true` only counts.
 
 A prune that matches a consolidation survivor together with every memory
 consolidated into it deletes them all. One that would leave such a memory
-behind throws `"CONFLICT"` and deletes nothing, including the other matches.
-A dry run reports such rows without failing. With audit enabled, each affected entity gets one
-`memory.pruned` event.
+behind throws `"CONFLICT"` and deletes nothing, including the other
+matches. A dry run reports such rows without failing. With audit enabled,
+each affected entity gets one `memory.pruned` event.
 
 ## `findDuplicates`
 
@@ -498,18 +483,20 @@ for (const { a, b, similarity } of pairs) {
 }
 ```
 
-Returns pairs of memories visible at the scope whose cosine similarity is at
-least `threshold` (default 0.95), most similar first, up to `limit` (default
-100). Each memory is compared with its `neighbors` nearest memories
-(default 10, at most 100), so a pair is found when one of the two is among
-the other's nearest. It accepts `kinds`, `tags`, `includeSuperseded`,
-`includeExpired`, `exactAgent` and `exactSession`, and modifies nothing.
+Returns pairs of memories visible at the scope whose cosine similarity is
+at least `threshold` (default 0.95), most similar first, up to `limit`
+(default 100). Each memory is compared with its `neighbors` nearest
+memories (default 10, at most 100), so a pair is found when one of the two
+is among the other's nearest. It accepts `kinds`, `tags`,
+`includeSuperseded`, `includeExpired`, `exactAgent` and `exactSession`,
+and modifies nothing.
 
-On Postgres the neighbors come from the HNSW index when the scope is a large
-part of the table. HNSW search is approximate, so a pair can occasionally be
-missed; run `findDuplicates` again after consolidating to catch the rest.
-The in-memory backend finds the exact nearest neighbors by comparing every
-pair, and slows down noticeably past a few thousand memories.
+On Postgres the neighbors come from the HNSW index when the scope is a
+large part of the table. HNSW search is approximate, so a pair can
+occasionally be missed; run `findDuplicates` again after consolidating to
+catch the rest. The in-memory backend finds the exact nearest neighbors by
+comparing every pair, and slows down noticeably past a few thousand
+memories.
 
 ### In pages (experimental)
 
@@ -525,25 +512,26 @@ do {
 ```
 
 `experimental.findDuplicatesPage` runs `findDuplicates` over a large scope
-in bounded calls that a job can resume, for example one page per queue task.
-Each call compares the next `batchSize` memories (default 500, at most
-1,000), in id order, with every memory of the scope, and returns
+in bounded calls that a job can resume, for example one page per queue
+task. Each call compares the next `batchSize` memories (default 500, at
+most 1,000), in id order, with every memory of the scope, and returns
 `{ pairs, nextCursor, compared }`. Pass `nextCursor` back unchanged as
-`cursor`, with the same other fields, until it is `null`. It takes the same
-fields as `findDuplicates` except `limit`.
+`cursor`, with the same other fields, until it is `null`. It takes the
+same fields as `findDuplicates` except `limit`.
 
-- A run of pages returns the same pairs as `findDuplicates` without a limit,
-  each once, with the smaller id as `a`.
+- A run of pages returns the same pairs as `findDuplicates` without a
+  limit, each once, with the smaller id as `a`.
 - Pairs are most similar first within a page, not across pages. For a
   global top N, collect the pages and sort by `similarity`.
 - A page holds at most `batchSize × neighbors` pairs.
 - Each page reads the scope again: memories added, changed or consolidated
-  between pages can make a pair come twice or not at all. New memories have
-  larger ids, so they are compared on a later page.
+  between pages can make a pair come twice or not at all. New memories
+  have larger ids, so they are compared on a later page.
 - A cursor that is not a `nextCursor` of this method throws
   `"VALIDATION"`.
 
-It is experimental, so its input and result may change in a minor release.
+It is experimental, so its input and result may change in a minor
+release.
 
 ## `consolidate`
 
@@ -558,25 +546,23 @@ const result = await memory.consolidate({
 ```
 
 Marks each memory in `supersededIds` as replaced by the survivor and, by
-default, adds their tags to the survivor. Superseded memories are left out of
-search, list, context and duplicate search unless `includeSuperseded` is set.
+default, adds their tags to the survivor. Superseded memories are left out
+of search, list, context and duplicate search unless `includeSuperseded`
+is set.
 
 - `supersededIds` must be non-empty and distinct, and must not contain the
   survivor (`"VALIDATION"`). Every id must be visible at the scope
   (`"NOT_FOUND"`).
-- The survivor must be active: one that is itself superseded, already or by
-  a concurrent call, throws `"CONFLICT"` with reason
+- The survivor must be active: one that is itself superseded, already or
+  by a concurrent call, throws `"CONFLICT"` with reason
   `"CONSOLIDATION_CHANGED"`.
-- Repeating a call is a no-op for memories that already point to this
-  survivor. A memory that points to a different survivor makes the whole call
-  throw `"CONFLICT"` / `"CONSOLIDATION_CHANGED"`.
-- The call is all-or-nothing: on any conflict no memory, tag or audit event
-  changes. Concurrent calls are safe.
-- While a memory points to the survivor, `delete` keeps the survivor unless
-  you pass `dependents` (see [`delete`](#delete-and-deletescope)).
-
-`consolidate` graduated from `experimental` in 0.8; the
-`experimental.consolidate` alias is gone.
+- Repeating a call changes nothing for memories that already point to this
+  survivor. A memory that points to a different survivor makes the whole
+  call throw `"CONFLICT"` / `"CONSOLIDATION_CHANGED"`.
+- The call is all or nothing: on any conflict, no memory, tag or audit
+  event changes. Concurrent calls are safe.
+- While a memory points to the survivor, `delete` keeps the survivor
+  unless you pass `dependents` (see [`delete`](#delete-and-deletescope)).
 
 ## `listAuditLog`
 
@@ -586,13 +572,13 @@ Enable the audit log in the config:
 const memory = createMemory({ embedder, audit: { enabled: true } });
 ```
 
-Mnemocyte then records `memory.created`, `memory.updated`, `memory.deleted`,
-`memory.pruned` (one per affected entity) and `memory.superseded`, as each
-event's `type` (`AuditEventType`). Each event also carries the `scope` it
-belongs to, `metadata` with the memory ids, and a `timestamp`. A `delete` records one `memory.deleted`
-per deleted memory; dependents deleted with it carry `deletedWith`, and the
-survivor's event lists `restoredIds` when `dependents: "restore"` restored
-any.
+Mnemocyte then records `memory.created`, `memory.updated`,
+`memory.deleted`, `memory.pruned` (one per affected entity) and
+`memory.superseded`, as each event's `type` (`AuditEventType`). Each event
+also carries the `scope` it belongs to, `metadata` with the memory ids,
+and a `timestamp`. A `delete` records one `memory.deleted` per deleted
+memory; dependents deleted with it carry `deletedWith`, and the survivor's
+event lists `restoredIds` when `dependents: "restore"` restored any.
 
 ```ts
 const entity = { namespace: "my-app", entityId: "user_123" };
@@ -614,8 +600,8 @@ await memory.listAuditLog({ allNamespaces: true });
 Returns `{ events, nextCursor }`, events newest first by `timestamp`, then
 `id`; `limit` defaults to 50. `nextCursor` is an opaque string, `null` on
 the last page; pass it back unchanged, with the same scope and filters. A
-cursor stays valid while events are added or deleted, includes events that
-share a timestamp, and a malformed one, or one from `list`, throws
+cursor stays valid while events are added or deleted and includes events
+that share a timestamp. A malformed one, or one from `list`, throws
 `"VALIDATION"`.
 
 The scope selects like `prune`: `{ namespace }` lists every entity in the
@@ -631,9 +617,9 @@ namespace, or of every namespace, sorts the events it selects, so on a
 large log prefer an entity scope or narrow it with `before` / `after`.
 
 Events are written together with the change they record: if the audit
-write fails, the call rejects and nothing is written, neither the memory
-change nor the event. An event's `timestamp` is the time of the write.
-Events stay until `deleteScope` or `pruneAuditLog` deletes them.
+write fails, the call rejects and neither the memory change nor the event
+is written. An event's `timestamp` is the time of the write. Events stay
+until `deleteScope` or `pruneAuditLog` deletes them.
 
 ## `pruneAuditLog`
 
@@ -650,12 +636,13 @@ const preview = await memory.pruneAuditLog({
 await memory.pruneAuditLog({ scope: { namespace: "my-app" }, before: ninetyDaysAgo });
 ```
 
-Deletes the audit events strictly before `before` that a scope selector, or
-`allNamespaces: true`, selects. `before` is the same filter as
-`listAuditLog`'s, so `listAuditLog({ scope, before })` shows what would go.
-The scope selects like `prune`: `{ namespace }` covers every entity, and
-`entityId`, `agentId` and `sessionId` narrow it. Memories are not touched,
-and the call records no audit event of its own; `dryRun: true` only counts.
+Deletes the audit events strictly before `before` that a scope selector,
+or `allNamespaces: true`, selects. `before` is the same filter as
+`listAuditLog`'s, so `listAuditLog({ scope, before })` shows what would
+go. The scope selects like `prune`: `{ namespace }` covers every entity,
+and `entityId`, `agentId` and `sessionId` narrow it. Memories are not
+touched, and the call records no audit event of its own; `dryRun: true`
+only counts.
 
 | Option | Default | |
 |---|---|---|
@@ -665,17 +652,17 @@ and the call records no audit event of its own; `dryRun: true` only counts.
 | `signal` | | Checked before each batch. |
 
 On Postgres the events go in batches: each statement deletes at most
-`batchSize` events and commits on its own, so a large backlog never runs as
-one long transaction. The call is therefore not all or nothing. An abort
-stops it before the next batch and throws `"ABORTED"`, and the batches
-already deleted stay deleted; run it again to finish. The in-memory backend
-deletes everything in one step.
+`batchSize` events and commits on its own, so a large backlog never runs
+as one long transaction. The call is therefore not all or nothing. An
+abort stops it before the next batch and throws `"ABORTED"`, and the
+batches already deleted stay deleted; run it again to finish. The
+in-memory backend deletes everything in one step.
 
 ### Retention
 
-Mnemocyte does not expire events on its own: it holds no timers, and a
-delete inside every write would make writes pay for old history. Run
-`pruneAuditLog` from a scheduled job instead, for example once a day:
+Mnemocyte holds no timers, and a delete inside every write would make
+writes pay for old history, so events stay until you prune them. Run
+`pruneAuditLog` from a scheduled job, for example once a day:
 
 ```ts
 // A daily job: keep 90 days of history in every namespace.
@@ -691,8 +678,8 @@ const { deletedCount } = await memory.pruneAuditLog({
   different windows.
 - Run it often. A daily run deletes one day of events; the first run on a
   large backlog deletes all of it, one batch at a time.
-- Deleted rows leave dead tuples that autovacuum reclaims; the table does
-  not shrink on disk, but the space is reused by new events.
+- Deleted rows leave dead tuples that autovacuum reclaims. The table does
+  not shrink on disk, but new events reuse the space.
 - To erase one person, use `deleteScope`, which deletes the memories and
   the events together.
 
@@ -707,9 +694,58 @@ const all = await memory.stats({ allNamespaces: true });
 // { entityCount, memoryCount, activeMemoryCount, expiredMemoryCount, supersededMemoryCount }
 ```
 
-Counts the memories a scope selector (or `allNamespaces: true`) selects, with
-the same matching as `prune`. Active means neither expired nor superseded.
-`entityCount` counts distinct entities per namespace.
+Counts the memories a scope selector (or `allNamespaces: true`) selects,
+with the same matching as `prune`. Active means neither expired nor
+superseded. `entityCount` counts distinct entities per namespace.
+
+## `migrate`
+
+```ts
+import { migrate } from "mnemocyte";
+
+const { applied, adopted, extensionCreated } = await migrate({
+  memory,                 // the client from createMemory()
+  createExtension: true,  // optional; enable pgvector if it is missing
+  dryRun: false,          // optional; report what would happen, change nothing
+  signal,                 // optional
+});
+
+// Without a memory client at hand, pass the database client and the
+// dimensions instead:
+await migrate({ store: sql, dimensions: 1536 });
+```
+
+Creates or upgrades the Postgres schema; `pnpm exec mnemocyte migrate` calls
+it.
+`applied` lists the migrations this call ran, `adopted` those it found
+already applied in a schema installed with `psql` or drizzle-kit and
+recorded without running, and `extensionCreated` says whether it ran
+`CREATE EXTENSION vector`. Calling it again applies nothing, and
+concurrent calls apply every migration once. What it does in each case,
+and what enabling pgvector needs, is in
+[postgres.md](./postgres.md#install-the-schema).
+
+- Pass exactly one of `memory` and `store` (`"VALIDATION"` otherwise).
+  With `memory`, the client's store is migrated and `embedder.dimensions`
+  is the dimensions; a `dimensions` that differs from it throws
+  `"CONFIG"`. An in-memory client has nothing to migrate.
+- `dimensions` is an integer from 1 to 4,000. It is required when the
+  database has no Mnemocyte tables (`"VALIDATION"` otherwise) and fixes
+  the embedding column: `vector` up to 2,000, `halfvec` above. On an
+  existing installation a different value throws `"CONFIG"` before
+  anything runs.
+- Without `createExtension`, a missing pgvector throws `"MIGRATION"`. With
+  it, a role that may not create the extension, or a server without
+  pgvector, throws `"MIGRATION"` and nothing is created.
+- `dryRun: true` reads the database in one read-only transaction and
+  returns what a run would return, changing nothing, the extension
+  included.
+- A failing migration rolls back and throws `"MIGRATION"` with the driver
+  error as `cause`; migrations that committed before it stay applied.
+- A schema that matches no migration throws `"MIGRATION"` and changes
+  nothing.
+- An abort cancels the running statement and rolls back the current
+  migration.
 
 ## Retrieval tuning
 
@@ -728,42 +764,43 @@ const memory = createMemory({
 
 The values above are the defaults. Ranking uses reciprocal rank fusion
 (RRF): each search returns a ranked list, and a memory scores
-`weight / (k + rank)` in each list it appears in. Positions are compared, not
-raw scores, so keyword and vector scores never have to share a scale.
+`weight / (k + rank)` in each list it appears in. Positions are compared,
+not raw scores, so keyword and vector scores never have to share a scale.
 
-- `fusion.vector`, `fusion.lexical`: how much each list counts. Set one to 0
-  to turn that search off.
+- `fusion.vector`, `fusion.lexical`: how much each list counts. Set one to
+  0 to turn that search off.
 - `fusion.k`: larger values make rank differences matter less.
-- `boosts.recency`, `boosts.importance`: scale the fused score up for newer
-  memories (halving every `recencyHalfLifeDays`) and for higher importance
-  (low 0, normal 0.5, high 0.8, critical 1). They multiply, so they reorder
-  close matches but never lift a poor match. Set to 0 to turn one off.
+- `boosts.recency`, `boosts.importance`: scale the fused score up for
+  newer memories (halving every `recencyHalfLifeDays`) and for higher
+  importance (low 0, normal 0.5, high 0.8, critical 1). They multiply, so
+  they reorder close matches but never lift a poor match. Set one to 0 to
+  turn it off.
 - `candidateMultiplier`: each search fetches `limit × candidateMultiplier`
   memories before fusion.
 - `trackAccess`: record `accessCount` and `lastAccessedAt` on search (see
   [search](#search)). `trackAccess` on a call overrides it.
 
-`score` is between 0 and 1: 1 means first in both searches with full boosts;
-a memory found by only one search scores at most 0.5. `confidence` and
-`accessCount` do not affect ranking.
+`score` is between 0 and 1: 1 means first in both searches with full
+boosts, and a memory found by only one search scores at most 0.5.
+`confidence` and `accessCount` do not affect ranking.
 
-`scores` on each result has `vectorRank` and `lexicalRank` (1-based, `null`
-when the memory is not in that list), `vector` (cosine similarity) and
-`lexical` (the backend's keyword score; `ts_rank` on Postgres), each `null`
-when not in that list, and `fused`, `recency` and `importance`, each between
-0 and 1. With `explain: true`, `explanation` adds the effective `fusion` and
-`boosts`, the `boostFactor` and `finalScore`.
+`scores` on each result has `vectorRank` and `lexicalRank` (1-based,
+`null` when the memory is not in that list), `vector` (cosine similarity)
+and `lexical` (the backend's keyword score; `ts_rank` on Postgres), each
+`null` when not in that list, and `fused`, `recency` and `importance`,
+each between 0 and 1. With `explain: true`, `explanation` adds the
+effective `fusion` and `boosts`, the `boostFactor` and `finalScore`.
 
-Fusion weights, `k` and boosts must be finite and non-negative, and the two
-fusion weights must not both be 0. Invalid values throw `"CONFIG"`.
+Fusion weights, `k` and boosts must be finite and non-negative, and the
+two fusion weights must not both be 0. Invalid values throw `"CONFIG"`.
 
 ## Errors
 
-Every method throws `MnemocyteError`. Branch on `code` and `reason`, never on
-the message. `isMnemocyteError(error)` narrows an `unknown`; it checks a
+Every method throws `MnemocyteError`. Branch on `code` and `reason`, never
+on the message. `isMnemocyteError(error)` narrows an `unknown`. It checks a
 `Symbol.for("mnemocyte.error")` brand rather than `instanceof`, so it also
-recognizes errors from a second installed copy of the package. `cause` holds
-the underlying driver or provider error when there is one.
+recognizes errors from a second installed copy of the package. `cause`
+holds the underlying driver or provider error when there is one.
 
 ```ts
 import { isMnemocyteError } from "mnemocyte";
@@ -810,9 +847,9 @@ try {
 | | `PGVECTOR_UNAVAILABLE` | pgvector is missing, older than 0.8.0, or cannot be created. |
 | | `MIGRATION_FAILED` | A migration failed and was rolled back. |
 
-`new MnemocyteError({ message, code, reason, cause })` takes one object, for
-custom embedders and stores; `CONFIG`, `CONFLICT` and `MIGRATION` require a
-`reason` of that code.
+`new MnemocyteError({ message, code, reason, cause })` takes one object,
+for custom embedders and stores; `CONFIG`, `CONFLICT` and `MIGRATION`
+require a `reason` of that code.
 
 ### Stability
 
@@ -821,9 +858,9 @@ API documented in these guides waits for a major release. That covers the
 client and its methods, the in-memory and Postgres backends with the four
 built-in drivers, `postgresStore` and the documented `SqlExecutor`
 interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
-commands, flags and exit codes. Release candidates (`1.0.0-rc.N`, installed
-with `mnemocyte@next`) are not covered: one may still change the documented
-API if testing finds a problem. It does not cover:
+commands, flags and exit codes. Release candidates (`1.0.0-rc.N`,
+installed with `mnemocyte@next`) are not covered: one may still change the
+documented API if testing finds a problem. It does not cover:
 
 - anything under `experimental` (`experimental.findDuplicatesPage`), which
   may change or go in a minor release, together with the types that
@@ -846,13 +883,13 @@ API if testing finds a problem. It does not cover:
 - the internal storage contract and modules not exported from a
   documented entry.
 
-A minor release may add members to these unions, so a `switch`
-over them needs a `default` branch: `MnemocyteErrorCode`,
-`MnemocyteErrorReason`, `MnemocyteOperation` (observability events),
-`MnemocyteBackend`, `AuditEventType` and `MemoryMiddlewareError.phase`
-(`"context"`, `"save"`). The other unions (`MemoryKind`,
-`ImportanceLevel`, `ContextFormat`, `DependentsPolicy`,
-`MnemocyteObservationPhase`, `EmbeddingPurpose`) change only in a major.
+A minor release may add members to these unions, so a `switch` over them
+needs a `default` branch: `MnemocyteErrorCode`, `MnemocyteErrorReason`,
+`MnemocyteOperation` (observability events), `MnemocyteBackend`,
+`AuditEventType` and `MemoryMiddlewareError.phase` (`"context"`,
+`"save"`). The other unions (`MemoryKind`, `ImportanceLevel`,
+`ContextFormat`, `DependentsPolicy`, `MnemocyteObservationPhase`,
+`EmbeddingPurpose`) change only in a major.
 
 `MemoryPrompt`, `MemoryLanguageModel`, `MemoryWrappedModel`,
 `MemoryFinishReason` and `AiSdkProviderOptions` are derived from the
@@ -864,8 +901,3 @@ version you install within the supported range, not Mnemocyte's version.
 A minor release may add optional input keys. Unknown keys throw, so code
 that uses one fails on an older version with `"VALIDATION"` instead of
 running without it.
-
-## Upgrading
-
-Moving from 0.5 or a later 0.x release? See [upgrading.md](./upgrading.md),
-one section per release up to 1.0.

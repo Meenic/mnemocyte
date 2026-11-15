@@ -441,7 +441,7 @@ the Ollama app passes again against the packed branch. Where an item says
   keeps a failure in the same one-entry cache as a result, so a new query
   tries again. The extraction prompt gained a rule that a key names the
   topic, not the value.
-- [ ] `docs/readme-guide-refactor`: rewrite `README.md` and `docs/guide/*.md`
+- [x] `docs/readme-guide-refactor`: rewrite `README.md` and `docs/guide/*.md`
   for a first-time user while rc.2 is in use, in one PR before the 1.0.0
   release PR (npm shows the tarball's README). Docs only; a code bug found
   on the way becomes rc.3.
@@ -485,6 +485,14 @@ the Ollama app passes again against the packed branch. Where an item says
     fails on one that no heading or `<a id>` provides; every code block is
     read against the current exports; `pnpm checktypes`, `lint`, `test`
     and `build`.
+
+  Landed as planned. The README quickstart runs on the in-memory backend
+  with only an API key, and keeps one `mnemocyte@next` line that the 1.0.0
+  release PR deletes. "Deleting" in `limitations.md` became "Scopes" and
+  "Maintenance"; its "Updating from 0.7" points were already in
+  `upgrading.md`. `postgres.md` keeps the 0.6 anchor before a one-line
+  pointer to `upgrading.md`, since the heading moved to another page.
+  `embedders.md` and `cli.md` needed no change.
 
 ## Cut first if time runs short
 

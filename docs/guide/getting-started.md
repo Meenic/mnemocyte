@@ -1,13 +1,15 @@
 # Getting started
 
-From an empty folder to memories in a prompt: install Mnemocyte, start
-Postgres, write a `memory.ts`, create the schema, then store memories for a
-user and render them with `context()`.
+This guide goes from an empty folder to memories in a prompt. You install
+Mnemocyte, start Postgres, write a `memory.ts`, create the schema, then
+store memories for a user and render them with `context()`.
 
-You need Node.js 22.18 or newer, pnpm (npm works the same), Docker for a
-local Postgres, and an OpenAI API key (or [Ollama](#use-ollama-instead-of-openai)).
-To try Mnemocyte without a database, see [Prototype without a
-database](#prototype-without-a-database).
+You need Node.js 22.18 or newer, pnpm, Docker and an OpenAI API key. With
+npm, install with `npm install` and run the `mnemocyte` command with
+`npx mnemocyte`. To use a local model, see
+[Use Ollama instead of OpenAI](#use-ollama-instead-of-openai). To try
+Mnemocyte without a database, see
+[Prototype without a database](#prototype-without-a-database).
 
 ## 1. Create the project
 
@@ -20,10 +22,9 @@ pnpm add mnemocyte postgres
 pnpm add -D typescript @types/node
 ```
 
-`"type": "module"` makes Node load the `.ts` files below as ES modules.
-Node 22.18 and later run TypeScript files directly by stripping the types,
-so there is no build step; TypeScript is only for type checking in your
-editor and with `tsc`. Add a `tsconfig.json` for that:
+Node 22.18 and later run `.ts` files directly by stripping the types, so
+there is no build step. TypeScript only checks types, in your editor and
+with `tsc`. Add a `tsconfig.json` for it:
 
 ```json
 {
@@ -42,9 +43,8 @@ editor and with `tsc`. Add a `tsconfig.json` for that:
 
 These are the settings the
 [Node.js TypeScript docs](https://nodejs.org/docs/latest-v22.x/api/typescript.html)
-recommend: imports name the `.ts` file (`./memory.ts`), and syntax Node
-cannot strip, such as `enum`, is a type error. `skipLibCheck` skips type
-errors inside some drivers' own declaration files.
+recommend. Imports name the `.ts` file (`./memory.ts`), and syntax Node
+cannot strip, such as `enum`, is a type error.
 
 ## 2. Start Postgres
 
@@ -54,10 +54,10 @@ Run Postgres 18 with pgvector 0.8.7, the image Mnemocyte's CI uses:
 docker run -d --name mnemocyte-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 pgvector/pgvector:0.8.7-pg18
 ```
 
-If port 5432 is taken, use another host port (`-p 5433:5432`) and change it
-in `DATABASE_URL` below. Any Postgres with pgvector 0.8.0 or later works,
-including Neon, Supabase and RDS; see the
-[Postgres guide](./postgres.md#requirements).
+If port 5432 is taken, map another one (`-p 5433:5432`) and use it in
+`DATABASE_URL`. Any Postgres with pgvector 0.8.0 or later works, including
+Neon, Supabase and RDS; see the
+[requirements](./postgres.md#requirements).
 
 ## 3. Add `.env`
 
@@ -73,13 +73,13 @@ echo ".env" >> .gitignore
 echo "node_modules" >> .gitignore
 ```
 
-The app script below loads it with Node's `--env-file` flag, and the
-`mnemocyte` command in step 5 reads `.env` from the current folder itself.
+The app script loads `.env` with Node's `--env-file` flag, and the
+`mnemocyte` command reads it from the current folder.
 
 ## 4. Write `memory.ts`
 
-`memory.ts` builds the memory client once and exports it as `memory`, for
-your app and your scripts to share:
+`memory.ts` creates the memory client once and exports it, for your app
+and your scripts to share:
 
 ```ts
 import { createMemory } from "mnemocyte";
@@ -95,31 +95,24 @@ export const memory = createMemory({
 });
 ```
 
-- `namespace` is the default for every call: your app, or your tenant in a
-  multi-tenant app. A call can still name another one.
-- `store` is the database client your app already has; here a
-  [postgres.js](https://github.com/porsager/postgres) `sql`. Mnemocyte
-  recognises the driver by its shape and loads its Postgres code on the
-  first call. Using `pg`, Drizzle or PGlite instead? See
-  [other drivers](#other-drivers).
-- `openaiEmbedder` reads `OPENAI_API_KEY` and calls OpenAI with `fetch`.
-  `text-embedding-3-small` returns 1536-dimension vectors.
-- The client holds no connections of its own and has no `close()`. The
-  database client stays yours: `memory.ts` exports it, a script ends it
-  when it is done, and a server keeps it open.
+- `namespace` is the default for every call: your app, or a tenant in a
+  multi-tenant app.
+- `store` is your own database client, here a
+  [postgres.js](https://github.com/porsager/postgres) `sql`. For `pg`,
+  Drizzle or PGlite, see [Other drivers](#other-drivers).
+- `openaiEmbedder` reads `OPENAI_API_KEY`. `text-embedding-3-small`
+  returns 1536-dimension vectors.
+- The database client stays yours. A script ends it when it is done, and a
+  server keeps it open. The memory client has no `close()`.
 
-`npx mnemocyte init` writes this file for you: it picks this version or one
-from [Other drivers](#other-drivers) for the driver in your `package.json`
-(Drizzle first, then `postgres`, `pg` and PGlite; without one, the
-[in-memory version](#prototype-without-a-database)), sets `namespace` to your package's name, and
-adds `OPENAI_API_KEY=` to `.env` when it is not there. It never overwrites
-a file; `--dry-run` shows what it would do. See the [CLI
-guide](./cli.md#init).
+`pnpm exec mnemocyte init` can write this file for you. It picks the
+version for the driver in your `package.json` and never overwrites a file;
+see [`init`](./cli.md#init).
 
 ### Use Ollama instead of OpenAI
 
-`openaiCompatibleEmbedder` calls any OpenAI-compatible endpoint. For a
-local [Ollama](https://ollama.com) with `ollama pull nomic-embed-text`:
+`openaiCompatibleEmbedder` calls any OpenAI-compatible server. For a local
+[Ollama](https://ollama.com) with `ollama pull nomic-embed-text`:
 
 ```ts
 import { openaiCompatibleEmbedder } from "mnemocyte/embedders";
@@ -136,25 +129,22 @@ embedder: openaiCompatibleEmbedder({
 }),
 ```
 
-For an Ollama chat or extraction model too, use `@ai-sdk/openai-compatible`
-with `supportsStructuredOutputs: true`; without it extraction stores nothing.
-See [local models](./ai-sdk.md#local-models).
-
-Choose the embedder before step 5: the schema is created for its
-dimensions, and an installation keeps one embedding model. Other providers
-are in the [embedders guide](./embedders.md).
+Choose the embedder before step 5, because the schema is created for its
+dimensions. For an Ollama chat or extraction model, see
+[local models](./ai-sdk.md#local-models). Other providers are in the
+[embedders guide](./embedders.md).
 
 ## 5. Create the schema
 
-Mnemocyte never creates tables on its own. Create them with the `mnemocyte`
-command that comes with the package:
+Mnemocyte never creates tables on its own. Create them with the
+`mnemocyte` command that comes with the package:
 
 ```bash
-npx mnemocyte migrate
+pnpm exec mnemocyte migrate
 ```
 
-It loads `memory.ts` for your database client and your embedder's size,
-and asks before it enables pgvector:
+It loads `memory.ts` for your database client and your embedder's
+dimensions, and asks before it enables pgvector:
 
 ```txt
 Using memory.ts
@@ -163,21 +153,15 @@ Enabled pgvector.
 Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2
 ```
 
-`migrate` applies only what is missing, so a second run applies nothing;
-run it on every deploy, before the app starts (`--yes` answers the
-question in CI). Enabling pgvector needs a superuser, which the Docker
-image's `postgres` user is. On a managed database whose app role may not
-create extensions, answer no and have an admin run the
-`CREATE EXTENSION vector;` it prints. `npx mnemocyte check` reports what
-is installed. The [CLI guide](./cli.md) has every command and flag, and the
-[Postgres guide](./postgres.md#install-the-schema) covers upgrades,
-`migrate()` from code and applying the SQL files with `psql` instead.
+`migrate` applies only what is missing, so run it on every deploy. Enabling
+pgvector needs a superuser, which the Docker image's `postgres` user is; on
+a managed database, see [enabling pgvector](./postgres.md#enabling-pgvector).
+The [Postgres guide](./postgres.md#install-the-schema) covers upgrades and
+`migrate()` from code, and the [CLI guide](./cli.md) every flag.
 
 ## 6. Store memories and build context
 
-`memory.for(scope)` returns a client bound to one scope, so its calls take
-no `scope`. Here the scope is a user (`entityId`) in the default namespace.
-Add a script for the app to `package.json`:
+Add a start script to `package.json`:
 
 ```json
 "scripts": {
@@ -185,7 +169,8 @@ Add a script for the app to `package.json`:
 }
 ```
 
-Then write `index.ts`:
+Write `index.ts`. `memory.for(scope)` returns a client bound to one scope,
+here a user (`entityId`) in the default namespace:
 
 ```ts
 import { memory, sql } from "./memory.ts";
@@ -219,13 +204,14 @@ try {
 }
 ```
 
+Run it:
+
 ```bash
 pnpm start
 ```
 
 `context()` searches the user's memories with the query and renders the
-best matches as Markdown that fits in `maxTokens`, ready to put in a system
-prompt:
+best matches as Markdown that fits in `maxTokens`:
 
 ````md
 # Memory Context
@@ -248,28 +234,32 @@ prompt:
   ```
 ````
 
-The order and scores depend on your embedder. Each `add` has a `key`, so
-running the script again updates the three memories in place instead of
-adding copies; an `add` without a key always inserts a new memory.
+The order and scores depend on your embedder. Each `add` has a `key`, so a
+second run updates the three memories in place. An `add` without a key
+always inserts a new memory.
 
-In an app, bind a client per request from the signed-in user, and add
-`agentId` or `sessionId` to narrow the scope:
+The `finally` block ends the database client because its open connections
+keep Node running: without `sql.end()`, the script prints the context and
+then never exits. A server does not end the client; it uses it until the
+process stops.
+
+In an app, bind a client per request from the signed-in user:
 
 ```ts
 const user = memory.for({ entityId: session.userId });
 const context = await user.context({ query: message, maxTokens: 800 });
 ```
 
-Scopes, `search`, `list`, `deleteScope` and the other methods are in the
-[API reference](./api.md).
+Add `agentId` or `sessionId` to narrow the scope; see
+[scopes](./api.md#scopes).
 
 ## Other drivers
 
-Replace `memory.ts` with one of these; `npx mnemocyte migrate` stays the
+Replace `memory.ts` with one of these; `pnpm exec mnemocyte migrate` stays the
 same. In `index.ts`, import the client the file exports and end it the
-driver's way: `await pool.end()` for node-postgres, `await sql.end()` or
-`await pool.end()` for Drizzle, `await client.close()` or
-`await db.close()` for PGlite.
+driver's way: `pool.end()` for node-postgres, `sql.end()` or `pool.end()`
+for Drizzle, and `client.close()` or `db.close()` for PGlite. How
+Mnemocyte uses each driver is in [connect](./postgres.md#connect).
 
 ### node-postgres
 
@@ -292,9 +282,11 @@ export const memory = createMemory({
 });
 ```
 
-Pass a `Pool`, not a `pg.Client`, which throws `"CONFIG"`.
+Pass a `Pool`; a `pg.Client` throws `"CONFIG"`.
 
 ### Drizzle
+
+Drizzle over postgres.js:
 
 ```bash
 pnpm add drizzle-orm
@@ -316,10 +308,11 @@ export const memory = createMemory({
 });
 ```
 
-Mnemocyte runs its own SQL on the Drizzle instance's client, so your Drizzle
-schema does not need its tables.
+Drizzle over node-postgres:
 
-Drizzle over node-postgres (`pnpm add drizzle-orm pg`):
+```bash
+pnpm add drizzle-orm pg
+```
 
 ```ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -337,8 +330,11 @@ export const memory = createMemory({
 });
 ```
 
-Drizzle over PGlite (`pnpm add drizzle-orm @electric-sql/pglite
-@electric-sql/pglite-pgvector`; see [PGlite](#pglite) below):
+Drizzle over PGlite (see [PGlite](#pglite) below):
+
+```bash
+pnpm add drizzle-orm @electric-sql/pglite @electric-sql/pglite-pgvector
+```
 
 ```ts
 import { PGlite } from "@electric-sql/pglite";
@@ -360,10 +356,12 @@ export const memory = createMemory({
 });
 ```
 
+Your Drizzle schema does not need Mnemocyte's tables.
+
 ### PGlite
 
 [PGlite](https://pglite.dev) runs Postgres inside your process, so it needs
-no Docker, no `DATABASE_URL` and no `postgres` package:
+neither Docker nor `DATABASE_URL`:
 
 ```bash
 pnpm add @electric-sql/pglite @electric-sql/pglite-pgvector
@@ -388,17 +386,15 @@ export const memory = createMemory({
 });
 ```
 
-A data folder can be open in one process at a time, so run
-`npx mnemocyte migrate` while the app is stopped, or call
-`migrate({ memory, createExtension: true })` (from `mnemocyte`) when your
-app starts.
+A data folder opens in one process at a time, so run
+`pnpm exec mnemocyte migrate` while the app is stopped, or call
+`migrate({ memory, createExtension: true })` when the app starts.
 
 ## Prototype without a database
 
-Leave out `store` and memories live in process memory: no Docker, no
-driver, no `migrate`. They are gone when the process exits. Do step 1
-without the `postgres` package, put only `OPENAI_API_KEY` in `.env`, and
-use this `memory.ts`:
+Leave out `store` and memories live in process memory until it exits. Do
+step 1 without the `postgres` package, put only `OPENAI_API_KEY` in `.env`,
+skip steps 2 and 5, and use this `memory.ts`:
 
 ```ts
 import { createMemory } from "mnemocyte";
@@ -410,9 +406,8 @@ export const memory = createMemory({
 });
 ```
 
-`index.ts` from step 6 runs without the `sql` import and the
-`sql.end()` line: there is no client to end. Moving to Postgres later is steps 2
-to 5 with the same calls.
+In `index.ts` from step 6, drop the `sql` import and the `sql.end()` line.
+Moving to Postgres later means steps 2 to 5, with the same calls.
 
 ## Next
 
@@ -420,6 +415,8 @@ to 5 with the same calls.
 - [CLI](./cli.md): `mnemocyte init`, `migrate`, `check` and `sql`.
 - [Postgres](./postgres.md): drivers, poolers, `migrate`, upgrades and
   indexes.
-- [Embedders](./embedders.md): custom embedders, timeouts and retries.
-- [AI SDK](./ai-sdk.md): memory tools for `generateText` and `streamText`.
+- [Embedders](./embedders.md): providers, custom embedders, timeouts and
+  retries.
+- [AI SDK](./ai-sdk.md): memory tools, memory in every prompt and
+  extraction.
 - [Limitations](./limitations.md): what does not work yet.

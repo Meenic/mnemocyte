@@ -229,23 +229,96 @@ export function ignoresEnvFile(gitignore: string): boolean {
 		.some((line) => /^\/?(\.env\*?|\*\.env|\*)$/.test(line.trim()));
 }
 
+type PackageManager = "pnpm" | "yarn" | "bun" | "npm";
+
+const PACKAGE_MANAGERS: readonly PackageManager[] = [
+	"pnpm",
+	"yarn",
+	"bun",
+	"npm",
+];
+
+const LOCKFILES: readonly [string, PackageManager][] = [
+	["pnpm-lock.yaml", "pnpm"],
+	["yarn.lock", "yarn"],
+	["bun.lock", "bun"],
+	["bun.lockb", "bun"],
+];
+
+/**
+ * The package manager a `package.json` names: `devEngines.packageManager`
+ * (which `pnpm init` writes) or the `packageManager` field (Corepack).
+ */
+function declaredPackageManager(
+	pkg: PackageJson | undefined,
+): PackageManager | undefined {
+	if (pkg === undefined) {
+		return undefined;
+	}
+	const { devEngines } = pkg;
+	let name: unknown;
+	if (typeof devEngines === "object" && devEngines !== null) {
+		const entry =
+			"packageManager" in devEngines ? devEngines.packageManager : undefined;
+		const first = Array.isArray(entry) ? entry[0] : entry;
+		if (typeof first === "object" && first !== null && "name" in first) {
+			name = first.name;
+		}
+	}
+	if (name === undefined && typeof pkg.packageManager === "string") {
+		name = pkg.packageManager.split("@")[0];
+	}
+	return PACKAGE_MANAGERS.find((manager) => manager === name);
+}
+
+/**
+ * The project's package manager: the one `package.json` names, else the
+ * one whose lockfile exists, else npm.
+ */
+async function detectPackageManager(
+	cwd: string,
+	pkg?: PackageJson,
+): Promise<PackageManager> {
+	const declared = declaredPackageManager(pkg);
+	if (declared !== undefined) {
+		return declared;
+	}
+	for (const [lockfile, manager] of LOCKFILES) {
+		if ((await readText(join(cwd, lockfile))) !== null) {
+			return manager;
+		}
+	}
+	return "npm";
+}
+
 /** The install command for the project's package manager, by lockfile. */
 export async function installCommand(
 	cwd: string,
 	packages: readonly string[],
 ): Promise<string> {
-	const lockfiles: readonly [string, string][] = [
-		["pnpm-lock.yaml", "pnpm add"],
-		["yarn.lock", "yarn add"],
-		["bun.lock", "bun add"],
-		["bun.lockb", "bun add"],
-	];
-	for (const [lockfile, command] of lockfiles) {
-		if ((await readText(join(cwd, lockfile))) !== null) {
-			return `${command} ${packages.join(" ")}`;
-		}
+	const manager = await detectPackageManager(cwd);
+	const verb = manager === "npm" ? "install" : "add";
+	return `${manager} ${verb} ${packages.join(" ")}`;
+}
+
+/**
+ * The command that runs the project's installed `mnemocyte`: `npx` fails
+ * in a project whose `devEngines` names another package manager.
+ */
+export async function runnerCommand(
+	cwd: string,
+	pkg?: PackageJson,
+): Promise<string> {
+	switch (await detectPackageManager(cwd, pkg)) {
+		case "pnpm":
+			return "pnpm exec mnemocyte";
+		case "yarn":
+			return "yarn mnemocyte";
+		case "bun":
+			return "bunx mnemocyte";
+		case "npm":
+			return "npx mnemocyte";
 	}
-	return `npm install ${packages.join(" ")}`;
 }
 
 async function readText(path: string): Promise<string | null> {
@@ -268,11 +341,13 @@ function isCode(error: unknown, code: string): boolean {
 	);
 }
 
-interface PackageJson {
+export interface PackageJson {
 	readonly name?: unknown;
 	readonly type?: unknown;
 	readonly dependencies?: unknown;
 	readonly devDependencies?: unknown;
+	readonly devEngines?: unknown;
+	readonly packageManager?: unknown;
 }
 
 async function readPackageJson(cwd: string): Promise<PackageJson> {
@@ -407,7 +482,7 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 		}
 	}
 	if (choice !== undefined && choice.driver !== "in-memory") {
-		next.push("Create the schema: npx mnemocyte migrate");
+		next.push(`Create the schema: ${await runnerCommand(cwd, pkg)} migrate`);
 	}
 
 	io.write(`${out.join("\n")}\n`);

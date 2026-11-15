@@ -9,6 +9,17 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `migrate` hints no longer name `npx`.** In a project that `pnpm
+  init` created, `package.json` names pnpm in `devEngines` and npm's `npx`
+  stops with `EBADDEVENGINES`. `mnemocyte init` now ends with the runner
+  your project uses (`pnpm exec mnemocyte migrate`, `yarn mnemocyte
+  migrate`, `bunx mnemocyte migrate` or `npx mnemocyte migrate`), taken
+  from `devEngines.packageManager` or `packageManager`, else the lockfile.
+  The `"MIGRATION"` / `SCHEMA_MISSING` message says `Run mnemocyte migrate`
+  without a runner. The error code and reason are unchanged.
+
 ## [1.0.0] - 2026-11-15
 
 The first stable release. The code is the one 1.0.0-rc.2 shipped; this

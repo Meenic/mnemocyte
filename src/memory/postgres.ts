@@ -71,8 +71,11 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 
 /** Missing table, column, object or function: the schema is behind. */
 const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
-/** The fix the missing-schema error names. */
-const MIGRATE_COMMAND = "npx mnemocyte migrate";
+/**
+ * The fix the missing-schema error names. No runner prefix: the store does
+ * not know the project's package manager, and `npx` fails in a pnpm one.
+ */
+const MIGRATE_COMMAND = "mnemocyte migrate";
 const POSTGRES_GUIDE_URL =
 	"https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md";
 const INSTALL_GUIDE_URL = `${POSTGRES_GUIDE_URL}#install-the-schema`;

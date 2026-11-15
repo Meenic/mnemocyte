@@ -9,6 +9,7 @@ import {
 	installCommand,
 	planEnvChange,
 	renderMemoryFile,
+	runnerCommand,
 } from "../../src/cli/init.js";
 import { main } from "../../src/cli/main.js";
 import { createTestIo } from "./io.js";
@@ -164,7 +165,7 @@ describe("mnemocyte init", () => {
 				"Next:",
 				"  Put your OpenAI API key after OPENAI_API_KEY= in .env",
 				"  Add DATABASE_URL=postgres://… to .env",
-				"  Create the schema: npx mnemocyte migrate",
+				"  Create the schema: pnpm exec mnemocyte migrate",
 				"",
 			].join("\n"),
 		);
@@ -297,6 +298,78 @@ test("installCommand follows the lockfile", async () => {
 		);
 		await writeFile(join(cwd, "yarn.lock"), "");
 		expect(await installCommand(cwd, ["a", "b"])).toBe("yarn add a b");
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+describe("runnerCommand", () => {
+	let cwd: string;
+
+	beforeEach(async () => {
+		cwd = await mkdtemp(join(tmpdir(), "mnemocyte-cli-runner-"));
+	});
+
+	afterEach(async () => {
+		await rm(cwd, { recursive: true, force: true });
+	});
+
+	test("falls back to npx without a declaration or lockfile", async () => {
+		expect(await runnerCommand(cwd)).toBe("npx mnemocyte");
+		expect(await runnerCommand(cwd, {})).toBe("npx mnemocyte");
+	});
+
+	test("follows the lockfile", async () => {
+		await writeFile(join(cwd, "yarn.lock"), "");
+		expect(await runnerCommand(cwd)).toBe("yarn mnemocyte");
+	});
+
+	test("bun lockfile uses bunx", async () => {
+		await writeFile(join(cwd, "bun.lock"), "");
+		expect(await runnerCommand(cwd)).toBe("bunx mnemocyte");
+	});
+
+	test("devEngines.packageManager wins over the lockfile, object or array", async () => {
+		await writeFile(join(cwd, "package-lock.json"), "");
+		await writeFile(join(cwd, "yarn.lock"), "");
+		expect(
+			await runnerCommand(cwd, {
+				devEngines: { packageManager: { name: "pnpm", version: "10" } },
+			}),
+		).toBe("pnpm exec mnemocyte");
+		expect(
+			await runnerCommand(cwd, {
+				devEngines: { packageManager: [{ name: "pnpm" }, { name: "npm" }] },
+			}),
+		).toBe("pnpm exec mnemocyte");
+	});
+
+	test("reads the packageManager field and ignores unknown names", async () => {
+		expect(await runnerCommand(cwd, { packageManager: "pnpm@10.4.0" })).toBe(
+			"pnpm exec mnemocyte",
+		);
+		expect(await runnerCommand(cwd, { packageManager: "deno@2" })).toBe(
+			"npx mnemocyte",
+		);
+	});
+});
+
+test("init names pnpm from devEngines in a project without a lockfile", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "mnemocyte-cli-init-pm-"));
+	try {
+		await writeFile(
+			join(cwd, "package.json"),
+			JSON.stringify({
+				type: "module",
+				devEngines: { packageManager: { name: "pnpm", version: "10" } },
+				dependencies: { postgres: "3", "@electric-sql/pglite": "0" },
+			}),
+		);
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+		expect(io.stdout()).toContain(
+			"  Create the schema: pnpm exec mnemocyte migrate\n",
+		);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

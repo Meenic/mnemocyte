@@ -556,10 +556,11 @@ the Ollama app passes again against the packed branch. Where an item says
   that says which dependents were restored or deleted; recency that follows
   content updates rather than `createdAt`, if the `guide/api.md` note is
   not enough.
-- Planned for 1.0.1: `mnemocyte init`'s "Next:" hint and the
-  `SCHEMA_MISSING` message name `npx mnemocyte migrate`, which fails in a
-  project that `pnpm init` created: its `devEngines.packageManager` names
-  pnpm, and npm's `npx` stops with `EBADDEVENGINES`. The guides already use
-  `pnpm exec mnemocyte`. Make both texts name the runner the project uses
-  (or a neutral form) without changing the error code or reason; error and
-  CLI text is outside semver.
+- [x] `fix/migrate-hint-runner` (1.0.1): `mnemocyte init`'s "Next:" hint
+  and the `SCHEMA_MISSING` message named `npx mnemocyte migrate`, which
+  fails in a project that `pnpm init` created: its `devEngines.packageManager`
+  names pnpm, and npm's `npx` stops with `EBADDEVENGINES`. `init` now names
+  the project's runner (`devEngines` or `packageManager`, then the
+  lockfile, then `npx`); the error says `mnemocyte migrate` without a
+  runner. The error code and reason are unchanged; error and CLI text is
+  outside semver.

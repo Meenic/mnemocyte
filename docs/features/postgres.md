@@ -722,15 +722,16 @@ ids) use the same trick.
 - SQLSTATE `42P01`, `42703`, `42704`, `42883` (missing table, column, object,
   function) become `"MIGRATION"`, from `missingSchemaError` in
   `src/memory/postgres.ts`: "Mnemocyte's tables are missing or out of date
-  in this database (*driver message*). Run npx mnemocyte migrate to create or
+  in this database (*driver message*). Run mnemocyte migrate to create or
   upgrade them:" followed by the guide's `#install-the-schema` URL. The
   driver message is repeated (whitespace collapsed, cut at 200 characters)
   because many log pipelines drop `cause`; the driver error is still the
   `cause`. The message names no SQL files and does not mention
   `createExtension`: when pgvector is also missing, `migrate` itself fails
   before changing anything and names it. `MIGRATE_COMMAND` holds the fix:
-  the CLI command since `feat/cli`, because it is the first thing the
-  guides show; the linked guide section also covers `migrate()` from code,
+  the CLI command since `feat/cli`, without a runner prefix, because the
+  store does not know the project's package manager and `npx` fails in a
+  pnpm project (`EBADDEVENGINES`); `mnemocyte init` names the runner; the linked guide section also covers `migrate()` from code,
   which PGlite users need. The guide URL points at `main`, like the
   README's links.
 - A `23503` foreign-key violation on the `superseded_by` constraint during a

@@ -45,8 +45,8 @@ the command looks for `memory.ts`, and every flag, are in the
 Until the schema is installed or upgraded, a call that needs a missing
 Mnemocyte table or column throws `"MIGRATION"`. The message repeats the
 driver's text (for example `relation "mnemocyte_memories" does not exist`),
-says to run `npx mnemocyte migrate` (in a pnpm project,
-`pnpm exec mnemocyte migrate`) and links here; the driver error is the
+says to run `mnemocyte migrate` (with your package manager's runner, such
+as `pnpm exec`) and links here; the driver error is the
 `cause`.
 
 ### Migrate from code

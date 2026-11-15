@@ -289,7 +289,7 @@ const results = await memory.search({
 | `minScore` | `defaults.minScore` or 0 | Drop results below this score; `[0, 1]`. |
 | `kinds` | all | Only these kinds. |
 | `tags` | none | Memories must have every listed tag. |
-| `createdBefore`, `createdAfter` | none | Strict bounds on `createdAt`, like `prune`'s `createdBefore`. |
+| `createdBefore`, `createdAfter` | none | Strict bounds on `createdAt` as it is returned, to the millisecond, like `prune`'s `createdBefore`. Passing a memory's own `createdAt` leaves that memory out. |
 | `includeSuperseded` | `false` | Include memories replaced by consolidation. |
 | `includeExpired` | `false` | Include memories past `expiresAt`. |
 | `exactAgent`, `exactSession` | `false` | Leave out shared memories; see [scopes](#scopes). |

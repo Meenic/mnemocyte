@@ -196,9 +196,32 @@ function recallFilters(params: SqlParams, input: MemoryFilter): string {
 		clauses.push(`created_at < ${params.timestamp(input.createdBefore)}`);
 	}
 	if (input.createdAfter) {
-		clauses.push(`created_at > ${params.timestamp(input.createdAfter)}`);
+		clauses.push(createdAfterCondition(params, input.createdAfter));
 	}
 	return clauses.join("\n\t\t\tAND ");
+}
+
+/** The largest time a `Date` holds, in milliseconds since the epoch. */
+const MAX_DATE_MS = 8.64e15;
+
+/**
+ * `createdAfter` at the precision of the returned `createdAt`. `created_at`
+ * stores microseconds, and every supported driver cuts them off when it
+ * parses a `Date`, so a row at `B + 0.4 ms` comes back as `B` and must not
+ * match `createdAfter: B`. A bound is a whole millisecond, so "the
+ * truncated time is after `B`" is `created_at >= B + 1 ms`. The raw column
+ * stays on the left, unlike `date_trunc(…, created_at) > B`, so an index on
+ * `created_at` could still serve it. `createdBefore` needs no change:
+ * `created_at < B` already holds exactly when the truncated time is before
+ * `B`.
+ */
+function createdAfterCondition(params: SqlParams, after: Date): string {
+	const next = after.getTime() + 1;
+	if (next > MAX_DATE_MS) {
+		// No row a `Date` can represent lies past the last millisecond.
+		return `created_at > ${params.timestamp(after)}`;
+	}
+	return `created_at >= ${params.timestamp(new Date(next))}`;
 }
 
 function memoryStatsCountColumns(params: SqlParams, now: Date): string {

@@ -1,6 +1,7 @@
 import { createMemory } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import {
+	verifyCreatedBoundsRoundTrip,
 	verifyCreatedFilters,
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
@@ -54,6 +55,10 @@ describe("scoped API (in-memory)", () => {
 
 	test("search, list and context filter createdAt", async () => {
 		await verifyCreatedFilters(createClient().client, "created");
+	});
+
+	test("a returned createdAt passed back as a bound round-trips", async () => {
+		await verifyCreatedBoundsRoundTrip(createClient().client, "created-micros");
 	});
 
 	test("context does not echo the query", async () => {

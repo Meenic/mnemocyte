@@ -20,6 +20,7 @@ import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
+	verifyCreatedBoundsRoundTrip,
 	verifyCreatedFilters,
 	verifyGetAndScopeValidation,
 	verifyKeyedAdd,
@@ -362,6 +363,22 @@ export function describeStoreContract(
 		test("created filters", async () => {
 			const { memory, namespace } = client("created");
 			await verifyCreatedFilters(memory, namespace);
+		});
+
+		test("created bounds round-trip a createdAt cut from microseconds", async () => {
+			const { memory, namespace } = client("created-micros");
+			await verifyCreatedBoundsRoundTrip(
+				memory,
+				namespace,
+				async (id, micros) => {
+					await db().query(
+						`UPDATE mnemocyte_memories
+					SET created_at = created_at + make_interval(secs => $1::double precision)
+					WHERE id = $2::uuid`,
+						[micros / 1_000_000, id],
+					);
+				},
+			);
 		});
 
 		test("default namespace and bound clients", async () => {

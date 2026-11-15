@@ -47,7 +47,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 - [x] `feat/created-filters-list-context`: `createdBefore` /
   `createdAfter` on `list` and `context`, the names `search` and `prune`
   use (decision 40).
-- [ ] `fix/created-filter-precision`: Postgres compares `created_at` at
+- [x] `fix/created-filter-precision`: Postgres compares `created_at` at
   microseconds but returns `createdAt` cut to milliseconds, so
   `createdAfter: memory.createdAt` can still return that memory on
   Postgres and not in memory (`search`, `list`, `context`). Make both

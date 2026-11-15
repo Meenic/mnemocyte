@@ -42,7 +42,9 @@ sessionId? }`, set fields matching exactly) or `allNamespaces: true`, not
 both (`validateSelectorInput`). Then selectors, AND-combined: `expired`,
 `superseded`, `createdBefore`, `notAccessedSince` (last access before the
 date; a never-accessed memory counts from `createdAt`, so a new one is kept),
-`kinds`, `tags` (all must match), `maxImportance` (at or below). At least one
+`kinds`, `tags` (all must match), `maxImportance` (at or below). The two
+dates are strict bounds at the millisecond `createdAt` returns (see
+[scopes.md](./scopes.md#created-bounds)). At least one
 of them is required besides the scope; `false` flags and empty arrays do not
 count. A prune of a whole scope with no other selector is `deleteScope`'s
 job. `dryRun: true` only counts.

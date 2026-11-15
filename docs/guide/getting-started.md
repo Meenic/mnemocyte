@@ -86,17 +86,13 @@ import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import postgres from "postgres";
 
-const sql = postgres(process.env.DATABASE_URL!);
+export const sql = postgres(process.env.DATABASE_URL!);
 
 export const memory = createMemory({
   namespace: "my-agent",
   store: sql,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await sql.end();
-}
 ```
 
 - `namespace` is the default for every call: your app, or your tenant in a
@@ -108,9 +104,9 @@ export async function closeDatabase() {
   [other drivers](#other-drivers).
 - `openaiEmbedder` reads `OPENAI_API_KEY` and calls OpenAI with `fetch`.
   `text-embedding-3-small` returns 1536-dimension vectors.
-- The client holds no connections of its own and has no `close()`. Your
-  database client stays yours, so `closeDatabase()` ends it when a script
-  is done.
+- The client holds no connections of its own and has no `close()`. The
+  database client stays yours: `memory.ts` exports it, a script ends it
+  when it is done, and a server keeps it open.
 
 `npx mnemocyte init` writes this file for you: it picks this version or one
 from [Other drivers](#other-drivers) for the driver in your `package.json`
@@ -192,7 +188,7 @@ Add a script for the app to `package.json`:
 Then write `index.ts`:
 
 ```ts
-import { closeDatabase, memory } from "./memory.ts";
+import { memory, sql } from "./memory.ts";
 
 const user = memory.for({ entityId: "user_123" });
 
@@ -218,7 +214,8 @@ try {
 
   console.log(context);
 } finally {
-  await closeDatabase();
+  // Close the pool so the script can exit; a server keeps it open.
+  await sql.end();
 }
 ```
 
@@ -268,8 +265,11 @@ Scopes, `search`, `list`, `deleteScope` and the other methods are in the
 
 ## Other drivers
 
-Replace `memory.ts` with one of these; `npx mnemocyte migrate` and
-`index.ts` stay the same.
+Replace `memory.ts` with one of these; `npx mnemocyte migrate` stays the
+same. In `index.ts`, import the client the file exports and end it the
+driver's way: `await pool.end()` for node-postgres, `await sql.end()` or
+`await pool.end()` for Drizzle, `await client.close()` or
+`await db.close()` for PGlite.
 
 ### node-postgres
 
@@ -283,17 +283,13 @@ import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import pg from "pg";
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 export const memory = createMemory({
   namespace: "my-agent",
   store: pool,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await pool.end();
-}
 ```
 
 Pass a `Pool`, not a `pg.Client`, which throws `"CONFIG"`.
@@ -310,7 +306,7 @@ import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import postgres from "postgres";
 
-const sql = postgres(process.env.DATABASE_URL!);
+export const sql = postgres(process.env.DATABASE_URL!);
 export const db = drizzle({ client: sql });
 
 export const memory = createMemory({
@@ -318,10 +314,6 @@ export const memory = createMemory({
   store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await sql.end();
-}
 ```
 
 Mnemocyte runs its own SQL on the Drizzle instance's client, so your Drizzle
@@ -335,7 +327,7 @@ import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 import pg from "pg";
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool });
 
 export const memory = createMemory({
@@ -343,10 +335,6 @@ export const memory = createMemory({
   store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await pool.end();
-}
 ```
 
 Drizzle over PGlite (`pnpm add drizzle-orm @electric-sql/pglite
@@ -359,7 +347,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 
-const client = await PGlite.create({
+export const client = await PGlite.create({
   dataDir: "./memory-data",
   extensions: { vector },
 });
@@ -370,10 +358,6 @@ export const memory = createMemory({
   store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await client.close();
-}
 ```
 
 ### PGlite
@@ -392,7 +376,7 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { createMemory } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders";
 
-const db = await PGlite.create({
+export const db = await PGlite.create({
   dataDir: "./memory-data",
   extensions: { vector },
 });
@@ -402,10 +386,6 @@ export const memory = createMemory({
   store: db,
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {
-  await db.close();
-}
 ```
 
 A data folder can be open in one process at a time, so run
@@ -428,11 +408,10 @@ export const memory = createMemory({
   namespace: "my-agent",
   embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
 });
-
-export async function closeDatabase() {}
 ```
 
-`index.ts` from step 6 runs unchanged. Moving to Postgres later is steps 2
+`index.ts` from step 6 runs without the `sql` import and the
+`sql.end()` line: there is no client to end. Moving to Postgres later is steps 2
 to 5 with the same calls.
 
 ## Next

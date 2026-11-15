@@ -134,7 +134,8 @@ nothing, so it takes only `--dry-run` (`--config`, `--env-file` and
   PGlite file without `@electric-sql/pglite-pgvector` listed gets an
   install hint too, in the package manager the lockfile names.
 - **Templates.** `renderMemoryFile` builds each file from its imports,
-  client setup, `store` expression and `closeDatabase` body.
+  client setup (exported, so a script can end the client) and `store`
+  expression.
   `test/cli/init.test.ts` takes every `memory.ts` block from
   `docs/guide/getting-started.md` and checks that the seven templates,
   with namespace `"my-agent"`, are exactly those blocks, so the guide and

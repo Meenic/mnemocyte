@@ -132,10 +132,21 @@ runtime, the only source files that do, and a package test follows
 the static imports of every other entry to check that none reaches it.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
-Node 22.18 fully supports. `isolatedDeclarations` is on for `src/`, so every
-export needs a type a declaration emitter can read without inference
-(explicit return types on exported functions); the test projects turn it
-off. The `.mjs` files ship with source maps that embed
+Node 22.18 fully supports. There are two configs:
+
+- `tsconfig.build.json` holds the build settings for `src/` alone; tsdown
+  reads it (`tsconfig` in `tsdown.config.ts`), and so does
+  `test/package/tsconfig.json`. `isolatedDeclarations` is on there, so
+  every export needs a type a declaration emitter can read without
+  inference (explicit return types on exported functions).
+- `tsconfig.json` extends it for the whole repository: `src/`, `test/` and
+  the config files, with `paths` to `src/` and `isolatedDeclarations` off.
+  Editors only pick up files named `tsconfig.json`, so this is the one that
+  must cover the tests; a file no config includes lands in an inferred
+  project, where TypeScript 6 loads no `@types` and `node:` imports and
+  `process` fail. `pnpm checktypes` runs both, so the editor does not flag
+  a missing return type in `src/` but CI does.
+ The `.mjs` files ship with source maps that embed
 their sources. The `.d.mts` files ship without maps, because a declaration
 map points at `src/`, which is not published. With `sourcemap` on, rolldown
 writes a `sourceMappingURL` comment into every chunk, `.d.mts` included, and
@@ -295,7 +306,7 @@ Vitest has three projects (`vitest.config.ts`):
 | `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` |
 
 - `unit` and `integration` map `mnemocyte` to `src/` with `resolve.alias`,
-  and `tsconfig.test.json` does the same with `paths`. The `package` project
+  and `tsconfig.json` does the same with `paths`. The `package` project
   and `test/package/tsconfig.json` have neither: `mnemocyte` resolves to
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.

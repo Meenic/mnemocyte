@@ -8,6 +8,9 @@ export default defineConfig({
 		"src/postgres.ts",
 		"src/embedders/*.ts",
 	],
+	// tsconfig.json covers the tests and config files for the editor; the
+	// build reads only the settings for src/.
+	tsconfig: "tsconfig.build.json",
 	sourcemap: true,
 	dts: { sourcemap: false },
 	plugins: [

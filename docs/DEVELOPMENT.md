@@ -372,7 +372,11 @@ Vitest has three projects (`vitest.config.ts`):
   index. The `contract` project
   runs the suite on PGlite, direct and through Drizzle: an in-process Postgres 18 with
   pgvector 0.8.7, so no service is needed and every Node job in CI runs it
-  (about 20 s). Those runs go through `postgresStore`; another passes the
+  (about 20 s). Opening a PGlite takes several seconds under load, so the
+  project raises both `testTimeout` and `hookTimeout` to 60 s; the files
+  open it in `beforeAll` or `beforeEach`, and at Vitest's 10 s hook default
+  the first hook failed on busy Windows machines. Those runs go through
+  `postgresStore`; another passes the
   PGlite instance itself as `store` (`directClient`), which covers
   detection and the lazily imported backend end to end. One more
   PGlite run wraps the executor and fails on any parameter that is not a

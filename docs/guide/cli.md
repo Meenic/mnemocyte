@@ -155,7 +155,7 @@ above is from a pnpm project.
 ## `migrate`
 
 ```bash
-pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run] [--dimensions <n>]
+pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run [--json]] [--dimensions <n>]
 ```
 
 Creates the schema in an empty database and applies pending migrations to
@@ -176,16 +176,18 @@ Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_s
   when there is no terminal to ask on, it changes nothing, prints the
   statement for an admin to run, and exits 1.
 - **`--dry-run`** prints what would be applied and changes nothing. It
-  asks no question.
+  asks no question. Add `--json` to get the plan as
+  [JSON](#json-output).
 - **`--dimensions <n>`** with a memory file must equal the embedder's.
 
 ## `check`
 
 ```bash
-pnpm exec mnemocyte check [--config <path>] [--dimensions <n>]
+pnpm exec mnemocyte check [--config <path>] [--dimensions <n>] [--json]
 ```
 
 Reads the database and reports what is installed. It changes nothing.
+`--json` prints the same report as [JSON](#json-output).
 
 ```txt
 Using memory.ts
@@ -229,6 +231,108 @@ nothing; without it, the size is the embedder's in the memory file.
 dimensions the column is `halfvec`. How to apply the file is in the
 [Postgres guide](./postgres.md#apply-the-sql-files-yourself).
 
+## JSON output
+
+`check --json` and `migrate --dry-run --json` print one JSON object on
+one line, so a CI step can read the result. The exit codes stay the same.
+
+```bash
+pnpm exec mnemocyte check --json
+```
+
+```json
+{
+  "command": "check",
+  "ok": false,
+  "target": "memory.ts",
+  "backend": "postgres",
+  "installation": {
+    "pgvectorVersion": "0.8.7",
+    "migrations": {
+      "state": "tracked",
+      "applied": ["0000_initial", "0001_add_mnemocyte_meta", "0002_add_embedding_model"],
+      "pending": ["0003_schema_v2"]
+    },
+    "dimensions": 1536,
+    "vectorType": "vector",
+    "model": null
+  },
+  "problems": [
+    {
+      "code": "MIGRATIONS_PENDING",
+      "message": "1 migration is pending (0003_schema_v2). Run mnemocyte migrate."
+    }
+  ],
+  "notes": []
+}
+```
+
+(Shown on several lines here; the command prints one.)
+
+- **`ok`** is true exactly when the exit code is 0.
+- **`target`** is the memory file the command loaded, or `DATABASE_URL`.
+  **`backend`** is `"postgres"` or `"in-memory"`; on the in-memory backend
+  `installation` is `null` and `ok` is true.
+- **`installation`** holds the facts the text prints. Anything missing is
+  `null`. `migrations.applied` and `migrations.pending` are always there,
+  and empty when `state` is `"none"` (no tables) or `"invalid"` (a schema
+  `migrate` refuses). The other states are `"tracked"` and `"untracked"`
+  (installed with `psql`). `model` is `null` until one is recorded.
+- **`problems`** fail the check and **`notes`** pass. Each has a `code` to
+  branch on and a `message` for people:
+
+  | Code | Problem |
+  |---|---|
+  | `PGVECTOR_MISSING` | pgvector is not enabled |
+  | `PGVECTOR_OUTDATED` | pgvector is older than 0.8.0 |
+  | `NOT_INSTALLED` | the Mnemocyte tables are missing |
+  | `SCHEMA_INVALID` | a schema `migrate` refuses |
+  | `MIGRATIONS_PENDING` | migrations are pending |
+  | `DIMENSIONS_MISMATCH` | the installed dimensions differ from the embedder's or `--dimensions` |
+  | `DIMENSIONS_FLAG_MISMATCH` | `--dimensions` differs from the embedder's |
+  | `INSTALLATION_ROW_MISSING` | the `installation` row of `mnemocyte_meta` is missing |
+  | `INSTALLATION_ROW_MISMATCH` | that row contradicts the embedding column |
+  | `MODEL_AMBIGUOUS` | no model is recorded and the stored memories use several |
+  | `MODEL_MISMATCH` | the recorded model differs from the embedder's |
+
+  The notes are `SCHEMA_UNTRACKED` (a current schema installed without
+  `migrate`) and `MODEL_NOT_RECORDED` (an empty installation).
+
+`migrate --dry-run --json` prints the plan, with the same fields as
+[`migrate()`](./postgres.md#what-migrate-does) returns:
+
+```json
+{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0003_schema_v2"],"adopted":[],"extensionCreated":false,"upToDate":false}
+```
+
+`applied` is what a real run would apply, `adopted` what it would record
+as already applied (a schema installed with `psql`), and
+`extensionCreated` whether it would ask to enable pgvector. `upToDate` is
+true when a real run would change nothing. `--json` works only with
+`--dry-run`, because a real `migrate` may stop to ask a question.
+
+When the command cannot run, for example when the database cannot be
+reached, it still prints one object, and the usual message goes to
+standard error:
+
+```json
+{"command":"check","ok":false,"error":{"message":"Could not read the database, so nothing was checked.","code":"DB","causes":["Could not inspect the Postgres installation.","ECONNREFUSED"]}}
+```
+
+`code` and `reason` are the [`MnemocyteError`](./api.md#errors) ones, when
+the error has them. A mistake on the command line itself, such as an
+unknown flag, prints no JSON.
+
+Good to know:
+
+- **The last line.** Loading the memory file runs it, so anything it
+  prints (a `console.log` at the top level) comes before the JSON. Read
+  the last line of standard output.
+- **What stays the same.** Field names, their types and the codes are
+  covered by [semver](./api.md#stability). The `message` text is not, so
+  branch on `code`. A minor release may add fields and codes, so treat an
+  unknown problem code as a problem.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -238,7 +342,8 @@ dimensions the column is `halfvec`. How to apply the file is in the
 | 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, or, for `check`, a database it cannot read. |
 
 Errors go to standard error as `mnemocyte: <message>`, followed by the
-database driver's own message as `cause:`.
+database driver's own message as `cause:`. With `--json` they also go to
+standard output as [JSON](#json-output).
 
 ## In CI
 
@@ -257,6 +362,16 @@ Set whatever your memory file reads when it loads; here that is the
 database URL and the embedder's key. Leave out `--yes` when the deploy role
 may not create extensions; `migrate` then fails with the statement to hand
 to an admin instead of trying.
+
+To read the result in a later step, use `--json`. This step fails when a
+deploy would run a migration, using `jq -e`, which exits 1 on `false`:
+
+```yaml
+- run: pnpm exec mnemocyte migrate --dry-run --json | tail -n 1 | jq -e '.upToDate'
+  env:
+    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
 
 ## Limits
 

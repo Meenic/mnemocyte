@@ -236,6 +236,53 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 		expect(sql.stdout).toContain('"embedding" vector(2)');
 	});
 
+	test("--json prints one JSON line last, after what the memory file prints", async () => {
+		const directory = await project("json", {
+			"memory.ts": `
+				import { createMemory, type Embedder } from "mnemocyte";
+
+				const embedder: Embedder = {
+					model: "in-memory",
+					dimensions: 2,
+					async embed(texts) {
+						return texts.map(() => [1, 0]);
+					},
+				};
+				console.log("memory loaded");
+				export const memory = createMemory({ embedder });
+			`,
+		});
+		const lastLine = (stdout: string): unknown => {
+			const lines = stdout.trimEnd().split("\n");
+			expect(lines[0]).toBe("memory loaded");
+			return JSON.parse(lines.at(-1) ?? "");
+		};
+		const checked = await runCli(directory, ["check", "--json"]);
+		expect(checked.code).toBe(0);
+		expect(lastLine(checked.stdout)).toEqual({
+			command: "check",
+			ok: true,
+			target: "memory.ts",
+			backend: "in-memory",
+			installation: null,
+			problems: [],
+			notes: [],
+		});
+		const planned = await runCli(directory, ["migrate", "--dry-run", "--json"]);
+		expect(planned.code).toBe(0);
+		expect(lastLine(planned.stdout)).toEqual({
+			command: "migrate",
+			ok: true,
+			dryRun: true,
+			target: "memory.ts",
+			backend: "in-memory",
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			upToDate: true,
+		});
+	});
+
 	test("explains a memory file that does not load", async () => {
 		const directory = await project("broken", {
 			"memory.ts": `

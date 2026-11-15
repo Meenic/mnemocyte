@@ -63,7 +63,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 
 - [x] `feat/observability-scope`: `agentId` and `sessionId` on observability
   events, next to `namespace` and `entityId`.
-- [ ] `feat/cli-json`: `--json` for `check` and `migrate --dry-run`, so CI
+- [x] `feat/cli-json`: `--json` for `check` and `migrate --dry-run`, so CI
   can read the result.
 - [ ] `feat/init-embedder`: `init --embedder openai-compatible`. Today
   `init` always writes `openaiEmbedder` and `OPENAI_API_KEY=`, even for the

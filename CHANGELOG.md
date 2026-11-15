@@ -69,6 +69,15 @@ marked **Breaking** in their entries. What semver covers is in
   agent or session leaves the field out. `prune`, `deleteScope`, `stats`,
   `listAuditLog` and `pruneAuditLog` report the agent and session their
   selector names; calls with `allNamespaces: true` report no scope.
+- **`--json` for `mnemocyte check` and `mnemocyte migrate --dry-run`.**
+  Both print one JSON object on one line, so CI can read the result:
+  `migrate --dry-run --json | jq -e '.upToDate'` fails a step when a
+  deploy would run a migration. `check` lists each problem and note with a
+  `code` such as `MIGRATIONS_PENDING`. When a command cannot run, the error
+  is printed as JSON too. Exit codes stay the same, and so does the text
+  output without the flag. Field names and codes are covered by semver;
+  the `message` text is not. `--json` on `migrate` needs `--dry-run`. See
+  [JSON output](docs/guide/cli.md#json-output).
 
 ### Changed
 

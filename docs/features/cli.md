@@ -30,14 +30,15 @@ src/cli.ts               the bin: version, process I/O, exit
 src/cli/
   main.ts                main(argv, io, version) → exit code; error printing
   args.ts                parseCliArgs, USAGE
-  io.ts                  CliIo (cwd, write, error, confirm), CliError, the process's own CliIo
+  io.ts                  CliIo (cwd, write, error, confirm), CliError, errorCauses, the process's own CliIo
+  json.ts                what --json prints: CheckJson, MigratePlanJson, ErrorJson, writeJson, errorJson
   memory-file.ts         where the memory file is looked up, loading it, reading the client
   resolve-hook.ts        the resolve hook for a TypeScript app's imports
   tsconfig.ts            JSON with comments, `extends`, `paths`
   target.ts              .env, then a memory file or DATABASE_URL → what a command runs against
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
   migrate.ts             migrateTarget / migrateCommand
-  check.ts               evaluateInstallation, describeInstallation, checkTarget / checkCommand
+  check.ts               evaluateInstallation, describeInstallation, installationJson, checkTarget / checkCommand
   sql.ts                 sqlCommand
 src/db/migrations/inspect.ts   inspectPostgresInstallation: the facts check reports
 src/db/pgvector.ts             assertPgvectorVersion (shared with the store)
@@ -215,6 +216,37 @@ installation without a model.
 Exit 1 on a problem. A report that cannot be read (no connection) is exit
 2, so CI can tell "wrong" from "could not look".
 
+Each problem and note is a `{ code, message }` (`CheckFinding`), one code
+per branch of `evaluateInstallation`; the text output prints only the
+message.
+
+## `--json`
+
+`check --json` and `migrate --dry-run --json` print one result instead of
+the text (ARCHITECTURE decision 47). The shapes are the types in
+`src/cli/json.ts`: `CheckJson`, `MigratePlanJson` and `ErrorJson`.
+
+- **One line, last.** `writeJson` prints `JSON.stringify(value)` and a
+  newline, and the `Using …` line is skipped. Loading the memory file runs
+  it, so a top-level `console.log` in the app still reaches stdout first;
+  a reader takes the last line.
+- **`check`.** `installationJson` turns the report into
+  `installation`: both migration lists are always present (empty for
+  `none` and `invalid`), missing facts are `null`, and `model` is read the
+  way the client reads it (recorded, else the first stored model).
+  `installation` is `null` on the in-memory backend.
+- **`migrate`.** `--json` needs `--dry-run`: a real run can ask about
+  pgvector on stdout, which would break the JSON. `printPlanJson` reports
+  the same dry run as the text (`planMigrate`), as `migrate()`'s
+  `MigrateResult` plus `upToDate`; the in-memory backend gets an empty plan.
+- **Errors.** When a command started with `--json` throws, `main` writes
+  `errorJson(command, error)` to stdout and the usual text to stderr.
+  `error.code` and `error.reason` come from the first `MnemocyteError` in
+  the `cause` chain (a `CliError` wraps the store's error), and `causes`
+  is the same list the text prints (`errorCauses` in `io.ts`). A bad
+  command line fails in `parseCliArgs`, before the flag is known, and
+  prints no JSON.
+
 ## `sql`
 
 `renderInitialSchema(dimensions)`, the string the runner applies on a fresh
@@ -236,12 +268,14 @@ Windows and an immediate exit can cut output short.
 - `test/cli/` (unit): argument parsing, `init` (driver choice, templates
   against the guide, `.env` plans, runs in temporary folders), `parseJsonc`, `paths` through
   `extends`, import candidates and `resolveAppImport` on temporary folders,
-  memory file lookup, every `check` verdict, `main` for help, usage errors
-  and `sql`, and error printing.
+  memory file lookup, every `check` verdict and its code, `installationJson`,
+  `main` for help, usage errors, `sql` and errors under `--json`, and error
+  printing.
 - `test/contract/cli.test.ts` (PGlite, in process): `migrateTarget` with a
   terminal that says yes, no, or is absent, `--yes`, `--dry-run`; `check`
   on a fresh, adopted, behind, untracked and broken schema, with a recorded
-  model and with mismatches.
+  model and with mismatches; `migrate --dry-run --json` and `check --json`
+  as exactly one JSON line.
 - `test/package/cli.test.ts`: runs `dist/cli.mjs` as a child process in
   temporary projects whose `node_modules` link to this package. One project
   has a TypeScript memory file on PGlite with a `.js` import, an
@@ -251,12 +285,14 @@ Windows and an immediate exit can cut output short.
   size. This is the test of type stripping and the resolve hook on each CI
   Node version. Two more projects (PGlite, and Drizzle on PGlite) run
   `init --dry-run`, `init`, then `sql`, `migrate --yes` and `check` on the
-  file `init` wrote, and `init` again. It also checks the shebang, the `bin` field, that the bin
+  file `init` wrote, and `init` again. An in-memory project whose memory
+  file prints a line runs `check --json` and `migrate --dry-run --json`
+  and reads the JSON from the last line. It also checks the shebang, the `bin` field, that the bin
   imports no driver, and the load errors.
 - `test/integration/cli.test.ts`: `main` in process against real Postgres
   through `DATABASE_URL`: fresh install, the missing `--dimensions`,
   `halfvec`, the extension question after `DROP EXTENSION vector`, and an
-  unreachable database. Like `migrate.test.ts` it drops the Mnemocyte
+  unreachable database, also with `check --json`. Like `migrate.test.ts` it drops the Mnemocyte
   tables and the extension, and leaves a tracked 1536-dimension schema.
 
 ## Known limits

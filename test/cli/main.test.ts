@@ -2,9 +2,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { MnemocyteError } from "mnemocyte";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { USAGE } from "../../src/cli/args.js";
 import { CliError } from "../../src/cli/io.js";
+import { errorJson } from "../../src/cli/json.js";
 import { describeError, main } from "../../src/cli/main.js";
 import { renderInitialSchema } from "../../src/db/migrations/runner.js";
 import { createTestIo } from "./io.js";
@@ -73,6 +74,86 @@ describe("main", () => {
 		const io = createTestIo(cwd);
 		expect(await main(["sql"], io, "1")).toBe(2);
 		expect(io.stderr()).toContain("pass --dimensions <n>");
+	});
+
+	test("with --json, a command that cannot run prints its error as JSON too", async () => {
+		vi.stubEnv("DATABASE_URL", "");
+		try {
+			for (const argv of [
+				["check", "--json"],
+				["migrate", "--dry-run", "--json"],
+			]) {
+				const io = createTestIo(cwd);
+				expect(await main(argv, io, "1")).toBe(2);
+				const lines = io.stdout().split("\n");
+				expect(lines).toHaveLength(2);
+				expect(lines[1]).toBe("");
+				expect(JSON.parse(lines[0] ?? "")).toEqual({
+					command: argv[0],
+					ok: false,
+					error: {
+						message: expect.stringContaining("No memory file found"),
+						causes: [],
+					},
+				});
+				// The text stays on standard error, as without --json.
+				expect(io.stderr()).toContain("mnemocyte: No memory file found");
+			}
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	test("a bad command line prints no JSON", async () => {
+		const io = createTestIo(cwd);
+		expect(await main(["migrate", "--json"], io, "1")).toBe(2);
+		expect(io.stdout()).toBe("");
+		expect(io.stderr()).toContain("--json on migrate needs --dry-run.");
+	});
+});
+
+describe("errorJson", () => {
+	test("takes code and reason from the first MnemocyteError in the chain", () => {
+		const error = new CliError(
+			"Could not read the database, so nothing was checked.",
+			2,
+			new MnemocyteError({
+				message: "Could not inspect the Postgres installation.",
+				code: "DB",
+				cause: Object.assign(new Error(""), { code: "ECONNREFUSED" }),
+			}),
+		);
+		expect(errorJson("check", error)).toEqual({
+			command: "check",
+			ok: false,
+			error: {
+				message: "Could not read the database, so nothing was checked.",
+				code: "DB",
+				causes: [
+					"Could not inspect the Postgres installation.",
+					"ECONNREFUSED",
+				],
+			},
+		});
+		expect(
+			errorJson(
+				"migrate",
+				new MnemocyteError({
+					message: "pgvector is not installed in this database.",
+					code: "MIGRATION",
+					reason: "PGVECTOR_UNAVAILABLE",
+				}),
+			).error,
+		).toEqual({
+			message: "pgvector is not installed in this database.",
+			code: "MIGRATION",
+			reason: "PGVECTOR_UNAVAILABLE",
+			causes: [],
+		});
+		expect(errorJson("check", "plain").error).toEqual({
+			message: "plain",
+			causes: [],
+		});
 	});
 });
 

@@ -27,7 +27,13 @@ function embedder(dimensions: number, model = "cli-contract"): Embedder {
 }
 
 function args(overrides: Partial<CliArgs> = {}): CliArgs {
-	return { command: "migrate", yes: false, dryRun: false, ...overrides };
+	return {
+		command: "migrate",
+		yes: false,
+		dryRun: false,
+		json: false,
+		...overrides,
+	};
 }
 
 /**
@@ -85,6 +91,111 @@ describe("CLI commands (PGlite)", () => {
 		expect(io.stderr()).toBe("");
 		return { code, stdout: io.stdout() };
 	}
+
+	/** Standard output as `--json` must print it: exactly one JSON line. */
+	function jsonLine(stdout: string): unknown {
+		expect(stdout.endsWith("\n")).toBe(true);
+		expect(stdout.slice(0, -1)).not.toContain("\n");
+		return JSON.parse(stdout);
+	}
+
+	test("migrate --dry-run --json prints the plan as one JSON line", async () => {
+		const io = createTestIo(".", true);
+		expect(
+			await migrateTarget(target(), args({ dryRun: true, json: true }), io),
+		).toBe(0);
+		expect(io.questions).toEqual([]);
+		expect(io.stderr()).toBe("");
+		expect(jsonLine(io.stdout())).toEqual({
+			command: "migrate",
+			ok: true,
+			dryRun: true,
+			target: "memory.ts",
+			backend: "postgres",
+			applied: ALL_MIGRATIONS.split(", "),
+			adopted: [],
+			extensionCreated: true,
+			upToDate: false,
+		});
+		expect(await hasPgvector()).toBe(false);
+
+		await migrateTarget(target(), args({ yes: true }), createTestIo("."));
+		const current = createTestIo(".");
+		await migrateTarget(target(), args({ dryRun: true, json: true }), current);
+		expect(jsonLine(current.stdout())).toMatchObject({
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			upToDate: true,
+		});
+	});
+
+	test("check --json reports the installation and coded problems", async () => {
+		const empty = await check(target(), { json: true });
+		expect(empty.code).toBe(1);
+		expect(jsonLine(empty.stdout)).toEqual({
+			command: "check",
+			ok: false,
+			target: "memory.ts",
+			backend: "postgres",
+			installation: {
+				pgvectorVersion: null,
+				migrations: { state: "none", applied: [], pending: [] },
+				dimensions: null,
+				vectorType: null,
+				model: null,
+			},
+			problems: [
+				{
+					code: "PGVECTOR_MISSING",
+					message: expect.stringContaining("pgvector is not enabled"),
+				},
+				{
+					code: "NOT_INSTALLED",
+					message: expect.stringContaining("tables are not installed"),
+				},
+			],
+			notes: [],
+		});
+
+		await migrateTarget(target(), args({ yes: true }), createTestIo("."));
+		const fresh = await check(target(), { json: true });
+		expect(fresh.code).toBe(0);
+		expect(jsonLine(fresh.stdout)).toEqual({
+			command: "check",
+			ok: true,
+			target: "memory.ts",
+			backend: "postgres",
+			installation: {
+				pgvectorVersion: "0.8.7",
+				migrations: {
+					state: "tracked",
+					applied: ALL_MIGRATIONS.split(", "),
+					pending: [],
+				},
+				dimensions: 8,
+				vectorType: "vector",
+				model: null,
+			},
+			problems: [],
+			notes: [
+				{
+					code: "MODEL_NOT_RECORDED",
+					message: expect.stringContaining("No embedding model"),
+				},
+			],
+		});
+
+		const flag = await check(target(), { json: true, dimensions: 16 });
+		expect(flag.code).toBe(1);
+		expect(jsonLine(flag.stdout)).toMatchObject({
+			ok: false,
+			problems: [
+				{ code: "DIMENSIONS_MISMATCH" },
+				{ code: "DIMENSIONS_FLAG_MISMATCH" },
+			],
+		});
+	});
 
 	test("asks before enabling pgvector, and a yes installs the schema", async () => {
 		const io = createTestIo(".", true);

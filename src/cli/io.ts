@@ -33,6 +33,38 @@ export class CliError extends Error {
 /** Exit code for a command that could not run: bad flags, no memory file. */
 export const EXIT_USAGE = 2;
 
+/** How many `cause` links an error report follows. */
+const MAX_CAUSE_DEPTH = 3;
+
+/**
+ * The `cause` messages of an error, outermost first, on one line each. A
+ * `MnemocyteError` keeps the driver's error as its cause, and that is where
+ * "connection refused" or "permission denied" is. A cause with no message
+ * gives its `code`; one the error's message or an earlier cause already
+ * quotes is left out.
+ */
+export function errorCauses(error: unknown): string[] {
+	const seen = [error instanceof Error ? error.message : String(error)];
+	const causes: string[] = [];
+	let cause: unknown = error instanceof Error ? error.cause : undefined;
+	for (let depth = 0; depth < MAX_CAUSE_DEPTH && cause != null; depth += 1) {
+		let detail: string;
+		if (cause instanceof Error) {
+			const code =
+				"code" in cause && typeof cause.code === "string" ? cause.code : "";
+			detail = cause.message.trim().replace(/\s+/g, " ") || code;
+		} else {
+			detail = String(cause);
+		}
+		if (detail !== "" && !seen.some((text) => text.includes(detail))) {
+			causes.push(detail);
+			seen.push(detail);
+		}
+		cause = cause instanceof Error ? cause.cause : undefined;
+	}
+	return causes;
+}
+
 /** The process's own streams and terminal. */
 export function createProcessIo(): CliIo {
 	return {

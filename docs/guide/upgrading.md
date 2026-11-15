@@ -196,5 +196,8 @@ to one scope whose methods take no `scope`; see
   `npx mnemocyte sql --dimensions <n>` for the fresh-install schema. The
   numbered SQL files and `fresh-install.sql` still ship.
 
+1.0.0-rc.1 is a release candidate: install it with `mnemocyte@next`. It
+changes only if testing finds a problem.
+
 From 1.0, breaking changes wait for a major release; see
 [stability](./api.md#stability) for what the promise covers.

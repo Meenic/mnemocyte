@@ -9,6 +9,12 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-11-15
+
+The first release candidate for 1.0. It installs with `mnemocyte@next`; the
+API it documents is the one 1.0 freezes, and it changes only if testing
+finds a problem.
+
 ### Added
 
 - **`MnemocyteError.reason`** says which case of `"CONFIG"`, `"CONFLICT"`
@@ -56,6 +62,13 @@ marked **Breaking** in their entries. What semver covers is in
   `openaiCompatibleEmbedder`, `voyageEmbedder`, `cohereEmbedder` and
   `googleEmbedder`, the AI SDK's spelling. The old name throws an error that
   names the new one.
+
+  ```ts
+  // 0.8
+  openaiEmbedder({ model, baseUrl: "https://proxy.example/v1" });
+  // now
+  openaiEmbedder({ model, baseURL: "https://proxy.example/v1" });
+  ```
 - **Breaking: the extraction `timeout` is `timeoutMs`**, in
   `extractMemories` and `memoryMiddleware({ save })`, like
   `provider.timeoutMs`.
@@ -83,13 +96,6 @@ marked **Breaking** in their entries. What semver covers is in
 - **`kinds` and `tags` inputs take `readonly` arrays** in `add`, `update`,
   `search`, `list`, `context`, `prune` and `findDuplicates`, and in the
   `searchMemories` tool's input type. Plain arrays still work.
-
-  ```ts
-  // 0.8
-  openaiEmbedder({ model, baseUrl: "https://proxy.example/v1" });
-  // now
-  openaiEmbedder({ model, baseURL: "https://proxy.example/v1" });
-  ```
 - **Breaking: `listAuditLog` pages like `list`.** It returns
   `{ events, nextCursor }` instead of an array, and takes the opaque
   `nextCursor` back as `cursor`. `beforeCursor`, `afterCursor` and the
@@ -1273,7 +1279,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/Meenic/mnemocyte/compare/v0.8.0...v1.0.0-rc.1
 [0.8.0]: https://github.com/Meenic/mnemocyte/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Meenic/mnemocyte/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Meenic/mnemocyte/compare/v0.5.1...v0.6.0

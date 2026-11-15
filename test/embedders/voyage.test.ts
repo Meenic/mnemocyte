@@ -2,7 +2,12 @@ import { createMemory, ProviderError } from "mnemocyte";
 import { voyageEmbedder } from "mnemocyte/embedders/voyage";
 import { describe, expect, test, vi } from "vitest";
 import { testScope } from "../helpers.js";
-import { rejection, useFetchMock } from "./fetch-mock.js";
+import {
+	jsonFetch,
+	NOT_FETCH_FUNCTIONS,
+	rejection,
+	useFetchMock,
+} from "./fetch-mock.js";
 
 function voyageResponse(vectors: number[][], order?: number[]) {
 	const indexes = order ?? vectors.map((_, index) => index);
@@ -107,6 +112,58 @@ describe("voyageEmbedder", () => {
 			"content-type": "application/json",
 		});
 	});
+
+	test("sends every request through a custom fetch, with the call's signal", async () => {
+		const customFetch = jsonFetch(voyageResponse([[1]]));
+		const embedder = voyageEmbedder({
+			apiKey: "voyage-key",
+			model: "voyage-4",
+			fetch: customFetch,
+		});
+		const controller = new AbortController();
+
+		await expect(
+			embedder.embed(["a"], { purpose: "query", signal: controller.signal }),
+		).resolves.toEqual([[1]]);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		const [url, init] = customFetch.mock.calls[0] ?? [];
+		expect(url).toBe("https://api.voyageai.com/v1/embeddings");
+		expect(init).toMatchObject({
+			method: "POST",
+			headers: {
+				authorization: "Bearer voyage-key",
+				"content-type": "application/json",
+			},
+			signal: controller.signal,
+		});
+		expect(JSON.parse(String(init?.body))).toEqual({
+			model: "voyage-4",
+			input: ["a"],
+			input_type: "query",
+			truncation: true,
+		});
+	});
+
+	test.each([...NOT_FETCH_FUNCTIONS])(
+		"rejects a fetch that is %s with CONFIG",
+		(_label, value) => {
+			expect(() =>
+				voyageEmbedder({
+					apiKey: "k",
+					model: "voyage-4",
+					fetch: value as typeof fetch,
+				}),
+			).toThrow(
+				expect.objectContaining({
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+					message: "voyageEmbedder fetch must be a function.",
+				}),
+			);
+		},
+	);
 
 	test("does not send dimensions for fixed-size or unknown models", async () => {
 		const fixed = voyageEmbedder({

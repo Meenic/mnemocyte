@@ -7,6 +7,7 @@ import {
 	resolveApiKey,
 	resolveBaseURL,
 	resolveBoolean,
+	resolveFetch,
 	resolveHeaders,
 	resolveMaxBatch,
 	resolveModel,
@@ -65,6 +66,12 @@ export interface CohereEmbedderOptions {
 	 * embedder and replace a caller's copy.
 	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
+	/**
+	 * The `fetch` every request goes through, for tests and proxies. It is
+	 * called with the URL as a string and a `RequestInit` that carries the
+	 * call's `signal`. Defaults to the global `fetch`.
+	 */
+	readonly fetch?: typeof globalThis.fetch | undefined;
 	/** Most texts per request, at most 96 (Cohere's limit). Defaults to `96`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -91,12 +98,14 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 			"truncate",
 			"baseURL",
 			"headers",
+			"fetch",
 			"maxBatch",
 		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(options.apiKey, "COHERE_API_KEY", NAME);
 	const headers = resolveHeaders(options.headers, NAME);
+	const customFetch = resolveFetch(options.fetch, NAME);
 	const model = resolveModel(options.model, NAME);
 	const size = resolveModelDimensions({
 		name: NAME,
@@ -122,6 +131,7 @@ export function cohereEmbedder(options: CohereEmbedderOptions): Embedder {
 		),
 		url: `${baseURL}/embed`,
 		headers: { ...headers, authorization: `Bearer ${apiKey}` },
+		fetch: customFetch,
 		buildBody(texts, purpose) {
 			return {
 				model,

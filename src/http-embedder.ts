@@ -44,6 +44,8 @@ export interface HttpEmbedderConfig {
 	readonly dimensions: number;
 	readonly apiKey: string | undefined;
 	readonly headers: Readonly<Record<string, string>> | undefined;
+	/** The caller's `fetch` option, checked by {@link resolveFetch}. */
+	readonly fetch: unknown;
 	readonly maxBatch: number | undefined;
 	readonly sendDimensions: boolean;
 	readonly purposes: PurposeHints | undefined;
@@ -138,6 +140,28 @@ export function resolveHeaders(
 		resolved[key.toLowerCase()] = value;
 	}
 	return resolved;
+}
+
+/**
+ * Check a caller's `fetch` option: a function, or `undefined` for the
+ * global `fetch`, which is then looked up on every request so a stub or
+ * polyfill installed later still applies.
+ */
+export function resolveFetch(
+	fetchOption: unknown,
+	name: string,
+): typeof globalThis.fetch | undefined {
+	if (fetchOption === undefined) {
+		return undefined;
+	}
+	if (typeof fetchOption !== "function") {
+		throw new MnemocyteError({
+			message: `${name} fetch must be a function.`,
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
+	}
+	return fetchOption as typeof globalThis.fetch;
 }
 
 function resolveHint(
@@ -353,6 +377,8 @@ export interface FetchEmbedderConfig {
 	readonly url: string;
 	/** Request headers; `content-type` is added. */
 	readonly headers: Readonly<Record<string, string>>;
+	/** The `fetch` every request goes through; the global one when unset. */
+	readonly fetch: typeof globalThis.fetch | undefined;
 	/** The JSON request body for one call. */
 	readonly buildBody: (
 		texts: readonly string[],
@@ -367,13 +393,17 @@ export interface FetchEmbedderConfig {
 
 /**
  * Build an {@link Embedder} that POSTs JSON to one provider endpoint with
- * `fetch`. It checks `purpose`, forwards the call's signal, turns a non-2xx
- * response into a `ProviderError` and a non-JSON success body into
- * `"EMBEDDING"`. The provider's options must already be checked.
+ * `fetch` (the caller's, else the global one). It checks `purpose`,
+ * forwards the call's signal, turns a non-2xx response into a
+ * `ProviderError` and a non-JSON success body into `"EMBEDDING"`. The
+ * provider's options must already be checked.
  */
 export function createFetchEmbedder(config: FetchEmbedderConfig): Embedder {
 	const { name, provider, model, dimensions, url, buildBody, parseResponse } =
 		config;
+	// Called as a plain function, never as `config.fetch(...)`: a browser's
+	// `fetch` called with another `this` throws "Illegal invocation".
+	const customFetch = config.fetch;
 	const headers: Record<string, string> = {
 		...config.headers,
 		"content-type": "application/json",
@@ -391,7 +421,8 @@ export function createFetchEmbedder(config: FetchEmbedderConfig): Embedder {
 					code: "VALIDATION",
 				});
 			}
-			const response = await fetch(url, {
+			const send = customFetch ?? globalThis.fetch;
+			const response = await send(url, {
 				method: "POST",
 				headers: { ...headers },
 				body: JSON.stringify(buildBody(texts, purpose)),
@@ -594,6 +625,7 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 			: { authorization: `Bearer ${config.apiKey}` }),
 	};
 	const hints = resolvePurposes(config.purposes, name);
+	const customFetch = resolveFetch(config.fetch, name);
 
 	return createFetchEmbedder({
 		name,
@@ -603,6 +635,7 @@ export function createHttpEmbedder(config: HttpEmbedderConfig): Embedder {
 		maxBatch,
 		url: `${baseURL}/embeddings`,
 		headers,
+		fetch: customFetch,
 		buildBody(texts, purpose) {
 			const hint = hints[purpose];
 			return {

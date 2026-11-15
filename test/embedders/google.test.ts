@@ -2,7 +2,12 @@ import { createMemory, ProviderError } from "mnemocyte";
 import { googleEmbedder } from "mnemocyte/embedders/google";
 import { describe, expect, test, vi } from "vitest";
 import { testScope } from "../helpers.js";
-import { rejection, useFetchMock } from "./fetch-mock.js";
+import {
+	jsonFetch,
+	NOT_FETCH_FUNCTIONS,
+	rejection,
+	useFetchMock,
+} from "./fetch-mock.js";
 
 function googleResponse(vectors: number[][]) {
 	return { embeddings: vectors.map((values) => ({ values })) };
@@ -79,6 +84,66 @@ describe("googleEmbedder", () => {
 			"content-type": "application/json",
 		});
 	});
+
+	test("sends every request through a custom fetch, with the call's signal", async () => {
+		const customFetch = jsonFetch(googleResponse([[1]]));
+		const embedder = googleEmbedder({
+			apiKey: "gemini-key",
+			model: "gemini-embedding-001",
+			fetch: customFetch,
+		});
+		const controller = new AbortController();
+
+		await expect(
+			embedder.embed(["a"], { purpose: "query", signal: controller.signal }),
+		).resolves.toEqual([[1]]);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		const [url, init] = customFetch.mock.calls[0] ?? [];
+		expect(url).toBe(
+			"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents",
+		);
+		expect(init).toMatchObject({
+			method: "POST",
+			headers: {
+				"x-goog-api-key": "gemini-key",
+				"content-type": "application/json",
+			},
+			signal: controller.signal,
+		});
+		expect(JSON.parse(String(init?.body))).toEqual({
+			requests: [
+				{
+					model: "models/gemini-embedding-001",
+					content: { parts: [{ text: "a" }] },
+					embedContentConfig: {
+						taskType: "RETRIEVAL_QUERY",
+						autoTruncate: true,
+					},
+				},
+			],
+		});
+	});
+
+	test.each([...NOT_FETCH_FUNCTIONS])(
+		"rejects a fetch that is %s with CONFIG",
+		(_label, value) => {
+			expect(() =>
+				googleEmbedder({
+					apiKey: "k",
+					model: "gemini-embedding-001",
+					fetch: value as typeof fetch,
+				}),
+			).toThrow(
+				expect.objectContaining({
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+					message: "googleEmbedder fetch must be a function.",
+				}),
+			);
+		},
+	);
 
 	test("marks gemini-embedding-2 purposes with text prefixes, not taskType", async () => {
 		const embedder = googleEmbedder({

@@ -2,7 +2,12 @@ import { createMemory, ProviderError } from "mnemocyte";
 import { cohereEmbedder } from "mnemocyte/embedders/cohere";
 import { describe, expect, test, vi } from "vitest";
 import { testScope } from "../helpers.js";
-import { rejection, useFetchMock } from "./fetch-mock.js";
+import {
+	jsonFetch,
+	NOT_FETCH_FUNCTIONS,
+	rejection,
+	useFetchMock,
+} from "./fetch-mock.js";
 
 function cohereResponse(vectors: number[][]) {
 	return {
@@ -95,6 +100,59 @@ describe("cohereEmbedder", () => {
 			"content-type": "application/json",
 		});
 	});
+
+	test("sends every request through a custom fetch, with the call's signal", async () => {
+		const customFetch = jsonFetch(cohereResponse([[1]]));
+		const embedder = cohereEmbedder({
+			apiKey: "cohere-key",
+			model: "embed-v4.0",
+			fetch: customFetch,
+		});
+		const controller = new AbortController();
+
+		await expect(
+			embedder.embed(["a"], { purpose: "query", signal: controller.signal }),
+		).resolves.toEqual([[1]]);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		const [url, init] = customFetch.mock.calls[0] ?? [];
+		expect(url).toBe("https://api.cohere.com/v2/embed");
+		expect(init).toMatchObject({
+			method: "POST",
+			headers: {
+				authorization: "Bearer cohere-key",
+				"content-type": "application/json",
+			},
+			signal: controller.signal,
+		});
+		expect(JSON.parse(String(init?.body))).toEqual({
+			model: "embed-v4.0",
+			texts: ["a"],
+			input_type: "search_query",
+			embedding_types: ["float"],
+			truncate: "END",
+		});
+	});
+
+	test.each([...NOT_FETCH_FUNCTIONS])(
+		"rejects a fetch that is %s with CONFIG",
+		(_label, value) => {
+			expect(() =>
+				cohereEmbedder({
+					apiKey: "k",
+					model: "embed-v4.0",
+					fetch: value as typeof fetch,
+				}),
+			).toThrow(
+				expect.objectContaining({
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+					message: "cohereEmbedder fetch must be a function.",
+				}),
+			);
+		},
+	);
 
 	test("knows the fixed v3 sizes and sends none", async () => {
 		const light = cohereEmbedder({

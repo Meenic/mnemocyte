@@ -7,6 +7,7 @@ import {
 	resolveApiKey,
 	resolveBaseURL,
 	resolveBoolean,
+	resolveFetch,
 	resolveHeaders,
 	resolveMaxBatch,
 	resolveModel,
@@ -81,6 +82,12 @@ export interface GoogleEmbedderOptions {
 	 * an `authorization` header is sent as given.
 	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
+	/**
+	 * The `fetch` every request goes through, for tests and proxies. It is
+	 * called with the URL as a string and a `RequestInit` that carries the
+	 * call's `signal`. Defaults to the global `fetch`.
+	 */
+	readonly fetch?: typeof globalThis.fetch | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -113,12 +120,14 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 			"truncate",
 			"baseURL",
 			"headers",
+			"fetch",
 			"maxBatch",
 		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(options.apiKey, "GEMINI_API_KEY", NAME);
 	const headers = resolveHeaders(options.headers, NAME);
+	const customFetch = resolveFetch(options.fetch, NAME);
 	const given = resolveModel(options.model, NAME);
 	const model = given.startsWith("models/")
 		? resolveModel(given.slice("models/".length), NAME)
@@ -145,6 +154,7 @@ export function googleEmbedder(options: GoogleEmbedderOptions): Embedder {
 		maxBatch: resolveMaxBatch(options.maxBatch, NAME, 100),
 		url: `${baseURL}/models/${encodeURIComponent(model)}:batchEmbedContents`,
 		headers: { ...headers, "x-goog-api-key": apiKey },
+		fetch: customFetch,
 		buildBody(texts, purpose) {
 			const prefix = purposeStyle === "prefix" ? PREFIXES[purpose] : "";
 			const config = {

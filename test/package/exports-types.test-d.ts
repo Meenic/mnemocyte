@@ -574,6 +574,27 @@ voyageEmbedder({ dimensions: 1024 });
 cohereEmbedder({ model: "embed-v4.0", truncate: "END" });
 // @ts-expect-error header values are strings
 googleEmbedder({ model: "gemini-embedding-001", headers: { "x-a": 1 } });
+const loggingFetch: typeof fetch = (input, init) => fetch(input, init);
+const fetchVoyageOptions: VoyageEmbedderOptions = {
+	model: "voyage-4",
+	fetch: loggingFetch,
+};
+void voyageEmbedder(fetchVoyageOptions);
+void openaiEmbedder({
+	model: "text-embedding-3-small",
+	fetch: globalThis.fetch,
+});
+void openaiCompatibleEmbedder({
+	...compatibleOptions,
+	fetch: async (input, init) => fetch(input, init),
+});
+void cohereEmbedder({ model: "embed-v4.0", fetch: undefined });
+void directGoogleEmbedder({
+	model: "gemini-embedding-001",
+	fetch: (input, init) => globalThis.fetch(input, init),
+});
+// @ts-expect-error fetch is a function
+googleEmbedder({ model: "gemini-embedding-001", fetch: "https://proxy" });
 const purpose: EmbeddingPurpose = "query";
 const embedOptions: EmbedOptions = { purpose };
 void compatible.embed(["x"], embedOptions);

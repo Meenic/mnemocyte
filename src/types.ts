@@ -224,6 +224,16 @@ export interface MnemocyteObservation {
 	namespace?: string;
 	/** Entity of the operation's scope, when it has one. */
 	entityId?: string;
+	/**
+	 * Agent of the operation's scope, when it names one. Absent for a scope
+	 * without an agent, whether that means shared memories or every agent.
+	 */
+	agentId?: string;
+	/**
+	 * Session of the operation's scope, when it names one. Absent for a scope
+	 * without a session.
+	 */
+	sessionId?: string;
 	/** Memory ID associated with the operation, when applicable. */
 	memoryId?: string;
 	/** Number of items processed (e.g. memories returned, batch size). */

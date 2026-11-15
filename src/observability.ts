@@ -8,8 +8,30 @@ import type {
 export interface ObservationMetadata {
 	namespace?: string;
 	entityId?: string;
+	agentId?: string;
+	sessionId?: string;
 	memoryId?: string;
 	count?: number;
+}
+
+/**
+ * Observation fields of a validated scope. A `null` agent or session (shared,
+ * or outside any session) is left out, as an omitted one is.
+ */
+export function scopeObservation(scope: {
+	readonly namespace: string;
+	readonly entityId: string;
+	readonly agentId?: string | null | undefined;
+	readonly sessionId?: string | null | undefined;
+}): ObservationMetadata {
+	return {
+		namespace: scope.namespace,
+		entityId: scope.entityId,
+		...(typeof scope.agentId === "string" ? { agentId: scope.agentId } : {}),
+		...(typeof scope.sessionId === "string"
+			? { sessionId: scope.sessionId }
+			: {}),
+	};
 }
 
 function withMetadata(
@@ -22,6 +44,10 @@ function withMetadata(
 			? {}
 			: { namespace: metadata.namespace }),
 		...(metadata.entityId === undefined ? {} : { entityId: metadata.entityId }),
+		...(metadata.agentId === undefined ? {} : { agentId: metadata.agentId }),
+		...(metadata.sessionId === undefined
+			? {}
+			: { sessionId: metadata.sessionId }),
 		...(metadata.memoryId === undefined ? {} : { memoryId: metadata.memoryId }),
 		...(metadata.count === undefined ? {} : { count: metadata.count }),
 	};

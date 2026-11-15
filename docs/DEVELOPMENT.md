@@ -478,13 +478,17 @@ when a `v*` tag is pushed.
 1. On a `chore/release-vX.Y.Z` branch, move the `CHANGELOG.md`
    `[Unreleased]` entries under the new version and run
    `pnpm version patch --no-git-tag-version` (or `minor`), which changes only
-   `package.json`.
+   `package.json`. For the first release candidate, give the version
+   (`pnpm version 1.0.0-rc.1 --no-git-tag-version`), since `premajor` would
+   produce `rc.0`.
 2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI
    passes. The tag is created after the merge, because a squash merge gives
    the commit a new SHA.
 3. Pull `main`, then `git tag -a vX.Y.Z -m vX.Y.Z` and
    `git push origin vX.Y.Z`.
-4. Once npm has the version, create the GitHub release.
+4. Once npm has the version, create the GitHub release. For a version with
+   a prerelease part, mark it as a prerelease and say it installs with
+   `mnemocyte@next`.
 
 The release workflow runs three stages:
 

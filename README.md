@@ -14,6 +14,9 @@ pnpm add mnemocyte
 
 Node.js 22.18 or newer. ES modules; CommonJS can `require()` it.
 
+1.0 is in release candidate: `pnpm add mnemocyte@next` installs the API
+these docs describe, while `latest` is still 0.8.
+
 ### Databases
 
 - [postgres.js](https://github.com/porsager/postgres): `pnpm add postgres`

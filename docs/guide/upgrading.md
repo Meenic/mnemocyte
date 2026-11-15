@@ -244,9 +244,5 @@ To apply it with `psql` instead of `migrate`, see
   `pnpm exec mnemocyte sql --dimensions <n>` for the fresh-install schema. The
   numbered SQL files and `fresh-install.sql` still ship.
 
-Until 1.0.0 is published, the release candidates install with
-`mnemocyte@next`. A release candidate changes only if testing finds a
-problem.
-
-From 1.0, breaking changes wait for a major release; see
+Breaking changes now wait for a major release; see
 [stability](./api.md#stability) for what the promise covers.

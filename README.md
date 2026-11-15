@@ -15,9 +15,6 @@ pnpm add mnemocyte
 Mnemocyte needs Node.js 22.18 or newer. It is an ES module package, and
 CommonJS can `require()` it.
 
-1.0 is in release candidate: `pnpm add mnemocyte@next` installs the version
-these docs describe.
-
 ## Quickstart
 
 Every memory belongs to a scope: a `namespace` for your app or tenant, an

@@ -858,9 +858,7 @@ API documented in these guides waits for a major release. That covers the
 client and its methods, the in-memory and Postgres backends with the four
 built-in drivers, `postgresStore` and the documented `SqlExecutor`
 interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
-commands, flags and exit codes. Release candidates (`1.0.0-rc.N`,
-installed with `mnemocyte@next`) are not covered: one may still change the
-documented API if testing finds a problem. It does not cover:
+commands, flags and exit codes. It does not cover:
 
 - anything under `experimental` (`experimental.findDuplicatesPage`), which
   may change or go in a minor release, together with the types that

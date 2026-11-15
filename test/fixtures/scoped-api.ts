@@ -579,3 +579,128 @@ export async function verifyCreatedFilters(
 		await expectMnemocyteError(invalid, "VALIDATION");
 	}
 }
+
+/**
+ * Sets sub-millisecond times on Postgres: adds `micros` microseconds to the
+ * memory's `created_at`. The in-memory backend stores a `Date`, so its
+ * runner passes no hook.
+ */
+export type AddCreatedMicros = (id: string, micros: number) => Promise<void>;
+
+/**
+ * A returned `createdAt` passed straight back as a bound gives the same
+ * result on every backend, also when `created_at` holds microseconds that
+ * the returned `Date` cuts off: `search`, `list` (across cursor pages),
+ * `context`, the bound client, and `prune`'s `createdBefore` and
+ * `notAccessedSince`.
+ *
+ * Three memories share one millisecond (one `addMany`); on Postgres
+ * `addMicros` spreads them over microseconds inside it. A fourth comes at
+ * least a millisecond later.
+ */
+export async function verifyCreatedBoundsRoundTrip(
+	client: MemoryClient,
+	namespace: string,
+	addMicros?: AddCreatedMicros,
+): Promise<void> {
+	const scope: MemoryScope = { namespace, entityId: "alice" };
+	const added = await client.addMany({
+		scope,
+		memories: [
+			{ content: "Tea round one." },
+			{ content: "Tea round two." },
+			{ content: "Tea round three." },
+		],
+	});
+	if (addMicros) {
+		for (const [index, micros] of [100, 456, 999].entries()) {
+			await addMicros(expectDefined(added[index], "added memory").id, micros);
+		}
+	}
+	await new Promise((resolve) => setTimeout(resolve, 5));
+	const later = await client.add({ scope, content: "Tea round later." });
+
+	// The bounds are the createdAt values the backend returns.
+	const returned = (await client.list({ scope })).memories;
+	const sameIds = added.map((memory) => memory.id).sort();
+	const same = returned.filter((memory) => sameIds.includes(memory.id));
+	expect(same.map((memory) => memory.id).sort()).toEqual(sameIds);
+	const at = expectDefined(same[0], "same-millisecond memory").createdAt;
+	for (const memory of same) {
+		expect(memory.createdAt.getTime()).toBe(at.getTime());
+	}
+	const laterAt = expectDefined(
+		returned.find((memory) => memory.id === later.id),
+		"later memory",
+	).createdAt;
+	expect(laterAt.getTime()).toBeGreaterThan(at.getTime());
+	const shift = (ms: number) => new Date(at.getTime() + ms);
+	const all = [...sameIds, later.id].sort();
+
+	const cases: {
+		bounds: { createdBefore?: Date; createdAfter?: Date };
+		ids: string[];
+	}[] = [
+		{ bounds: { createdAfter: at }, ids: [later.id] },
+		{ bounds: { createdAfter: shift(-1) }, ids: all },
+		{ bounds: { createdBefore: at }, ids: [] },
+		{ bounds: { createdBefore: shift(1) }, ids: sameIds },
+		{ bounds: { createdBefore: laterAt }, ids: sameIds },
+		{ bounds: { createdAfter: at, createdBefore: laterAt }, ids: [] },
+		{ bounds: { createdAfter: laterAt }, ids: [] },
+	];
+	for (const { bounds, ids } of cases) {
+		const searched = await client.search({
+			scope,
+			query: "tea round",
+			limit: 10,
+			...bounds,
+		});
+		expect(searched.map((result) => result.id).sort()).toEqual(ids);
+		const listed = await client.list({ scope, ...bounds });
+		expect(listed.memories.map((memory) => memory.id).sort()).toEqual(ids);
+
+		// The same rows one page at a time.
+		const paged: string[] = [];
+		let cursor: string | undefined;
+		do {
+			const page = await client.list({
+				scope,
+				limit: 1,
+				...bounds,
+				...(cursor === undefined ? {} : { cursor }),
+			});
+			paged.push(...page.memories.map((memory) => memory.id));
+			cursor = page.nextCursor ?? undefined;
+		} while (cursor !== undefined);
+		expect(paged.sort()).toEqual(ids);
+	}
+
+	const rendered = await client.context({
+		scope,
+		query: "tea round",
+		format: "plain",
+		createdAfter: at,
+	});
+	expect(rendered).toContain("Tea round later.");
+	expect(rendered).not.toContain("Tea round one.");
+	expect(rendered).not.toContain("Tea round two.");
+	expect(rendered).not.toContain("Tea round three.");
+
+	const bound = client.for(scope);
+	expect(
+		(await bound.list({ createdAfter: at })).memories.map((m) => m.id),
+	).toEqual([later.id]);
+
+	// prune's bounds are strict the same way; never-accessed memories count
+	// from createdAt for notAccessedSince.
+	const matched = async (selectors: {
+		createdBefore?: Date;
+		notAccessedSince?: Date;
+	}) =>
+		(await client.prune({ scope, dryRun: true, ...selectors })).matchedCount;
+	expect(await matched({ createdBefore: at })).toBe(0);
+	expect(await matched({ createdBefore: shift(1) })).toBe(3);
+	expect(await matched({ notAccessedSince: at })).toBe(0);
+	expect(await matched({ notAccessedSince: shift(1) })).toBe(3);
+}

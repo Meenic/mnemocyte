@@ -87,6 +87,15 @@ marked **Breaking** in their entries. What semver covers is in
   widening it would stop embedders that declare their options as
   `{ signal?: AbortSignal }` from compiling.
 
+- **`createdAfter` agrees with the returned `createdAt` on Postgres.**
+  Postgres stores `created_at` in microseconds, and the `createdAt` you get
+  back stops at the millisecond. Rows with microseconds (written by 0.x, by
+  the column default or by hand) could match
+  `createdAfter: memory.createdAt` on Postgres but not in memory, so
+  `search`, `list` and `context` could return the memory you passed as the
+  bound. Both backends now compare at the millisecond `createdAt` shows.
+  `createdBefore`, `prune` and `notAccessedSince` already agreed.
+
 ## [1.0.1] - 2026-11-15
 
 A patch release: the hints that tell you how to run `migrate` now work in

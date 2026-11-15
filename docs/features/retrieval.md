@@ -13,7 +13,8 @@
 3. Run two candidate searches in parallel, each with
    `limit × candidateMultiplier` (default 3) and the same filters (the
    scope's visibility, see [scopes.md](./scopes.md#scope); `kinds`, `tags`
-   must all match, `createdBefore`/`createdAfter` on `created_at`,
+   must all match, `createdBefore`/`createdAfter` on `created_at` at the
+   returned millisecond (see [scopes.md](./scopes.md#created-bounds)),
    superseded and expired rows excluded unless asked for). A list whose fusion weight is 0
    is not searched.
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by

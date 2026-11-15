@@ -155,8 +155,9 @@ LIMIT $limit + 1
 
 - The filters are the recall filters `search` uses (`recallFilters` in
   Postgres, `matchesMemoryFilter` in memory), `createdBefore` /
-  `createdAfter` included as strict bounds on `created_at`. They narrow
-  each page; the cursor only says where the last one ended.
+  `createdAfter` included as strict bounds on `created_at` (see
+  [Created bounds](#created-bounds)). They narrow each page; the cursor
+  only says where the last one ended.
 - The client asks for one extra row to know whether a next page exists, so
   an exact last page ends with `nextCursor: null`.
 - The cursor (`memory/cursor.ts`) is base64url of
@@ -197,6 +198,32 @@ index, and a `(…, created_at, id)` index does not match
 index would mean ordering by the raw `created_at` and a cursor with
 microseconds; listing is an administrative read, so that waits until an
 application needs faster pages over very large entities.
+
+### Created bounds
+
+`createdBefore` and `createdAfter` (`search`, `list`, `context`) and
+`prune`'s `createdBefore` are strict bounds on `createdAt` as the client
+returns it. `created_at` stores microseconds, and every supported driver
+(postgres.js 3 and 4, node-postgres, PGlite) cuts them off when it parses
+a `Date`, so a row at `B + 0.4 ms` comes back as `B`. The in-memory store
+holds that `Date`. A bound is a whole millisecond, which gives:
+
+- `createdBefore: B` is `created_at < B` on Postgres: a time below `B` is
+  below it with or without its microseconds. The same holds for
+  `notAccessedSince` on `COALESCE(last_accessed_at, created_at)`.
+- `createdAfter: B` is `created_at >= B + 1 ms` (`createdAfterCondition`
+  in `db/queries/memories.ts`). A plain `created_at > B` matched the row
+  at `B + 0.4 ms`, so `createdAfter: memory.createdAt` returned that
+  memory on Postgres and not in memory. At the last millisecond a `Date`
+  can hold, where `B + 1 ms` does not exist, it stays `created_at > B`.
+
+The raw column stays on the left of both comparisons, a range an index on
+`created_at` can serve; `date_trunc('milliseconds', created_at) > B` would
+give the same rows and rule that index out. No index on `created_at`
+exists today, so plans did not change. `verifyCreatedBoundsRoundTrip`
+(`test/fixtures/scoped-api.ts`) passes the returned `createdAt` straight
+back as the bound, on both backends: the contract suite first spreads
+three memories over microseconds within one millisecond.
 
 ## `update`
 

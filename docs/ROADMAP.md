@@ -355,6 +355,85 @@ reopened; its additive findings are in "After 1.0".
     `entityId` and has no `allNamespaces`; say so, and that it is on
     purpose (an erasure names its entity).
 
+A third review, on the published 1.0.0-rc.1 (2026-11-15), tried to break
+the package as users get it: the packed tarball (byte-identical to the
+published one) in a scratch app, every documented import path from ESM and
+`require()`, the guides' examples under `strict` and
+`exactOptionalPropertyTypes`, the integration suite on Postgres 18 with
+postgres.js 3 and 4, the 0.8 → 1.0 upgrade by `upgrading.md`, every driver
+and the CLI on a real database, the AI SDK helpers with mock models, and a
+small Hono chat app on Ollama (`nomic-embed-text`, `qwen3:4b-instruct`)
+bundled with esbuild. It adds two items. rc.2 is tagged once both land and
+the Ollama app passes again against the packed branch. Where an item says
+"the maintainer decides", the review's recommendation follows.
+
+- [ ] `chore/contract-hook-timeout`: `test/contract/cli.test.ts` opens a
+  PGlite in `beforeEach`, and the `contract` project raises `testTimeout`
+  to 60 s but leaves `hookTimeout` at Vitest's 10 s. The first test's hook
+  takes 10–11 s under load, so `pnpm test` failed in 7 of 15 runs on
+  Windows (the "1 failed, 886 passed" seen before the release; the
+  `afterEach` then fails on an undefined `db`). Set `hookTimeout: 60_000`
+  on the `contract` project; the other contract files open PGlite in
+  `beforeAll` and share the risk.
+- [ ] `fix/rc-review`: fixes from the rc.1 review, before 1.0 locks them in.
+  - Search recency: `recencyScore` (`src/retrieval/scorer.ts`) calls
+    `Date.now()` once per candidate, so two memories with equal fused
+    scores created in the same millisecond swap places when a search
+    crosses a millisecond boundary, and the documented tie-break (newer,
+    then lower id) never applies. It is the other flaky test
+    (`test/memory/explicit-undefined.test.ts`, 3 of 15 runs). Take `now`
+    once per search.
+  - `consolidate` with a survivor that is already superseded throws
+    `"VALIDATION"` (`memory/client-core.ts`), while the same state found in
+    a race throws `"CONFLICT"` / `"CONSOLIDATION_CHANGED"`, and
+    `"VALIDATION"` is documented as invalid input. The maintainer decides;
+    recommended: `"CONFLICT"` / `"CONSOLIDATION_CHANGED"` both ways.
+    Breaking after 1.0.
+  - `null` or `undefined` as the input of `add`, `addMany`, `search`,
+    `get`, `list`, `update`, `delete`, `context`, `findDuplicates` and
+    `consolidate` on the unbound client throws a raw `TypeError`, because
+    `assertInputKeys` lets non-objects through; the other methods and every
+    bound method throw `"VALIDATION"`. Throw `"VALIDATION"` everywhere.
+  - `extractMemories` aborted by the caller during the model call rethrows
+    the AI SDK's `AbortError`; aborted during its search or write it throws
+    `"ABORTED"`. The maintainer decides; recommended: `"ABORTED"` in both
+    cases, as everywhere else in the package.
+  - Extraction stores what it was just shown. A small model returns the
+    existing memories unchanged on most turns (each one re-embedded, its
+    `updatedAt` bumped), and "please remember X" ends up stored twice, once
+    by `saveMemory` and once as `extracted:…`. It also stores content that
+    is only the key (`lives_in_berlin`), which teaches the model to put
+    values in keys and defeats updates in place. Skip an item whose key
+    exists with the same content, kind and importance, an item whose
+    normalised content equals a memory the model was shown, and an item
+    whose content equals its key; skipped items are not errors. The
+    maintainer decides whether this is in rc.2; recommended: yes.
+  - The middleware caches `context()` per query only when it succeeds, so
+    with the embedder down one `generateText` runs it on every AI SDK retry
+    and every tool step (3 runs and 3 `onError` calls, each paying the
+    client's embed retries). Remember the failure for that query in the
+    middleware instance; never an abort. The maintainer decides;
+    recommended: yes.
+  - Docs. `MemoryMiddlewareError.phase` joins the unions a minor may extend
+    ("Stability" in `guide/api.md`). A local-model example for extraction
+    in `guide/ai-sdk.md` and the Ollama section of `guide/getting-started.md`:
+    `createOpenAICompatible({ baseURL, supportsStructuredOutputs: true })`,
+    since without the flag the schema is dropped and extraction stores
+    nothing, reaching only `onError`. Extraction's `timeoutMs` covers the
+    search, the model call and the write; say to raise it for local models
+    (half the extractions timed out with 4 parallel requests on CPU
+    Ollama). `./memory.ts` instead of `./memory` in `guide/ai-sdk.md`
+    (TS2835 under `nodenext`, `ERR_MODULE_NOT_FOUND` in Node). The
+    `addMany` JSDoc says "one embedder call" (it batches by `maxBatch`) and
+    the `DuplicatePair` JSDoc says "Unordered" (`a` has the smaller id).
+    Say in `guide/api.md` that a keyed upsert keeps `createdAt`, which
+    recency uses, so a changed fact ranks as old as its first version;
+    Stability lets a minor change ranking, so whether recency should follow
+    updates is in "After 1.0".
+  - CLI text: `check --dimensions` without a memory file says "the
+    embedder has N dimensions" though no embedder is loaded; the
+    non-terminal `migrate` message capitalises "Have" after a colon.
+
 ## Cut first if time runs short
 
 `mnemocyte init`.
@@ -409,3 +488,11 @@ reopened; its additive findings are in "After 1.0".
   `dryRun` and `signal`; renaming it is breaking after 1.0); aliases that
   give the two `purposes` types matching names (`PurposeHints`,
   `AiSdkPurposeOptions`).
+- Additive items from the rc.1 review: `init --embedder openai-compatible`
+  (today `init` always writes `openaiEmbedder` and `OPENAI_API_KEY=`, even
+  for the Ollama setup the guide shows); `mnemocyte/package.json` in
+  `exports`; `?: T | undefined` on `ProviderErrorInput.retryAfterMs` and
+  `EmbedOptions.signal`, which callers pass through; a result from `delete`
+  that says which dependents were restored or deleted; recency that follows
+  content updates rather than `createdAt`, if the `guide/api.md` note is
+  not enough.

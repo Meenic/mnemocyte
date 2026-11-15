@@ -18,9 +18,11 @@ import type {
 	AuditEvent,
 	AuditEventType,
 	BoundAddInput,
+	BoundContextInput,
 	BoundExperimentalMemoryClient,
 	BoundFindDuplicatesPageInput,
 	BoundGetInput,
+	BoundListInput,
 	BoundMemoryClient,
 	BoundPruneInput,
 	BoundStatsInput,
@@ -42,6 +44,7 @@ import type {
 	ListAuditLogInput,
 	ListAuditLogOptions,
 	ListAuditLogResult,
+	ListInput,
 	ListResult,
 	Memory,
 	MemoryClient,
@@ -353,6 +356,21 @@ const search: SearchInput = {
 };
 // @ts-expect-error search's created filters are createdBefore / createdAfter.
 const searchBefore: SearchInput = { scope, query: "query", before: new Date() };
+const listCreated: ListInput = {
+	scope,
+	createdBefore: new Date(),
+	createdAfter: new Date(0),
+};
+// @ts-expect-error list's created filters are createdBefore / createdAfter.
+const listBefore: ListInput = { scope, before: new Date() };
+const contextCreated: ContextInput = {
+	scope,
+	query: "query",
+	createdBefore: new Date(),
+	createdAfter: new Date(0),
+};
+// @ts-expect-error context's created filters are createdBefore / createdAfter.
+const contextAfter: ContextInput = { scope, query: "query", after: new Date() };
 const update: UpdateInput = {
 	scope,
 	id: "id",
@@ -689,6 +707,10 @@ void client.add(add);
 void client.addMany(addMany);
 void search;
 void searchBefore;
+void listCreated;
+void listBefore;
+void contextCreated;
+void contextAfter;
 void update;
 void prune;
 void pruneAll;
@@ -762,6 +784,13 @@ const boundGet: BoundGetInput = { key: "key" };
 void bound.add(boundAdd);
 void bound.get(boundGet);
 void bound.list();
+const boundListCreated: BoundListInput = { createdAfter: new Date(0) };
+const boundContextCreated: BoundContextInput = {
+	query: "query",
+	createdBefore: new Date(),
+};
+void bound.list(boundListCreated);
+void bound.context(boundContextCreated);
 void bound.findDuplicates();
 const boundAuditPage: Promise<ListAuditLogResult> = bound.listAuditLog({
 	cursor: "opaque",

@@ -153,6 +153,10 @@ ORDER BY date_trunc('milliseconds', created_at) DESC, mnemocyte_memories.id DESC
 LIMIT $limit + 1
 ```
 
+- The filters are the recall filters `search` uses (`recallFilters` in
+  Postgres, `matchesMemoryFilter` in memory), `createdBefore` /
+  `createdAfter` included as strict bounds on `created_at`. They narrow
+  each page; the cursor only says where the last one ended.
 - The client asks for one extra row to know whether a next page exists, so
   an exact last page ends with `nextCursor: null`.
 - The cursor (`memory/cursor.ts`) is base64url of

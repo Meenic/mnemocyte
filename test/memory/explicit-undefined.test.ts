@@ -158,6 +158,8 @@ describe("method inputs", () => {
 			scope: undefinedScope,
 			limit: undefined,
 			cursor: undefined,
+			createdBefore: undefined,
+			createdAfter: undefined,
 			...undefinedFilters,
 		});
 		const plain = await memory.list({ scope });
@@ -212,6 +214,8 @@ describe("method inputs", () => {
 			minScore: undefined,
 			trackAccess: undefined,
 			tokenCounter: undefined,
+			createdBefore: undefined,
+			createdAfter: undefined,
 			...undefinedFilters,
 		});
 		expect(explicit).toBe(await memory.context({ scope, query: "tea" }));

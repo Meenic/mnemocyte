@@ -44,9 +44,15 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 
 ## Retrieval and results
 
-- [ ] `feat/created-filters-list-context`: `createdBefore` /
+- [x] `feat/created-filters-list-context`: `createdBefore` /
   `createdAfter` on `list` and `context`, the names `search` and `prune`
   use (decision 40).
+- [ ] `fix/created-filter-precision`: Postgres compares `created_at` at
+  microseconds but returns `createdAt` cut to milliseconds, so
+  `createdAfter: memory.createdAt` can still return that memory on
+  Postgres and not in memory (`search`, `list`, `context`). Make both
+  backends agree without wrapping the column in `date_trunc`, which would
+  stop an index on `created_at` from being used.
 - [ ] `feat/delete-result`: `delete` returns which dependents it restored or
   deleted, instead of `void`.
 - [ ] `feat/context-memories`: a context call that also returns the

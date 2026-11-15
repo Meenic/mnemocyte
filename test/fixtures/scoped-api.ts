@@ -438,8 +438,10 @@ export async function verifyGetAndScopeValidation(
 }
 
 /**
- * `search` filters `createdAt` with strict `createdBefore` / `createdAfter`
- * bounds, and the names it took before 1.0 throw instead of being ignored.
+ * `search`, `list` and `context` filter `createdAt` with strict
+ * `createdBefore` / `createdAfter` bounds, on the bound client too. The
+ * names `search` took before 1.0 throw instead of being ignored, and bare
+ * `before` / `after` are unknown keys on `list` and `context`.
  *
  * Bounds come from the returned `createdAt`, which a `Date` cuts to the
  * millisecond, so the adds are spaced apart and the lower bound sits one
@@ -490,6 +492,90 @@ export async function verifyCreatedFilters(
 			await expect(client.search(input)).rejects.toThrow(
 				`search does not accept "${old}": it was renamed "${renamed}".`,
 			);
+			// list and context never took them: a plain unknown key.
+			await expectMnemocyteError(
+				client.list({ scope, [old]: value }),
+				"VALIDATION",
+			);
+			await expect(client.list({ scope, [old]: value })).rejects.toThrow(
+				`list does not accept "${old}". Accepted keys:`,
+			);
+			await expect(client.context(input)).rejects.toThrow(
+				`context does not accept "${old}". Accepted keys:`,
+			);
 		}
+	}
+
+	const listed = async (filters: {
+		createdBefore?: Date;
+		createdAfter?: Date;
+	}) => (await client.list({ scope, ...filters })).memories.map((m) => m.id);
+	// Newest first, so the order is the reverse of the adds.
+	expect(await listed({})).toEqual([third.id, second.id, first.id]);
+	expect(await listed({ createdAfter: afterFirst })).toEqual([
+		third.id,
+		second.id,
+	]);
+	expect(await listed({ createdBefore: third.createdAt })).toEqual([
+		second.id,
+		first.id,
+	]);
+	expect(
+		await listed({ createdAfter: afterFirst, createdBefore: third.createdAt }),
+	).toEqual([second.id]);
+
+	// The bounds hold on every page of a cursor loop.
+	const paged: string[] = [];
+	let cursor: string | undefined;
+	do {
+		const page = await client.list({
+			scope,
+			limit: 1,
+			createdBefore: third.createdAt,
+			...(cursor === undefined ? {} : { cursor }),
+		});
+		paged.push(...page.memories.map((m) => m.id));
+		cursor = page.nextCursor ?? undefined;
+	} while (cursor);
+	expect(paged).toEqual([second.id, first.id]);
+
+	// context filters in its search, so the budget only sees matches.
+	const rendered = await client.context({
+		scope,
+		query: "tea note",
+		format: "plain",
+		createdAfter: afterFirst,
+		createdBefore: third.createdAt,
+	});
+	expect(rendered).toContain("Tea note two.");
+	expect(rendered).not.toContain("Tea note one.");
+	expect(rendered).not.toContain("Tea note three.");
+	expect(rendered).not.toContain("omitted");
+	expect(
+		await client.context({
+			scope,
+			query: "tea note",
+			createdAfter: new Date(third.createdAt.getTime() + 1),
+		}),
+	).toBe("");
+
+	const bound = client.for(scope);
+	expect(
+		(await bound.list({ createdAfter: afterFirst })).memories.map((m) => m.id),
+	).toEqual([third.id, second.id]);
+	const boundContext = await bound.context({
+		query: "tea note",
+		format: "plain",
+		createdBefore: second.createdAt,
+	});
+	expect(boundContext).toContain("Tea note one.");
+	expect(boundContext).not.toContain("Tea note two.");
+
+	for (const invalid of [
+		client.list({ scope, createdAfter: new Date("nope") }),
+		client.context({ scope, query: "tea", createdBefore: new Date("nope") }),
+		bound.list({ createdBefore: new Date("nope") }),
+	]) {
+		await expectMnemocyteError(invalid, "VALIDATION");
 	}
 }

@@ -219,6 +219,12 @@ const FILTER_FIELDS = {
 	includeExpired: true,
 } as const;
 
+/** The `createdAt` bounds of `search`, `list` and `context` (decision 40). */
+const CREATED_FIELDS = {
+	createdBefore: true,
+	createdAfter: true,
+} as const;
+
 /** The methods whose input {@link assertInputKeys} checks. */
 export type CheckedInput =
 	| Exclude<MnemocyteOperation, "trackAccess">
@@ -235,11 +241,10 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 	search: inputKeys<SearchInput>({
 		...READ_SCOPE_FIELDS,
 		...FILTER_FIELDS,
+		...CREATED_FIELDS,
 		query: true,
 		limit: true,
 		minScore: true,
-		createdBefore: true,
-		createdAfter: true,
 		explain: true,
 		trackAccess: true,
 		signal: true,
@@ -253,6 +258,7 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 	list: inputKeys<ListInput>({
 		...READ_SCOPE_FIELDS,
 		...FILTER_FIELDS,
+		...CREATED_FIELDS,
 		limit: true,
 		cursor: true,
 		signal: true,
@@ -273,6 +279,7 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 	context: inputKeys<ContextInput>({
 		...READ_SCOPE_FIELDS,
 		...FILTER_FIELDS,
+		...CREATED_FIELDS,
 		query: true,
 		format: true,
 		maxTokens: true,
@@ -919,6 +926,22 @@ export function assertDistinctKeys(memories: readonly NewMemory[]): void {
 	}
 }
 
+/**
+ * The strict `createdAt` bounds of `search` and `list`; `context` passes
+ * them to `search`, which checks them with its other filters.
+ */
+function validateCreatedFilters(input: {
+	createdBefore?: unknown;
+	createdAfter?: unknown;
+}): void {
+	if (input.createdBefore !== undefined) {
+		assertValidDate(input.createdBefore, "createdBefore");
+	}
+	if (input.createdAfter !== undefined) {
+		assertValidDate(input.createdAfter, "createdAfter");
+	}
+}
+
 /** Shared filter fields of search, list, context and duplicate scans. */
 function validateMemoryFilterFields(input: {
 	kinds?: unknown;
@@ -947,12 +970,7 @@ export function validateSearchInput(input: SearchInput): StoreVisibility {
 		assertMinScore(input.minScore);
 	}
 	validateMemoryFilterFields(input);
-	if (input.createdBefore !== undefined) {
-		assertValidDate(input.createdBefore, "createdBefore");
-	}
-	if (input.createdAfter !== undefined) {
-		assertValidDate(input.createdAfter, "createdAfter");
-	}
+	validateCreatedFilters(input);
 	assertOptionalBoolean(input.explain, "explain");
 	assertOptionalTrackAccess(input.trackAccess);
 	assertOptionalSignal(input.signal);
@@ -963,6 +981,8 @@ export function validateListFilter(input: {
 	limit?: number | undefined;
 	kinds?: unknown;
 	tags?: unknown;
+	createdBefore?: unknown;
+	createdAfter?: unknown;
 	includeSuperseded?: unknown;
 	includeExpired?: unknown;
 	signal?: AbortSignal | undefined;
@@ -971,6 +991,7 @@ export function validateListFilter(input: {
 		assertLimit(input.limit);
 	}
 	validateMemoryFilterFields(input);
+	validateCreatedFilters(input);
 	assertOptionalSignal(input.signal);
 }
 
@@ -1020,6 +1041,12 @@ export function contextInputToSearchInput(input: ContextInput): SearchInput {
 		...(input.minScore === undefined ? {} : { minScore: input.minScore }),
 		...(input.kinds === undefined ? {} : { kinds: input.kinds }),
 		...(input.tags === undefined ? {} : { tags: input.tags }),
+		...(input.createdBefore === undefined
+			? {}
+			: { createdBefore: input.createdBefore }),
+		...(input.createdAfter === undefined
+			? {}
+			: { createdAfter: input.createdAfter }),
 		...(input.includeSuperseded === undefined
 			? {}
 			: { includeSuperseded: input.includeSuperseded }),

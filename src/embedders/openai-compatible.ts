@@ -26,6 +26,12 @@ export interface OpenAICompatibleEmbedderOptions {
 	 * the embedder and replace a caller's copy.
 	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
+	/**
+	 * The `fetch` every request goes through, for tests and proxies. It is
+	 * called with the URL as a string and a `RequestInit` that carries the
+	 * call's `signal`. Defaults to the global `fetch`.
+	 */
+	readonly fetch?: typeof globalThis.fetch | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;
 	/**
@@ -76,6 +82,7 @@ export function openaiCompatibleEmbedder(
 			"dimensions",
 			"apiKey",
 			"headers",
+			"fetch",
 			"maxBatch",
 			"sendDimensions",
 			"purposes",
@@ -100,6 +107,7 @@ export function openaiCompatibleEmbedder(
 		dimensions: options.dimensions,
 		apiKey: options.apiKey,
 		headers: options.headers,
+		fetch: options.fetch,
 		maxBatch: options.maxBatch,
 		sendDimensions: options.sendDimensions === true,
 		purposes: options.purposes,

@@ -39,6 +39,12 @@ export interface OpenAIEmbedderOptions {
 	 * `content-type` are set by the embedder and replace a caller's copy.
 	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
+	/**
+	 * The `fetch` every request goes through, for tests and proxies. It is
+	 * called with the URL as a string and a `RequestInit` that carries the
+	 * call's `signal`. Defaults to the global `fetch`.
+	 */
+	readonly fetch?: typeof globalThis.fetch | undefined;
 	/** Most texts per request. Defaults to `100`. */
 	readonly maxBatch?: number | undefined;
 }
@@ -105,7 +111,15 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 	assertKnownKeys(
 		"openaiEmbedder",
 		options,
-		["apiKey", "model", "dimensions", "baseURL", "headers", "maxBatch"],
+		[
+			"apiKey",
+			"model",
+			"dimensions",
+			"baseURL",
+			"headers",
+			"fetch",
+			"maxBatch",
+		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(
@@ -122,6 +136,7 @@ export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 		dimensions: embedderDimensions,
 		apiKey,
 		headers: options.headers,
+		fetch: options.fetch,
 		maxBatch: options.maxBatch,
 		sendDimensions: requestDimensions !== undefined,
 		purposes: undefined,

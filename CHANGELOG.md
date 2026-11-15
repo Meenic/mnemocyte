@@ -40,6 +40,14 @@ marked **Breaking** in their entries. What semver covers is in
   embedder's own API key header and `content-type` replace a copy in
   `headers`. When a gateway wants its key in `authorization`, pass it as
   `apiKey`.
+- **`fetch` on every HTTP embedder.** `openaiEmbedder`,
+  `openaiCompatibleEmbedder`, `voyageEmbedder`, `cohereEmbedder` and
+  `googleEmbedder` take a `fetch` of the same type as the global one, as
+  the AI SDK providers do. Every request goes through it, retries included,
+  with the URL as a string and an `init` carrying the call's `signal`. Use
+  it to test without a network, to log requests or to go through a proxy
+  agent. A value that is not a function throws `"CONFIG"` when the embedder
+  is created.
 
 ### Changed
 

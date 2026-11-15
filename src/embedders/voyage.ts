@@ -5,6 +5,7 @@ import {
 	resolveApiKey,
 	resolveBaseURL,
 	resolveBoolean,
+	resolveFetch,
 	resolveHeaders,
 	resolveMaxBatch,
 	resolveModel,
@@ -60,6 +61,12 @@ export interface VoyageEmbedderOptions {
 	 */
 	readonly headers?: Readonly<Record<string, string>> | undefined;
 	/**
+	 * The `fetch` every request goes through, for tests and proxies. It is
+	 * called with the URL as a string and a `RequestInit` that carries the
+	 * call's `signal`. Defaults to the global `fetch`.
+	 */
+	readonly fetch?: typeof globalThis.fetch | undefined;
+	/**
 	 * Most texts per request. Defaults to `100`. Voyage also caps the tokens
 	 * per request (120K for `voyage-4-large`), so lower it for long texts.
 	 */
@@ -87,12 +94,14 @@ export function voyageEmbedder(options: VoyageEmbedderOptions): Embedder {
 			"truncate",
 			"baseURL",
 			"headers",
+			"fetch",
 			"maxBatch",
 		],
 		RENAMED_BASE_URL,
 	);
 	const apiKey = resolveApiKey(options.apiKey, "VOYAGE_API_KEY", NAME);
 	const headers = resolveHeaders(options.headers, NAME);
+	const customFetch = resolveFetch(options.fetch, NAME);
 	const model = resolveModel(options.model, NAME);
 	const size = resolveModelDimensions({
 		name: NAME,
@@ -113,6 +122,7 @@ export function voyageEmbedder(options: VoyageEmbedderOptions): Embedder {
 		maxBatch: resolveMaxBatch(options.maxBatch, NAME, undefined),
 		url: `${baseURL}/embeddings`,
 		headers: { ...headers, authorization: `Bearer ${apiKey}` },
+		fetch: customFetch,
 		buildBody(texts, purpose) {
 			return {
 				model,

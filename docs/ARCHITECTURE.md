@@ -894,3 +894,15 @@ Dated 2026-10-26 unless noted.
     gateway that holds the provider key itself (Cloudflare's stored keys,
     Portkey's managed providers) still gets an `authorization` or
     `x-goog-api-key` from the four, which require a key.
+44. **Embedder fetch: the fetch type** (2026-11-15, landed): the maintainer
+    chose, with `feat/embedder-fetch`, to type the `fetch` option of the
+    five HTTP embedders as `typeof globalThis.fetch`, the AI SDK's
+    `FetchFunction`, so the function an app passes to `createOpenAI({ fetch })`
+    or a `vi.fn<typeof fetch>()` fits unchanged. A narrower
+    `(input: string, init: RequestInit) => Promise<Response>` would also
+    accept a wrapper that types its first parameter as `string`, but would
+    freeze the call shape for 1.x; the docs promise a string URL and an
+    `init` instead. It is checked at creation (a function, else `"CONFIG"`)
+    and called without a receiver, since a browser `fetch` called on another
+    object throws. `aiSdkEmbedder` takes none: it receives a built model, and
+    AI SDK providers already take `fetch` (`createGateway` for model strings).

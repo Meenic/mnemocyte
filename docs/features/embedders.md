@@ -59,7 +59,8 @@ non-2xx response a `ProviderError` and a non-JSON success body
 `"EMBEDDING"`. Each embedder checks and snapshots its options when it is
 created (`"CONFIG"`), with the shared helpers in the same file
 (`resolveApiKey`, `resolveModel`, `resolveModelDimensions`,
-`resolveBoolean`, `resolveMaxBatch`, `resolveBaseUrl`, `resolveHeaders`).
+`resolveBoolean`, `resolveMaxBatch`, `resolveBaseURL`, `resolveHeaders`,
+`resolveFetch`).
 
 Every HTTP embedder takes `headers` for proxies and gateways.
 `resolveHeaders` requires an object of string values, checks each pair
@@ -71,6 +72,20 @@ and `createFetchEmbedder` adds `content-type` last, so those two replace a
 caller's copy (decision 43 in [ARCHITECTURE.md](../ARCHITECTURE.md)). Any
 other header, including `authorization` on `googleEmbedder`, is sent as
 given.
+
+Every HTTP embedder also takes `fetch`, typed `typeof globalThis.fetch`
+like the AI SDK's `FetchFunction`, for tests and proxies (decision 44 in
+[ARCHITECTURE.md](../ARCHITECTURE.md)). `resolveFetch` accepts a function
+or `undefined` and throws `"CONFIG"` for anything else at creation.
+`createFetchEmbedder` sends every request through it with a string URL and
+a `RequestInit` (`method`, `headers`, `body` and the call's `signal`), so
+retries and timeouts go through it too. It copies the function into a
+local and calls it without a receiver, because a browser's `fetch` called
+as `config.fetch(...)` throws "Illegal invocation". Without one, the
+global `fetch` is looked up on each request, so a stub or polyfill
+installed after the embedder was created still applies. `aiSdkEmbedder`
+takes no `fetch`: it receives a built model, and AI SDK providers take
+their own (`createOpenAI({ fetch })`, `createGateway({ fetch })`).
 
 `createHttpEmbedder` is the OpenAI-shaped one behind `openaiEmbedder` and
 `openaiCompatibleEmbedder`: `POST {baseURL}/embeddings`, and a response with
@@ -92,6 +107,7 @@ OpenAI, Azure OpenAI, Mistral, Together, Ollama, LM Studio, vLLM.
 | `dimensions` | required | The vector length the server returns. |
 | `apiKey` | none | `Authorization: Bearer …`; no header without it. |
 | `headers` | none | Extra headers, lower-cased; ours win on conflict. |
+| `fetch` | global `fetch` | Every request goes through it. |
 | `maxBatch` | unset (100) | Passed through to the `Embedder`. |
 | `sendDimensions` | `false` | Send `dimensions` in the body. |
 | `purposes` | none | `{ query?, document? }`, each `{ prefix?, body? }`. |
@@ -113,8 +129,8 @@ is `createHttpEmbedder` with OpenAI's defaults:
   (3072), `text-embedding-ada-002` (1536). The `3-*` models accept a
   `dimensions` override, which is then sent; unknown models require
   `dimensions`, which is sent too.
-- `baseURL` defaults to `https://api.openai.com/v1`; `headers` and
-  `maxBatch` are passed through. There are no purpose hints: OpenAI models
+- `baseURL` defaults to `https://api.openai.com/v1`; `headers`, `fetch`
+  and `maxBatch` are passed through. There are no purpose hints: OpenAI models
   are symmetric.
 
 ### `voyageEmbedder`, `cohereEmbedder` and `googleEmbedder`
@@ -261,7 +277,9 @@ key provided: sk-…").
 `retryAfterMs` comes from `retry-after-ms` (OpenAI, Azure) when it is a
 non-negative number, else `Retry-After` as delay-seconds or an HTTP-date
 (RFC 9110, section 10.2.3); a date in the past means 0, and anything else is
-ignored. A failed `fetch` (network error) is thrown unchanged.
+ignored. A failed `fetch` (network error), or an error the caller's
+`fetch` throws, is rethrown by `embed` unchanged; `embedMany` in the client
+wraps it in `"EMBEDDING"` with it as `cause`, as the guide says.
 
 ## Resilience
 

@@ -71,6 +71,7 @@ const embedder = openaiEmbedder({ model: "text-embedding-3-small" });
 | `dimensions` | the model's | Required for models the helper does not know. |
 | `baseURL` | `https://api.openai.com/v1` | Another OpenAI endpoint, such as a proxy. |
 | `headers` | none | Extra request headers, such as `OpenAI-Project` or a gateway's own (see [Proxies and gateways](#proxies-and-gateways)). |
+| `fetch` | the global `fetch` | Your own `fetch`, for tests or proxies (see [Custom fetch](#custom-fetch)). |
 | `maxBatch` | 100 | Most texts per request. |
 
 Known models: `text-embedding-3-small` (1536), `text-embedding-3-large`
@@ -107,6 +108,7 @@ const embedder = openaiCompatibleEmbedder({
 | `dimensions` | required | The length of the vectors the model returns. |
 | `apiKey` | none | Sent as `Authorization: Bearer …`. Local servers need none. |
 | `headers` | none | Extra headers, such as `{ "api-key": key }` for Azure (see [Proxies and gateways](#proxies-and-gateways)). |
+| `fetch` | the global `fetch` | Your own `fetch`, for tests or proxies (see [Custom fetch](#custom-fetch)). |
 | `maxBatch` | 100 | Most texts per request. |
 | `sendDimensions` | `false` | Send `dimensions` in the request, for models that can shorten their vectors. Servers reject it for models that cannot. |
 | `purposes` | none | How to mark queries and documents (below). |
@@ -159,6 +161,7 @@ const google = googleEmbedder({
 | `truncate` | `true` | Cut texts longer than the model's context instead of failing the request. |
 | `baseURL` | the provider's API | Another endpoint, such as a proxy. |
 | `headers` | none | Extra request headers, such as Cohere's `X-Client-Name` or a gateway's own (see [Proxies and gateways](#proxies-and-gateways)). |
+| `fetch` | the global `fetch` | Your own `fetch`, for tests or proxies (see [Custom fetch](#custom-fetch)). |
 | `maxBatch` | 100 (Cohere: 96) | Most texts per request. Cohere accepts at most 96. |
 
 Known models:
@@ -249,6 +252,46 @@ sends an `authorization` from `headers` as you wrote it, next to its
 
 The headers are checked when the embedder is created: a value that is not
 a string, or a name or value HTTP does not allow, throws `"CONFIG"`.
+
+## Custom fetch
+
+All five embedders above send their requests with the global `fetch`. Pass
+your own as `fetch` to test without a network, to log or change requests,
+or to go through a proxy agent. It has the same type as `fetch`, as in the
+AI SDK providers.
+
+```ts
+import { voyageEmbedder } from "mnemocyte/embedders";
+
+const embedder = voyageEmbedder({
+  model: "voyage-4",
+  fetch: async (input, init) => {
+    console.log("embedding request", input);
+    return fetch(input, init);
+  },
+});
+```
+
+It is called once per request, retries included, with the URL as a
+string and an `init` that carries the method, headers, body and the call's
+`signal`. Pass the signal on so timeouts and cancellation still stop the
+request. A value that is not a function throws `"CONFIG"` when the
+embedder is created.
+
+In tests, return a `Response` instead of calling the network:
+
+```ts
+const embedder = voyageEmbedder({
+  apiKey: "test-key",
+  model: "voyage-4",
+  fetch: async () =>
+    Response.json({ data: [{ index: 0, embedding: [0.1, 0.2] }] }),
+});
+```
+
+`aiSdkEmbedder` has no `fetch` option. AI SDK providers take their own, such
+as `createOpenAI({ fetch })`, or `createGateway({ fetch })` for
+`"provider/model"` strings.
 
 ## `aiSdkEmbedder`
 

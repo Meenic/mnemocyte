@@ -1,6 +1,7 @@
 import { MnemocyteError, ProviderError } from "mnemocyte";
 import { openaiEmbedder } from "mnemocyte/embedders/openai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { jsonFetch, NOT_FETCH_FUNCTIONS } from "./fetch-mock.js";
 
 describe("openaiEmbedder", () => {
 	const originalFetch = globalThis.fetch;
@@ -339,4 +340,55 @@ describe("openaiEmbedder", () => {
 			}),
 		).toThrow(expect.objectContaining({ code: "CONFIG" }));
 	});
+
+	test("sends every request through a custom fetch, with the call's signal", async () => {
+		const customFetch = jsonFetch({ data: [{ index: 0, embedding: [1] }] });
+		const embedder = openaiEmbedder({
+			apiKey: "openai-key",
+			model: "text-embedding-3-small",
+			fetch: customFetch,
+		});
+		const controller = new AbortController();
+
+		await expect(
+			embedder.embed(["a"], { purpose: "query", signal: controller.signal }),
+		).resolves.toEqual([[1]]);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		const [url, init] = customFetch.mock.calls[0] ?? [];
+		expect(url).toBe("https://api.openai.com/v1/embeddings");
+		expect(init).toMatchObject({
+			method: "POST",
+			headers: {
+				authorization: "Bearer openai-key",
+				"content-type": "application/json",
+			},
+			signal: controller.signal,
+		});
+		expect(JSON.parse(String(init?.body))).toEqual({
+			model: "text-embedding-3-small",
+			input: ["a"],
+			encoding_format: "float",
+		});
+	});
+
+	test.each([...NOT_FETCH_FUNCTIONS])(
+		"rejects a fetch that is %s with CONFIG",
+		(_label, value) => {
+			expect(() =>
+				openaiEmbedder({
+					apiKey: "k",
+					model: "text-embedding-3-small",
+					fetch: value as typeof fetch,
+				}),
+			).toThrow(
+				expect.objectContaining({
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+					message: "openaiEmbedder fetch must be a function.",
+				}),
+			);
+		},
+	);
 });

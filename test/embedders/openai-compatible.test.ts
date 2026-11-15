@@ -6,6 +6,7 @@ import {
 	parseRetryAfterMs,
 } from "../../src/provider-error.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
+import { jsonFetch, NOT_FETCH_FUNCTIONS } from "./fetch-mock.js";
 
 const BASE = {
 	baseURL: "http://localhost:11434/v1/",
@@ -208,6 +209,105 @@ describe("openaiCompatibleEmbedder", () => {
 			}),
 		);
 	});
+
+	test("sends every request through a custom fetch, with the call's signal", async () => {
+		const customFetch = jsonFetch({
+			data: [
+				{ index: 1, embedding: [3, 4] },
+				{ index: 0, embedding: [1, 2] },
+			],
+		});
+		const embedder = openaiCompatibleEmbedder({
+			...BASE,
+			apiKey: "local-key",
+			headers: { "X-Team": "memory" },
+			fetch: customFetch,
+		});
+		const controller = new AbortController();
+
+		await expect(
+			embedder.embed(["a", "b"], {
+				purpose: "document",
+				signal: controller.signal,
+			}),
+		).resolves.toEqual([
+			[1, 2],
+			[3, 4],
+		]);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		const [url, init] = customFetch.mock.calls[0] ?? [];
+		expect(url).toBe("http://localhost:11434/v1/embeddings");
+		expect(init).toMatchObject({
+			method: "POST",
+			headers: {
+				"x-team": "memory",
+				authorization: "Bearer local-key",
+				"content-type": "application/json",
+			},
+			signal: controller.signal,
+		});
+		expect(JSON.parse(String(init?.body))).toEqual({
+			model: "nomic-embed-text",
+			input: ["a", "b"],
+			encoding_format: "float",
+		});
+	});
+
+	test("calls a custom fetch as a plain function, without the options as this", async () => {
+		let receiver: unknown = "not called";
+		const customFetch = vi.fn(function (this: unknown) {
+			receiver = this;
+			return Promise.resolve(okResponse(1));
+		});
+		const embedder = openaiCompatibleEmbedder({
+			...BASE,
+			fetch: customFetch as unknown as typeof fetch,
+		});
+
+		await embedder.embed(["a"], { purpose: "query" });
+
+		expect(customFetch).toHaveBeenCalledTimes(1);
+		expect(receiver).toBeUndefined();
+	});
+
+	test("turns a custom fetch's non-2xx response into a ProviderError", async () => {
+		const customFetch = jsonFetch({ error: { code: "rate_limited" } }, 429);
+		const embedder = openaiCompatibleEmbedder({ ...BASE, fetch: customFetch });
+
+		const error = await rejection(embedder.embed(["a"], { purpose: "query" }));
+
+		expect(error).toBeInstanceOf(ProviderError);
+		expect(error).toMatchObject({ code: "EMBEDDING", status: 429 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	test("uses the global fetch at call time when fetch is undefined", async () => {
+		const embedder = openaiCompatibleEmbedder({ ...BASE, fetch: undefined });
+		const later = vi.fn<typeof fetch>(async () => okResponse(1));
+		vi.stubGlobal("fetch", later);
+
+		await embedder.embed(["a"], { purpose: "query" });
+
+		expect(later).toHaveBeenCalledTimes(1);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	test.each([...NOT_FETCH_FUNCTIONS])(
+		"rejects a fetch that is %s with CONFIG",
+		(_label, value) => {
+			expect(() =>
+				openaiCompatibleEmbedder({ ...BASE, fetch: value as typeof fetch }),
+			).toThrow(
+				expect.objectContaining({
+					code: "CONFIG",
+					reason: "INVALID_OPTION",
+					message: "openaiCompatibleEmbedder fetch must be a function.",
+				}),
+			);
+		},
+	);
 
 	test("rejects a call without a purpose with VALIDATION", async () => {
 		const embedder = openaiCompatibleEmbedder(BASE);

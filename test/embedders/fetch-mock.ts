@@ -43,6 +43,27 @@ export function useFetchMock() {
 	return { fetchMock, respondJson, lastRequest, lastBody };
 }
 
+/**
+ * A `fetch` to pass as an embedder's `fetch` option. Each call answers with
+ * a new JSON `Response` of `body`.
+ */
+export function jsonFetch(body: unknown, status = 200) {
+	return vi.fn<typeof fetch>(
+		async () =>
+			new Response(JSON.stringify(body), {
+				status,
+				headers: { "content-type": "application/json" },
+			}),
+	);
+}
+
+/** Values that are not a function, which every `fetch` option rejects. */
+export const NOT_FETCH_FUNCTIONS: ReadonlyArray<readonly [string, unknown]> = [
+	["a string", "https://proxy.example"],
+	["an object", {}],
+	["null", null],
+];
+
 /** Resolve with the rejection reason of a promise that must reject. */
 export async function rejection(promise: Promise<unknown>): Promise<unknown> {
 	return promise.then(

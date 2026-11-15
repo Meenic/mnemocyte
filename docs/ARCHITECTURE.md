@@ -206,6 +206,36 @@ One package, `mnemocyte`, with subpaths: `mnemocyte` (core),
 `mnemocyte/postgres` (backend and driver adapters), `mnemocyte/embedders/*`,
 `mnemocyte/ai-sdk`. Drivers and `ai` are optional peer dependencies.
 
+After 1.0 (decision 1, revised 2026-11-15), a package is split out only when
+it needs dependencies of its own or its own release cadence:
+
+- **Backends.** A first-party backend that runs on the user's own client, as
+  Postgres does, ships as a subpath of `mnemocyte` (`mnemocyte/libsql`). If
+  SQLite needs the `sqlite-vec` package as a dependency of ours, rather than
+  the user loading the extension on their own connection, it becomes a
+  package of its own. Drizzle and Kysely stay in `mnemocyte` for the same
+  reason: the user brings the driver, and the drivers are optional peers.
+- **The public `MemoryStore` contract** is versioned in its name
+  (`MemoryStoreV1`), so the core can accept two versions during a change
+  instead of forcing a major. It is exported from `mnemocyte/store`, with
+  the contract test suite beside it at `mnemocyte/store/test`. Third-party
+  backends are their own packages with `mnemocyte` as a peer (`^1`). A
+  separate contract package, as `@ai-sdk/provider` is for the AI SDK,
+  follows only if third-party backends become common.
+- **`@mnemocyte/mcp`** is the first separate package: it brings the MCP SDK
+  and a `bin`. It lives in a pnpm workspace in this repository and takes
+  `mnemocyte` as a peer (`^1`), the way `@mastra/pg` takes `@mastra/core`;
+  it uses only the public API, so it needs no exact pins.
+- **A first-party split.** If first-party code ever splits
+  (`@mnemocyte/core`, `@mnemocyte/postgres`), `mnemocyte` stays an umbrella
+  package that depends on them with exact pins, releases with them, and
+  re-exports every current import path (`mnemocyte`, `mnemocyte/postgres`,
+  `mnemocyte/embedders/*`, `mnemocyte/ai-sdk`, the CLI), as `better-auth`
+  does with `@better-auth/core` and its adapters. That keeps the split
+  non-breaking, so it can ship in a 1.x minor. The raw-client shortcut
+  (`createMemory({ store: sql })`) then lives in the umbrella; the core
+  alone takes a `MemoryStore` such as `postgresStore({ client })`.
+
 ## Decisions
 
 Dated 2026-10-26 unless noted.
@@ -225,7 +255,7 @@ Dated 2026-10-26 unless noted.
    as a peer). If first-party code ever splits, `mnemocyte` stays an
    umbrella that re-exports every current import path, so the split is
    non-breaking.
-   Details and the public `MemoryStore` plan are in ROADMAP.md "After 1.0".
+   Details and the public `MemoryStore` plan are in "Packaging" above.
 2. **Backend order:** Postgres (postgres.js, Drizzle, PGlite, node-postgres)
    → 1.0 → libSQL → SQLite + sqlite-vec when it reaches a stable release
    (0.1.x alpha today) → others.
@@ -770,8 +800,8 @@ Dated 2026-10-26 unless noted.
       codes. The brand is on the prototype. Codes, reasons,
       `MnemocyteOperation`, `MnemocyteBackend` and `AuditEventType` may
       gain members in a minor; the other unions only in a major.)
-    The resulting items are in Phase 4 of ROADMAP.md. The review's
-    additive findings wait until after 1.0.
+    The resulting items landed before 1.0.0 (see CHANGELOG.md). The
+    review's additive findings are items in ROADMAP.md.
 39. **What semver leaves out** (2026-11-14): the maintainer chose, with
     `docs/v1`:
     - The promise excludes the internal `MemoryStore` contract, anything

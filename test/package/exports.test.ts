@@ -23,12 +23,18 @@ import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/goog
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
+import manifest from "mnemocyte/package.json" with { type: "json" };
 import * as postgresEntry from "mnemocyte/postgres";
 import { postgresStore } from "mnemocyte/postgres";
 import { describe, expect, test } from "vitest";
 import { testScope } from "../helpers.js";
 
 describe("package exports", () => {
+	test("exports the package manifest", () => {
+		expect(manifest.name).toBe("mnemocyte");
+		expect(manifest.version).toMatch(/^\d+\.\d+\.\d+/);
+	});
+
 	test("exposes the built package runtime API", async () => {
 		expect(typeof createMemory).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");

@@ -9,6 +9,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Added
+
+- **`mnemocyte/package.json` is exported.** Tools can read the installed
+  version with `require("mnemocyte/package.json")` or
+  `import manifest from "mnemocyte/package.json" with { type: "json" }`;
+  before, the `exports` map blocked it.
+
 ### Fixed
 
 - **`ProviderError` accepts `retryAfterMs: undefined` under

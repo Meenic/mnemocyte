@@ -21,7 +21,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
   Mnemocyte passes it into embedders, and widening it breaks an embedder
   that declares `{ signal?: AbortSignal }` (the design rules in
   [DEVELOPMENT.md](./DEVELOPMENT.md)).
-- [ ] `feat/package-json-export`: `"./package.json"` in `exports`, so tools
+- [x] `feat/package-json-export`: `"./package.json"` in `exports`, so tools
   can read the installed version.
 - [ ] `feat/is-provider-error`: an `isProviderError` guard next to
   `isMnemocyteError`, on the same brand; `guide/embedders.md` uses it instead

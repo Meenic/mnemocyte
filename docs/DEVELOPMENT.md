@@ -337,6 +337,9 @@ Vitest has three projects (`vitest.config.ts`):
   `generateText` on a `withMemory` mock model to check the context
   reaches the prompt, and `extractMemories` with a mock model to check it
   stores a keyed memory.
+  The manifest export (`mnemocyte/package.json`) is read from the
+  tarball with `require()` and a JSON import, and from `dist/` through
+  self-reference in `exports.test.ts`.
 - The CLI is tested at four levels (see
   [features/cli.md](./features/cli.md#tests)): pure parts in `test/cli/`
   (`unit`); `migrate` and `check` against PGlite in process, with a

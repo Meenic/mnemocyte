@@ -45,7 +45,8 @@
 		"./postgres": {
 			"types": "./dist/postgres.d.mts",
 			"default": "./dist/postgres.mjs"
-		}
+		},
+		"./package.json": "./package.json"
 	},
 	"types": "./dist/index.d.mts",
 	"bin": {

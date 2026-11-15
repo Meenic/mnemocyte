@@ -9,6 +9,15 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-11-15
+
+The second release candidate for 1.0. It installs with `mnemocyte@next`. It
+fixes what the rc.1 review and a real-app run against Ollama and Postgres
+found: input validation, error codes, extraction and the middleware's error
+handling. The API is otherwise the one rc.1 documented; the two **Breaking**
+changes below are small corrections to error behavior, and 1.0 freezes the
+API as it stands here.
+
 ### Changed
 
 - **Breaking: `consolidate` into a survivor that is already superseded
@@ -1327,7 +1336,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.2...HEAD
+[1.0.0-rc.2]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/Meenic/mnemocyte/compare/v0.8.0...v1.0.0-rc.1
 [0.8.0]: https://github.com/Meenic/mnemocyte/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Meenic/mnemocyte/compare/v0.6.0...v0.7.0

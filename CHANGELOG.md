@@ -9,6 +9,18 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ProviderError` accepts `retryAfterMs: undefined` under
+  `exactOptionalPropertyTypes`.** A custom embedder can pass the wait it
+  parsed from a response straight through, even when there was none:
+  `new ProviderError({ message, status, retryAfterMs })` with a
+  `number | undefined`. `undefined` means the same as leaving it out, and
+  the retry falls back to the usual backoff. `EmbedOptions.signal` stays
+  `?: AbortSignal`, because Mnemocyte passes it into your embedder, and
+  widening it would stop embedders that declare their options as
+  `{ signal?: AbortSignal }` from compiling.
+
 ## [1.0.1] - 2026-11-15
 
 A patch release: the hints that tell you how to run `migrate` now work in

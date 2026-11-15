@@ -16,9 +16,11 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 
 ## API polish
 
-- [ ] `fix/optional-undefined-embedder`: `?: T | undefined` on
-  `ProviderErrorInput.retryAfterMs` and `EmbedOptions.signal`, which callers
-  pass through; the 1.0 widening left both exact.
+- [x] `fix/optional-undefined-embedder`: `?: T | undefined` on
+  `ProviderErrorInput.retryAfterMs`. `EmbedOptions.signal` stays exact:
+  Mnemocyte passes it into embedders, and widening it breaks an embedder
+  that declares `{ signal?: AbortSignal }` (the design rules in
+  [DEVELOPMENT.md](./DEVELOPMENT.md)).
 - [ ] `feat/package-json-export`: `"./package.json"` in `exports`, so tools
   can read the installed version.
 - [ ] `feat/is-provider-error`: an `isProviderError` guard next to

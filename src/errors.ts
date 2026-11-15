@@ -198,7 +198,7 @@ export interface ProviderErrorInput {
 	 * Wait the server asked for, in milliseconds, from a `Retry-After` or
 	 * `retry-after-ms` header.
 	 */
-	readonly retryAfterMs?: number;
+	readonly retryAfterMs?: number | undefined;
 	/** The provider's response body: parsed JSON, or text when not JSON. */
 	readonly body?: unknown;
 }

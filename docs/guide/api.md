@@ -340,8 +340,15 @@ Pages through the memories visible at the scope, newest first by
 `createdAt`, then `id`. `limit` defaults to 50. `nextCursor` is an opaque
 string, `null` on the last page; pass it back unchanged. A cursor stays
 valid while memories are added or deleted, and a malformed one throws
-`"VALIDATION"`. `list` accepts `kinds`, `tags`, `includeSuperseded`,
-`includeExpired`, `exactAgent` and `exactSession`, and calls no embedder.
+`"VALIDATION"`. `list` accepts `kinds`, `tags`, `createdBefore`,
+`createdAfter`, `includeSuperseded`, `includeExpired`, `exactAgent` and
+`exactSession`, and calls no embedder. Keep the same filters on every page
+of a cursor loop.
+
+```ts
+const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+const recent = await memory.list({ scope, createdAfter: lastWeek });
+```
 
 ## `update`
 
@@ -379,9 +386,11 @@ const context = await memory.context({
 
 Runs a search and renders the results as a string to put in a prompt, or
 returns `""` when no memory matches. It accepts search's `limit`,
-`minScore`, `kinds`, `tags`, `includeSuperseded`, `includeExpired`,
-`exactAgent`, `exactSession` and `trackAccess`, with the same defaults,
-plus:
+`minScore`, `kinds`, `tags`, `createdBefore`, `createdAfter`,
+`includeSuperseded`, `includeExpired`, `exactAgent`, `exactSession` and
+`trackAccess`, with the same defaults. The filters apply in the search,
+so `limit` and `maxTokens` are spent only on memories that match. It also
+takes:
 
 - `format`: `"markdown"` (default), `"plain"` or `"xml"`. Memory content
   cannot break out of its block: Markdown and plain text use a fence

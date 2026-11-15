@@ -359,7 +359,7 @@ export function describeStoreContract(
 			await verifyGetAndScopeValidation(memory, namespace);
 		});
 
-		test("search created filters", async () => {
+		test("created filters", async () => {
 			const { memory, namespace } = client("created");
 			await verifyCreatedFilters(memory, namespace);
 		});

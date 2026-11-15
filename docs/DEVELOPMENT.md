@@ -285,7 +285,8 @@ Design rules for the public surface:
   minor; the other unions change
   only in a major (`guide/api.md` "Stability").
 - A time filter on memories names its field: `createdBefore` /
-  `createdAfter` (`search`, `prune`), `notAccessedSince`. Bare `before` /
+  `createdAfter` (`search`, `list`, `context`; `prune` takes
+  `createdBefore`), `notAccessedSince`. Bare `before` /
   `after` are for audit events, which have one time (decision 40).
 - Every long-running method accepts `signal: AbortSignal`, on the bound
   client too: bound `stats`, whose only option is `signal`, takes an

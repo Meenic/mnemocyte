@@ -52,7 +52,7 @@ describe("scoped API (in-memory)", () => {
 		await verifyGetAndScopeValidation(createClient().client, "get");
 	});
 
-	test("search filters createdAt and rejects the old filter names", async () => {
+	test("search, list and context filter createdAt", async () => {
 		await verifyCreatedFilters(createClient().client, "created");
 	});
 

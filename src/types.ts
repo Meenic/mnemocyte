@@ -865,6 +865,13 @@ export interface ListInput<DefaultNamespace extends boolean = false>
 	kinds?: readonly MemoryKind[] | undefined;
 	/** Require memories to include all of these tags. */
 	tags?: readonly string[] | undefined;
+	/**
+	 * Only include memories whose `createdAt` is strictly before this date.
+	 * Same name as {@link SearchInput.createdBefore}.
+	 */
+	createdBefore?: Date | undefined;
+	/** Only include memories whose `createdAt` is strictly after this date. */
+	createdAfter?: Date | undefined;
 	/** Include superseded memories. @defaultValue `false` */
 	includeSuperseded?: boolean | undefined;
 	/** Include expired memories. @defaultValue `false` */
@@ -998,6 +1005,17 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 	kinds?: readonly MemoryKind[] | undefined;
 	/** Require results to include all of these tags. */
 	tags?: readonly string[] | undefined;
+	/**
+	 * Only include memories whose `createdAt` is strictly before this date.
+	 * Applied in the search, before {@link ContextInput.maxTokens}. Same name
+	 * as {@link SearchInput.createdBefore}.
+	 */
+	createdBefore?: Date | undefined;
+	/**
+	 * Only include memories whose `createdAt` is strictly after this date.
+	 * Applied in the search, before {@link ContextInput.maxTokens}.
+	 */
+	createdAfter?: Date | undefined;
 	/** Include superseded memories. @defaultValue `false` */
 	includeSuperseded?: boolean | undefined;
 	/** Include expired memories. @defaultValue `false` */

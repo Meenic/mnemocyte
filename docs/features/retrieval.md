@@ -155,6 +155,10 @@ client right after a tracked search and checks that the write landed.
 ## `context`
 
 `context` runs the same search (with its `signal`) and renders the results.
+Its filters, `createdBefore` / `createdAfter` included, go to that search
+(`contextInputToSearchInput`), so they apply in the candidate queries,
+before ranking, `limit` and the token budget; the search validates them,
+and bare `before` / `after` are unknown keys.
 When the search returns nothing it returns `""` without rendering a header,
 so the AI SDK middleware (and any caller) can skip an empty block. The query is not echoed: it is already in the caller's prompt, and echoing
 it put caller text inside the memory block.

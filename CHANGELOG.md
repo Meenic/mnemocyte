@@ -48,6 +48,12 @@ marked **Breaking** in their entries. What semver covers is in
   it to test without a network, to log requests or to go through a proxy
   agent. A value that is not a function throws `"CONFIG"` when the embedder
   is created.
+- **`createdBefore` / `createdAfter` on `list` and `context`.** The strict
+  `createdAt` bounds `search` takes now work on `list` and `context`, and
+  on the bound client: `memory.list({ scope, createdAfter: lastWeek })`.
+  `context` applies them in its search, so `limit` and `maxTokens` are
+  spent only on matching memories. An invalid date throws `"VALIDATION"`,
+  and so do bare `before` / `after`, which name no field.
 
 ### Changed
 

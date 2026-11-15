@@ -182,6 +182,7 @@ export type MnemocyteOperation =
 	| "delete"
 	| "deleteScope"
 	| "context"
+	| "contextWithMemories"
 	| "prune"
 	| "findDuplicates"
 	| "findDuplicatesPage"
@@ -1052,6 +1053,42 @@ export interface ContextInput<DefaultNamespace extends boolean = false>
 }
 
 /**
+ * Input for {@link ExperimentalMemoryClient.contextWithMemories}: the input
+ * of {@link MemoryClient.context}, plus `explain`.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export interface ContextWithMemoriesInput<
+	DefaultNamespace extends boolean = false,
+> extends ContextInput<DefaultNamespace> {
+	/**
+	 * Populate {@link MemoryWithScore.explanation} on the returned memories,
+	 * as {@link SearchInput.explain} does. It does not change the text.
+	 * @defaultValue `false`
+	 */
+	explain?: boolean | undefined;
+}
+
+/**
+ * Result of {@link ExperimentalMemoryClient.contextWithMemories}: the
+ * context text and the memories behind it. `memories` followed by `omitted`
+ * is the search result, in rank order.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export interface ContextWithMemoriesResult {
+	/** The string {@link MemoryClient.context} returns for the same input. */
+	context: string;
+	/** The memories rendered in `context`, in the order they appear. */
+	memories: MemoryWithScore[];
+	/**
+	 * Memories the search returned but `maxTokens` left out, in rank order.
+	 * Their number is the one the "omitted" line of `context` gives.
+	 */
+	omitted: MemoryWithScore[];
+}
+
+/**
  * Input for {@link BoundMemoryClient.prune}, and the selectors and options
  * {@link PruneInput} adds to a scope. At least one selector must be
  * effective; `false` flags and empty arrays do not count.
@@ -1651,6 +1688,24 @@ export interface ExperimentalMemoryClient<
 	findDuplicatesPage(
 		input: FindDuplicatesPageInput<DefaultNamespace>,
 	): Promise<DuplicatePage>;
+	/**
+	 * {@link MemoryClient.context}, plus the memories it rendered and the
+	 * ones the token budget left out, for citations and debugging. The
+	 * `context` string is the one `context()` returns for the same input;
+	 * `explain: true` adds each memory's score breakdown.
+	 *
+	 * @example
+	 * ```ts
+	 * const { context, memories } =
+	 *   await memory.experimental.contextWithMemories({ scope, query });
+	 * const sources = memories.map((m) => m.id);
+	 * ```
+	 *
+	 * @throws {MnemocyteError} the errors {@link MemoryClient.context} throws.
+	 */
+	contextWithMemories(
+		input: ContextWithMemoriesInput<DefaultNamespace>,
+	): Promise<ContextWithMemoriesResult>;
 }
 
 /** Input for {@link BoundMemoryClient.add}. */
@@ -1669,6 +1724,15 @@ export type BoundDeleteInput = Omit<DeleteInput, "scope">;
 export type BoundDeleteScopeInput = Omit<DeleteScopeInput, "scope">;
 /** Input for {@link BoundMemoryClient.context}. */
 export type BoundContextInput = Omit<ContextInput, "scope">;
+/**
+ * Input for {@link BoundExperimentalMemoryClient.contextWithMemories}.
+ *
+ * @experimental May change or be removed in a minor release.
+ */
+export type BoundContextWithMemoriesInput = Omit<
+	ContextWithMemoriesInput,
+	"scope"
+>;
 /** Input for {@link BoundMemoryClient.findDuplicates}. */
 export type BoundFindDuplicatesInput = Omit<FindDuplicatesInput, "scope">;
 /**
@@ -1753,4 +1817,11 @@ export interface BoundExperimentalMemoryClient {
 	findDuplicatesPage(
 		input?: BoundFindDuplicatesPageInput,
 	): Promise<DuplicatePage>;
+	/**
+	 * {@link ExperimentalMemoryClient.contextWithMemories} at the bound
+	 * scope.
+	 */
+	contextWithMemories(
+		input: BoundContextWithMemoriesInput,
+	): Promise<ContextWithMemoriesResult>;
 }

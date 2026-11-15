@@ -403,6 +403,40 @@ takes:
   token per four characters; pass your model's tokenizer for exact
   budgets.
 
+### With the memories it used (experimental)
+
+```ts
+const { context, memories, omitted } =
+  await memory.experimental.contextWithMemories({
+    scope,
+    query: message,
+    maxTokens: 500,
+  });
+
+const sources = memories.map((m) => ({ id: m.id, source: m.source }));
+```
+
+`experimental.contextWithMemories` takes the same input as `context` and
+also tells you which memories are behind the text, so you can cite them
+or see why one was left out. It returns:
+
+- `context`: the same string `context` returns for that input.
+- `memories`: the memories in the text, in the order they appear.
+- `omitted`: memories that matched but did not fit `maxTokens`, best
+  first. These are the ones the "omitted" line counts.
+
+Each memory carries its `score` and `scores`, as in `search`. Together,
+`memories` and `omitted` are the search results, in ranking order: the
+text always holds the best ones. When nothing matches, the result is
+`{ context: "", memories: [], omitted: [] }`.
+
+It also takes `explain: true`, which adds the score breakdown to every
+memory in both lists, like `search`'s `explain`. The text stays the same.
+
+The bound client has it too: `user.experimental.contextWithMemories({
+query })`. It is experimental, so its input and result may change in a
+minor release.
+
 ## `delete` and `deleteScope`
 
 ```ts
@@ -890,12 +924,15 @@ built-in drivers, `postgresStore` and the documented `SqlExecutor`
 interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
 commands, flags and exit codes. It does not cover:
 
-- anything under `experimental` (`experimental.findDuplicatesPage`), which
-  may change or go in a minor release, together with the types that
-  describe it: `FindDuplicatesPageInput`, `BoundFindDuplicatesPageInput`,
-  `DuplicatePage`, `ExperimentalMemoryClient`,
-  `BoundExperimentalMemoryClient`, and the `"findDuplicatesPage"` member
-  of `MnemocyteOperation`;
+- anything under `experimental` (`experimental.findDuplicatesPage` and
+  `experimental.contextWithMemories`), which may change or go in a minor
+  release, together with the types that describe it:
+  `FindDuplicatesPageInput`, `BoundFindDuplicatesPageInput`,
+  `DuplicatePage`, `ContextWithMemoriesInput`,
+  `BoundContextWithMemoriesInput`, `ContextWithMemoriesResult`,
+  `ExperimentalMemoryClient`, `BoundExperimentalMemoryClient`, and the
+  `"findDuplicatesPage"` and `"contextWithMemories"` members of
+  `MnemocyteOperation`;
 - error messages and the CLI's output text; branch on `code` and `reason`,
   and on exit codes;
 - the exact wording of `context()` output. The formats, the guarantee that

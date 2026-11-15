@@ -796,11 +796,12 @@ export function createMemoryClient(
 				scopeMetadata(input),
 				async () => {
 					validateContextInput(input);
-					return buildContext({
+					const built = await buildContext({
 						input,
 						search: (contextInput) =>
 							search(contextInputToSearchInput(contextInput)),
 					});
+					return built.context;
 				},
 			);
 		},
@@ -1015,6 +1016,22 @@ export function createMemoryClient(
 	return {
 		...client,
 		experimental: {
+			contextWithMemories(input) {
+				return observe(
+					config,
+					store.backend,
+					"contextWithMemories",
+					scopeMetadata(input),
+					async () => {
+						validateContextInput(input, "contextWithMemories");
+						return buildContext({
+							input,
+							search: () => search(contextInputToSearchInput(input)),
+						});
+					},
+					(result) => ({ count: result.memories.length }),
+				);
+			},
 			findDuplicatesPage(input) {
 				return observe(
 					config,

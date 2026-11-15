@@ -6,6 +6,7 @@ import type {
 	BoundMemoryClient,
 	ConsolidateInput,
 	ContextInput,
+	ContextWithMemoriesInput,
 	DeleteInput,
 	DeleteScopeInput,
 	FindDuplicatesInput,
@@ -126,6 +127,10 @@ export function createScopedClient(
 		for: (scope) =>
 			bindScope(core, validateScope(withNamespace(scope, namespace)), context),
 		experimental: {
+			contextWithMemories: (input) =>
+				core.experimental.contextWithMemories(
+					withScopeNamespace(input, namespace) as ContextWithMemoriesInput,
+				),
 			findDuplicatesPage: (input) =>
 				core.experimental.findDuplicatesPage(
 					withScopeNamespace(input, namespace) as FindDuplicatesPageInput,
@@ -229,6 +234,10 @@ function bindScope(
 				core.consolidate({ ...value, scope }),
 			),
 		experimental: {
+			contextWithMemories: (input) =>
+				run("contextWithMemories", input, false, (value) =>
+					core.experimental.contextWithMemories({ ...value, scope }),
+				),
 			findDuplicatesPage: (input) =>
 				run("findDuplicatesPage", input, true, (value) =>
 					core.experimental.findDuplicatesPage({ ...value, scope }),

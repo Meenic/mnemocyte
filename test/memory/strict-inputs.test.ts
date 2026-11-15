@@ -62,13 +62,16 @@ const INPUTS: Readonly<
 	stats: { input: {}, selector: true, optional: true },
 	consolidate: { input: { survivorId: "a", supersededIds: ["b"] } },
 	findDuplicatesPage: { input: {}, optional: true },
+	contextWithMemories: { input: { query: "tea" } },
 };
 
+/** Methods reached through `client.experimental`. */
+const EXPERIMENTAL = new Set(["findDuplicatesPage", "contextWithMemories"]);
+
 function methodOf(client: object, name: string): UntypedMethod {
-	const methods =
-		name === "findDuplicatesPage"
-			? (client as { experimental: Record<string, UntypedMethod> }).experimental
-			: (client as Record<string, UntypedMethod>);
+	const methods = EXPERIMENTAL.has(name)
+		? (client as { experimental: Record<string, UntypedMethod> }).experimental
+		: (client as Record<string, UntypedMethod>);
 	const method = methods[name];
 	if (method === undefined) {
 		throw new Error(`No method ${name}.`);

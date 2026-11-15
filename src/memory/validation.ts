@@ -6,6 +6,7 @@ import type {
 	AddManyInput,
 	ConsolidateInput,
 	ContextInput,
+	ContextWithMemoriesInput,
 	DeleteInput,
 	DeleteScopeInput,
 	DependentsPolicy,
@@ -287,6 +288,20 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 		minScore: true,
 		trackAccess: true,
 		tokenCounter: true,
+		signal: true,
+	}),
+	contextWithMemories: inputKeys<ContextWithMemoriesInput>({
+		...READ_SCOPE_FIELDS,
+		...FILTER_FIELDS,
+		...CREATED_FIELDS,
+		query: true,
+		format: true,
+		maxTokens: true,
+		limit: true,
+		minScore: true,
+		trackAccess: true,
+		tokenCounter: true,
+		explain: true,
 		signal: true,
 	}),
 	prune: inputKeys<PruneInput>({
@@ -995,8 +1010,16 @@ export function validateListFilter(input: {
 	assertOptionalSignal(input.signal);
 }
 
-export function validateContextInput(input: ContextInput): void {
-	assertInputKeys("context", input);
+/**
+ * Check the fields `context` adds to its search; the search checks the rest.
+ * `experimental.contextWithMemories` passes its own name for the key check,
+ * since it also takes `explain`.
+ */
+export function validateContextInput(
+	input: ContextInput,
+	method: "context" | "contextWithMemories" = "context",
+): void {
+	assertInputKeys(method, input);
 	assertOptionalTrackAccess(input.trackAccess);
 	if (
 		input.format !== undefined &&
@@ -1029,7 +1052,9 @@ function assertOptionalTrackAccess(value: unknown): void {
 	}
 }
 
-export function contextInputToSearchInput(input: ContextInput): SearchInput {
+export function contextInputToSearchInput(
+	input: ContextWithMemoriesInput,
+): SearchInput {
 	return {
 		scope: input.scope,
 		query: input.query,
@@ -1056,6 +1081,7 @@ export function contextInputToSearchInput(input: ContextInput): SearchInput {
 		...(input.trackAccess === undefined
 			? {}
 			: { trackAccess: input.trackAccess }),
+		...(input.explain === undefined ? {} : { explain: input.explain }),
 		...(input.signal === undefined ? {} : { signal: input.signal }),
 	};
 }

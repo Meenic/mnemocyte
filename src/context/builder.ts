@@ -1,4 +1,8 @@
-import type { ContextInput, MemoryWithScore } from "../types.js";
+import type {
+	ContextInput,
+	ContextWithMemoriesResult,
+	MemoryWithScore,
+} from "../types.js";
 import { formatContext } from "./formatter.js";
 import { heuristicTokenCounter, trimToTokenBudget } from "./tokens.js";
 
@@ -9,27 +13,30 @@ export interface BuildContextOptions {
 
 /**
  * Render the best-ranked memories that fit `maxTokens`: a binary search on the
- * number of memories, so the result always fits the budget. No matching
- * memory renders as `""`, so callers can tell there is nothing to add.
+ * number of memories, so the result always fits the budget. The rendered
+ * memories are always a prefix of the search results. No matching memory
+ * renders as `""`, so callers can tell there is nothing to add.
  */
 export async function buildContext(
 	options: BuildContextOptions,
-): Promise<string> {
+): Promise<ContextWithMemoriesResult> {
 	const format = options.input.format ?? "markdown";
 	const maxTokens = options.input.maxTokens ?? 1200;
 	const tokenCounter = options.input.tokenCounter ?? heuristicTokenCounter;
-	const memories = await options.search(options.input);
-	if (memories.length === 0) {
-		return "";
+	const results = await options.search(options.input);
+	if (results.length === 0) {
+		return { context: "", memories: [], omitted: [] };
 	}
 	let low = 0;
-	let high = memories.length;
+	let high = results.length;
+	let bestCount = 0;
 	let bestContext = "";
 	while (low <= high) {
 		const mid = Math.floor((low + high) / 2);
-		const omittedCount = memories.length - mid;
-		const context = formatContext(memories.slice(0, mid), format, omittedCount);
+		const omittedCount = results.length - mid;
+		const context = formatContext(results.slice(0, mid), format, omittedCount);
 		if (tokenCounter.count(context) <= maxTokens) {
+			bestCount = mid;
 			bestContext = context;
 			low = mid + 1;
 		} else {
@@ -37,11 +44,19 @@ export async function buildContext(
 		}
 	}
 	if (bestContext) {
-		return bestContext;
+		return {
+			context: bestContext,
+			memories: results.slice(0, bestCount),
+			omitted: results.slice(bestCount),
+		};
 	}
-	return trimToTokenBudget(
-		formatContext([], format, memories.length),
-		maxTokens,
-		tokenCounter,
-	);
+	return {
+		context: trimToTokenBudget(
+			formatContext([], format, results.length),
+			maxTokens,
+			tokenCounter,
+		),
+		memories: [],
+		omitted: results,
+	};
 }

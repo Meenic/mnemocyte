@@ -926,3 +926,26 @@ Dated 2026-10-26 unless noted.
     is by id. The Postgres store lower-cases the requested id, since
     `isUuid` accepts either case and the database returns lower case.
     `forgetMemory` keeps returning `{ forgotten }`.
+46. **Context with its memories** (2026-11-16, landed): the maintainer
+    chose, with `feat/context-memories`, a new method,
+    `experimental.contextWithMemories`, returning
+    `ContextWithMemoriesResult { context, memories, omitted }`:
+    - A method, not an option on `context`. An option would make
+      `context` return a string or an object depending on its input, which
+      needs overloads or conditional types and complicates every wrapper;
+      `context(): Promise<string>` and the AI SDK middleware that calls it
+      stay as they are.
+    - Full `MemoryWithScore` records in both lists, not ids as in
+      decision 45: the search has already loaded them, so they cost
+      nothing, and `score` and `scores` are what citations and debugging
+      need. `memories` followed by `omitted` is the search result in rank
+      order, so nothing the search found is hidden. The input adds
+      `explain`, passed to the search.
+    - Under `experimental`. The `omitted` list and `explain` have no use
+      in the field yet; graduating the method is additive, as decision 39
+      says of `findDuplicatesPage`. It is its own `"contextWithMemories"`
+      operation, with `count` = `memories.length`.
+    `buildContext` returns the result and `context` keeps only the
+    string, so the two methods cannot render differently. Left open:
+    access tracking marks every search result, the omitted ones included,
+    for both methods.

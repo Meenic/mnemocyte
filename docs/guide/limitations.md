@@ -80,25 +80,24 @@ them.
   response is sent (serverless functions), some writes may never run, so
   `accessCount` can undercount.
 
-## Deleting
+<a id="deleting"></a>
 
+## Scopes
+
+- **Reads cannot span agents.** A read at an entity scope without
+  `agentId` sees only shared memories, never those an agent holds, so one
+  call cannot list every agent's memories of an entity. `stats`,
+  `listAuditLog` and `deleteScope` do cover all agents.
 - **Deletes stay inside the scope.** `delete` with `dependents: "restore"`
   or `"delete"` throws `"CONFLICT"` when a memory consolidated into the
   survivor is not visible at the call's scope, and `prune` and
   `deleteScope` throw it when such a memory is outside the selection.
   Delete at a scope that sees every dependent, for example the agent's.
-- **Reads cannot span agents.** A read at an entity scope without `agentId`
-  sees only shared memories, never those an agent holds; there is no way to
-  list every agent's memories of an entity in one call. `stats`,
-  `listAuditLog` and `deleteScope` do cover all agents.
-- **Audit pages across entities sort.** On Postgres, `listAuditLog` over a
-  namespace or `allNamespaces` sorts every selected event for each page; no
-  index serves that order. Over 1,000,000 events a page took 66 ms for a
-  100,000-event namespace and 330 ms for all namespaces, against 0.13 ms
-  for one entity, which reads an index. Narrow a large log with `before` /
-  `after`.
-- **Moving a memory between scopes takes two calls.** `update` cannot change
-  the scope; delete the memory and add it in the new scope.
+- **Moving a memory between scopes takes two calls.** `update` cannot
+  change the scope; delete the memory and add it in the new scope.
+
+## Maintenance
+
 - **Duplicate search is approximate on large scopes.** On Postgres,
   `findDuplicates` takes each memory's nearest neighbors from the HNSW
   index when the scope is a large part of the table, and HNSW can miss a
@@ -111,6 +110,12 @@ them.
   ([in pages](./api.md#in-pages-experimental)); on the same server the
   30,000-memory scope took 52 pages of about 1.3 s each.
   The in-memory backend is exact but compares every pair.
+- **Audit pages across entities sort.** On Postgres, `listAuditLog` over a
+  namespace or `allNamespaces` sorts every selected event for each page,
+  because no index serves that order. Over 1,000,000 events a page took
+  66 ms for a 100,000-event namespace and 330 ms for all namespaces,
+  against 0.13 ms for one entity, which reads an index. Narrow a large log
+  with `before` / `after`.
 - **Audit events stay until you prune them.** Nothing expires them on its
   own; schedule `pruneAuditLog` (see
   [retention](./api.md#retention)). On Postgres it deletes in batches that
@@ -154,20 +159,6 @@ them.
   platforms pass `waitUntil`, or the function may stop before it finishes.
   It costs one model call per response, plus an embedder call for the
   search and, when something is stored, one for the new memories.
-
-## Updating from 0.7
-
-Three 0.8 changes behave differently from what 0.7 code may expect; the
-[upgrade guide](./upgrading.md#07--08) has the details.
-
-- **`prune` deletes consolidation survivors with their dependents** when
-  it selects both, instead of throwing `"CONFLICT"`. Preview with
-  `dryRun: true` before a prune that can match survivors.
-- **`findDuplicates` can miss pairs** on large Postgres scopes, because it
-  compares nearest neighbors from the HNSW index
-  ([deleting](#deleting) above).
-- **Observability hooks are not awaited**, so a call can return before
-  its `onEvent` work finishes ([providers](#providers) below).
 
 ## Providers
 

@@ -21,7 +21,7 @@ or session, so pass `namespace: "default"` to keep reading them. Migration
 `0003_schema_v2.sql` rewrites both tables under an `ACCESS EXCLUSIVE` lock
 and turns ids into UUIDs (`md5(id)::uuid` for ids that were not UUIDs); plan
 a maintenance window and convert ids your app stores, as
-[upgrading to 0.6](./postgres.md#upgrading-to-06-0003_schema_v2sql) shows.
+[the schema migration](#schema-migration-0003_schema_v2sql) below shows.
 Search needs pgvector 0.8.0 or later.
 
 **Connection.** `databaseUrl` is gone; create the database client yourself,
@@ -80,6 +80,44 @@ to one scope whose methods take no `scope`; see
 - **`context` output.** The Markdown and plain formats lose their query
   line and the XML its `query` attribute.
 
+### Schema migration (`0003_schema_v2.sql`)
+
+- **Ids become UUIDs.** `id` and `superseded_by` change from `text` to
+  `uuid`, and so do audit event ids. New ids are UUIDv7: time-ordered, so
+  new rows land at the end of the primary-key index instead of on a random
+  page. An existing id that is already a UUID keeps its value; any other
+  id, such as `mem_lx2…`, becomes `md5(id)::uuid`. The `memoryId` and
+  `supersededBy` values in audit event metadata are converted the same
+  way. If your application stores memory ids, convert them with the same
+  rule:
+
+  ```sql
+  SELECT md5('mem_lx2abc_k3j9d0q1')::uuid;
+  ```
+
+  ```ts
+  import { createHash } from "node:crypto";
+
+  const hex = createHash("md5").update(oldId).digest("hex");
+  const newId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  ```
+
+- **The tables are rewritten.** Changing the id type and adding the stored
+  full-text column rewrite `mnemocyte_memories` and `mnemocyte_events` and
+  rebuild every index on them, including HNSW. The migration holds an
+  `ACCESS EXCLUSIVE` lock on each table while it runs, which blocks reads
+  and writes. Plan a maintenance window for large tables.
+- **Scope columns.** Memories and audit events gain `namespace`,
+  `agent_id` and `session_id`; existing rows get the namespace `default`
+  and no agent or session. Memories also gain `key` (unique per scope when
+  set), and `type` is renamed to `kind`.
+- **Full text is precomputed.** `content_tsv` is a stored generated column
+  (`to_tsvector('english', content)`) with a GIN index, so keyword search
+  no longer parses every row on each query.
+
+To apply it with `psql` instead of `migrate`, see
+[upgrade an existing installation](./postgres.md#upgrade-an-existing-installation).
+
 ## 0.6 → 0.7
 
 - **Custom embedders.** `embed(texts, options)` takes a required
@@ -101,7 +139,8 @@ to one scope whose methods take no `scope`; see
 - **`prune` deletes a survivor with its dependents.** A prune that selects
   a consolidation survivor and every memory consolidated into it deletes
   them all; before, it threw `"CONFLICT"`. A dependent left outside the
-  selection still makes it throw.
+  selection still makes it throw. Preview with `dryRun: true` before a
+  prune that can match survivors.
 - **`findDuplicates` is approximate on large scopes.** Each memory is
   compared with its `neighbors` nearest instead of every memory, and on
   Postgres the neighbors come from the HNSW index, which can miss a pair.
@@ -114,7 +153,8 @@ to one scope whose methods take no `scope`; see
 - **Audit writes fail the call.** With audit enabled, a failed audit write
   rejects the call and the change is not kept.
 - **`forgetMemory`** deletes with `dependents: "delete"`.
-- **`experimental.consolidate` is deprecated**; call `consolidate`.
+- **`consolidate` leaves `experimental`.** `experimental.consolidate` is
+  deprecated; call `consolidate`.
 - **The `mnemocyte` command.** `npx mnemocyte migrate` replaces a
   hand-written migrate script; see the [CLI guide](./cli.md).
 
@@ -204,8 +244,9 @@ to one scope whose methods take no `scope`; see
   `npx mnemocyte sql --dimensions <n>` for the fresh-install schema. The
   numbered SQL files and `fresh-install.sql` still ship.
 
-1.0.0-rc.1 is a release candidate: install it with `mnemocyte@next`. It
-changes only if testing finds a problem.
+Until 1.0.0 is published, the release candidates install with
+`mnemocyte@next`. A release candidate changes only if testing finds a
+problem.
 
 From 1.0, breaking changes wait for a major release; see
 [stability](./api.md#stability) for what the promise covers.

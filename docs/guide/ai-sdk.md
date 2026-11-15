@@ -1,10 +1,10 @@
 # AI SDK
 
-`mnemocyte/ai-sdk` connects Mnemocyte to the [AI SDK](https://ai-sdk.dev):
-memory tools a model can call, a middleware that adds memories to every
-prompt, and an embedder built on an AI SDK embedding model (see
-[embedders](./embedders.md#aisdkembedder)). It needs the `ai`
-package, 7.0.135 or newer:
+`mnemocyte/ai-sdk` connects Mnemocyte to the [AI SDK](https://ai-sdk.dev).
+It gives you memory tools a model can call, a middleware that adds
+memories to every prompt, and an embedder built on an AI SDK embedding
+model (see [`aiSdkEmbedder`](./embedders.md#aisdkembedder)). Install the
+`ai` package, 7.0.135 or newer, next to Mnemocyte:
 
 ```bash
 pnpm add ai
@@ -30,18 +30,17 @@ const { text } = await generateText({
 });
 ```
 
-The scope is fixed on your server when the tools are created. No tool takes
-a `namespace`, `entityId`, `agentId`, `sessionId` or `scope` field, and a
-call that sends one fails validation, so a prompt injection cannot make the
-model read or change another user's memories. Take the entity id from your
-own session or auth, never from the request body.
-
-Passing the unbound client (`memory` instead of `memory.for(...)`) throws
-`"CONFIG"`.
+The scope is fixed on your server when the tools are created. The tools
+take no scope fields (`namespace`, `entityId`, `agentId`, `sessionId`,
+`scope`), and a call that sends one fails validation, so a prompt
+injection cannot make the model read or change another user's memories.
+Take the entity id from your own session or auth, never from the request
+body. Passing the unbound client (`memory` instead of `memory.for(...)`)
+throws `"CONFIG"`.
 
 Every function here throws `"CONFIG"` for an option it does not take,
-including the keys of `context` and `save`. `extractMemories` also takes a
-`MemoryTurn` spread into its input, so `finishReason` is allowed.
+including the keys of `context` and `save`. `extractMemories` also accepts
+a `MemoryTurn` spread into its input, so `finishReason` is allowed.
 
 ### `searchMemories`
 
@@ -83,7 +82,9 @@ memory shared by every agent or session of the bound entity, not only one
 written at the exact scope. When duplicates were consolidated into the
 memory, they are deleted with it (`delete` with `dependents: "delete"`).
 
-### Errors and cancellation
+<a id="errors-and-cancellation"></a>
+
+### Tool errors and cancellation
 
 Each tool forwards the call's `abortSignal` to Mnemocyte, so aborting
 `generateText` or `streamText` also cancels a running search or save
@@ -405,7 +406,9 @@ aborts (during the model call too), the AI SDK's
 `NoObjectGeneratedError` for output that does not match the schema, and
 any error of the model, the embedder or the database.
 
-### Errors and cancellation
+<a id="errors-and-cancellation-1"></a>
+
+### Middleware errors
 
 If `context()` fails (the embedder or the database is down), the error goes
 to `onError` with `phase: "context"`, and the model call runs without

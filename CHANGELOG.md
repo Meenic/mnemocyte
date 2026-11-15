@@ -9,6 +9,19 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Documentation
+
+- **README and guides rewritten for a first-time user.** The README has a
+  new tagline, a one-screen quickstart, Postgres setup in a few commands
+  and one documentation list. `guide/api.md` opens with a method index and
+  a `createMemory` options table, lists the input rules in their own
+  section and documents `migrate` after the client methods. Each topic has
+  one home: `migrate` and pgvector in `guide/postgres.md` and
+  `guide/cli.md`, scopes in `guide/api.md`, drivers in
+  `guide/postgres.md`. The 0.x notes moved to `guide/upgrading.md`, and
+  `guide/getting-started.md` says why a script ends its database client.
+  Every guide file name and every linked anchor still works.
+
 ## [1.0.0-rc.2] - 2026-11-15
 
 The second release candidate for 1.0. It installs with `mnemocyte@next`. It

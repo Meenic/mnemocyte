@@ -15,8 +15,20 @@ marked **Breaking** in their entries. What semver covers is in
   version with `require("mnemocyte/package.json")` or
   `import manifest from "mnemocyte/package.json" with { type: "json" }`;
   before, the `exports` map blocked it.
+- **`isProviderError`.** A type guard next to `isMnemocyteError` that
+  narrows a caught `unknown` to a `ProviderError`, with its `status` and
+  `retryAfterMs`. Like `isMnemocyteError`, it works when the app ends up
+  with two copies of the package, including a 1.0.x copy, where
+  `instanceof ProviderError` fails. It replaces checking `code` and
+  `status` by hand.
 
 ### Fixed
+
+- **A `ProviderError` from another copy of the package keeps its
+  `status`.** When a custom embedder threw a `ProviderError` imported from
+  a second installed copy, Mnemocyte wrapped it in a new `"EMBEDDING"`
+  error, so `status` and `retryAfterMs` were only on its `cause`. It now
+  reaches the caller as it is, like one from the same copy.
 
 - **`ProviderError` accepts `retryAfterMs: undefined` under
   `exactOptionalPropertyTypes`.** A custom embedder can pass the wait it

@@ -246,3 +246,41 @@ export function isMnemocyteError(error: unknown): error is MnemocyteError {
 			true
 	);
 }
+
+/**
+ * Type guard for {@link ProviderError}: a provider answered an embedding
+ * request with an error status.
+ *
+ * It checks the same `Symbol.for("mnemocyte.error")` brand as
+ * {@link isMnemocyteError}, then the `"EMBEDDING"` code and a numeric
+ * `status`, so it also recognizes provider errors thrown by another installed
+ * copy of the package, including copies older than this guard.
+ *
+ * @param error - Value to test (typically a caught `unknown`).
+ * @returns `true` if `error` is a {@link ProviderError}.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await memory.add({ scope, content });
+ * } catch (error) {
+ *   if (isProviderError(error)) {
+ *     console.log(error.status, error.retryAfterMs, error.cause);
+ *   }
+ *   throw error;
+ * }
+ * ```
+ */
+export function isProviderError(error: unknown): error is ProviderError {
+	if (!isMnemocyteError(error) || error.code !== "EMBEDDING") {
+		return false;
+	}
+	const { status, retryAfterMs } = error as {
+		readonly status?: unknown;
+		readonly retryAfterMs?: unknown;
+	};
+	return (
+		typeof status === "number" &&
+		(retryAfterMs === undefined || typeof retryAfterMs === "number")
+	);
+}

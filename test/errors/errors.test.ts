@@ -1,4 +1,9 @@
-import { isMnemocyteError, MnemocyteError, ProviderError } from "mnemocyte";
+import {
+	isMnemocyteError,
+	isProviderError,
+	MnemocyteError,
+	ProviderError,
+} from "mnemocyte";
 import { describe, expect, test } from "vitest";
 
 describe("MnemocyteError", () => {
@@ -80,5 +85,70 @@ describe("isMnemocyteError", () => {
 		).toBe(false);
 		expect(isMnemocyteError(null)).toBe(false);
 		expect(isMnemocyteError("MnemocyteError")).toBe(false);
+	});
+});
+
+describe("isProviderError", () => {
+	test("recognizes a ProviderError", () => {
+		const error = new ProviderError({
+			message: "Busy.",
+			status: 503,
+			retryAfterMs: 1000,
+		});
+		expect(isProviderError(error)).toBe(true);
+		expect(
+			isProviderError(new ProviderError({ message: "Bad.", status: 400 })),
+		).toBe(true);
+	});
+
+	test("rejects a plain MnemocyteError, even with the EMBEDDING code", () => {
+		expect(
+			isProviderError(new MnemocyteError({ message: "x", code: "EMBEDDING" })),
+		).toBe(false);
+		expect(
+			isProviderError(new MnemocyteError({ message: "x", code: "DB" })),
+		).toBe(false);
+	});
+
+	test("recognizes a provider error carrying the brand of another copy", () => {
+		class OtherCopyProviderError extends Error {
+			readonly code = "EMBEDDING";
+			readonly status = 429;
+			readonly retryAfterMs = undefined;
+		}
+		Object.defineProperty(
+			OtherCopyProviderError.prototype,
+			Symbol.for("mnemocyte.error"),
+			{ value: true },
+		);
+		const foreign = new OtherCopyProviderError("from another copy");
+		expect(foreign instanceof ProviderError).toBe(false);
+		expect(isProviderError(foreign)).toBe(true);
+	});
+
+	test("rejects look-alikes without the brand or the fields", () => {
+		expect(
+			isProviderError({
+				name: "ProviderError",
+				code: "EMBEDDING",
+				status: 503,
+				message: "x",
+			}),
+		).toBe(false);
+		class BadFields extends Error {
+			readonly code = "EMBEDDING";
+			readonly status: unknown = "503";
+			readonly retryAfterMs: unknown = undefined;
+		}
+		Object.defineProperty(BadFields.prototype, Symbol.for("mnemocyte.error"), {
+			value: true,
+		});
+		expect(isProviderError(new BadFields("x"))).toBe(false);
+		const badWait = new BadFields("x");
+		Object.assign(badWait, { status: 503, retryAfterMs: "1000" });
+		expect(isProviderError(badWait)).toBe(false);
+		expect(isProviderError(new Error("x"))).toBe(false);
+		expect(isProviderError(null)).toBe(false);
+		expect(isProviderError("ProviderError")).toBe(false);
 	});
 });

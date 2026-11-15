@@ -201,7 +201,8 @@ plugin in `tsdown.config.ts` strips that comment.
 Exports:
 
 - `mnemocyte`: `createMemory`, `migrate`, `MnemocyteError`,
-  `isMnemocyteError`, `ProviderError` and the public types, including
+  `isMnemocyteError`, `ProviderError`, `isProviderError` and the public
+  types, including
   `PostgresClient`.
   `createMemory({ store })` and `migrate({ store })` take a store config or
   a database client; the Postgres backend loads with a dynamic `import()`
@@ -274,6 +275,10 @@ Design rules for the public surface:
   a new reason. `isMnemocyteError` checks the `Symbol.for("mnemocyte.error")`
   brand on the prototype; code that inspects an error the package may not
   have created (an embedder's, a driver's) uses it instead of `instanceof`.
+  `isProviderError` adds no brand of its own: it checks that brand, the
+  `"EMBEDDING"` code, a numeric `status` and a numeric or `undefined`
+  `retryAfterMs`, so it also recognizes a `ProviderError` from a 1.0.x
+  copy.
 - Error codes and reasons, `MnemocyteOperation`, `MnemocyteBackend`,
   `AuditEventType` and `MemoryMiddlewareError.phase` may gain members in a
   minor; the other unions change

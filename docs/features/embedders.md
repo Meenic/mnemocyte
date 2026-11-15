@@ -42,8 +42,10 @@ stops the rest. Every call finishes before the store opens its transaction,
 so no transaction is held across an embedder call, and a failed call stores
 nothing.
 
-A `ProviderError`, `"TIMEOUT"` or `"ABORTED"` from the embedder reaches the
-caller as it is. Any other error is wrapped in an `"EMBEDDING"` error
+A `ProviderError` (checked with `isProviderError`, so one from another
+copy of the package counts), `"TIMEOUT"` or `"ABORTED"` from the embedder
+reaches the caller as it is. Any other error is wrapped in an `"EMBEDDING"`
+error
 (`"Failed to embed text."`) with the original as `cause`.
 
 ## Shipped embedders

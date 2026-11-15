@@ -2,8 +2,15 @@ import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isMnemocyteError, MnemocyteError } from "mnemocyte";
+import {
+	createMemory,
+	isMnemocyteError,
+	isProviderError,
+	MnemocyteError,
+	ProviderError,
+} from "mnemocyte";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { testScope } from "../helpers.js";
 
 const dist = fileURLToPath(new URL("../../dist", import.meta.url));
 
@@ -51,5 +58,39 @@ describe("two copies of the package", () => {
 			isMnemocyteError(new copy.ProviderError({ message: "x", status: 500 })),
 		).toBe(true);
 		expect(fromCopy.reason).toBe("KEY_IN_USE");
+	});
+
+	test("recognize each other's provider errors with isProviderError", () => {
+		const fromCopy = new copy.ProviderError({
+			message: "Busy.",
+			status: 503,
+			retryAfterMs: 1000,
+		});
+		const fromPackage = new ProviderError({ message: "Bad.", status: 400 });
+		expect(fromCopy instanceof ProviderError).toBe(false);
+		expect(isProviderError(fromCopy)).toBe(true);
+		expect(copy.isProviderError(fromPackage)).toBe(true);
+		expect(
+			isProviderError(
+				new copy.MnemocyteError({ message: "x", code: "EMBEDDING" }),
+			),
+		).toBe(false);
+	});
+
+	test("pass another copy's ProviderError through to the caller", async () => {
+		const failure = new copy.ProviderError({ message: "Busy.", status: 503 });
+		const memory = createMemory({
+			embedder: {
+				model: "copy-provider-error",
+				dimensions: 2,
+				async embed() {
+					throw failure;
+				},
+			},
+			provider: { retries: 0 },
+		});
+		await expect(
+			memory.add({ scope: testScope("copy_provider"), content: "x" }),
+		).rejects.toBe(failure);
 	});
 });

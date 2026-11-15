@@ -72,6 +72,8 @@ import type {
 } from "mnemocyte";
 import {
 	createMemory,
+	isMnemocyteError,
+	isProviderError,
 	MnemocyteError,
 	migrate,
 	ProviderError,
@@ -598,6 +600,29 @@ aiSdkEmbedder({
 });
 const providerRetryAfter: number | undefined = providerError.retryAfterMs;
 const providerAsMnemocyte: MnemocyteError = providerError;
+
+// The guards narrow a caught `unknown`.
+function inspectCaught(caught: unknown) {
+	if (isProviderError(caught)) {
+		const status: number = caught.status;
+		const retryAfterMs: number | undefined = caught.retryAfterMs;
+		const asProvider: ProviderError = caught;
+		void status;
+		void retryAfterMs;
+		void asProvider;
+	}
+	if (isMnemocyteError(caught)) {
+		const code: MnemocyteErrorCode = caught.code;
+		const reason: MnemocyteErrorReason | undefined = caught.reason;
+		// @ts-expect-error status is only on a ProviderError
+		void caught.status;
+		void code;
+		void reason;
+	}
+	// @ts-expect-error an unnarrowed unknown has no status
+	void caught.status;
+}
+void inspectCaught;
 
 void client;
 void migrated;

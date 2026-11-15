@@ -329,7 +329,11 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 		dryRun: true,
 		signal: true,
 	}),
-	stats: inputKeys<StatsInput>({ scope: true, allNamespaces: true }),
+	stats: inputKeys<StatsInput>({
+		scope: true,
+		allNamespaces: true,
+		signal: true,
+	}),
 	consolidate: inputKeys<ConsolidateInput>({
 		scope: true,
 		survivorId: true,

@@ -65,7 +65,7 @@ client from `memory/client-core.ts`, which only ever sees full scopes:
   Each bound method checks that its input is an object (an omitted optional
   input becomes `{}`) with no `scope` and no `allNamespaces`, then calls the
   core with `{ ...input, scope }`, whose key check then rejects an unknown
-  key (`stats()`, which takes no input, rejects any). Selector methods (`deleteScope`,
+  key (bound `stats` accepts only `signal`). Selector methods (`deleteScope`,
   `prune`, `stats`, `listAuditLog`, `pruneAuditLog`) get the same scope, which they read as a
   selector: an omitted agent or session matches any value.
 
@@ -89,8 +89,9 @@ scope take `DefaultNamespace extends boolean = false`. `ScopeInput<true>` is
 `ScopeSelector`. `createMemory` has two overloads: a config with
 `namespace: string` returns `MemoryClient<true>`, any other
 `MemoryClient`. Bound inputs are `Omit<…, "scope">` aliases, except
-`BoundGetInput`, which `GetInput` is built from because `Omit` does not
-distribute over its id-or-key union, and `prune`, which takes
+`BoundGetInput` and `BoundStatsInput`, which `GetInput` and `StatsInput`
+are built from because `Omit` does not distribute over their unions (id or
+key; scope or `allNamespaces`), and `prune`, which takes
 `PruneSelectors`. `MigrateInput.memory` is
 `MemoryClient<boolean> | BoundMemoryClient`.
 

@@ -754,10 +754,12 @@ export function createInMemoryStore(): MemoryStore {
 			auditLog.push(...auditEvents);
 			return { supersededIds: newlySuperseded.map((memory) => memory.id) };
 		},
-		async stats(selector, now) {
-			const selected = Array.from(memories.values()).filter((memory) =>
-				isSelected(memory.scope, selector),
-			);
+		async stats(selector, now, options) {
+			throwIfAborted(options?.signal);
+			const selected = Array.from(memories.values()).filter((memory) => {
+				throwIfAborted(options?.signal);
+				return isSelected(memory.scope, selector);
+			});
 			return {
 				entityCount: new Set(
 					selected.map((memory) =>

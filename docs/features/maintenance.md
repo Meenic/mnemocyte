@@ -403,3 +403,10 @@ deletes one day of events is a few batches on any of these plans.
 `activeMemoryCount` (neither expired nor superseded), `expiredMemoryCount`
 and `supersededMemoryCount` for the selected memories, as one `MemoryStats`
 type.
+
+`signal` is checked before the store runs. The in-memory store checks it
+again for each memory it scans; the Postgres store passes it to the count
+query, which postgres.js cancels on abort (see
+[Postgres cancellation](./postgres.md#cancellation)). The bound
+`stats({ signal })` takes a `BoundStatsInput`, the interface `StatsInput`
+is built from.

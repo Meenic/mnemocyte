@@ -25,11 +25,13 @@ describe("lazy store", () => {
 			store.stats(selector, now),
 			store.deleteScope(selector),
 		]);
-		await store.stats(selector, now);
+		const options = { signal: new AbortController().signal };
+		await store.stats(selector, now, options);
 
 		expect(load).toHaveBeenCalledTimes(1);
 		expect(stats).toHaveBeenCalledTimes(3);
 		expect(stats).toHaveBeenCalledWith(selector, now);
+		expect(stats).toHaveBeenLastCalledWith(selector, now, options);
 	});
 
 	test("reports a failed load as CONFIG with the cause and retries on the next call", async () => {

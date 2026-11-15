@@ -508,5 +508,9 @@ export interface MemoryStore {
 	 * are neither expired nor superseded; expired and superseded counts may
 	 * overlap. `entityCount` counts distinct `(namespace, entityId)` pairs.
 	 */
-	stats(selector: StoreSelector, now: Date): Promise<MemoryStats>;
+	stats(
+		selector: StoreSelector,
+		now: Date,
+		options?: StoreOperationOptions,
+	): Promise<MemoryStats>;
 }

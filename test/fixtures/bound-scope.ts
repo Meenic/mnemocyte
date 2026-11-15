@@ -89,6 +89,21 @@ export async function verifyBoundScope(input: {
 	await expect(alice.stats()).resolves.toMatchObject({ memoryCount: 2 });
 	await expect(aliceAgent.stats()).resolves.toMatchObject({ memoryCount: 1 });
 	await expect(
+		alice.stats({ signal: new AbortController().signal }),
+	).resolves.toMatchObject({ memoryCount: 2 });
+	// A pre-aborted signal stops stats before the count query runs.
+	await expectMnemocyteError(
+		alice.stats({ signal: AbortSignal.abort() }),
+		"ABORTED",
+	);
+	await expectMnemocyteError(
+		memory.stats({
+			scope: { namespace, entityId: "alice" },
+			signal: AbortSignal.abort(),
+		}),
+		"ABORTED",
+	);
+	await expect(
 		alice.prune({ createdBefore: new Date(Date.now() + 60_000), dryRun: true }),
 	).resolves.toEqual({ matchedCount: 2, deletedCount: 0, dryRun: true });
 	const events = (await alice.listAuditLog()).events;

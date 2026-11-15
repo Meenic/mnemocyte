@@ -26,7 +26,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 - [x] `feat/is-provider-error`: an `isProviderError` guard next to
   `isMnemocyteError`, on the same brand; `guide/embedders.md` uses it instead
   of checking `code` and `status` by hand.
-- [ ] `feat/stats-signal`: `signal` on `stats`, and a bound
+- [x] `feat/stats-signal`: `signal` on `stats`, and a bound
   `stats({ signal })` typed as `BoundStatsInput`. Bound `stats()` takes no
   input today and rejects any key.
 - [ ] `feat/input-aliases`: a `BoundPruneInput` alias (the bound `prune`

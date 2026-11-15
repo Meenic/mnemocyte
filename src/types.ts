@@ -1377,8 +1377,23 @@ export interface ConsolidateResult {
  * `allNamespaces: true` for the whole installation.
  */
 export type StatsInput<DefaultNamespace extends boolean = false> =
-	| { scope: ScopeSelectorInput<DefaultNamespace>; allNamespaces?: never }
-	| { allNamespaces: true; scope?: never };
+	BoundStatsInput &
+		(
+			| { scope: ScopeSelectorInput<DefaultNamespace>; allNamespaces?: never }
+			| { allNamespaces: true; scope?: never }
+		);
+
+/**
+ * Input for {@link BoundMemoryClient.stats}: {@link StatsInput} without
+ * `scope` and `allNamespaces`.
+ */
+export interface BoundStatsInput {
+	/**
+	 * Optional cancellation signal. In-memory scans check it cooperatively;
+	 * Postgres requests cancellation of the active count query.
+	 */
+	signal?: AbortSignal | undefined;
+}
 
 /** Counts returned by {@link MemoryClient.stats}. */
 export interface MemoryStats {
@@ -1522,7 +1537,12 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	pruneAuditLog(
 		input: PruneAuditLogInput<DefaultNamespace>,
 	): Promise<PruneAuditLogResult>;
-	/** Count memories for a scope selector or the whole installation. */
+	/**
+	 * Count memories for a scope selector or the whole installation.
+	 *
+	 * @throws {MnemocyteError} `"VALIDATION"` without a scope (or
+	 * `allNamespaces: true`); `"ABORTED"` when the signal aborts.
+	 */
 	stats(input: StatsInput<DefaultNamespace>): Promise<MemoryStats>;
 	/**
 	 * Return a client bound to `scope`: the same methods without the
@@ -1668,7 +1688,7 @@ export interface BoundMemoryClient {
 	/** {@link MemoryClient.pruneAuditLog} within the bound scope. */
 	pruneAuditLog(input: BoundPruneAuditLogInput): Promise<PruneAuditLogResult>;
 	/** {@link MemoryClient.stats} within the bound scope. */
-	stats(): Promise<MemoryStats>;
+	stats(input?: BoundStatsInput): Promise<MemoryStats>;
 	/**
 	 * Unstable surface at the bound scope; see
 	 * {@link MemoryClient.experimental}.

@@ -22,6 +22,7 @@ import type {
 	BoundFindDuplicatesPageInput,
 	BoundGetInput,
 	BoundMemoryClient,
+	BoundStatsInput,
 	ConsolidateInput,
 	ConsolidateResult,
 	ContextFormat,
@@ -362,6 +363,10 @@ const pruneAll: PruneInput = { allNamespaces: true, expired: true };
 const listed: Promise<ListResult> = client.list({ scope, cursor: "c" });
 const fetched: Promise<Memory | null> = client.get({ scope, key: "key" });
 const stats: Promise<MemoryStats> = client.stats({ allNamespaces: true });
+// @ts-expect-error stats needs a scope or allNamespaces, not only a signal.
+void client.stats({ signal: new AbortController().signal });
+// @ts-expect-error stats takes a scope or allNamespaces, not both.
+void client.stats({ scope: selector, allNamespaces: true });
 const erased: Promise<{ deletedCount: number }> = client.deleteScope({
 	scope: { namespace: "app", entityId: "entity" },
 });
@@ -729,6 +734,15 @@ void boundAuditPage;
 // @ts-expect-error A bound client cannot list across namespaces.
 void bound.listAuditLog({ allNamespaces: true });
 const boundStats: Promise<MemoryStats> = bound.stats();
+const boundStatsInput: BoundStatsInput = {
+	signal: new AbortController().signal,
+};
+void bound.stats(boundStatsInput);
+void bound.stats({});
+void bound.stats(undefined);
+// @ts-expect-error BoundStatsInput has no scope.
+const boundStatsScoped: BoundStatsInput = { scope };
+void boundStatsScoped;
 const boundErased: Promise<{ deletedCount: number }> = bound.deleteScope();
 void bound.prune({ expired: true, dryRun: true });
 const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
@@ -750,7 +764,7 @@ const boundMigrate: MigrateInput = { memory: bound };
 void bound.add({ scope, content: "content" });
 // @ts-expect-error A bound client has no allNamespaces.
 void bound.prune({ allNamespaces: true, expired: true });
-// @ts-expect-error A bound client's stats takes no input.
+// @ts-expect-error A bound client's stats takes only a signal.
 void bound.stats({ allNamespaces: true });
 // @ts-expect-error A bound client cannot be bound again.
 void bound.for;
@@ -969,7 +983,10 @@ async function passThrough(
 	await memory.context({ scope, query: "q", maxTokens: limit, signal });
 	await memory.update({ scope, id: "id", content: undefined, signal });
 	await memory.prune({ scope: selector, dryRun: undefined, signal });
+	await memory.stats({ scope: selector, signal });
+	await memory.stats({ allNamespaces: true, signal });
 	await bound.search({ query: "q", limit, signal });
+	await bound.stats({ signal });
 	await extractMemories({
 		model: languageModel,
 		memory: bound,

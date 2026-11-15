@@ -5,7 +5,7 @@ import type { CliArgs } from "./args.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 import { type CliTarget, resolveTarget } from "./target.js";
 
-const CREATE_EXTENSION_HELP = `Have a database admin run:
+const CREATE_EXTENSION_HELP = `have a database admin run:
 
   CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -114,8 +114,8 @@ export async function migrateTarget(
 			io.error(
 				`${
 					answer === undefined
-						? "pgvector is not enabled in this database, and there is no terminal to ask on. Pass --yes to enable it, or:"
-						: "pgvector was not enabled."
+						? "pgvector is not enabled in this database, and there is no terminal to ask on. Pass --yes to enable it, or"
+						: "pgvector was not enabled. To enable it,"
 				} ${CREATE_EXTENSION_HELP}`,
 			);
 			return 1;

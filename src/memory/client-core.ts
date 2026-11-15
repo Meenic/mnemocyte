@@ -570,8 +570,11 @@ export function createMemoryClient(
 						lexicalScore: candidate.lexicalScore,
 					});
 				});
+				const now = Date.now();
 				const scored: MemoryWithScore[] = Array.from(merged.values())
-					.map((candidate) => toScoredMemory(candidate, input, scoringConfig))
+					.map((candidate) =>
+						toScoredMemory(candidate, input, scoringConfig, now),
+					)
 					.filter((memory) => memory.score >= minScore)
 					.sort(compareScoredMemories)
 					.slice(0, limit);
@@ -935,9 +938,12 @@ export function createMemoryClient(
 						});
 					}
 					if (survivor.supersededBy !== null) {
+						// The same state a concurrent consolidation leaves, found
+						// before the write instead of during it.
 						throw new MnemocyteError({
 							message: "Survivor memory is itself superseded.",
-							code: "VALIDATION",
+							code: "CONFLICT",
+							reason: "CONSOLIDATION_CHANGED",
 						});
 					}
 					const targets = await store.loadConsolidationTargets(

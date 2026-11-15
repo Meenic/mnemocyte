@@ -181,21 +181,36 @@ export function fusedScore(
 	return clampScore(score / best);
 }
 
-function recencyScore(createdAt: Date, halfLifeDays: number): number {
-	const ageMs = Date.now() - createdAt.getTime();
+function recencyScore(
+	createdAt: Date,
+	halfLifeDays: number,
+	now: number,
+): number {
+	const ageMs = now - createdAt.getTime();
 	const ageDays = Math.max(0, ageMs / 86_400_000);
 	return Math.exp((-Math.LN2 * ageDays) / halfLifeDays);
 }
 
+/**
+ * Scores one candidate. `now` (epoch milliseconds) is taken once per search,
+ * so every candidate's recency is measured from the same instant: memories
+ * created in the same millisecond with equal fused scores tie exactly and
+ * fall through to {@link compareScoredMemories}' tie-break.
+ */
 export function toScoredMemory(
 	candidate: FusionCandidate,
 	input: SearchInput,
 	config: ScoringConfig,
+	now: number,
 ): MemoryWithScore {
 	const { memory } = candidate;
 	const { fusion, boosts } = config;
 	const fused = fusedScore(candidate.vectorRank, candidate.lexicalRank, fusion);
-	const recency = recencyScore(memory.createdAt, config.recencyHalfLifeDays);
+	const recency = recencyScore(
+		memory.createdAt,
+		config.recencyHalfLifeDays,
+		now,
+	);
 	const importance = IMPORTANCE_SCORES[memory.importance];
 	// Boosts scale the fused score instead of adding to it, so a memory that
 	// matched neither search well cannot rank high only for being new.

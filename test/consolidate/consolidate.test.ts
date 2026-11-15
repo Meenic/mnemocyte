@@ -233,7 +233,7 @@ describe("consolidate", () => {
 			expect([...second.supersededIds]).toEqual([]);
 		}
 
-		// 8. Merging into an already-superseded survivor is rejected with VALIDATION.
+		// 8. Merging into an already-superseded survivor is a CONFLICT, as in a race.
 		{
 			const client = createClient();
 			const winner = await client.add({
@@ -254,12 +254,14 @@ describe("consolidate", () => {
 				supersededIds: [middle.id],
 			});
 			// middle is now superseded → cannot be used as survivor.
-			await expectError("VALIDATION", () =>
+			await expectMnemocyteError(
 				client.consolidate({
 					scope: testScope("alice"),
 					survivorId: middle.id,
 					supersededIds: [newest.id],
 				}),
+				"CONFLICT",
+				"CONSOLIDATION_CHANGED",
 			);
 		}
 

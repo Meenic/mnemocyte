@@ -140,6 +140,10 @@ embedder: openaiCompatibleEmbedder({
 }),
 ```
 
+For an Ollama chat or extraction model too, use `@ai-sdk/openai-compatible`
+with `supportsStructuredOutputs: true`; without it extraction stores nothing.
+See [local models](./ai-sdk.md#local-models).
+
 Choose the embedder before step 5: the schema is created for its
 dimensions, and an installation keeps one embedding model. Other providers
 are in the [embedders guide](./embedders.md).

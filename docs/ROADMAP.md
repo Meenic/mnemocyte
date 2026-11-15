@@ -375,7 +375,7 @@ the Ollama app passes again against the packed branch. Where an item says
   `afterEach` then fails on an undefined `db`). Set `hookTimeout: 60_000`
   on the `contract` project; the other contract files open PGlite in
   `beforeAll` and share the risk.
-- [ ] `fix/rc-review`: fixes from the rc.1 review, before 1.0 locks them in.
+- [x] `fix/rc-review`: fixes from the rc.1 review, before 1.0 locks them in.
   - Search recency: `recencyScore` (`src/retrieval/scorer.ts`) calls
     `Date.now()` once per candidate, so two memories with equal fused
     scores created in the same millisecond swap places when a search
@@ -433,6 +433,14 @@ the Ollama app passes again against the packed branch. Where an item says
   - CLI text: `check --dimensions` without a memory file says "the
     embedder has N dimensions" though no embedder is loaded; the
     non-terminal `migrate` message capitalises "Have" after a colon.
+
+  Landed with the recommendations, as the maintainer chose. Extraction
+  compares only with the memories the model was shown (no extra read), and
+  a shown memory under the item's own key with a new kind or importance
+  still updates; skipping runs before the `maxMemories` cut. The middleware
+  keeps a failure in the same one-entry cache as a result, so a new query
+  tries again. The extraction prompt gained a rule that a key names the
+  topic, not the value.
 
 ## Cut first if time runs short
 

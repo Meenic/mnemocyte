@@ -9,6 +9,49 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `consolidate` into a survivor that is already superseded
+  throws `"CONFLICT"`** with reason `"CONSOLIDATION_CHANGED"`, the error a
+  race that supersedes it already gave, instead of `"VALIDATION"`.
+- **Breaking: `extractMemories` throws `"ABORTED"` when its `signal`
+  aborts during the model call**, with the AI SDK's error as `cause`,
+  instead of rethrowing that error.
+- **Extraction skips items that add nothing**: a memory the model was shown
+  returned unchanged (no re-embed, `updatedAt` stays), the content of a
+  shown memory under another key (a fact `saveMemory` stored this turn),
+  and content that is only the key. A changed kind or importance under the
+  same key still updates. Its prompt also says a key names the topic, not
+  the value.
+- **The middleware keeps a failed `context()` for that query**: it reaches
+  `onError` once, and the AI SDK's retries and later tool steps run without
+  memory instead of calling the embedder again. A new query tries again;
+  an abort is never kept.
+
+### Fixed
+
+- **A `null` or missing input throws `"VALIDATION"`** on every method of
+  the unbound client; `add`, `addMany`, `search`, `get`, `list`, `update`,
+  `delete`, `context`, `findDuplicates` and `consolidate` threw a
+  `TypeError`.
+- **Search measures recency from one clock reading per search**, so two
+  memories created in the same millisecond with equal scores follow the
+  documented tie-break (newer, then lower id) instead of swapping places
+  when a search crosses a millisecond boundary.
+- **CLI text:** `check --dimensions` without a memory file names the flag
+  instead of an embedder it never loaded, and `migrate` without a terminal
+  no longer capitalises "have" after "or".
+
+### Documentation
+
+- A local-model setup for extraction (`createOpenAICompatible` with
+  `supportsStructuredOutputs: true`) in `guide/ai-sdk.md` and the Ollama
+  section of `guide/getting-started.md`; `timeoutMs` covers the search, the
+  model call and the write, and should be raised for local models.
+- `MemoryMiddlewareError.phase` is one of the unions a minor may extend.
+- A keyed upsert keeps `createdAt`, which recency uses.
+- `guide/ai-sdk.md` imports `./memory.ts`, which `nodenext` and Node need.
+
 ## [1.0.0-rc.1] - 2026-11-15
 
 The first release candidate for 1.0. It installs with `mnemocyte@next`; the

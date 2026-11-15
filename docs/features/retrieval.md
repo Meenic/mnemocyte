@@ -63,6 +63,12 @@ factor ranges from 1/1.2 to 1, which near the top of one list is worth about
 12 rank positions between a stale low-importance memory and a fresh
 critical one. `confidence` and `accessCount` do not affect ranking.
 
+Age is measured from one `Date.now()` taken per search, so every candidate
+gets the same clock: two memories created in the same millisecond with
+equal fused scores tie exactly instead of drifting apart when a search
+crosses a millisecond boundary. A keyed upsert keeps `createdAt`, so an
+updated fact keeps the age of its first version.
+
 **Ties** in the final score go to the newer `createdAt`, then the lower id.
 
 **Config.** `fusion.k`, `fusion.vector`, `fusion.lexical`, `boosts.recency`

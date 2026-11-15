@@ -398,8 +398,16 @@ export function memoryMiddleware(
 
 function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 	const { memory, placement, onError } = options;
-	/** The last successful recall, reused while the query stays the same. */
-	let cached: { readonly query: string; readonly context: string } | undefined;
+	/**
+	 * The last recall, reused while the query stays the same: its context, or
+	 * `failed` when it threw. A failure is reported once, then the AI SDK's
+	 * retries and the later steps of the call run without memory instead of
+	 * paying for the same failure again. An abort is never kept.
+	 */
+	let cached:
+		| { readonly query: string; readonly context: string }
+		| { readonly query: string; readonly failed: true }
+		| undefined;
 	/** Prompts before the context was added, by the params that carry it. */
 	const originalPrompts = new WeakMap<CallParams, MemoryPrompt>();
 
@@ -434,20 +442,28 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 		};
 	}
 
+	/** The context for `query`, or `undefined` when it already failed. */
 	async function recall(
 		query: string,
 		signal: AbortSignal | undefined,
-	): Promise<string> {
+	): Promise<string | undefined> {
 		if (cached?.query === query) {
-			return cached.context;
+			return "context" in cached ? cached.context : undefined;
 		}
-		const context = await memory.context({
-			...options.context,
-			query,
-			...(signal === undefined ? {} : { signal }),
-		});
-		cached = { query, context };
-		return context;
+		try {
+			const context = await memory.context({
+				...options.context,
+				query,
+				...(signal === undefined ? {} : { signal }),
+			});
+			cached = { query, context };
+			return context;
+		} catch (error) {
+			if (!isAbort(error, signal)) {
+				cached = { query, failed: true };
+			}
+			throw error;
+		}
 	}
 
 	function runSave(params: CallParams, text: string, reason: string): void {
@@ -475,7 +491,7 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 				return params;
 			}
 			const signal = params.abortSignal;
-			let context: string;
+			let context: string | undefined;
 			try {
 				const query = options.query({ prompt: params.prompt });
 				if (query === undefined || query.trim().length === 0) {
@@ -489,7 +505,7 @@ function createMiddleware(options: ResolvedOptions): LanguageModelMiddleware {
 				report({ phase: "context", error });
 				return params;
 			}
-			if (context.length === 0) {
+			if (context === undefined || context.length === 0) {
 				return params;
 			}
 			const transformed: CallParams = {

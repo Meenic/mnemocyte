@@ -127,7 +127,7 @@ describe.skipIf(!databaseUrl)("CLI on Postgres through DATABASE_URL", () => {
 		const mismatch = await run(["check", "--dimensions", "1536"]);
 		expect(mismatch.code).toBe(1);
 		expect(mismatch.io.stdout()).toContain(
-			"problem: The installation stores 768-dimension embeddings, but the embedder has 1536 dimensions.",
+			"problem: The installation stores 768-dimension embeddings, but --dimensions is 1536.",
 		);
 
 		const again = await run(["migrate"]);

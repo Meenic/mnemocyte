@@ -109,9 +109,14 @@ and in a multi-step call once per step:
    characters (`MAX_CONTENT_LENGTH`, the `context()` query limit).
    `undefined` or a blank string returns `params` unchanged.
 2. `memory.context({ ...options.context, query, signal })`, with
-   `params.abortSignal` as `signal`. The last successful result is cached
-   by query string in the middleware's closure, so the steps of one tool
-   loop embed once. Failures are not cached.
+   `params.abortSignal` as `signal`. The last result is cached by query
+   string in the middleware's closure, so the steps of one tool loop embed
+   once. A failure is cached too, as `{ query, failed: true }`: it is
+   reported to `onError` once, and the AI SDK's retries of the model call
+   (`maxRetries`, 2 by default) and the later steps return `params`
+   unchanged without calling `context()` again, which with the embedder
+   down would pay the client's embed retries on every attempt. A new query
+   replaces the entry; an abort is never cached.
 3. `""` (no memory matched; see
    [retrieval.md](./retrieval.md#context)) returns `params` unchanged.
    Otherwise the block is a fixed preamble line, a blank line and the
@@ -208,8 +213,18 @@ Unlike `withMemory`'s `model`, a `"provider/model"` string is accepted:
    content, or a key with no letters or digits; the AI SDK then throws
    `NoObjectGeneratedError`. Keys are lower-cased and every run of other
    characters becomes `_` (at most 64 characters), and content is trimmed.
-5. **Write.** The last item per key is kept, in first-seen order, and the
-   list is cut to `maxMemories`. One `addMany` stores them with key
+5. **Skip.** The last item per key is kept, in first-seen order. Items
+   that would add nothing are dropped (`addsNothing`): content with no
+   whitespace that normalizes to the key (`lives_in_berlin`); and an item
+   whose content equals a search result's content after NFKC, lower
+   casing, collapsing whitespace and dropping one final period, unless the
+   result has the item's own `extracted:` key in the exact bound scope and
+   a different kind or importance (an update). That covers a shown memory
+   returned unchanged, which `addMany` would re-embed and touch, and a fact
+   `saveMemory` stored this turn without a key. Only the results the model
+   was shown are compared, so no extra read runs. Then the list is cut to
+   `maxMemories`, so a skipped item does not take the place of a new one.
+6. **Write.** One `addMany` stores them with key
    `extracted:<key>` and `source: "extractMemories"`. The keyed upsert
    (`ON CONFLICT … DO UPDATE` on Postgres; see [scopes.md](./scopes.md))
    updates a memory with that key in the exact scope in place, keeping its
@@ -219,7 +234,11 @@ Unlike `withMemory`'s `model`, a `"provider/model"` string is accepted:
 One `AbortSignal.timeout(timeoutMs)`, combined with the caller's `signal`
 through `AbortSignal.any`, covers the search, the model call and the write.
 When the timer fired and the caller's signal did not, the error becomes a
-`"TIMEOUT"` `MnemocyteError` with the original as `cause`.
+`"TIMEOUT"` `MnemocyteError` with the original as `cause`. When the
+caller's signal aborted, an error that is not already `"ABORTED"` (the AI
+SDK rethrows the abort from the model call as its own error) becomes
+`"ABORTED"` with the original as `cause`, as the search and the write
+already report it.
 
 No similarity threshold is used to match facts. `search` embeds its query
 with `purpose: "query"`, and for asymmetric embedders (Cohere, Google,
@@ -255,7 +274,9 @@ two leading system messages; `context` options (`format: "xml"`) and an
 unchanged prompt for an entity with no memories; the `query` option and a
 `query` that returns `undefined`; one query embedding with a signal across
 a three-step tool loop; fail-open with `onError` (and a throwing
-`onError`); an abort that throws without calling the model; an invalid
+`onError`); one recall and one `onError` across two retried model calls
+and two tool steps, the same query staying without memory and a new one
+trying again; an aborted recall not kept; an abort that throws without calling the model; an invalid
 `maxTokens` reaching `onError` as `"VALIDATION"`; the save hook once after
 a tool loop with the original prompt, after `streamText` finishes, not
 after a tool-call step or an errored stream, and failing hooks reported
@@ -270,8 +291,11 @@ key never overwritten and shown without its key; a shared memory shown
 without its key to an agent-bound client; no write for an empty result and
 no call without user text; the last item per key, `maxMemories` and
 `instructions`; schema rejections (`episode`, `critical`, a key without
-letters, blank content) as `NoObjectGeneratedError`; `"TIMEOUT"`; the
-`"CONFIG"` and `"VALIDATION"` checks. Through the middleware: `save`
+letters, blank content) as `NoObjectGeneratedError`; `"TIMEOUT"`; `"ABORTED"` for a caller abort
+during the model call and before the search; skipped items (a shown memory
+returned unchanged, whose `updatedAt` stays, and a `saveMemory` fact under
+a new key), an importance change still updating, and content that is only
+the key; the `"CONFIG"` and `"VALIDATION"` checks. Through the middleware: `save`
 option checks; a response that returns while the extraction model is
 still blocked, then the stored memory and the `waitUntil` promise; one
 extraction after a tool loop and one after `streamText`; a failing

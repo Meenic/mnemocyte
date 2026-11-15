@@ -354,10 +354,18 @@ const RENAMED_SEARCH_FILTERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Throw `"VALIDATION"` when the input of `method` has a key the method does
- * not take. `search` names the replacement of `before` and `after`.
+ * Throw `"VALIDATION"` when the input of `method` is not an object or has a
+ * key the method does not take. `search` names the replacement of `before`
+ * and `after`. It runs first, so a `null` input never reaches code that
+ * reads its fields.
  */
 export function assertInputKeys(method: CheckedInput, input: unknown): void {
+	if (typeof input !== "object" || input === null || Array.isArray(input)) {
+		throw new MnemocyteError({
+			message: `${method} input must be an object.`,
+			code: "VALIDATION",
+		});
+	}
 	assertKnownInputKeys(
 		method,
 		input,

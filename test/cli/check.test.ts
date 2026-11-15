@@ -128,6 +128,13 @@ describe("evaluateInstallation", () => {
 		).toEqual([
 			"The installation stores 1536-dimension embeddings, but the embedder has 768 dimensions. An installation keeps one embedding size.",
 		]);
+		// From --dimensions, without a memory file: no embedder to name.
+		expect(
+			evaluateInstallation(HEALTHY, { dimensions: 768, dimensionsFrom: "flag" })
+				.problems,
+		).toEqual([
+			"The installation stores 1536-dimension embeddings, but --dimensions is 768. An installation keeps one embedding size.",
+		]);
 		const behind = evaluateInstallation(
 			{
 				pgvectorVersion: "0.8.7",

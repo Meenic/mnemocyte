@@ -97,6 +97,7 @@ describe("toScoredMemory", () => {
 			{ memory: memory(), ...candidate },
 			{ scope: testScope("alice"), query: "q", explain: true },
 			config,
+			Date.now(),
 		);
 		expect(scored.score).toBe(scored.scores.fused);
 		expect(scored.explanation?.boostFactor).toBe(1);
@@ -113,6 +114,7 @@ describe("toScoredMemory", () => {
 			{ memory: memory({ importance: "critical" }), ...candidate },
 			{ scope: testScope("alice"), query: "q" },
 			defaults,
+			Date.now(),
 		);
 		const stale = toScoredMemory(
 			{
@@ -124,6 +126,7 @@ describe("toScoredMemory", () => {
 			},
 			{ scope: testScope("alice"), query: "q", explain: true },
 			defaults,
+			Date.now(),
 		);
 		expect(fresh.score).toBeCloseTo(fresh.scores.fused, 9);
 		expect(stale.scores.recency).toBeLessThan(1e-9);
@@ -149,11 +152,13 @@ describe("toScoredMemory", () => {
 			},
 			{ scope: testScope("alice"), query: "q" },
 			defaults,
+			Date.now(),
 		);
 		const newButWeak = toScoredMemory(
 			{ memory: memory({ importance: "critical" }), ...candidate },
 			{ scope: testScope("alice"), query: "q" },
 			defaults,
+			Date.now(),
 		);
 		expect(relevantButOld.score).toBeGreaterThan(newButWeak.score);
 	});
@@ -173,6 +178,7 @@ describe("compareScoredMemories", () => {
 				},
 				{ scope: testScope("alice"), query: "q" },
 				createScoringConfig({ boosts: { recency: 0, importance: 0 } }),
+				Date.now(),
 			);
 		const newer = scored({
 			id: "b",
@@ -267,5 +273,52 @@ describe("recall fusion", () => {
 			lexicalRank: 1,
 			fused: 1,
 		});
+	});
+});
+
+describe("recency during one search", () => {
+	test("measures every candidate's age from the same instant", async () => {
+		vi.useFakeTimers({ now: new Date("2026-06-01T00:00:00Z") });
+		try {
+			const client = createMemoryClient(
+				{
+					embedder: {
+						model: "recency-test",
+						dimensions: 2,
+						async embed(texts) {
+							return texts.map(() => [1, 0]);
+						},
+					},
+				},
+				createInMemoryStore(),
+			);
+			// Same millisecond, same vector, same lexical match: equal fused
+			// scores, so only the tie-break may order them.
+			await client.addMany({
+				scope: testScope("alice"),
+				memories: [{ content: "cat one" }, { content: "cat two" }],
+			});
+			let clock = Date.now();
+			// A slow search: the clock moves 30 days between reads. With one
+			// `now` per candidate the second would score lower.
+			vi.spyOn(Date, "now").mockImplementation(() => {
+				clock += 30 * DAY_MS;
+				return clock;
+			});
+			const results = await client.search({
+				scope: testScope("alice"),
+				query: "cat",
+			});
+			expect(results).toHaveLength(2);
+			const first = expectDefined(results[0]);
+			const second = expectDefined(results[1]);
+			expect(first.scores.recency).toBe(second.scores.recency);
+			expect(first.score).toBe(second.score);
+			expect(first.createdAt.getTime()).toBe(second.createdAt.getTime());
+			expect(first.id < second.id).toBe(true);
+		} finally {
+			vi.restoreAllMocks();
+			vi.useRealTimers();
+		}
 	});
 });

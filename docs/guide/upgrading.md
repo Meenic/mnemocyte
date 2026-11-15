@@ -187,6 +187,14 @@ to one scope whose methods take no `scope`; see
   throw new MnemocyteError({ message: "model is required", code: "CONFIG", reason: "INVALID_OPTION" });
   ```
 
+- **`consolidate` into a superseded survivor throws `"CONFLICT"`** with
+  reason `"CONSOLIDATION_CHANGED"`, as it already did when a concurrent call
+  superseded it, instead of `"VALIDATION"`.
+- **A `null` or missing input throws `"VALIDATION"`** on every method,
+  instead of a `TypeError` from `add`, `search`, `list` and the others.
+- **`extractMemories` aborted during the model call throws `"ABORTED"`**
+  (the AI SDK's error is its `cause`), as it does during the search and the
+  write.
 - **Removed:** `postgresJs()` and `PostgresJsExecutor` (pass the client),
   `drizzleStore()` and `mnemocyte/stores/drizzle` (pass `store: db`; a
   `PostgresJsDatabase`-annotated instance passes `db.$client`), and

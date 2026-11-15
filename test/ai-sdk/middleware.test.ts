@@ -1,4 +1,5 @@
 import {
+	APICallError,
 	generateText,
 	jsonSchema,
 	stepCountIs,
@@ -420,6 +421,108 @@ describe("memoryMiddleware context", () => {
 			[userMessage("Hello.")],
 			[userMessage("Hello.")],
 		]);
+	});
+
+	test("reports a failed recall once across retries and steps", async () => {
+		let embedCalls = 0;
+		const memory = createMemory({
+			namespace: "app",
+			embedder: {
+				model: "failing",
+				dimensions: 1,
+				async embed() {
+					embedCalls += 1;
+					throw new Error("embedder down");
+				},
+			},
+		});
+		const errors: MemoryMiddlewareError[] = [];
+		const overloaded = new APICallError({
+			message: "Overloaded.",
+			url: "https://example.test",
+			requestBodyValues: {},
+			statusCode: 529,
+			// The AI SDK waits this long instead of its 2 s backoff.
+			responseHeaders: { "retry-after-ms": "1" },
+			isRetryable: true,
+		});
+		let attempts = 0;
+		const model = new MockLanguageModelV4({
+			doGenerate: async () => {
+				attempts += 1;
+				if (attempts <= 2) {
+					throw overloaded;
+				}
+				return attempts === 3
+					? toolCallResult("lookup", { city: "London" })
+					: textResult("12 degrees.");
+			},
+		});
+		const wrapped = withMemory({
+			model,
+			memory: memory.for({ entityId: "alice" }),
+			onError: (error) => errors.push(error),
+		});
+		const tools = {
+			lookup: tool({
+				inputSchema: jsonSchema<{ city: string }>({
+					type: "object",
+					properties: { city: { type: "string" } },
+					required: ["city"],
+				}),
+				execute: async () => "12 degrees",
+			}),
+		};
+
+		const result = await generateText({
+			model: wrapped,
+			tools,
+			stopWhen: stepCountIs(5),
+			prompt: "Weather?",
+		});
+
+		expect(result.text).toBe("12 degrees.");
+		// Two retries and two steps: four model calls, one recall.
+		expect(model.doGenerateCalls).toHaveLength(4);
+		expect(errors).toHaveLength(1);
+		expect(errors[0]?.phase).toBe("context");
+		const afterFirst = embedCalls;
+		expect(afterFirst).toBeGreaterThan(0);
+
+		// The same query on the same instance stays without memory; a new
+		// query tries again.
+		await generateText({ model: wrapped, prompt: "Weather?" });
+		expect(embedCalls).toBe(afterFirst);
+		expect(errors).toHaveLength(1);
+		await generateText({ model: wrapped, prompt: "Tea?" });
+		expect(embedCalls).toBeGreaterThan(afterFirst);
+		expect(errors).toHaveLength(2);
+	});
+
+	test("does not keep an aborted recall", async () => {
+		const controller = new AbortController();
+		const { memory, queries } = countingClient();
+		const alice = memory.for({ entityId: "alice" });
+		await alice.add({ content: "Likes tea." });
+		const model = new MockLanguageModelV4({ doGenerate: textResult("A.") });
+		const wrapped = wrapLanguageModel({
+			model,
+			middleware: memoryMiddleware({ memory: alice }),
+		});
+		controller.abort();
+		await expect(
+			generateText({
+				model: wrapped,
+				prompt: "Tea?",
+				abortSignal: controller.signal,
+			}),
+		).rejects.toThrow();
+
+		await generateText({ model: wrapped, prompt: "Tea?" });
+		expect(
+			messageText(expectDefined(model.doGenerateCalls[0]).prompt, 0),
+		).toContain("Likes tea.");
+		expect(queries.at(-1)).toBe("Tea?");
 	});
 
 	test("throws an abort instead of running without memory", async () => {

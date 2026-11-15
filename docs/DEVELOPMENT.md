@@ -260,8 +260,9 @@ Design rules for the public surface:
   a new reason. `isMnemocyteError` checks the `Symbol.for("mnemocyte.error")`
   brand on the prototype; code that inspects an error the package may not
   have created (an embedder's, a driver's) uses it instead of `instanceof`.
-- Error codes and reasons, `MnemocyteOperation`, `MnemocyteBackend` and
-  `AuditEventType` may gain members in a minor; the other unions change
+- Error codes and reasons, `MnemocyteOperation`, `MnemocyteBackend`,
+  `AuditEventType` and `MemoryMiddlewareError.phase` may gain members in a
+  minor; the other unions change
   only in a major (`guide/api.md` "Stability").
 - A time filter on memories names its field: `createdBefore` /
   `createdAfter` (`search`, `prune`), `notAccessedSince`. Bare `before` /

@@ -105,6 +105,41 @@ export async function exerciseConsolidationTargetPolicy(
 	}
 
 	{
+		// A survivor that is already superseded is the state a race finds
+		// before the write, so it gets the same code and reason.
+		const entityId = `${entityPrefix}_superseded_survivor`;
+		const [head, survivor, loser] = await rememberPolicyMemories(
+			client,
+			entityId,
+			["head", "survivor", "loser"],
+		);
+		const definedHead = expectDefined(head);
+		const definedSurvivor = expectDefined(survivor);
+		const definedLoser = expectDefined(loser);
+
+		await client.consolidate({
+			scope: testScope(entityId),
+			survivorId: definedHead.id,
+			supersededIds: [definedSurvivor.id],
+		});
+		await expectMnemocyteError(
+			client.consolidate({
+				scope: testScope(entityId),
+				survivorId: definedSurvivor.id,
+				supersededIds: [definedLoser.id],
+			}),
+			"CONFLICT",
+			"CONSOLIDATION_CHANGED",
+		);
+
+		const memories = await listEntityMemories(client, entityId);
+		expect(
+			expectDefined(memories.find((memory) => memory.id === definedLoser.id))
+				.supersededBy,
+		).toBeNull();
+	}
+
+	{
 		const entityId = `${entityPrefix}_mixed`;
 		const [survivorA, survivorB, sameLoser, conflictLoser, activeLoser] =
 			await rememberPolicyMemories(client, entityId, [

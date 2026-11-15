@@ -209,9 +209,10 @@ was removed for 1.0. It runs in three steps:
 
 1. Shared validation: a valid scope, non-empty, distinct `supersededIds`,
    survivor not in the list.
-2. Preflight: survivor visible and not superseded (`"NOT_FOUND"` /
-   `"VALIDATION"`), every loser visible (`"NOT_FOUND"`), none points to a
-   different survivor (`"CONFLICT"`). Losers already pointing to this
+2. Preflight: survivor visible (`"NOT_FOUND"`) and not superseded
+   (`"CONFLICT"` / `"CONSOLIDATION_CHANGED"`, the error step 3 throws when
+   a race supersedes it), every loser visible (`"NOT_FOUND"`), none points
+   to a different survivor (`"CONFLICT"`). Losers already pointing to this
    survivor are skipped, so retries are no-ops.
 3. Store mutation. On Postgres it is one statement: a `WITH` query whose
    first step is `SELECT … FOR UPDATE` on survivor and losers in id order (a

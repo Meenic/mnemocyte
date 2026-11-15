@@ -147,6 +147,33 @@ describe("unknown keys on method inputs", () => {
 		},
 	);
 
+	test.each(Object.keys(INPUTS))(
+		"%s throws VALIDATION for a null or missing input on every client",
+		async (name) => {
+			for (const config of [{}, { namespace: NAMESPACE }]) {
+				const { memory, events, embedCalls } = setup(config);
+				const call = methodOf(memory, name);
+				for (const value of [null, undefined, "tea", ["tea"]]) {
+					const error = await expectMnemocyteError(call(value), "VALIDATION");
+					expect(error).not.toBeInstanceOf(TypeError);
+					expect(error.message).toBe(`${name} input must be an object.`);
+				}
+				expect(embedCalls()).toBe(0);
+				expect(
+					events
+						.filter((event) => event.phase === "error")
+						.map((event) => event.operation),
+				).toEqual([name, name, name, name]);
+				for (const value of [null, "tea"]) {
+					await expectMnemocyteError(
+						methodOf(memory.for(scope), name)(value),
+						"VALIDATION",
+					);
+				}
+			}
+		},
+	);
+
 	test("a known key still passes", async () => {
 		const { memory } = setup();
 		const bound = memory.for(scope);

@@ -80,6 +80,57 @@ describe("renderMemoryFile", () => {
 		expect([...blocks].sort()).toEqual([...templates].sort());
 	});
 
+	test("each openai-compatible template is the OpenAI one with the guide's Ollama embedder", async () => {
+		const guide = (
+			await readFile(resolve("docs/guide/getting-started.md"), "utf8")
+		).replaceAll("\r\n", "\n");
+		const ollama = [...guide.matchAll(/```ts\n([\s\S]*?)```/g)]
+			.map((match) => match[1] ?? "")
+			.filter((block) =>
+				block.includes("embedder: openaiCompatibleEmbedder({"),
+			);
+		expect(ollama).toHaveLength(1);
+		const [importLine = "", property = ""] = (ollama[0] ?? "").split("\n\n");
+		expect(importLine).toBe(
+			'import { openaiCompatibleEmbedder } from "mnemocyte/embedders";',
+		);
+		const indented = property
+			.trimEnd()
+			.split("\n")
+			.map((line) => `  ${line}`)
+			.join("\n");
+		for (const driver of DRIVERS) {
+			const openai = renderMemoryFile({ driver, namespace: "my-agent" });
+			const expected = openai
+				.replace(
+					'import { openaiEmbedder } from "mnemocyte/embedders";',
+					importLine,
+				)
+				.replace(
+					'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+					indented,
+				);
+			expect(expected).not.toBe(openai);
+			expect(
+				renderMemoryFile({
+					driver,
+					namespace: "my-agent",
+					embedder: "openai-compatible",
+				}),
+			).toBe(expected);
+		}
+	});
+
+	test("openai is the default embedder", () => {
+		expect(
+			renderMemoryFile({
+				driver: "postgres",
+				namespace: "my-agent",
+				embedder: "openai",
+			}),
+		).toBe(renderMemoryFile({ driver: "postgres", namespace: "my-agent" }));
+	});
+
 	test("quotes the namespace as a string literal", () => {
 		expect(
 			renderMemoryFile({ driver: "pg", namespace: "@acme/agent" }),
@@ -99,7 +150,14 @@ describe("planEnvChange", () => {
 		["OPENAI_API_KEY=sk-1", { action: "none" }],
 		["export OPENAI_API_KEY='sk-1'\n", { action: "none" }],
 	] as const)("%j", (content, change) => {
-		expect(planEnvChange(content)).toEqual(change);
+		expect(planEnvChange(content, "OPENAI_API_KEY")).toEqual(change);
+	});
+
+	test("adds the variable it is given", () => {
+		expect(planEnvChange("OPENAI_API_KEY=sk\n", "OTHER_KEY")).toEqual({
+			action: "append",
+			text: "OTHER_KEY=\n",
+		});
 	});
 });
 
@@ -234,6 +292,77 @@ describe("mnemocyte init", () => {
 				"  Put your OpenAI API key after OPENAI_API_KEY= in .env",
 				"",
 			].join("\n"),
+		);
+	});
+
+	test("--embedder openai-compatible writes the Ollama file and leaves .env alone", async () => {
+		await packageJson({
+			name: "local-bot",
+			type: "module",
+			dependencies: { postgres: "3" },
+		});
+		await writeFile(join(cwd, "pnpm-lock.yaml"), "");
+		const io = createTestIo(cwd);
+		expect(
+			await main(["init", "--embedder", "openai-compatible"], io, "1.2.3"),
+		).toBe(0);
+
+		expect(await read("memory.ts")).toBe(
+			renderMemoryFile({
+				driver: "postgres",
+				namespace: "local-bot",
+				embedder: "openai-compatible",
+			}),
+		);
+		expect(await exists(".env")).toBe(false);
+		expect(io.stdout()).toBe(
+			[
+				"Found postgres in package.json: using postgres.js.",
+				"Embedder: nomic-embed-text (768 dimensions) on a local Ollama at http://localhost:11434/v1.",
+				"Wrote memory.ts",
+				"",
+				"Next:",
+				"  Add DATABASE_URL=postgres://… to .env",
+				"  Pull the model: ollama pull nomic-embed-text (for another server, change baseURL, model and dimensions in memory.ts first)",
+				"  Create the schema: pnpm exec mnemocyte migrate",
+				"",
+			].join("\n"),
+		);
+		expect(io.stderr()).toBe("");
+	});
+
+	test("--embedder openai-compatible keeps an existing .env and memory file", async () => {
+		await packageJson({ type: "module" });
+		await writeFile(join(cwd, "memory.ts"), "// mine\n");
+		await writeFile(join(cwd, ".env"), "OTHER=1\n");
+		const io = createTestIo(cwd);
+		expect(
+			await main(["init", "--embedder=openai-compatible"], io, "1.2.3"),
+		).toBe(0);
+		expect(await read("memory.ts")).toBe("// mine\n");
+		expect(await read(".env")).toBe("OTHER=1\n");
+		expect(io.stdout()).toBe("memory.ts exists, left as is.\n");
+	});
+
+	test("--embedder openai-compatible --dry-run prints the file and writes nothing", async () => {
+		await packageJson({ name: "demo", type: "module" });
+		const io = createTestIo(cwd);
+		expect(
+			await main(
+				["init", "--dry-run", "--embedder", "openai-compatible"],
+				io,
+				"1.2.3",
+			),
+		).toBe(0);
+		expect(await exists("memory.ts")).toBe(false);
+		expect(await exists(".env")).toBe(false);
+		const out = io.stdout();
+		expect(out).toContain(
+			`Would write memory.ts:\n\n${renderMemoryFile({ driver: "in-memory", namespace: "demo", embedder: "openai-compatible" })}`,
+		);
+		expect(out).not.toContain(".env");
+		expect(out).toContain(
+			"Next, after a real run:\n  Pull the model: ollama pull nomic-embed-text",
 		);
 	});
 

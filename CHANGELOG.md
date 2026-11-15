@@ -78,6 +78,13 @@ marked **Breaking** in their entries. What semver covers is in
   output without the flag. Field names and codes are covered by semver;
   the `message` text is not. `--json` on `migrate` needs `--dry-run`. See
   [JSON output](docs/guide/cli.md#json-output).
+- **`mnemocyte init --embedder openai-compatible`.** Writes `memory.ts`
+  with the local Ollama embedder from the getting-started guide
+  (`nomic-embed-text`, 768 dimensions, at `http://localhost:11434/v1`)
+  instead of `openaiEmbedder`, and leaves `.env` alone, since a local
+  server needs no key. Before, `init` always wrote `openaiEmbedder` and
+  `OPENAI_API_KEY=`. Without the flag nothing changes. See
+  [A local Ollama](docs/guide/cli.md#a-local-ollama).
 
 ### Changed
 

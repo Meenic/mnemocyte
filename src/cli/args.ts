@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { assertMigrateDimensions } from "../memory/validation.js";
+import { INIT_EMBEDDERS, type InitEmbedder } from "./init.js";
 import { CliError, EXIT_USAGE } from "./io.js";
 
 export type CliCommand =
@@ -27,6 +28,8 @@ export interface CliArgs {
 	readonly json: boolean;
 	/** `--out`: where `sql` writes instead of standard output. */
 	readonly out?: string;
+	/** `--embedder`: the embedder `init` writes; `openai` when left out. */
+	readonly embedder?: InitEmbedder;
 }
 
 export const USAGE: string = `Usage: mnemocyte <command> [options]
@@ -44,6 +47,8 @@ Options
       --env-file <path>  Load this file instead of ./.env
   -y, --yes              migrate: enable pgvector without asking
       --dry-run          migrate, init: show what would run and change nothing
+      --embedder <name>  init: openai (default) or openai-compatible, such
+                         as a local Ollama
       --json             check, migrate --dry-run: print the result as JSON
       --out <file>       sql: write to a file instead of standard output
   -h, --help             Show this help
@@ -66,6 +71,7 @@ const COMMAND_FLAGS = {
 	"dry-run": ["migrate", "init"],
 	json: ["check", "migrate"],
 	out: ["sql"],
+	embedder: ["init"],
 } as const satisfies Record<string, readonly CliCommand[]>;
 
 /** Flags every command but `init` reads: it loads no memory file. */
@@ -123,7 +129,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	if (rest.length > 0) {
 		throw usageError(`Unexpected argument "${rest[0]}".`);
 	}
-	for (const flag of ["yes", "dry-run", "json", "out"] as const) {
+	for (const flag of ["yes", "dry-run", "json", "out", "embedder"] as const) {
 		const owners: readonly string[] = COMMAND_FLAGS[flag];
 		if (values[flag] !== undefined && !owners.includes(command)) {
 			throw usageError(
@@ -152,6 +158,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			throw usageError(`--${flag} needs a path.`);
 		}
 	}
+	const embedder = values.embedder;
+	if (embedder !== undefined && !isInitEmbedder(embedder)) {
+		throw usageError(
+			`Unknown embedder "${embedder}". Embedders: ${INIT_EMBEDDERS.join(", ")}.`,
+		);
+	}
 
 	return {
 		command: command as CliCommand,
@@ -166,7 +178,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			? {}
 			: { dimensions: parseDimensions(values.dimensions) }),
 		...(values.out === undefined ? {} : { out: values.out }),
+		...(embedder === undefined ? {} : { embedder }),
 	};
+}
+
+function isInitEmbedder(value: string): value is InitEmbedder {
+	return (INIT_EMBEDDERS as readonly string[]).includes(value);
 }
 
 function parse(argv: readonly string[]) {
@@ -182,6 +199,7 @@ function parse(argv: readonly string[]) {
 			"dry-run": { type: "boolean" },
 			json: { type: "boolean" },
 			out: { type: "string" },
+			embedder: { type: "string" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },
 		},

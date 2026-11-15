@@ -124,8 +124,8 @@ command.
 
 `initCommand` reads `package.json` and nothing else of the app: it loads
 no memory file and no `.env` into the environment, and it connects to
-nothing, so it takes only `--dry-run` (`--config`, `--env-file` and
-`--dimensions` are usage errors).
+nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
+`--env-file` and `--dimensions` are usage errors).
 
 - **Driver.** `chooseDriver` (pure) looks at the keys of `dependencies`
   and `devDependencies`. `drizzle-orm` wins and wraps `postgres`, else
@@ -142,6 +142,17 @@ nothing, so it takes only `--dry-run` (`--config`, `--env-file` and
   with namespace `"my-agent"`, are exactly those blocks, so the guide and
   `init` cannot drift. The namespace is `package.json` `name` through
   `JSON.stringify`.
+- **Embedder.** `--embedder` takes `openai` (the default) or
+  `openai-compatible` (`INIT_EMBEDDERS`; anything else exits 2, and the
+  flag on another command is a usage error). Each entry of `EMBEDDERS`
+  holds the import, the `embedder:` property, the `.env` variable (none
+  for `openai-compatible`) and its output lines. `renderMemoryFile` swaps
+  the `openaiEmbedder` import and property, so every driver template
+  works with every embedder. The guide has whole files only for
+  `openaiEmbedder`; for the other, the test takes the Ollama block of
+  getting-started (an import and an `embedder:` property) and checks that
+  each `openai-compatible` file is the `openai` one with those two
+  swapped. Decision 48 has the maintainer's choices.
 - **No overwrite.** `findMemoryFile` runs first: a file anywhere the CLI
   looks is kept, because a new `./memory.ts` would hide `src/memory.ts`
   from `migrate`. `memory.ts` and a new `.env` are then created with
@@ -151,17 +162,20 @@ nothing, so it takes only `--dry-run` (`--config`, `--env-file` and
 - **`.env`.** `planEnvChange` (pure) parses the file with `util.parseEnv`
   (from Node 20.12; no longer experimental from 22.21 and 24.10, and
   Node's own `.env` parser, so `export` and quotes read as
-  `process.loadEnvFile` reads them). A defined `OPENAI_API_KEY`, even
-  empty, means no change; otherwise one line is appended in the file's
-  own line ending (CRLF when the file has one), after a line break when
-  the last line has none. `.gitignore` is only read: a line `.env`,
-  `/.env`, `.env*`, `*.env` or `*` counts as ignoring it.
+  `process.loadEnvFile` reads them). A defined variable (`OPENAI_API_KEY`
+  for the default embedder), even empty, means no change; otherwise one
+  line is appended in the file's own line ending (CRLF when the file has
+  one), after a line break when the last line has none. With an embedder
+  that has no variable, `init` never writes `.env` and prints nothing
+  about it; it still reads it for the `DATABASE_URL` hint. `.gitignore` is only read: a line `.env`, `/.env`, `.env*`,
+  `*.env` or `*` counts as ignoring it.
 - **`"type"`.** Without `"type": "module"`, Node loads an ESM `memory.ts`
   through syntax detection and prints `MODULE_TYPELESS_PACKAGE_JSON` on
   every run (observed on 24.22), so `init` prints a note.
 - **Output.** One line per change or kept file on stdout, then a "Next"
   list built from what is missing: install hints, an empty key,
-  `DATABASE_URL` for a server driver when `.env` has none, `migrate`.
+  `DATABASE_URL` for a server driver when `.env` has none, the embedder's
+  own step (`ollama pull nomic-embed-text`), `migrate`.
   `--dry-run` prints the file's content instead of writing it. The exit
   code is 0 unless `package.json` is missing or not a JSON object (2).
 

@@ -129,8 +129,9 @@ embedder: openaiCompatibleEmbedder({
 }),
 ```
 
-Choose the embedder before step 5, because the schema is created for its
-dimensions. For an Ollama chat or extraction model, see
+`pnpm exec mnemocyte init --embedder openai-compatible` writes
+`memory.ts` with this embedder. Choose the embedder before step 5, because
+the schema is created for its dimensions. For an Ollama chat or extraction model, see
 [local models](./ai-sdk.md#local-models). Other providers are in the
 [embedders guide](./embedders.md).
 

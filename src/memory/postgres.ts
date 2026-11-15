@@ -524,10 +524,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				if (result.hiddenDependents) {
 					throw hiddenDependentsError();
 				}
+				// `isUuid` accepts either case. Postgres returns `uuid` in lower
+				// case, and the `"reject"` path echoes the input, so compare in
+				// lower case to list the memory once, as `Memory.id` spells it.
+				const memoryId = input.memoryId.toLowerCase();
 				return {
 					deletedIds: [
-						input.memoryId,
-						...result.deletedIds.filter((id) => id !== input.memoryId),
+						memoryId,
+						...result.deletedIds.filter((id) => id.toLowerCase() !== memoryId),
 					],
 					restoredIds: result.restoredIds,
 				};

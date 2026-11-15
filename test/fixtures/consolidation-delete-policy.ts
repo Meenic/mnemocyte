@@ -165,15 +165,15 @@ export async function exerciseConsolidationDeletePolicy(
 		});
 		await expect(
 			client.delete({ scope: testScope(entityId), id: ordinary.id }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({ deletedIds: [ordinary.id], restoredIds: [] });
 
 		const { survivor, loser } = await createConsolidatedPair(client, entityId);
 		await expect(
 			client.delete({ scope: testScope(entityId), id: loser.id }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({ deletedIds: [loser.id], restoredIds: [] });
 		await expect(
 			client.delete({ scope: testScope(entityId), id: survivor.id }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({ deletedIds: [survivor.id], restoredIds: [] });
 		await expect(
 			client.stats({ scope: testScope(entityId) }),
 		).resolves.toMatchObject({

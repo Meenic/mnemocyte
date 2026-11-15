@@ -116,7 +116,8 @@ formats and the token-budget guarantee and no longer echoes the query; see
 ## Maintenance
 
 This has landed: `prune` requiring a scope or `allNamespaces: true`,
-survivor-aware deletes, the k-nearest-neighbor `findDuplicates` and its
+survivor-aware deletes and their `DeleteResult` (decision 45), the
+k-nearest-neighbor `findDuplicates` and its
 pages (`experimental.findDuplicatesPage`, decision 35),
 `consolidate` on the stable client (decision 30) and audit retention
 through `pruneAuditLog` (decision 32); see
@@ -906,3 +907,22 @@ Dated 2026-10-26 unless noted.
     and called without a receiver, since a browser `fetch` called on another
     object throws. `aiSdkEmbedder` takes none: it receives a built model, and
     AI SDK providers already take `fetch` (`createGateway` for model strings).
+45. **Delete returns ids** (2026-11-15, landed): the maintainer chose, with
+    `feat/delete-result`, to have `delete` resolve with
+    `DeleteResult { deletedIds, restoredIds }` instead of `void`:
+    - Ids only, not the memories. Both stores already return them, and so
+      do the `memory.deleted` events; returning memories would mean
+      `RETURNING *` from both CTEs, and a `"delete"` over a large tree
+      would send all its content back to a caller who usually needs ids.
+      `get` fetches a restored memory when one is wanted.
+    - On the stable client, not under `experimental`: a stable method's
+      return value cannot move there without a second method, and the shape
+      matches the store and audit payloads already shipped.
+    - A 1.x minor. Code that awaits `delete` is unchanged; TypeScript
+      flags only code that restates the old type (a `Promise<void>`
+      annotation, a function typed to return one, a hand-written
+      `MemoryClient` fake), which the CHANGELOG names.
+    `deletedIds` lists the memory first, then the rest by id; `restoredIds`
+    is by id. The Postgres store lower-cases the requested id, since
+    `isUuid` accepts either case and the database returns lower case.
+    `forgetMemory` keeps returning `{ forgotten }`.

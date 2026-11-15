@@ -19,6 +19,16 @@
   `"CONFLICT"` and change nothing: a delete never touches memories the
   caller cannot see. That happens when a survivor shared by every agent has
   a loser that belongs to one agent.
+
+  It resolves with a `DeleteResult`, the store's `StoreDeleteResult`
+  copied: `deletedIds` is the memory, then the deleted dependents by id;
+  `restoredIds` is the restored dependents by id. On Postgres the
+  statement aggregates both from `RETURNING` with
+  `jsonb_agg(id ORDER BY id)` and the store moves the memory to the front;
+  in memory both sort with a string compare, which matches `uuid` order for
+  the lower-case ids the package writes. The shared fixture
+  `test/fixtures/survivor-deletes.ts` checks the exact arrays on both
+  backends, including a chain where the memory's id sorts last.
 - `deleteScope({ scope })` deletes every selected memory and the selected
   audit events; see [scopes.md](./scopes.md#deletescope).
 - `prune` and `deleteScope` reject with `"CONFLICT"` and delete nothing while

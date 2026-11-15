@@ -53,7 +53,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
   Postgres and not in memory (`search`, `list`, `context`). Make both
   backends agree without wrapping the column in `date_trunc`, which would
   stop an index on `created_at` from being used.
-- [ ] `feat/delete-result`: `delete` returns which dependents it restored or
+- [x] `feat/delete-result`: `delete` returns which dependents it restored or
   deleted, instead of `void`.
 - [ ] `feat/context-memories`: a context call that also returns the
   memories it used, for citations and debugging. Starts under

@@ -117,6 +117,43 @@ describe("Postgres single-statement writes", () => {
 		}
 	});
 
+	test("lists the deleted memory once when its id is upper case", async () => {
+		const memoryId = createUuidV7();
+		const dependentId = createUuidV7();
+		const input = {
+			visibility: testVisibility("alice"),
+			memoryId: memoryId.toUpperCase(),
+			now: new Date(),
+			audit: false,
+		};
+		const cascade = createRecordingExecutor([
+			{
+				found: true,
+				hidden: false,
+				deletedIds: JSON.stringify([memoryId, dependentId]),
+				restoredIds: "[]",
+			},
+		]);
+		await expect(
+			createPostgresStore(cascade.executor).deleteMemory({
+				...input,
+				dependents: "delete",
+			}),
+		).resolves.toEqual({
+			deletedIds: [memoryId, dependentId],
+			restoredIds: [],
+		});
+		const guarded = createRecordingExecutor([
+			{ matchedCount: 1, deletedCount: 1, hasDependents: false },
+		]);
+		await expect(
+			createPostgresStore(guarded.executor).deleteMemory({
+				...input,
+				dependents: "reject",
+			}),
+		).resolves.toEqual({ deletedIds: [memoryId], restoredIds: [] });
+	});
+
 	test("locks access rows in id order and leaves updated_at alone", async () => {
 		const { executor, queries } = createRecordingExecutor([]);
 		const store = createPostgresStore(executor);

@@ -79,10 +79,11 @@ describe("survivor-aware deletes (in-memory)", () => {
 describe("experimental", () => {
 	test("no longer has the consolidate alias", () => {
 		const memory = inMemoryClient();
-		expect(Object.keys(memory.experimental)).toEqual(["findDuplicatesPage"]);
-		expect(Object.keys(memory.for(testScope("alias")).experimental)).toEqual([
-			"findDuplicatesPage",
-		]);
+		const members = ["contextWithMemories", "findDuplicatesPage"];
+		expect(Object.keys(memory.experimental).sort()).toEqual(members);
+		expect(
+			Object.keys(memory.for(testScope("alias")).experimental).sort(),
+		).toEqual(members);
 	});
 });
 

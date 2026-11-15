@@ -219,6 +219,25 @@ describe("method inputs", () => {
 			...undefinedFilters,
 		});
 		expect(explicit).toBe(await memory.context({ scope, query: "tea" }));
+
+		const withMemories = await memory.experimental.contextWithMemories({
+			scope: undefinedScope,
+			query: "tea",
+			format: undefined,
+			maxTokens: undefined,
+			limit: undefined,
+			minScore: undefined,
+			trackAccess: undefined,
+			tokenCounter: undefined,
+			createdBefore: undefined,
+			createdAfter: undefined,
+			explain: undefined,
+			...undefinedFilters,
+		});
+		expect(withMemories.context).toBe(explicit);
+		expect(withMemories.memories.map((memory) => memory.explanation)).toEqual(
+			withMemories.memories.map(() => null),
+		);
 	});
 
 	test("findDuplicates and experimental.findDuplicatesPage", async () => {

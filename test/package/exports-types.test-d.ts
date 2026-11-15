@@ -19,6 +19,7 @@ import type {
 	AuditEventType,
 	BoundAddInput,
 	BoundContextInput,
+	BoundContextWithMemoriesInput,
 	BoundExperimentalMemoryClient,
 	BoundFindDuplicatesPageInput,
 	BoundGetInput,
@@ -30,6 +31,8 @@ import type {
 	ConsolidateResult,
 	ContextFormat,
 	ContextInput,
+	ContextWithMemoriesInput,
+	ContextWithMemoriesResult,
 	DeleteResult,
 	DependentsPolicy,
 	DuplicatePage,
@@ -53,6 +56,7 @@ import type {
 	MemoryKind,
 	MemoryScope,
 	MemoryStats,
+	MemoryWithScore,
 	MigrateInput,
 	MigrateResult,
 	MnemocyteErrorCode,
@@ -528,6 +532,25 @@ void duplicatePage.then(
 void experimental.findDuplicatesPage({ scope, limit: 10 });
 // @ts-expect-error The deprecated consolidate alias is gone; use consolidate.
 void experimental.consolidate;
+const contextWithMemoriesInput: ContextWithMemoriesInput = {
+	...context,
+	explain: true,
+};
+const contextWithMemories: Promise<ContextWithMemoriesResult> =
+	experimental.contextWithMemories(contextWithMemoriesInput);
+void contextWithMemories.then(
+	(result) =>
+		[result.context, result.memories, result.omitted] satisfies [
+			string,
+			MemoryWithScore[],
+			MemoryWithScore[],
+		],
+);
+// A context input is a valid input, without explain.
+void experimental.contextWithMemories(context);
+// @ts-expect-error context() takes no explain; contextWithMemories does.
+const contextExplained: ContextInput = { scope, query: "query", explain: true };
+void contextExplained;
 const consolidated: Promise<ConsolidateResult> =
 	client.consolidate(consolidate);
 const dependentsPolicy: DependentsPolicy = "restore";
@@ -780,6 +803,10 @@ const defaultedDeleted: Promise<DeleteResult> = defaulted.delete({
 	id: "mem_a",
 });
 void defaultedDeleted;
+void defaulted.experimental.contextWithMemories({
+	scope: { entityId: "entity" },
+	query: "query",
+});
 void defaulted.prune({ scope: { entityId: "entity" }, expired: true });
 void defaulted.stats({ allNamespaces: true });
 // @ts-expect-error Without a default namespace the scope needs one.
@@ -859,6 +886,16 @@ void boundExperimental.findDuplicatesPage(boundPageInput);
 void boundExperimental.findDuplicatesPage();
 // @ts-expect-error A bound client takes no scope.
 void boundExperimental.findDuplicatesPage({ scope });
+const boundContextMemoriesInput: BoundContextWithMemoriesInput = {
+	query: "query",
+	maxTokens: 500,
+	explain: true,
+};
+const boundContextMemories: Promise<ContextWithMemoriesResult> =
+	boundExperimental.contextWithMemories(boundContextMemoriesInput);
+void boundContextMemories;
+// @ts-expect-error A bound client takes no scope.
+void boundExperimental.contextWithMemories({ scope, query: "query" });
 const boundMigrate: MigrateInput = { memory: bound };
 // @ts-expect-error A bound client takes no scope.
 void bound.add({ scope, content: "content" });

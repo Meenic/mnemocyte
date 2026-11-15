@@ -250,7 +250,8 @@ uses top-level `await`, so `dist/` must not.
 Client methods: `add`, `addMany`, `search`, `get`, `list`, `update`,
 `delete`, `deleteScope`, `context`, `prune`, `findDuplicates`,
 `listAuditLog`, `pruneAuditLog`, `stats`, `consolidate` and `for`, plus
-`experimental.findDuplicatesPage`. There is no `close()`.
+`experimental.findDuplicatesPage` and `experimental.contextWithMemories`.
+There is no `close()`.
 `for(scope)` returns a `BoundMemoryClient` with the same methods minus
 `scope`, `allNamespaces` and `for`, plus a read-only `scope`.
 
@@ -388,7 +389,8 @@ Vitest has three projects (`vitest.config.ts`):
 - The Postgres contract (`test/contract/suite.ts`,
   `describeStoreContract`) runs the same checks through every driver:
   migrate, transactions and savepoints, value round trips, chunked
-  `addMany`, search and context, the scoped-API and bound-scope fixtures,
+  `addMany`, search and context, context with its memories, the
+  scoped-API and bound-scope fixtures,
   survivor-aware deletes, nearest-neighbor duplicates, audit payloads,
   audit pages and audit retention (fixtures shared with the in-memory unit
   tests), audit pages over hand-inserted events whose timestamps differ only

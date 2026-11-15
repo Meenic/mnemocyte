@@ -55,7 +55,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
   stop an index on `created_at` from being used.
 - [x] `feat/delete-result`: `delete` returns which dependents it restored or
   deleted, instead of `void`.
-- [ ] `feat/context-memories`: a context call that also returns the
+- [x] `feat/context-memories`: a context call that also returns the
   memories it used, for citations and debugging. Starts under
   `experimental` if the shape is not settled.
 

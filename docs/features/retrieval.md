@@ -177,3 +177,34 @@ omitted" line, and guarantees `tokenCounter.count(result) <= maxTokens`; if
 nothing fits it returns the longest fitting part of a truncation marker, or
 an empty string. The default counter is `ceil(length / 4)`; pass
 `tokenCounter` for a real tokenizer.
+
+### `experimental.contextWithMemories`
+
+`buildContext` (`context/builder.ts`) returns `{ context, memories,
+omitted }`; `context` returns only the string, so both methods render
+through the same code and give the same text for the same input
+(decision 46). The binary search keeps the best `N` results that fit, so
+`memories` is the first `N` search results and `omitted` the rest, in
+rank order. When not even the header with no memories fits, the text is
+the trimmed marker, `memories` is empty and `omitted` holds every result.
+
+Its input is `ContextInput` plus `explain`, which goes to the search
+(`contextInputToSearchInput`) and fills `explanation` on both lists; the
+key check uses its own key list, so `context` still rejects `explain`.
+It is observed as its own `"contextWithMemories"` operation, whose
+success event has `count` = `memories.length`; the search inside it emits
+its usual `"search"` events. The default-namespace and bound clients wrap
+it like `findDuplicatesPage`.
+
+Access tracking is unchanged: a tracked call marks every search result,
+the omitted ones included, as `context` does.
+
+**Tests.** `test/fixtures/context-memories.ts` runs on the in-memory
+backend (`test/context/context-memories.test.ts`) and in the Postgres
+contract suite, so on PGlite and, in integration, real Postgres through
+each driver: the text equals `context()`'s in each format, `memories`
+then `omitted` equals `search`'s ids, a tight budget fills `omitted` and
+its count is the omitted line's, a budget nothing fits omits everything,
+no match gives the empty result, `explain` fills both lists, `limit`
+reaches the search, the default-namespace and bound clients match, and
+bad inputs throw `"VALIDATION"`.

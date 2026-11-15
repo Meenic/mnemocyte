@@ -17,6 +17,7 @@ import {
 import { allPages, verifyAuditPages } from "../fixtures/audit-cursor.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
+import { verifyContextMemories } from "../fixtures/context-memories.js";
 import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
@@ -390,6 +391,19 @@ export function describeStoreContract(
 					store: storeInput(),
 					embedder: createContractEmbedder(),
 					audit: { enabled: true },
+				}),
+				namespace,
+			});
+		});
+
+		test("context with the memories it used", async () => {
+			const { memory, namespace } = client("ctxmem");
+			await verifyContextMemories({
+				memory,
+				defaulted: createMemory({
+					namespace,
+					store: storeInput(),
+					embedder: createContractEmbedder(),
 				}),
 				namespace,
 			});

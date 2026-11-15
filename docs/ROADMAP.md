@@ -29,11 +29,10 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 - [x] `feat/stats-signal`: `signal` on `stats`, and a bound
   `stats({ signal })` typed as `BoundStatsInput`. Bound `stats()` takes no
   input today and rejects any key.
-- [ ] `feat/input-aliases`: a `BoundPruneInput` alias (the bound `prune`
-  takes `PruneSelectors`, which also holds `dryRun` and `signal`; renaming
-  it would break), and aliases that give the two `purposes` types matching
-  names (`PurposeHints` from the embedders, `AiSdkPurposeOptions` from
-  `mnemocyte/ai-sdk`).
+- [x] `feat/input-aliases`: `BoundPruneInput` for the bound `prune` input
+  and `AiSdkPurposeHints` to match the embedders' `PurposeHints`; the old
+  names `PruneSelectors` and `AiSdkPurposeOptions` stay as deprecated
+  aliases through 1.x (decision 42).
 
 ## Embedders
 

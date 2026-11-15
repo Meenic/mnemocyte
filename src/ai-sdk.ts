@@ -13,11 +13,22 @@ export type AiSdkProviderOptions = NonNullable<
 	Parameters<typeof embedMany>[0]["providerOptions"]
 >;
 
-/** Provider options sent with queries and with documents. */
-export interface AiSdkPurposeOptions {
+/**
+ * Provider options sent with queries and with documents, the AI SDK
+ * counterpart of the embedders' `PurposeHints`.
+ */
+export interface AiSdkPurposeHints {
 	readonly query?: AiSdkProviderOptions | undefined;
 	readonly document?: AiSdkProviderOptions | undefined;
 }
+
+/**
+ * Provider options sent with queries and with documents.
+ *
+ * @deprecated Use {@link AiSdkPurposeHints}, the same type. Kept through
+ * 1.x.
+ */
+export type AiSdkPurposeOptions = AiSdkPurposeHints;
 
 export interface AiSdkEmbedderOptions {
 	/**
@@ -43,7 +54,7 @@ export interface AiSdkEmbedderOptions {
 	 * Voyage, including the text prefixes for `gemini-embedding-2`; a purpose
 	 * left out gets no hint.
 	 */
-	readonly purposes?: AiSdkPurposeOptions | undefined;
+	readonly purposes?: AiSdkPurposeHints | undefined;
 }
 
 interface KnownModel {
@@ -271,7 +282,7 @@ function mergeProviderOptions(
 	return Object.keys(merged).length === 0 ? undefined : merged;
 }
 
-interface PurposeHints {
+interface ResolvedPurposeHints {
 	/** Provider options for each purpose, merged over `providerOptions`. */
 	readonly options: Record<EmbeddingPurpose, AiSdkProviderOptions | undefined>;
 	/** Text put in front of every value for each purpose; `""` for none. */
@@ -281,7 +292,7 @@ interface PurposeHints {
 function resolvePurposeHints(
 	options: AiSdkEmbedderOptions,
 	{ id, provider }: ModelIdentity,
-): PurposeHints {
+): ResolvedPurposeHints {
 	const base = snapshotProviderOptions(
 		options.providerOptions,
 		"providerOptions",

@@ -9,6 +9,11 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-15
+
+A patch release: the hints that tell you how to run `migrate` now work in
+pnpm projects. No API change.
+
 ### Fixed
 
 - **The `migrate` hints no longer name `npx`.** In a project that `pnpm

@@ -1,27 +1,22 @@
 {
+	// The whole repository for the editor and `pnpm checktypes`: src, tests
+	// and config files. The build settings are in tsconfig.build.json.
+	"extends": "./tsconfig.build.json",
 	"compilerOptions": {
-		"rootDir": "./src",
-		"outDir": "./dist",
-
-		"module": "nodenext",
-		"target": "es2024",
-		"lib": ["es2024"],
+		"rootDir": ".",
+		"noEmit": true,
+		"declaration": false,
+		"isolatedDeclarations": false,
 		"types": ["node"],
-
-		"sourceMap": true,
-		"declaration": true,
-		"isolatedDeclarations": true,
-
-		"noUncheckedIndexedAccess": true,
-		"exactOptionalPropertyTypes": true,
-
-		"strict": true,
-		"verbatimModuleSyntax": true,
-		"isolatedModules": true,
-		"noUncheckedSideEffectImports": true,
-		"moduleDetection": "force",
-		"skipLibCheck": true
+		"paths": {
+			"mnemocyte": ["./src/index.ts"],
+			"mnemocyte/postgres": ["./src/postgres.ts"],
+			"mnemocyte/ai-sdk": ["./src/ai-sdk.ts"],
+			"mnemocyte/stores/*": ["./src/stores/*.ts"],
+			"mnemocyte/embedders": ["./src/embedders/index.ts"],
+			"mnemocyte/embedders/*": ["./src/embedders/*.ts"]
+		}
 	},
-	"include": ["src"],
-	"exclude": ["node_modules", "dist"]
+	"include": ["src", "test/**/*.ts", "vitest.config.ts", "tsdown.config.ts"],
+	"exclude": ["node_modules", "dist", "test/package/exports-types.test-d.ts"]
 }

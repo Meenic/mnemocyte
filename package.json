@@ -54,7 +54,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"dev": "tsdown --watch",
-		"checktypes": "tsc --noEmit && tsc --noEmit --project tsconfig.test.json",
+		"checktypes": "tsc --noEmit --project tsconfig.build.json && tsc --noEmit",
 		"test": "pnpm run test:ci",
 		"test:ci": "pnpm build && pnpm test:types && vitest run --project unit --project contract --project package",
 		"test:unit": "vitest run --project unit",

@@ -715,7 +715,8 @@ const { applied, adopted, extensionCreated } = await migrate({
 await migrate({ store: sql, dimensions: 1536 });
 ```
 
-Creates or upgrades the Postgres schema; `npx mnemocyte migrate` calls it.
+Creates or upgrades the Postgres schema; `pnpm exec mnemocyte migrate` calls
+it.
 `applied` lists the migrations this call ran, `adopted` those it found
 already applied in a schema installed with `psql` or drizzle-kit and
 recorded without running, and `extensionCreated` says whether it ran

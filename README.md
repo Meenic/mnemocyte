@@ -78,11 +78,11 @@ export const memory = createMemory({
 With `DATABASE_URL` and `OPENAI_API_KEY` in `.env`, create the schema:
 
 ```bash
-npx mnemocyte migrate
+pnpm exec mnemocyte migrate
 ```
 
 `migrate` reads `memory.ts` and applies only what is missing, so run it on
-every deploy. `npx mnemocyte init` writes `memory.ts` for the driver in
+every deploy. `pnpm exec mnemocyte init` writes `memory.ts` for the driver in
 your `package.json`: postgres.js, node-postgres, PGlite or Drizzle.
 Postgres needs pgvector 0.8.0 or later. See the
 [getting started guide](https://github.com/Meenic/mnemocyte/blob/main/docs/guide/getting-started.md)

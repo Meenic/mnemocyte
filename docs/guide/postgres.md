@@ -29,7 +29,7 @@ the `migrate()` function, or by applying the bundled SQL files yourself.
 Run the command that ships with the package, in your project:
 
 ```bash
-npx mnemocyte migrate
+pnpm exec mnemocyte migrate
 ```
 
 It loads the `memory.ts` where your app creates its client, so it migrates
@@ -37,14 +37,16 @@ the database your app uses at your embedder's dimensions. The same command
 upgrades an existing installation, so run it on every deploy. It asks
 before it enables pgvector; `--yes` answers the question in CI.
 
-`npx mnemocyte check` reports the pgvector version, the applied migrations
-and the dimensions, and exits 1 when something is wrong. Where the command
-looks for `memory.ts`, and every flag, are in the [CLI guide](./cli.md).
+`pnpm exec mnemocyte check` reports the pgvector version, the applied
+migrations and the dimensions, and exits 1 when something is wrong. Where
+the command looks for `memory.ts`, and every flag, are in the
+[CLI guide](./cli.md).
 
 Until the schema is installed or upgraded, a call that needs a missing
 Mnemocyte table or column throws `"MIGRATION"`. The message repeats the
 driver's text (for example `relation "mnemocyte_memories" does not exist`),
-says to run `npx mnemocyte migrate` and links here; the driver error is the
+says to run `npx mnemocyte migrate` (in a pnpm project,
+`pnpm exec mnemocyte migrate`) and links here; the driver error is the
 `cause`.
 
 ### Migrate from code
@@ -93,10 +95,10 @@ psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 
 ### Check a deploy with `dryRun`
 
-`npx mnemocyte migrate --dry-run` prints what a run would apply. In code,
-`dryRun: true` reads the database in one read-only transaction and returns
-the `applied`, `adopted` and `extensionCreated` a real run would return,
-and changes nothing:
+`pnpm exec mnemocyte migrate --dry-run` prints what a run would apply. In
+code, `dryRun: true` reads the database in one read-only transaction and
+returns the `applied`, `adopted` and `extensionCreated` a real run would
+return, and changes nothing:
 
 ```ts
 const plan = await migrate({ memory, createExtension: true, dryRun: true });
@@ -158,7 +160,7 @@ no Mnemocyte tables yet. For another size, render the schema with
 `mnemocyte sql` and apply that file instead:
 
 ```bash
-npx mnemocyte sql --dimensions 768 --out migrations/0000_initial.768.sql
+pnpm exec mnemocyte sql --dimensions 768 --out migrations/0000_initial.768.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_initial.768.sql
 ```
 
@@ -325,9 +327,9 @@ and `totalCount`.
 
 ## Upgrade an existing installation
 
-Run `npx mnemocyte migrate` (or `migrate({ memory })` in code) after
+Run `pnpm exec mnemocyte migrate` (or `migrate({ memory })` in code) after
 upgrading the package. It applies the pending migrations, and adopts an
-installation that was set up with `psql` first. `npx mnemocyte check`
+installation that was set up with `psql` first. `pnpm exec mnemocyte check`
 exits 1 while migrations are pending. The code changes between releases
 are in [upgrading.md](./upgrading.md).
 

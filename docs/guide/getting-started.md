@@ -4,8 +4,9 @@ This guide goes from an empty folder to memories in a prompt. You install
 Mnemocyte, start Postgres, write a `memory.ts`, create the schema, then
 store memories for a user and render them with `context()`.
 
-You need Node.js 22.18 or newer, pnpm (npm works the same), Docker and an
-OpenAI API key. To use a local model, see
+You need Node.js 22.18 or newer, pnpm, Docker and an OpenAI API key. With
+npm, install with `npm install` and run the `mnemocyte` command with
+`npx mnemocyte`. To use a local model, see
 [Use Ollama instead of OpenAI](#use-ollama-instead-of-openai). To try
 Mnemocyte without a database, see
 [Prototype without a database](#prototype-without-a-database).
@@ -104,9 +105,9 @@ export const memory = createMemory({
 - The database client stays yours. A script ends it when it is done, and a
   server keeps it open. The memory client has no `close()`.
 
-`npx mnemocyte init` can write this file for you. It picks the version for
-the driver in your `package.json` and never overwrites a file; see
-[`init`](./cli.md#init).
+`pnpm exec mnemocyte init` can write this file for you. It picks the
+version for the driver in your `package.json` and never overwrites a file;
+see [`init`](./cli.md#init).
 
 ### Use Ollama instead of OpenAI
 
@@ -139,7 +140,7 @@ Mnemocyte never creates tables on its own. Create them with the
 `mnemocyte` command that comes with the package:
 
 ```bash
-npx mnemocyte migrate
+pnpm exec mnemocyte migrate
 ```
 
 It loads `memory.ts` for your database client and your embedder's
@@ -254,7 +255,7 @@ Add `agentId` or `sessionId` to narrow the scope; see
 
 ## Other drivers
 
-Replace `memory.ts` with one of these; `npx mnemocyte migrate` stays the
+Replace `memory.ts` with one of these; `pnpm exec mnemocyte migrate` stays the
 same. In `index.ts`, import the client the file exports and end it the
 driver's way: `pool.end()` for node-postgres, `sql.end()` or `pool.end()`
 for Drizzle, and `client.close()` or `db.close()` for PGlite. How
@@ -385,9 +386,9 @@ export const memory = createMemory({
 });
 ```
 
-A data folder opens in one process at a time, so run `npx mnemocyte migrate`
-while the app is stopped, or call `migrate({ memory, createExtension: true })`
-when the app starts.
+A data folder opens in one process at a time, so run
+`pnpm exec mnemocyte migrate` while the app is stopped, or call
+`migrate({ memory, createExtension: true })` when the app starts.
 
 ## Prototype without a database
 

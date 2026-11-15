@@ -21,6 +21,10 @@ marked **Breaking** in their entries. What semver covers is in
   `guide/postgres.md`. The 0.x notes moved to `guide/upgrading.md`, and
   `guide/getting-started.md` says why a script ends its database client.
   Every guide file name and every linked anchor still works.
+- **The guides run the command with `pnpm exec mnemocyte`.** In a project
+  that `pnpm init` created, `package.json` names pnpm in `devEngines`, and
+  npm's `npx` refuses to run there with `EBADDEVENGINES`. `guide/cli.md`
+  lists the command for pnpm, npm and Yarn.
 
 ## [1.0.0-rc.2] - 2026-11-15
 

@@ -5,7 +5,7 @@ release changed that existing code or data notices; read the ones between
 your version and 1.0, in order. The full list of changes is in the
 [changelog](../../CHANGELOG.md).
 
-After upgrading the package, run `npx mnemocyte migrate` (or
+After upgrading the package, run `pnpm exec mnemocyte migrate` (or
 `migrate({ memory })`) in every deploy. Only 0.6 changes the schema; later
 releases add no migration. See
 [upgrade an existing installation](./postgres.md#upgrade-an-existing-installation)
@@ -155,7 +155,7 @@ To apply it with `psql` instead of `migrate`, see
 - **`forgetMemory`** deletes with `dependents: "delete"`.
 - **`consolidate` leaves `experimental`.** `experimental.consolidate` is
   deprecated; call `consolidate`.
-- **The `mnemocyte` command.** `npx mnemocyte migrate` replaces a
+- **The `mnemocyte` command.** `pnpm exec mnemocyte migrate` replaces a
   hand-written migrate script; see the [CLI guide](./cli.md).
 
 ## 0.8 → 1.0
@@ -241,7 +241,7 @@ To apply it with `psql` instead of `migrate`, see
   `experimental.consolidate` (call `consolidate`).
 - **Package files.** `migrations/render-initial.mjs`, the schema template
   and `migrations/meta/_journal.json` are no longer shipped; run
-  `npx mnemocyte sql --dimensions <n>` for the fresh-install schema. The
+  `pnpm exec mnemocyte sql --dimensions <n>` for the fresh-install schema. The
   numbered SQL files and `fresh-install.sql` still ship.
 
 Until 1.0.0 is published, the release candidates install with

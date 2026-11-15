@@ -56,6 +56,9 @@ export default defineConfig({
 					name: "contract",
 					include: ["test/contract/**/*.test.ts"],
 					testTimeout: 60_000,
+					// The files open PGlite in `beforeAll` / `beforeEach`, which takes
+					// over Vitest's 10 s hook default under load.
+					hookTimeout: 60_000,
 				},
 			},
 			{

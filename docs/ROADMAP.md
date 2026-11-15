@@ -367,7 +367,7 @@ bundled with esbuild. It adds two items. rc.2 is tagged once both land and
 the Ollama app passes again against the packed branch. Where an item says
 "the maintainer decides", the review's recommendation follows.
 
-- [ ] `chore/contract-hook-timeout`: `test/contract/cli.test.ts` opens a
+- [x] `chore/contract-hook-timeout`: `test/contract/cli.test.ts` opens a
   PGlite in `beforeEach`, and the `contract` project raises `testTimeout`
   to 60 s but leaves `hookTimeout` at Vitest's 10 s. The first test's hook
   takes 10–11 s under load, so `pnpm test` failed in 7 of 15 runs on

@@ -297,6 +297,34 @@ describe("lazy Postgres package loading", () => {
 			});
 			expect(cjs.stdout).toBe("packed-client-store-ok");
 
+			// The manifest is exported, so tools can read the installed version
+			// with require() and with a JSON import.
+			const { name, version } = JSON.parse(
+				await readFile(resolve("package.json"), "utf8"),
+			);
+			const manifestCjs = join(consumer, "manifest.cjs");
+			await writeFile(
+				manifestCjs,
+				`const { name, version } = require("mnemocyte/package.json");
+process.stdout.write(name + "@" + version);`,
+				"utf8",
+			);
+			const manifestMjs = join(consumer, "manifest.mjs");
+			await writeFile(
+				manifestMjs,
+				`import manifest from "mnemocyte/package.json" with { type: "json" };
+process.stdout.write(manifest.name + "@" + manifest.version);`,
+				"utf8",
+			);
+			for (const script of [manifestCjs, manifestMjs]) {
+				const manifest = await execFileAsync(process.execPath, [script], {
+					cwd: consumer,
+					env: { ...process.env, NODE_PATH: "" },
+					windowsHide: true,
+				});
+				expect(manifest.stdout).toBe(`${name}@${version}`);
+			}
+
 			// With the ai peer installed, the subpath embeds through an AI SDK
 			// model and throws the root entry's error classes. A junction needs
 			// no symlink rights on Windows; ai resolves its own dependencies

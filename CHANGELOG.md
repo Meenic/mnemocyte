@@ -23,6 +23,11 @@ marked **Breaking** in their entries. What semver covers is in
   and content that is only the key. A changed kind or importance under the
   same key still updates. Its prompt also says a key names the topic, not
   the value.
+- **`mnemocyte init` no longer writes a `closeDatabase()` helper.** The
+  `memory.ts` it writes exports the database client (`sql`, `pool`, `db` or
+  `client`) next to `memory`, and a script ends it the driver's way, as the
+  getting-started guide now shows. A file written by an earlier `init`
+  keeps working.
 - **The middleware keeps a failed `context()` for that query**: it reaches
   `onError` once, and the AI SDK's retries and later tool steps run without
   memory instead of calling the embedder again. A new query tries again;

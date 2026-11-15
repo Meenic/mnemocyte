@@ -108,8 +108,6 @@ interface Template {
 	readonly setup?: string;
 	/** The `store` expression, or none for the in-memory backend. */
 	readonly store?: string;
-	/** The body of `closeDatabase()`, or none. */
-	readonly close?: string;
 }
 
 const MNEMOCYTE_IMPORTS = [
@@ -117,11 +115,12 @@ const MNEMOCYTE_IMPORTS = [
 	'import { openaiEmbedder } from "mnemocyte/embedders";',
 ];
 
-const POSTGRES_SETUP = "const sql = postgres(process.env.DATABASE_URL!);";
+const POSTGRES_SETUP =
+	"export const sql = postgres(process.env.DATABASE_URL!);";
 const PG_SETUP =
-	"const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });";
+	"export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });";
 const PGLITE_SETUP = (name: string) =>
-	`const ${name} = await PGlite.create({
+	`export const ${name} = await PGlite.create({
   dataDir: "./memory-data",
   extensions: { vector },
 });`;
@@ -141,7 +140,6 @@ const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
 		],
 		setup: `${POSTGRES_SETUP}\nexport const db = drizzle({ client: sql });`,
 		store: "db",
-		close: "await sql.end();",
 	},
 	"drizzle-pg": {
 		imports: [
@@ -151,7 +149,6 @@ const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
 		],
 		setup: `${PG_SETUP}\nexport const db = drizzle({ client: pool });`,
 		store: "db",
-		close: "await pool.end();",
 	},
 	"drizzle-pglite": {
 		imports: [
@@ -161,25 +158,21 @@ const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
 		],
 		setup: `${PGLITE_SETUP("client")}\nexport const db = drizzle({ client });`,
 		store: "db",
-		close: "await client.close();",
 	},
 	postgres: {
 		imports: [...MNEMOCYTE_IMPORTS, 'import postgres from "postgres";'],
 		setup: POSTGRES_SETUP,
 		store: "sql",
-		close: "await sql.end();",
 	},
 	pg: {
 		imports: [...MNEMOCYTE_IMPORTS, 'import pg from "pg";'],
 		setup: PG_SETUP,
 		store: "pool",
-		close: "await pool.end();",
 	},
 	pglite: {
 		imports: [...PGLITE_IMPORTS, ...MNEMOCYTE_IMPORTS],
 		setup: PGLITE_SETUP("db"),
 		store: "db",
-		close: "await db.close();",
 	},
 	"in-memory": { imports: MNEMOCYTE_IMPORTS },
 };
@@ -189,7 +182,7 @@ export function renderMemoryFile(input: {
 	driver: InitDriver;
 	namespace: string;
 }): string {
-	const { imports, setup, store, close } = TEMPLATES[input.driver];
+	const { imports, setup, store } = TEMPLATES[input.driver];
 	const lines = [
 		imports.join("\n"),
 		"",
@@ -199,10 +192,6 @@ export function renderMemoryFile(input: {
 		...(store === undefined ? [] : [`  store: ${store},`]),
 		'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
 		"});",
-		"",
-		close === undefined
-			? "export async function closeDatabase() {}"
-			: `export async function closeDatabase() {\n  ${close}\n}`,
 	];
 	return `${lines.join("\n")}\n`;
 }

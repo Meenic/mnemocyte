@@ -57,6 +57,18 @@ marked **Breaking** in their entries. What semver covers is in
 
 ### Changed
 
+- **`delete` returns what it changed.** It used to resolve with nothing;
+  now it resolves with a `DeleteResult`, on the bound client too:
+  `deletedIds` lists the memory and, with `dependents: "delete"`, the
+  memories deleted with it, and `restoredIds` lists the memories
+  `dependents: "restore"` made active again.
+  `const { restoredIds } = await memory.delete({ scope, id, dependents: "restore" })`
+  tells you which memories show up in search again. Code that awaits
+  `delete` keeps working. TypeScript now flags code that writes the old
+  return type down: a `Promise<void>` annotation on the call or on a
+  function returning it, or a hand-written `MemoryClient` fake whose
+  `delete` returns nothing. Return a `DeleteResult` there, or
+  `await` the call inside an `async` function.
 - **Invalid `headers` throw `"CONFIG"` when the embedder is created.** A
   header name or value HTTP does not allow, such as a name with a space or
   a value with a line break, used to fail with a `TypeError` from `fetch`

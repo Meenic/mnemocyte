@@ -425,8 +425,18 @@ to those memories:
 | `"delete"` | Deletes the survivor and every memory consolidated into it, including memories consolidated into those. |
 
 ```ts
-await memory.delete({ scope, id: survivor.id, dependents: "delete" });
+const { deletedIds, restoredIds } = await memory.delete({
+  scope,
+  id: survivor.id,
+  dependents: "restore",
+});
 ```
+
+`delete` resolves with what it changed. `deletedIds` holds the memory
+first, then any memories deleted with it (`"delete"`) in id order.
+`restoredIds` holds the memories made active again (`"restore"`) in id
+order, and is empty with the other policies. A memory without dependents
+gives `{ deletedIds: [id], restoredIds: [] }` under every policy.
 
 With `"restore"` or `"delete"`, a dependent that is not visible at the
 call's scope makes the call throw `"CONFLICT"` and change nothing; for

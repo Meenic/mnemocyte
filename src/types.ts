@@ -950,6 +950,23 @@ export interface DeleteInput<DefaultNamespace extends boolean = false> {
 export type DependentsPolicy = "reject" | "restore" | "delete";
 
 /**
+ * Result of {@link MemoryClient.delete}: the memories it deleted and the
+ * dependents it made active again. Both arrays are always present.
+ */
+export interface DeleteResult {
+	/**
+	 * Ids of the deleted memories: the memory asked for first, then the
+	 * dependents deleted with it (`dependents: "delete"`), ordered by id.
+	 */
+	deletedIds: string[];
+	/**
+	 * Ids of the dependents made active again (`dependents: "restore"`),
+	 * ordered by id. Empty for the other policies.
+	 */
+	restoredIds: string[];
+}
+
+/**
  * Input for {@link MemoryClient.deleteScope}. Here an omitted `agentId` or
  * `sessionId` matches any value: `{ namespace, entityId }` deletes everything
  * about the entity across all agents and sessions.
@@ -1480,14 +1497,15 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	update(input: UpdateInput<DefaultNamespace>): Promise<Memory>;
 	/**
 	 * Delete one memory. When it is a consolidation survivor, `dependents`
-	 * says what happens to the memories consolidated into it.
+	 * says what happens to the memories consolidated into it. Resolves with
+	 * the ids it deleted and restored.
 	 *
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
 	 * visible at the scope; `"CONFLICT"` when it is a consolidation survivor
 	 * and `dependents` is `"reject"` (the default), or a dependent is not
 	 * visible at the scope. Nothing is deleted on any error.
 	 */
-	delete(input: DeleteInput<DefaultNamespace>): Promise<void>;
+	delete(input: DeleteInput<DefaultNamespace>): Promise<DeleteResult>;
 	/**
 	 * Delete every memory in a scope, and the scope's audit events, in one
 	 * statement. `{ namespace, entityId }` erases the entity across all agents
@@ -1694,7 +1712,7 @@ export interface BoundMemoryClient {
 	/** {@link MemoryClient.update} at the bound scope. */
 	update(input: BoundUpdateInput): Promise<Memory>;
 	/** {@link MemoryClient.delete} at the bound scope. */
-	delete(input: BoundDeleteInput): Promise<void>;
+	delete(input: BoundDeleteInput): Promise<DeleteResult>;
 	/**
 	 * Delete every memory in the bound scope, and its audit events. A scope
 	 * without `agentId` or `sessionId` erases the entity across all agents

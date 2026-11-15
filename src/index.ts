@@ -77,6 +77,7 @@ export type {
 	ContextFormat,
 	ContextInput,
 	DeleteInput,
+	DeleteResult,
 	DeleteScopeInput,
 	DeleteScopeResult,
 	DependentsPolicy,

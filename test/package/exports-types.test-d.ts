@@ -30,6 +30,7 @@ import type {
 	ConsolidateResult,
 	ContextFormat,
 	ContextInput,
+	DeleteResult,
 	DependentsPolicy,
 	DuplicatePage,
 	DuplicatePair,
@@ -531,7 +532,18 @@ const consolidated: Promise<ConsolidateResult> =
 	client.consolidate(consolidate);
 const dependentsPolicy: DependentsPolicy = "restore";
 void client.delete({ scope, id: "mem_a", dependents: dependentsPolicy });
-void client.delete({ scope, id: "mem_a", dependents: "delete" });
+const deleted: Promise<DeleteResult> = client.delete({
+	scope,
+	id: "mem_a",
+	dependents: "delete",
+});
+void deleted.then(({ deletedIds, restoredIds }) => {
+	const ids: string[] = [...deletedIds, ...restoredIds];
+	void ids;
+});
+// @ts-expect-error delete resolves with its result, not void.
+const deletedVoid: Promise<void> = client.delete({ scope, id: "mem_a" });
+void deletedVoid;
 // @ts-expect-error dependents is one of three policies.
 void client.delete({ scope, id: "mem_a", dependents: "cascade" });
 const openaiOptions: OpenAIEmbedderOptions = {
@@ -763,6 +775,11 @@ void defaulted.add({
 	content: "c",
 });
 void defaulted.stats({ scope: {} });
+const defaultedDeleted: Promise<DeleteResult> = defaulted.delete({
+	scope: { entityId: "entity" },
+	id: "mem_a",
+});
+void defaultedDeleted;
 void defaulted.prune({ scope: { entityId: "entity" }, expired: true });
 void defaulted.stats({ allNamespaces: true });
 // @ts-expect-error Without a default namespace the scope needs one.
@@ -829,7 +846,11 @@ const boundConsolidated: Promise<ConsolidateResult> = bound.consolidate({
 	supersededIds: ["b"],
 });
 void boundConsolidated;
-void bound.delete({ id: "a", dependents: "reject" });
+const boundDeleted: Promise<DeleteResult> = bound.delete({
+	id: "a",
+	dependents: "reject",
+});
+void boundDeleted;
 const boundExperimental: BoundExperimentalMemoryClient = bound.experimental;
 // @ts-expect-error The consolidate alias is gone; use bound.consolidate.
 void boundExperimental.consolidate;

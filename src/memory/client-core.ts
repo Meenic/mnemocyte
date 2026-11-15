@@ -761,6 +761,10 @@ export function createMemoryClient(
 							code: "NOT_FOUND",
 						});
 					}
+					return {
+						deletedIds: [...result.deletedIds],
+						restoredIds: [...result.restoredIds],
+					};
 				},
 			);
 		},

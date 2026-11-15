@@ -80,7 +80,7 @@ export async function verifySurvivorDeletes(
 			const lone = await client.add({ scope, content: `Lone ${dependents}.` });
 			await expect(
 				client.delete({ scope, id: lone.id, dependents }),
-			).resolves.toBeUndefined();
+			).resolves.toEqual({ deletedIds: [lone.id], restoredIds: [] });
 			await expect(client.get({ scope, id: lone.id })).resolves.toBeNull();
 		}
 	}
@@ -97,7 +97,10 @@ export async function verifySurvivorDeletes(
 		});
 		await expect(
 			client.delete({ scope, id: survivor.id, dependents: "restore" }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({
+			deletedIds: [survivor.id],
+			restoredIds: [loser.id, other.id].sort(),
+		});
 		const remaining = await allMemories(client, scope);
 		expect(remaining.map((memory) => memory.id).sort()).toEqual(
 			[loser.id, other.id].sort(),
@@ -132,9 +135,14 @@ export async function verifySurvivorDeletes(
 			"CONFLICT",
 			"HAS_DEPENDENTS",
 		);
+		// The memory asked for comes first, though its id sorts last (UUIDv7),
+		// then the rest of the tree by id.
 		await expect(
 			client.delete({ scope, id: outer.id, dependents: "delete" }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({
+			deletedIds: [outer.id, ...[inner.id, innerLoser.id].sort()],
+			restoredIds: [],
+		});
 		expect(await idsOf(client, scope)).toEqual([unrelated.id]);
 		await expect(client.get({ scope, id: innerLoser.id })).resolves.toBeNull();
 	}
@@ -174,7 +182,10 @@ export async function verifySurvivorDeletes(
 				id: survivor.id,
 				dependents: "delete",
 			}),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({
+			deletedIds: [survivor.id, loser.id],
+			restoredIds: [],
+		});
 		expect(await idsOf(client, agentScope)).toEqual([]);
 	}
 
@@ -219,7 +230,13 @@ export async function verifySurvivorDeletes(
 		).resolves.toMatchObject({ supersededCount: 1 });
 		await expect(
 			bound.delete({ id: expectDefined(survivor).id, dependents: "delete" }),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({
+			deletedIds: [
+				expectDefined(survivor).id,
+				...[expectDefined(loser).id, expectDefined(late).id].sort(),
+			],
+			restoredIds: [],
+		});
 		await expect(bound.stats()).resolves.toMatchObject({ memoryCount: 0 });
 	}
 

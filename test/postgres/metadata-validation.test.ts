@@ -355,7 +355,7 @@ describe("Postgres metadata validation", () => {
 				"MIGRATION",
 				"SCHEMA_MISSING",
 			);
-			expect(error.message).toContain("Run npx mnemocyte migrate");
+			expect(error.message).toContain("Run mnemocyte migrate");
 			expect(error.message).not.toContain(".sql");
 			expect(error.cause).toEqual({ code });
 			expect(embedCalls).toEqual([]);

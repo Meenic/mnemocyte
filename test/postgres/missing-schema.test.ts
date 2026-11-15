@@ -54,7 +54,7 @@ function causeCode(error: MnemocyteError): unknown {
 
 function expectMigrateHint(error: MnemocyteError, sqlstate: string): void {
 	expect(error.message).toMatch(
-		/^Mnemocyte's tables are missing or out of date in this database \(.+\)\. Run npx mnemocyte migrate to create or upgrade them: /,
+		/^Mnemocyte's tables are missing or out of date in this database \(.+\)\. Run mnemocyte migrate to create or upgrade them: /,
 	);
 	expect(error.message.endsWith(INSTALL_GUIDE)).toBe(true);
 	expect(error.message).not.toContain(".sql");

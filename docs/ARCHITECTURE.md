@@ -183,7 +183,7 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
   driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env`
   (decision 37); see [features/cli.md](./features/cli.md#init).
 - **Missing-schema errors.** Landed: the `"MIGRATION"` error for a missing
-  table or column names `npx mnemocyte migrate` and links the Postgres
+  table or column names `mnemocyte migrate` and links the Postgres
   guide, as described in [features/postgres.md](./features/postgres.md#errors).
 - **Getting started.** Landed as
   [guide/getting-started.md](./guide/getting-started.md), which creates the

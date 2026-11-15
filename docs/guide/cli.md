@@ -118,11 +118,13 @@ Created .env with OPENAI_API_KEY=
 Next:
   Put your OpenAI API key after OPENAI_API_KEY= in .env
   Add DATABASE_URL=postgres://… to .env
-  Create the schema: npx mnemocyte migrate
+  Create the schema: pnpm exec mnemocyte migrate
 ```
 
-The last hint always names `npx`; in a pnpm project, run
-`pnpm exec mnemocyte migrate`.
+The last hint names the runner of your project's package manager. `init`
+takes it from `devEngines.packageManager` or `packageManager` in
+`package.json`, else from the lockfile, else it names `npx`. The example
+above is from a pnpm project.
 
 - **The driver** comes from `dependencies` and `devDependencies`. With
   `drizzle-orm`, the file uses Drizzle over the driver next to it:

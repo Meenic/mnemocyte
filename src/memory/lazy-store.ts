@@ -37,6 +37,8 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 	return {
 		backend: input.backend,
 		migrate: async (...args) => (await load()).migrate(...args),
+		setTextSearchConfig: async (...args) =>
+			(await load()).setTextSearchConfig(...args),
 		inspectInstallation: async (...args) =>
 			(await load()).inspectInstallation(...args),
 		ensureEmbeddingCompatibility: async (...args) =>

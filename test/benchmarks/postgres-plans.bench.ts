@@ -7,6 +7,7 @@ import {
 	type BenchContext,
 	describeServer,
 	halfvecPhase,
+	textSearchPhase,
 	vectorPhase,
 } from "./postgres/phases.js";
 import { Report } from "./postgres/report.js";
@@ -22,7 +23,8 @@ const disposable = process.env.MNEMOCYTE_BENCH_DISPOSABLE === "1";
 const scale = Number(process.env.MNEMOCYTE_BENCH_SCALE ?? "1");
 const runs = Number(process.env.MNEMOCYTE_BENCH_RUNS ?? "5");
 const phases = (
-	process.env.MNEMOCYTE_BENCH_PHASES ?? "halfvec,vector,audit,history"
+	process.env.MNEMOCYTE_BENCH_PHASES ??
+	"halfvec,vector,audit,history,textsearch"
 )
 	.split(",")
 	.map((phase) => phase.trim());
@@ -88,6 +90,15 @@ describe.skipIf(!databaseUrl)("Postgres index plans", () => {
 		async () => {
 			await auditHistoryPhase(ctx);
 			ctx.report.flush("Audit history");
+		},
+	);
+
+	test.runIf(phases.includes("textsearch"))(
+		"setTextSearchConfig: the rewrite and keyword search after it",
+		{ timeout: 3 * HOUR },
+		async () => {
+			await textSearchPhase(ctx);
+			ctx.report.flush("Text search configuration");
 		},
 	);
 

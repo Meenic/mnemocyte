@@ -344,6 +344,16 @@ interface MigrateOptions {
 	 */
 	createExtension?: boolean | undefined;
 	/**
+	 * Postgres text search configuration for keyword search, such as
+	 * `"english"` (the default), `"simple"` or `"german"`; the database's
+	 * `pg_ts_config` lists them. A fresh install builds `content_tsv` with
+	 * it. On an existing installation it is optional, and a configuration
+	 * that differs from the installed one rejects with `"CONFIG"` before
+	 * anything runs: {@link setTextSearchConfig} changes it. An unknown name
+	 * rejects with `"VALIDATION"`. The in-memory store ignores it.
+	 */
+	textSearchConfig?: string | undefined;
+	/**
 	 * Inspect the database as a real run would and return the `applied`,
 	 * `adopted` and `extensionCreated` it would produce, changing nothing.
 	 * It rejects with the errors a real run would raise before its first
@@ -416,6 +426,57 @@ export interface MigrateResult {
 	 * false when pgvector was already installed or nothing was created.
 	 */
 	extensionCreated: boolean;
+}
+
+/** Options {@link setTextSearchConfig} takes with either input shape. */
+interface SetTextSearchConfigOptions {
+	/**
+	 * The Postgres text search configuration keyword search should use, such
+	 * as `"simple"` or `"german"`. The database's `pg_ts_config` lists them;
+	 * an unknown name rejects with `"VALIDATION"`.
+	 */
+	textSearchConfig: string;
+	/**
+	 * Report what the call would change, from a read-only transaction,
+	 * changing nothing.
+	 */
+	dryRun?: boolean | undefined;
+	/**
+	 * Cancels the running statement when aborted; the change rolls back.
+	 */
+	signal?: AbortSignal | undefined;
+}
+
+/**
+ * Input for {@link setTextSearchConfig}: the app's client, or a store.
+ */
+export type SetTextSearchConfigInput =
+	| (SetTextSearchConfigOptions & {
+			/** The client from `createMemory()`, or one bound with `for()`. */
+			memory: MemoryClient<boolean> | BoundMemoryClient;
+			store?: never;
+	  })
+	| (SetTextSearchConfigOptions & {
+			memory?: never;
+			/**
+			 * The database: the app's database client or a store from
+			 * `postgresStore()`, as {@link migrate} takes it.
+			 */
+			store: MnemocyteStoreConfig | PostgresClient;
+	  });
+
+/**
+ * Result of {@link setTextSearchConfig}. Names are canonical, as Postgres
+ * prints a `regconfig` (schema-qualified only when the schema is not on
+ * `search_path`). With `dryRun`, what the call would have produced.
+ */
+export interface TextSearchConfigResult {
+	/** The configuration before the call; `null` on the in-memory store. */
+	previous: string | null;
+	/** The configuration after the call; `null` on the in-memory store. */
+	current: string | null;
+	/** True when the call rewrote the memories table for a new configuration. */
+	changed: boolean;
 }
 
 /**

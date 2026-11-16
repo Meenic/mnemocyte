@@ -37,8 +37,14 @@ interface MnemocyteErrorReasons {
 	 *   differ from the installation's.
 	 * - `"MODEL_MISMATCH"`: the embedder's model differs from the one the
 	 *   installation recorded.
+	 * - `"TEXT_SEARCH_CONFIG_MISMATCH"`: `migrate`'s `textSearchConfig`
+	 *   differs from the installation's.
 	 */
-	CONFIG: "INVALID_OPTION" | "DIMENSIONS_MISMATCH" | "MODEL_MISMATCH";
+	CONFIG:
+		| "INVALID_OPTION"
+		| "DIMENSIONS_MISMATCH"
+		| "MODEL_MISMATCH"
+		| "TEXT_SEARCH_CONFIG_MISMATCH";
 	/**
 	 * - `"KEY_IN_USE"`: another memory in the scope already uses the key.
 	 * - `"HAS_DEPENDENTS"`: memories are consolidated into one that `delete`

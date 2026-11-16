@@ -6,6 +6,7 @@ import {
 	getPgvectorVersion,
 	getStoredEmbeddingModels,
 } from "../queries/meta.js";
+import { readInstalledTextSearchConfig } from "../text-search.js";
 import { MIGRATIONS } from "./bundled.js";
 import {
 	assertContiguous,
@@ -59,6 +60,11 @@ export interface InstallationReport {
 	 * infers one from them.
 	 */
 	readonly storedModels?: readonly string[];
+	/**
+	 * The text search configuration in `content_tsv`'s generated expression,
+	 * as Postgres prints the name. Left out when migrations are pending.
+	 */
+	readonly textSearchConfig?: string;
 }
 
 /** Missing table or column. */
@@ -145,9 +151,24 @@ export async function inspectPostgresInstallation(
 			return { pgvectorVersion, migrations, column };
 		}
 		try {
+			const textSearch = await readInstalledTextSearchConfig(db, options);
+			if (textSearch.kind !== "config") {
+				return {
+					pgvectorVersion,
+					column,
+					migrations: {
+						state: "invalid",
+						reason:
+							textSearch.kind === "missing"
+								? "mnemocyte_migrations records every migration, but mnemocyte_memories.content_tsv is missing. Compare the schema with migrations/ and restore it."
+								: `mnemocyte_memories.content_tsv is generated as ${JSON.stringify(textSearch.expression)}, not to_tsvector('<configuration>'::regconfig, content), so keyword search cannot tell its text search configuration.`,
+					},
+				};
+			}
+			const current = { textSearchConfig: textSearch.name };
 			const row = await getInstallationMeta(db);
 			if (row === null) {
-				return { pgvectorVersion, migrations, column, meta: null };
+				return { pgvectorVersion, migrations, column, ...current, meta: null };
 			}
 			const meta: InstallationMeta = {
 				dimensions: Number(row.embeddingDimensions),
@@ -155,10 +176,17 @@ export async function inspectPostgresInstallation(
 				vectorType: row.vectorType,
 			};
 			if (meta.model !== null) {
-				return { pgvectorVersion, migrations, column, meta };
+				return { pgvectorVersion, migrations, column, ...current, meta };
 			}
 			const storedModels = await getStoredEmbeddingModels(db);
-			return { pgvectorVersion, migrations, column, meta, storedModels };
+			return {
+				pgvectorVersion,
+				migrations,
+				column,
+				...current,
+				meta,
+				storedModels,
+			};
 		} catch (error) {
 			const code = postgresErrorCode(error);
 			if (code === undefined || !MISSING_OBJECT_CODES.has(code)) {

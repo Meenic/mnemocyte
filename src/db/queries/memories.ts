@@ -44,6 +44,8 @@ export interface VectorSearchInput extends MemoryFilter {
 export interface LexicalSearchInput extends MemoryFilter {
 	query: string;
 	limit: number;
+	/** The installation's text search configuration, read from the catalog. */
+	textSearchConfig: string;
 }
 
 export interface MemoryStatsCounts {
@@ -1590,7 +1592,9 @@ export async function lexicalSearch(
 	input: LexicalSearchInput,
 ): Promise<LexicalSearchRow[]> {
 	const params = createSqlParams();
-	const query = `websearch_to_tsquery('english', ${params.add(input.query)})`;
+	// The configuration `content_tsv` was built with, so the query's words
+	// get the same stemming and stop words as the stored ones.
+	const query = `websearch_to_tsquery(${params.add(input.textSearchConfig)}::regconfig, ${params.add(input.query)})`;
 	const filters = recallFilters(params, input);
 	const rows = await db.query<RawMemoryRow & { lexicalScore: number }>(
 		`SELECT ${MEMORY_COLUMNS}, ts_rank(content_tsv, ${query}) AS "lexicalScore"

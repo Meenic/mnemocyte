@@ -78,7 +78,8 @@ export const INITIAL_SCHEMA_TEMPLATE: string = ${templateLiteral(template)};
 // rule as `renderInitialSchema` in src/db/migrations/runner.ts.
 const freshInstall = template
 	.replaceAll("{{EMBEDDING_DIMENSIONS}}", "1536")
-	.replaceAll("{{VECTOR_TYPE}}", "vector");
+	.replaceAll("{{VECTOR_TYPE}}", "vector")
+	.replaceAll("{{TEXT_SEARCH_CONFIG}}", "english");
 
 if (process.argv.includes("--stdout")) {
 	process.stdout.write(module);

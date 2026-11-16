@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres from "postgres";
 import { describe, expect, test } from "vitest";
+import { renderInitialSchema } from "../../src/db/migrations/runner.js";
+import { changeTextSearchStatements } from "../../src/db/text-search.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -142,18 +144,46 @@ async function snapshotCleanInstall(
 	sql: ReturnType<typeof postgres>,
 	migrationFiles: readonly string[],
 ) {
+	const scripts: string[] = [];
+	for (const file of migrationFiles) {
+		scripts.push(await readFile(resolve("migrations", file), "utf8"));
+	}
+	return snapshotScripts(sql, scripts);
+}
+
+/**
+ * The catalog after running `scripts` on a database without Mnemocyte
+ * tables, inside a transaction that rolls back. Statements split on the
+ * breakpoint run one at a time.
+ */
+async function snapshotScripts(
+	sql: ReturnType<typeof postgres>,
+	scripts: readonly string[],
+) {
 	await sql.unsafe("BEGIN");
 	try {
 		await sql.unsafe(
 			'DROP TABLE IF EXISTS "mnemocyte_migrations", "mnemocyte_events", "mnemocyte_memories", "mnemocyte_meta" CASCADE',
 		);
-		for (const file of migrationFiles) {
-			await sql.unsafe(await readFile(resolve("migrations", file), "utf8"));
+		for (const script of scripts) {
+			await sql.unsafe(script);
 		}
 		return await readSchemaSnapshot(sql);
 	} finally {
 		await sql.unsafe("ROLLBACK");
 	}
+}
+
+/** Columns in order without `attnum`, which a dropped column leaves a gap in. */
+function withoutPositions(
+	snapshot: Awaited<ReturnType<typeof readSchemaSnapshot>>,
+) {
+	return {
+		...snapshot,
+		columns: snapshot.columns.map(
+			({ position: _position, ...column }) => column,
+		),
+	};
 }
 
 describe("default fresh-install migration", () => {
@@ -186,6 +216,51 @@ describe("default fresh-install migration", () => {
 					},
 				]);
 				expect(consolidated).toEqual(sequential);
+			} finally {
+				await sql.end();
+			}
+		},
+		60_000,
+	);
+});
+
+describe("text search configuration", () => {
+	test.skipIf(!databaseUrl)(
+		"a fresh simple install matches an english one changed to simple",
+		async () => {
+			const sql = postgres(databaseUrl ?? "", { max: 1 });
+
+			try {
+				await sql`CREATE EXTENSION IF NOT EXISTS vector`;
+				const [{ version } = { version: 0 }] = await sql<
+					{ version: number }[]
+				>`SELECT current_setting('server_version_num')::int AS "version"`;
+				const english = await readFile(
+					resolve("migrations", "fresh-install.sql"),
+					"utf8",
+				);
+				const fresh = await snapshotScripts(sql, [
+					renderInitialSchema(1536, "simple"),
+				]);
+				expect(
+					fresh.columns.find((column) => column.columnName === "content_tsv")
+						?.defaultExpression,
+				).toBe("to_tsvector('simple'::regconfig, content)");
+
+				// The statements setTextSearchConfig runs on this server.
+				const changed = await snapshotScripts(sql, [
+					english,
+					...changeTextSearchStatements("simple", version),
+				]);
+				expect(changed).toEqual(fresh);
+
+				// The Postgres 15/16 statements also run on 17+: drop, re-add and
+				// re-index. Only the dropped column's attnum gap differs.
+				const readded = await snapshotScripts(sql, [
+					english,
+					...changeTextSearchStatements("simple", 160000),
+				]);
+				expect(withoutPositions(readded)).toEqual(withoutPositions(fresh));
 			} finally {
 				await sql.end();
 			}

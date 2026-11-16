@@ -24,6 +24,21 @@ export interface ExpectedInstallation {
 	 */
 	readonly dimensionsFrom?: "flag" | "embedder";
 	readonly model?: string;
+	/** `--text-search-config`. */
+	readonly textSearchConfig?: string;
+}
+
+/**
+ * A configuration name as Postgres would resolve it for comparison: an
+ * unquoted name folds to lower case, and `pg_catalog.`, where the built-in
+ * configurations live and which is always on `search_path`, is dropped.
+ * `check` reads only, so it compares names rather than asking the server.
+ */
+export function normalizeTextSearchConfig(name: string): string {
+	const folded = name.includes('"') ? name : name.toLowerCase();
+	return folded.startsWith("pg_catalog.")
+		? folded.slice("pg_catalog.".length)
+		: folded;
 }
 
 /** `problems` fail the check; `notes` are reported and pass. */
@@ -144,6 +159,18 @@ export function evaluateInstallation(
 		}
 	}
 
+	if (
+		report.textSearchConfig !== undefined &&
+		expected.textSearchConfig !== undefined &&
+		normalizeTextSearchConfig(report.textSearchConfig) !==
+			normalizeTextSearchConfig(expected.textSearchConfig)
+	) {
+		problem(
+			"TEXT_SEARCH_CONFIG_MISMATCH",
+			`Keyword search uses the "${report.textSearchConfig}" text search configuration, but --text-search-config is "${expected.textSearchConfig}". mnemocyte text-search ${expected.textSearchConfig} changes it and rewrites the memories table.`,
+		);
+	}
+
 	return { problems, notes };
 }
 
@@ -180,6 +207,7 @@ export function installationJson(report: InstallationReport): InstallationJson {
 		dimensions: column?.dimensions ?? null,
 		vectorType: column?.vectorType ?? null,
 		model: installedModel(report) ?? null,
+		textSearchConfig: report.textSearchConfig ?? null,
 	};
 }
 
@@ -212,6 +240,7 @@ export function describeInstallation(report: InstallationReport): string[] {
 		`migrations  ${installed}`,
 		`dimensions  ${column === null ? "-" : `${column.dimensions} (${column.vectorType})`}`,
 		`model       ${model}`,
+		`text search ${report.textSearchConfig ?? "-"}`,
 	];
 }
 
@@ -266,6 +295,9 @@ export async function checkTarget(
 		...(dimensions === undefined ? {} : { dimensions }),
 		dimensionsFrom: args.dimensions === undefined ? "embedder" : "flag",
 		...(embedder === undefined ? {} : { model: embedder.model }),
+		...(args.textSearchConfig === undefined
+			? {}
+			: { textSearchConfig: args.textSearchConfig }),
 	});
 	if (
 		embedder !== undefined &&

@@ -58,16 +58,16 @@ a scratch project, never from this repository's root.
 
 ```txt
 src/
-  index.ts              root entry: createMemory, migrate, errors, public types
+  index.ts              root entry: createMemory, migrate, setTextSearchConfig, errors, public types
   client.ts             createMemory: config checks, store (resolveStore | in-memory), overloads for namespace
-  migrate.ts            migrate(): validates input, resolves { memory } or { store } (resolveStore), calls the store's migrate
+  migrate.ts            migrate() and setTextSearchConfig(): validate input, resolve { memory } or { store } (resolveStore), call the store
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, client types
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
   ai-sdk-tools.ts       memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
   ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
   ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
-  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql
+  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql, text-search
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
@@ -106,7 +106,8 @@ src/
     errors.ts           constraint name from either driver error shape
     rows.ts             row types, column lists, row normalization
     queries/            memories, events, meta SQL on a SqlExecutor
-    migrations/         Postgres migration runner, inspect.ts (read-only report) and bundled.ts (generated)
+    migrations/         Postgres migration runner, inspect.ts (read-only report), text-search.ts (setTextSearchConfig) and bundled.ts (generated)
+    text-search.ts      content_tsv's text search configuration: read, resolve, change statements
     pgvector.ts         assertPgvectorVersion
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
@@ -200,7 +201,7 @@ plugin in `tsdown.config.ts` strips that comment.
 
 Exports:
 
-- `mnemocyte`: `createMemory`, `migrate`, `MnemocyteError`,
+- `mnemocyte`: `createMemory`, `migrate`, `setTextSearchConfig`, `MnemocyteError`,
   `isMnemocyteError`, `ProviderError`, `isProviderError` and the public
   types, including
   `PostgresClient`.
@@ -235,8 +236,10 @@ Exports:
   `PostgresStoreOptions`, and the `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
-- The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`, with `--config`,
-  `--dimensions`, `--env-file`, `--yes`, `--dry-run` and `--out`. Its
+- The `mnemocyte` bin: `init`, `migrate`, `check`, `sql` and
+  `text-search <name>`, with `--config`, `--dimensions`, `--env-file`,
+  `--text-search-config`, `--yes`, `--dry-run`, `--json`, `--embedder` and
+  `--out`. Its
   commands, flags and exit codes (0, 1, 2) are public; its modules are not
   exported. See [features/cli.md](./features/cli.md).
 
@@ -473,8 +476,8 @@ Vitest has three projects (`vitest.config.ts`):
   ```
 
   `--shm-size` must exceed the 1 GB `maintenance_work_mem` the HNSW build
-  uses, or parallel builds fail. Four phases (`MNEMOCYTE_BENCH_PHASES`,
-  default `halfvec,vector,audit,history`) seed with SQL (`test/benchmarks/postgres/seed.ts`): rows of all
+  uses, or parallel builds fail. Five phases (`MNEMOCYTE_BENCH_PHASES`,
+  default `halfvec,vector,audit,history,textsearch`) seed with SQL (`test/benchmarks/postgres/seed.ts`): rows of all
   entities interleaved in time order, vectors from 256 random cluster centers
   plus noise, one memory in ten a near-copy and one in ten superseded, and
   the HNSW index rebuilt after the load. A recording executor captures the
@@ -501,7 +504,11 @@ Vitest has three projects (`vitest.config.ts`):
   measures `listAuditLog({ memoryId })` for a five-event and a 500-event
   memory at each selector, with the default index, without it and with the
   other shapes considered, and what the column and its index cost a
-  1,000-event insert. Warm rows report the
+  1,000-event insert. The `textsearch` phase loads the main dataset,
+  measures keyword search, times the `setTextSearchConfig` rewrite to
+  `simple` at 1 GB `maintenance_work_mem` for both statement lists (rolled
+  back) and through the function at the server's setting, then measures
+  keyword search again. Warm rows report the
   slowest run next to the median. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the

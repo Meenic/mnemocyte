@@ -11,7 +11,12 @@ import { expect } from "vitest";
 export const REASONS_BY_CODE: Partial<
 	Record<MnemocyteErrorCode, readonly MnemocyteErrorReason[]>
 > = {
-	CONFIG: ["INVALID_OPTION", "DIMENSIONS_MISMATCH", "MODEL_MISMATCH"],
+	CONFIG: [
+		"INVALID_OPTION",
+		"DIMENSIONS_MISMATCH",
+		"MODEL_MISMATCH",
+		"TEXT_SEARCH_CONFIG_MISMATCH",
+	],
 	CONFLICT: [
 		"KEY_IN_USE",
 		"HAS_DEPENDENTS",

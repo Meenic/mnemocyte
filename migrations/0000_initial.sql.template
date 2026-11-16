@@ -48,7 +48,7 @@ CREATE TABLE "mnemocyte_memories" (
 	"agent_id" text,
 	"session_id" text,
 	"key" text,
-	"content_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('english'::regconfig, "content")) STORED
+	"content_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('{{TEXT_SEARCH_CONFIG}}'::regconfig, "content")) STORED
 );
 --> statement-breakpoint
 ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;

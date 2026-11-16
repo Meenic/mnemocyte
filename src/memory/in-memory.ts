@@ -243,6 +243,10 @@ export function createInMemoryStore(): MemoryStore {
 		async migrate() {
 			return { applied: [], adopted: [], extensionCreated: false };
 		},
+		async setTextSearchConfig() {
+			// Keyword search matches substrings here; no configuration applies.
+			return { previous: null, current: null, changed: false };
+		},
 		async inspectInstallation() {
 			return null;
 		},

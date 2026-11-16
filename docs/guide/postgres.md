@@ -37,8 +37,12 @@ the database your app uses at your embedder's dimensions. The same command
 upgrades an existing installation, so run it on every deploy. It asks
 before it enables pgvector; `--yes` answers the question in CI.
 
+Keyword search uses English rules unless you pick another
+[language](#keyword-search-language) on this first run.
+
 `pnpm exec mnemocyte check` reports the pgvector version, the applied
-migrations and the dimensions, and exits 1 when something is wrong. Where
+migrations, the dimensions and the keyword search language, and exits 1
+when something is wrong. Where
 the command looks for `memory.ts`, and every flag, are in the
 [CLI guide](./cli.md).
 
@@ -417,6 +421,102 @@ SET embedding_model = 'your-model-id'
 WHERE key = 'installation';
 ```
 
+## Keyword search language
+
+Search finds memories two ways: by meaning (the embeddings) and by words.
+The word search uses Postgres full-text search, which needs to know the
+language: it turns "running" and "runs" into "run" (stemming) and skips
+common words such as "the" (stop words). Postgres calls these rules a
+*text search configuration*. Mnemocyte uses `english` unless you pick
+another one when you install.
+
+Pick one with `--text-search-config` the first time you migrate:
+
+```bash
+pnpm exec mnemocyte migrate --text-search-config simple
+```
+
+or `migrate({ memory, textSearchConfig: "simple" })` from code, or
+`mnemocyte sql --text-search-config simple` for the SQL files. Postgres
+lists the ones it has:
+
+```sql
+SELECT cfgname FROM pg_ts_config;
+```
+
+- `simple` lowercases words and nothing else: no stemming, no stop words.
+  It suits memories in several languages, or names and codes that stemming
+  would mangle. "run" no longer finds "running".
+- `english`, `german`, `french`, `spanish`, `turkish` and 24 more (on
+  Postgres 18) stem one language and skip its stop words.
+- A configuration you create with `CREATE TEXT SEARCH CONFIGURATION` works
+  too; name it as Postgres would, schema-qualified if its schema is not on
+  `search_path`.
+
+The choice is stored in the keyword column itself
+(`to_tsvector('simple'::regconfig, content)`), and search reads it from
+there, so there is nothing to configure in the app. Later runs of
+`migrate` can leave the flag out. When they pass a different one, they
+fail with `"CONFIG"` rather than change it. `mnemocyte check` shows the
+configuration, and `check --text-search-config <name>` fails when it is
+not the one you expect.
+
+### Change it later
+
+```bash
+pnpm exec mnemocyte text-search simple
+```
+
+or `setTextSearchConfig({ memory, textSearchConfig: "simple" })`. Postgres
+has to recompute the keyword column for every memory, so it rewrites the
+memories table and rebuilds every index on it, the HNSW index included.
+Reads and writes of memories wait until it finishes. The command shows
+what it will do and asks first; `--yes` skips the question and `--dry-run`
+changes nothing.
+
+For scale: on Postgres 18 with 132,000 memories at 1,536 dimensions (a
+1 GB table and a 1 GB HNSW index), on a laptop, the change took 4 minutes
+20 seconds with the default `maintenance_work_mem` of 64 MB, and about a
+minute with 1 GB. Most of that time goes into rebuilding the HNSW index.
+Pick a quiet moment, and raise the setting for the role that runs the
+change if you can (`ALTER ROLE … SET maintenance_work_mem = '1GB'`, or
+`SET maintenance_work_mem = '1GB'` in your `psql` session).
+
+App processes that were already running keep using the old configuration
+for the words of a query until they restart, so their keyword matches get
+weaker (an `english` query stems "running" to "run", which a `simple`
+column does not contain). Restart them after the change.
+
+To make the change with `psql` instead, run it in one transaction. On
+Postgres 17 and later:
+
+```sql
+BEGIN;
+ALTER TABLE mnemocyte_memories
+  ALTER COLUMN content_tsv SET EXPRESSION AS (to_tsvector('simple'::regconfig, content));
+ANALYZE mnemocyte_memories (content_tsv);
+COMMIT;
+```
+
+Postgres 15 and 16 have no `SET EXPRESSION`, so drop the column and add it
+back, then index it again:
+
+```sql
+BEGIN;
+ALTER TABLE mnemocyte_memories
+  DROP COLUMN content_tsv,
+  ADD COLUMN content_tsv tsvector
+    GENERATED ALWAYS AS (to_tsvector('simple'::regconfig, content)) STORED;
+CREATE INDEX mnemocyte_memories_content_tsv_idx
+  ON mnemocyte_memories USING gin (content_tsv);
+ANALYZE mnemocyte_memories (content_tsv);
+COMMIT;
+```
+
+Keep the expression exactly in this shape. Mnemocyte reads the
+configuration from it, and an expression of another shape makes search
+and `check` fail with `"MIGRATION"`.
+
 ## Indexes
 
 The schema creates:
@@ -429,7 +529,8 @@ The schema creates:
 - a unique btree on the scope plus `key`, only for rows with a key;
 - a partial btree on `superseded_by`, so deleting a memory does not scan
   the table to check that nothing was consolidated into it;
-- a GIN index on `content_tsv` for full-text search;
+- a GIN index on `content_tsv` for full-text search (see
+  [keyword search language](#keyword-search-language));
 - an HNSW index on the embedding for cosine search.
 
 HNSW (hierarchical navigable small world) is an approximate

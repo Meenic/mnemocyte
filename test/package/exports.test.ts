@@ -5,6 +5,7 @@ import {
 	MnemocyteError,
 	migrate,
 	ProviderError,
+	setTextSearchConfig,
 } from "mnemocyte";
 import {
 	aiSdkEmbedder,
@@ -41,6 +42,7 @@ describe("package exports", () => {
 		expect(typeof createMemory).toBe("function");
 		expect(typeof MnemocyteError).toBe("function");
 		expect(typeof migrate).toBe("function");
+		expect(typeof setTextSearchConfig).toBe("function");
 		expect(typeof postgresStore).toBe("function");
 		expect(Object.keys(postgresEntry)).toEqual(["postgresStore"]);
 		expect(typeof openaiEmbedder).toBe("function");

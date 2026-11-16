@@ -14,6 +14,7 @@ import type {
 	MnemocyteBackend,
 	PruneAuditLogResult,
 	PruneResult,
+	TextSearchConfigResult,
 } from "../types.js";
 import type { StoredMemory } from "./records.js";
 
@@ -254,7 +255,14 @@ export interface StoreAuditPruneInput {
 
 export interface StoreMigrateInput {
 	readonly dimensions?: number;
+	readonly textSearchConfig?: string;
 	readonly createExtension?: boolean;
+	readonly dryRun?: boolean;
+	readonly signal?: AbortSignal;
+}
+
+export interface StoreTextSearchConfigInput {
+	readonly textSearchConfig: string;
 	readonly dryRun?: boolean;
 	readonly signal?: AbortSignal;
 }
@@ -322,6 +330,14 @@ export interface MemoryStore {
 	 * applied.
 	 */
 	migrate(input: StoreMigrateInput): Promise<MigrateResult>;
+	/**
+	 * Changes the text search configuration of keyword search, through
+	 * `setTextSearchConfig()`. On Postgres this rewrites the memories table.
+	 * A store without one resolves with `null` names and `changed: false`.
+	 */
+	setTextSearchConfig(
+		input: StoreTextSearchConfigInput,
+	): Promise<TextSearchConfigResult>;
 	/**
 	 * What is installed, read without changing anything: the report behind
 	 * the CLI's `check`. A store without persistent schema resolves with

@@ -2,6 +2,7 @@ import { assertSqlExecutor } from "../db/atomic.js";
 import { postgresConstraintName, postgresErrorCode } from "../db/errors.js";
 import { inspectPostgresInstallation } from "../db/migrations/inspect.js";
 import { runPostgresMigrations } from "../db/migrations/runner.js";
+import { setPostgresTextSearchConfig } from "../db/migrations/text-search.js";
 import { assertPgvectorVersion } from "../db/pgvector.js";
 import {
 	countEventsBefore,
@@ -39,6 +40,10 @@ import {
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
 import type { VectorType } from "../db/rows.js";
+import {
+	readInstalledTextSearchConfig,
+	unrecognizedTextSearchError,
+} from "../db/text-search.js";
 import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
@@ -265,6 +270,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	const compatibilityChecks = new Map<string, Promise<void>>();
 	let vectorTypePromise: Promise<VectorType> | undefined;
 	let pgvectorCheck: Promise<void> | undefined;
+	let textSearchConfigPromise: Promise<string> | undefined;
 
 	function ensureEmbeddingCompatibility(embedder: Embedder): Promise<void> {
 		const key = compatibilityKey(embedder);
@@ -292,6 +298,35 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				});
 		}
 		return vectorTypePromise;
+	}
+
+	/**
+	 * The text search configuration of `content_tsv`, read once per store
+	 * from the column's generated expression before the first keyword
+	 * search, so the query parses with the configuration the rows were
+	 * indexed with. A change made by another process while this one runs is
+	 * not seen until it restarts; a change through this store updates it.
+	 */
+	function getTextSearchConfig(): Promise<string> {
+		if (!textSearchConfigPromise) {
+			textSearchConfigPromise = readInstalledTextSearchConfig(client)
+				.then((found) => {
+					if (found.kind === "unrecognized") {
+						throw unrecognizedTextSearchError(found.expression);
+					}
+					if (found.kind === "missing") {
+						// No content_tsv: a schema before 0003, which the keyword
+						// query would fail on with 42703 too.
+						throw missingSchemaError(undefined);
+					}
+					return found.name;
+				})
+				.catch((error: unknown) => {
+					textSearchConfigPromise = undefined;
+					throw error;
+				});
+		}
+		return textSearchConfigPromise;
 	}
 
 	/** Checked once per store, before the first vector search. */
@@ -378,6 +413,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		migrate(input) {
 			return runPostgresMigrations(client, input);
 		},
+		async setTextSearchConfig(input) {
+			const result = await setPostgresTextSearchConfig(client, input);
+			if (result.changed && input.dryRun !== true && result.current !== null) {
+				textSearchConfigPromise = Promise.resolve(result.current);
+			}
+			return result;
+		},
 		inspectInstallation(options) {
 			return inspectPostgresInstallation(client, options);
 		},
@@ -424,7 +466,10 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {
 			return runPostgresOperation(async () => {
-				const rows = await lexicalSearchQuery(client, input);
+				const rows = await lexicalSearchQuery(client, {
+					...input,
+					textSearchConfig: await getTextSearchConfig(),
+				});
 				return rows.map(
 					(row) =>
 						({

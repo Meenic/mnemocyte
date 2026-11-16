@@ -79,6 +79,8 @@ import type {
 	ScopeSelector,
 	ScopeSelectorInput,
 	SearchInput,
+	SetTextSearchConfigInput,
+	TextSearchConfigResult,
 	TokenCounter,
 	UpdateInput,
 } from "mnemocyte";
@@ -90,6 +92,7 @@ import {
 	migrate,
 	ProviderError,
 	type ProviderErrorInput,
+	setTextSearchConfig,
 } from "mnemocyte";
 import {
 	type AiSdkEmbedderOptions,
@@ -307,6 +310,26 @@ const migrateBoth: MigrateInput = {
 };
 // @ts-expect-error migrate needs memory or store.
 const migrateNeither: MigrateInput = { dimensions: 1536 };
+const migrateSimple: MigrateInput = {
+	memory: client,
+	textSearchConfig: "simple",
+};
+const textSearchInput: SetTextSearchConfigInput = {
+	memory: client,
+	textSearchConfig: "simple",
+	dryRun: true,
+	signal: new AbortController().signal,
+};
+const textSearchChanged: Promise<boolean> = setTextSearchConfig(
+	textSearchInput,
+).then((result: TextSearchConfigResult) => result.changed);
+const textSearchPrevious: Promise<string | null> = setTextSearchConfig({
+	store: postgresStore(postgresOptions),
+	textSearchConfig: "german",
+}).then((result) => result.previous);
+// @ts-expect-error setTextSearchConfig needs a configuration.
+const textSearchMissing: SetTextSearchConfigInput = { memory: client };
+const textSearchMismatch: MnemocyteErrorReason = "TEXT_SEARCH_CONFIG_MISMATCH";
 const conflictCode: MnemocyteErrorCode = "CONFLICT";
 const keyInUse: MnemocyteErrorReason = "KEY_IN_USE";
 const conflictError = new MnemocyteError({
@@ -730,6 +753,11 @@ void migrated;
 void dryRunResult;
 void migrateBoth;
 void migrateNeither;
+void migrateSimple;
+void textSearchChanged;
+void textSearchPrevious;
+void textSearchMissing;
+void textSearchMismatch;
 void callerStoreConfig;
 void postgresConfig;
 void queryOptions;

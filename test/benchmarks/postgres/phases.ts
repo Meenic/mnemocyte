@@ -1,8 +1,14 @@
-import { createMemory, type Embedder, migrate } from "mnemocyte";
+import {
+	createMemory,
+	type Embedder,
+	migrate,
+	setTextSearchConfig,
+} from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import { expect } from "vitest";
 import { MIGRATIONS } from "../../../src/db/migrations/bundled.js";
 import { splitStatements } from "../../../src/db/migrations/runner.js";
+import { changeTextSearchStatements } from "../../../src/db/text-search.js";
 import { encodeListCursor } from "../../../src/memory/cursor.js";
 import type { SqlExecutor, SqlStatement } from "../../../src/sql/executor.js";
 import {
@@ -1404,4 +1410,114 @@ export async function auditHistoryPhase(ctx: BenchContext): Promise<void> {
 		});
 	}
 	await noteSizes(ctx);
+}
+
+/**
+ * `setTextSearchConfig` on the main dataset: how long the rewrite of
+ * `mnemocyte_memories` takes (it rebuilds every index, HNSW included), with
+ * the server's `maintenance_work_mem` and with 1 GB, on this server's
+ * statement and on the drop and re-add Postgres 15/16 run; then keyword
+ * search under the new configuration, which reads `$n::regconfig`.
+ */
+export async function textSearchPhase(ctx: BenchContext): Promise<void> {
+	const section = "text search configuration";
+	await setupMemories(
+		ctx,
+		1536,
+		entities(ctx, { large: 30_000, mid: 2_000, smallCount: 1_000 }),
+	);
+	const client = benchClient(ctx, 1536);
+	const { db, runs } = ctx;
+	client.setBase(await storedVector(db, LARGE, 0));
+
+	const keyword = async (variant: string) => {
+		for (const entityId of [SMALL, LARGE]) {
+			const { lexical } = await searchStatements(client, entityId);
+			expect(lexical.sql).toContain("::regconfig");
+			const m = await measure(db, lexical, { runs });
+			ctx.report.add(section, {
+				case: `keyword search, ${entityId}`,
+				variant,
+				measurement: m,
+			});
+			if (entityId === LARGE && ctx.scale === 1) {
+				expect(m.indexes).toContain(INDEX.tsv);
+			}
+		}
+	};
+	await keyword("english");
+
+	const [server] = await db.query<{ version: number | string; mwm: string }>(
+		`SELECT current_setting('server_version_num')::int AS "version",
+			current_setting('maintenance_work_mem') AS "mwm"`,
+		[],
+	);
+	const version = Number(server?.version ?? 0);
+	const timedRewrite = (statements: string[], settings: string[]) =>
+		rolledBack(db, async (tx) => {
+			for (const setting of settings) {
+				await tx.query(setting, []);
+			}
+			const timings: number[] = [];
+			for (const statement of statements) {
+				timings.push(await elapsed(() => tx.query(statement, [])));
+			}
+			return timings;
+		});
+	const describeTimings = (statements: string[], timings: number[]) =>
+		statements
+			.map((statement, index) => {
+				const verb = statement.startsWith("ANALYZE")
+					? "ANALYZE"
+					: statement.startsWith("CREATE INDEX")
+						? "CREATE INDEX"
+						: statement.includes("SET EXPRESSION")
+							? "SET EXPRESSION"
+							: "DROP + ADD COLUMN";
+				return `${verb} ${((timings[index] ?? 0) / 1000).toFixed(1)} s`;
+			})
+			.join(", ");
+	const oneGb = ["SET LOCAL maintenance_work_mem = '1GB'"];
+	for (const [label, statements] of [
+		[`server ${version}`, changeTextSearchStatements("simple", version)],
+		["Postgres 15/16 statements", changeTextSearchStatements("simple", 160000)],
+	] as const) {
+		const timings = await timedRewrite([...statements], oneGb);
+		ctx.report.add(section, {
+			case: `change english → simple, ${label} (rolled back)`,
+			variant: "maintenance_work_mem 1GB",
+			note: describeTimings([...statements], timings),
+		});
+	}
+
+	// The shipped path, at the server's settings: setTextSearchConfig itself.
+	const ms = await elapsed(() =>
+		setTextSearchConfig({
+			store: postgresStore({ client: db }),
+			textSearchConfig: "simple",
+		}),
+	);
+	ctx.report.add(section, {
+		case: "setTextSearchConfig english → simple",
+		variant: `maintenance_work_mem ${server?.mwm ?? "?"}`,
+		note: `${(ms / 1000).toFixed(1)} s in total`,
+	});
+	await noteSizes(ctx);
+
+	// The bench client read english before the change; a new one reads simple.
+	const after = benchClient(ctx, 1536);
+	after.setBase(await storedVector(db, LARGE, 0));
+	for (const entityId of [SMALL, LARGE]) {
+		const { lexical } = await searchStatements(after, entityId);
+		expect(lexical.params).toContain("simple");
+		const m = await measure(db, lexical, { runs });
+		ctx.report.add(section, {
+			case: `keyword search, ${entityId}`,
+			variant: "simple",
+			measurement: m,
+		});
+		if (entityId === LARGE && ctx.scale === 1) {
+			expect(m.indexes).toContain(INDEX.tsv);
+		}
+	}
 }

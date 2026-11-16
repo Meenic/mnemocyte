@@ -5,8 +5,14 @@ import { resolveStore } from "./memory/store-input.js";
 import {
 	assertMigrateDimensions,
 	validateMigrateInput,
+	validateSetTextSearchConfigInput,
 } from "./memory/validation.js";
-import type { MigrateInput, MigrateResult } from "./types.js";
+import type {
+	MigrateInput,
+	MigrateResult,
+	SetTextSearchConfigInput,
+	TextSearchConfigResult,
+} from "./types.js";
 
 /**
  * Apply the store's pending schema migrations.
@@ -27,10 +33,15 @@ import type { MigrateInput, MigrateResult } from "./types.js";
  * so HTTP drivers cannot run it. `dryRun` reports what a run would do and
  * changes nothing.
  *
+ * `textSearchConfig` picks the Postgres text search configuration keyword
+ * search uses (`english` by default) on a fresh install; on an existing one
+ * it must match, and {@link setTextSearchConfig} changes it.
+ *
  * @throws {MnemocyteError} `"VALIDATION"` for malformed input, both or
- * neither of `memory` and `store`, or a fresh install without dimensions;
+ * neither of `memory` and `store`, a fresh install without dimensions, or
+ * a `textSearchConfig` the database does not have;
  * `"CONFIG"` when `dimensions` differs from the embedder or the
- * installation, `memory` did not come from Mnemocyte, or `store` is neither
+ * installation, `textSearchConfig` differs from the installation's, `memory` did not come from Mnemocyte, or `store` is neither
  * a store from Mnemocyte nor a supported client;
  * `"MIGRATION"` when pgvector is missing (or `createExtension` lacks the
  * privilege), a migration fails (it is rolled back) or the schema matches no
@@ -69,7 +80,59 @@ export async function migrate(input: MigrateInput): Promise<MigrateResult> {
 	}
 	return await store.migrate({
 		...(dimensions === undefined ? {} : { dimensions }),
+		...(input.textSearchConfig === undefined
+			? {}
+			: { textSearchConfig: input.textSearchConfig }),
 		...(input.createExtension === true ? { createExtension: true } : {}),
+		...(input.dryRun === true ? { dryRun: true } : {}),
+		...(input.signal === undefined ? {} : { signal: input.signal }),
+	});
+}
+
+/**
+ * Change the text search configuration keyword search uses on an existing
+ * installation, such as from `"english"` to `"simple"` for memories in
+ * several languages.
+ *
+ * Postgres: `content_tsv` is a stored generated column, so the change
+ * rewrites `mnemocyte_memories` and rebuilds every index on it, the HNSW
+ * index included. Reads and writes of memories wait until it commits, so
+ * run it in a maintenance window. It runs in one transaction under the
+ * advisory lock `migrate()` takes, needs every migration applied and an
+ * executor with interactive transactions, and does nothing when the
+ * configuration is already in place. Other running clients keep the
+ * configuration they read first until they restart. `dryRun` reports what
+ * would change from a read-only transaction.
+ *
+ * The in-memory store has no configuration: it resolves with `null` names
+ * and `changed: false`.
+ *
+ * @throws {MnemocyteError} `"VALIDATION"` for malformed input, both or
+ * neither of `memory` and `store`, or a configuration the database does not
+ * have; `"CONFIG"` for an executor without transactions, or a `memory` or
+ * `store` Mnemocyte does not recognize; `"MIGRATION"` when the schema is
+ * missing or behind, `content_tsv` was changed by hand, or the rewrite
+ * fails (it is rolled back); `"ABORTED"` when `signal` aborts; `"DB"` for
+ * other driver failures.
+ *
+ * @example
+ * ```ts
+ * import { setTextSearchConfig } from "mnemocyte";
+ * import { memory } from "./memory";
+ *
+ * await setTextSearchConfig({ memory, textSearchConfig: "simple" });
+ * ```
+ */
+export async function setTextSearchConfig(
+	input: SetTextSearchConfigInput,
+): Promise<TextSearchConfigResult> {
+	validateSetTextSearchConfigInput(input);
+	const store: MemoryStore =
+		input.memory === undefined
+			? resolveStore(input.store)
+			: readMemoryClientInternals(input.memory).store;
+	return await store.setTextSearchConfig({
+		textSearchConfig: input.textSearchConfig,
 		...(input.dryRun === true ? { dryRun: true } : {}),
 		...(input.signal === undefined ? {} : { signal: input.signal }),
 	});

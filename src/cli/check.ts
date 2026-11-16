@@ -103,7 +103,7 @@ export function evaluateInstallation(
 			if (migrations.state === "untracked") {
 				note(
 					"SCHEMA_UNTRACKED",
-					"The schema was installed without migrate (psql or drizzle-kit). mnemocyte migrate records its migrations without running them again.",
+					"The schema was installed without migrate (psql or drizzle-kit). If drizzle-kit manages these tables, keep upgrading them with mnemocyte generate --adapter drizzle; otherwise mnemocyte migrate records its migrations without running them again.",
 				);
 			}
 	}

@@ -40,6 +40,13 @@ them.
   another schema. Move them with `ALTER TABLE … SET SCHEMA`, or install a
   second one from `mnemocyte sql --schema`
   ([postgres.md](./postgres.md#move-an-existing-installation)).
+- **drizzle-kit needs two custom migrations, and no `push`.** The schema
+  file from `mnemocyte generate --adapter drizzle` leaves out the pgvector
+  extension, the unique key index and the installation row, because
+  drizzle-orm cannot express them; the command prints their SQL.
+  `drizzle-kit push` drops that index, after which every `add` with a
+  `key` fails. The file is written for drizzle-orm 0.45, not yet 1.0
+  ([postgres.md](./postgres.md#manage-the-tables-with-drizzle-kit)).
 - **Schema names are lower case.** `schemaName` takes letters `a`–`z`,
   digits and underscores only, so a schema created as `"Memory"` (quoted,
   mixed case) cannot be used.

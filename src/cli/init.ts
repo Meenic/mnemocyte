@@ -355,6 +355,14 @@ export async function installCommand(
 	return `${manager} ${verb} ${packages.join(" ")}`;
 }
 
+/** What runs a package's bin, by package manager. */
+const RUNNERS: Readonly<Record<PackageManager, string>> = {
+	pnpm: "pnpm exec",
+	yarn: "yarn",
+	bun: "bunx",
+	npm: "npx",
+};
+
 /**
  * The command that runs the project's installed `mnemocyte`: `npx` fails
  * in a project whose `devEngines` names another package manager.
@@ -363,16 +371,21 @@ export async function runnerCommand(
 	cwd: string,
 	pkg?: PackageJson,
 ): Promise<string> {
-	switch (await detectPackageManager(cwd, pkg)) {
-		case "pnpm":
-			return "pnpm exec mnemocyte";
-		case "yarn":
-			return "yarn mnemocyte";
-		case "bun":
-			return "bunx mnemocyte";
-		case "npm":
-			return "npx mnemocyte";
+	return `${RUNNERS[await detectPackageManager(cwd, pkg)]} mnemocyte`;
+}
+
+/**
+ * What runs an installed bin in the project at `cwd` (`pnpm exec`, `npx`
+ * …), from its `package.json` when that parses, else its lockfile.
+ */
+export async function projectRunner(cwd: string): Promise<string> {
+	let pkg: PackageJson | undefined;
+	try {
+		pkg = await readPackageJson(cwd);
+	} catch {
+		pkg = undefined;
 	}
+	return RUNNERS[await detectPackageManager(cwd, pkg)];
 }
 
 async function readText(path: string): Promise<string | null> {

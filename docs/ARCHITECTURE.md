@@ -198,14 +198,10 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
   `postgresStore({ client, schemaName })` keeps the tables, the tracking
   table included, in one schema; see
   [features/postgres.md](./features/postgres.md#schema-name).
-
-After 1.0:
-
-- **Drizzle schema export.** `mnemocyte generate --adapter drizzle` writes
-  the tables as a Drizzle schema the user adds to `drizzle.config.ts`, so
-  `drizzle-kit` owns the migrations. `migrate` already adopts a schema
-  installed outside it; the open question is keeping a generated schema in
-  step with later Mnemocyte migrations.
+- **Drizzle schema export.** Landed (decision 52):
+  `mnemocyte generate --adapter drizzle` writes the tables as a Drizzle
+  schema, and drizzle-kit owns their migrations from then on; see
+  [features/cli.md](./features/cli.md#generate).
 
 ## Packaging
 
@@ -1106,3 +1102,41 @@ Dated 2026-10-26 unless noted.
     - Without `schemaName` the SQL is the text 1.1 sent and no migration
       was added, so 1.1 and newer clients share an installation in either
       deploy order.
+52. **drizzle-kit owns a generated schema** (2026-11-16, landed): the
+    maintainer chose, with `feat/drizzle-schema-export`:
+    - `mnemocyte generate --adapter drizzle` writes `mnemocyte-schema.ts`
+      (`--out` for another path). It replaces only a file that starts with
+      its own header, says when nothing changed, and creates a new file
+      with `wx`. It also refuses its own file when the embedding size or
+      schema differs, because drizzle-kit would `ALTER` the column or move
+      the tables while the installation row keeps the old size.
+    - The size, text search configuration and schema come from the flags
+      or the memory file, exactly as for `sql`. It never reads a database,
+      so an installation that changed its configuration passes the flag.
+    - drizzle-kit owns these tables: no `mnemocyte_migrations`, and
+      `mnemocyte migrate` is not run on them (it would adopt, then apply
+      the next migration that drizzle-kit also applies). Upgrades are
+      `generate` again, then `drizzle-kit generate`. The other split,
+      drizzle-kit creating and `migrate` upgrading, would make every
+      upgrade's `drizzle-kit generate` emit a duplicate `ALTER` to delete
+      by hand.
+    - The output is plain text: no code imports drizzle-orm. It targets
+      the optional peer's range (`^0.45.4`); drizzle-kit 0.31.11 is a dev
+      dependency only, for the tests. drizzle-orm 1.0 is a release
+      candidate and waits until it is stable.
+    - drizzle-orm cannot express three parts of `fresh-install.sql`, so the
+      command prints them as SQL for two custom migrations
+      (`drizzle-kit generate --custom`): pgvector before the tables, and
+      the `NULLS NOT DISTINCT` partial unique key index plus the
+      `installation` row after them. `nullsNotDistinct` exists only on
+      unique constraints in 0.45.4 and 1.0.0-rc.5, and a constraint cannot
+      have the `WHERE "key" IS NOT NULL` that the `ON CONFLICT` arbiter
+      needs. Writing those files into drizzle-kit's folder would mean
+      writing its journal, whose format changes in 1.0.
+    - `drizzle-kit push` is documented as unsupported: it drops the key
+      index, which is not in the schema files (a test shows it).
+    - A new text search configuration is a drop and add of `content_tsv`
+      in drizzle-kit, which loses the GIN index while its snapshot still
+      lists it. `generate` notices the changed expression and prints the
+      `CREATE INDEX` and `ANALYZE` to append to that migration; a test
+      applies both and compares the catalog with a fresh install.

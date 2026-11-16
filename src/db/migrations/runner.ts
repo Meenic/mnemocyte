@@ -36,6 +36,11 @@ export const MIGRATION_LOCK_KEY = "7885351518266947956";
 // is checked by `assertMigrateDimensions`.
 const MAX_VECTOR_DIMENSIONS = 2000;
 
+/** The embedding column's type for `dimensions`: `halfvec` above 2,000. */
+export function vectorTypeFor(dimensions: number): "vector" | "halfvec" {
+	return dimensions > MAX_VECTOR_DIMENSIONS ? "halfvec" : "vector";
+}
+
 const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
 
 export interface RunMigrationsInput {
@@ -137,7 +142,7 @@ export function renderInitialSchema(
 	textSearchConfig: string = DEFAULT_TEXT_SEARCH_CONFIG,
 	schema: string | null = null,
 ): string {
-	const vectorType = dimensions > MAX_VECTOR_DIMENSIONS ? "halfvec" : "vector";
+	const vectorType = vectorTypeFor(dimensions);
 	const rendered = INITIAL_SCHEMA_TEMPLATE.replaceAll(
 		"{{EMBEDDING_DIMENSIONS}}",
 		String(dimensions),

@@ -12,6 +12,7 @@ export type CliCommand =
 	| "migrate"
 	| "check"
 	| "sql"
+	| "generate"
 	| "text-search"
 	| "help"
 	| "version";
@@ -26,7 +27,7 @@ export interface CliArgs {
 	/** `--dimensions`: 1 to 4,000. */
 	readonly dimensions?: number;
 	/**
-	 * `--text-search-config` for `migrate`, `check` and `sql`, or the name
+	 * `--text-search-config` for `migrate`, `check`, `sql` and `generate`, or the name
 	 * `text-search` takes.
 	 */
 	readonly textSearchConfig?: string;
@@ -37,18 +38,31 @@ export interface CliArgs {
 	readonly schema?: string;
 	/** `--yes`: enable pgvector, or rewrite for `text-search`, without asking. */
 	readonly yes: boolean;
-	/** `--dry-run`: report what `migrate`, `init` or `text-search` would do. */
+	/**
+	 * `--dry-run`: report what `migrate`, `init` or `text-search` would do;
+	 * `generate` prints the file instead of writing it.
+	 */
 	readonly dryRun: boolean;
 	/**
 	 * `--json`: print one JSON result for `check`, `migrate --dry-run` or
 	 * `text-search --dry-run`.
 	 */
 	readonly json: boolean;
-	/** `--out`: where `sql` writes instead of standard output. */
+	/**
+	 * `--out`: where `sql` writes instead of standard output, or the file
+	 * `generate` writes.
+	 */
 	readonly out?: string;
 	/** `--embedder`: the embedder `init` writes; `openai` when left out. */
 	readonly embedder?: InitEmbedder;
+	/** `--adapter`: the schema format `generate` writes. */
+	readonly adapter?: GenerateAdapter;
 }
+
+/** The formats `generate --adapter` writes. */
+export const GENERATE_ADAPTERS = ["drizzle"] as const;
+
+export type GenerateAdapter = (typeof GENERATE_ADAPTERS)[number];
 
 export const USAGE: string = `Usage: mnemocyte <command> [options]
 
@@ -58,6 +72,8 @@ Commands
   check               Report pgvector, migrations and dimensions; exit 1 on
                       a problem
   sql                 Print the fresh-install schema, without a database
+  generate            Write the tables as a schema for another tool
+                      (--adapter drizzle), without a database
   text-search <name>  Change the text search configuration of keyword
                       search; rewrites the memories table
 
@@ -66,9 +82,9 @@ Options
                          or .mjs in ., lib, src or src/lib)
       --dimensions <n>   Embedding dimensions, when no memory file gives them
       --text-search-config <name>
-                         migrate, sql: the text search configuration of a
-                         fresh install (default: english); check: the one
-                         expected
+                         migrate, sql, generate: the text search
+                         configuration of a fresh install (default:
+                         english); check: the one expected
       --schema <name>    The Postgres schema of the tables, when no memory
                          file names one (default: search_path, usually
                          public)
@@ -76,12 +92,15 @@ Options
   -y, --yes              migrate: enable pgvector without asking;
                          text-search: rewrite without asking
       --dry-run          migrate, init, text-search: show what would run and
-                         change nothing
+                         change nothing; generate: print the file
       --embedder <name>  init: openai (default) or openai-compatible, such
                          as a local Ollama
       --json             check, migrate --dry-run, text-search --dry-run:
                          print the result as JSON
-      --out <file>       sql: write to a file instead of standard output
+      --out <file>       sql: write to a file instead of standard output;
+                         generate: the file to write (default:
+                         mnemocyte-schema.ts)
+      --adapter <name>   generate: drizzle, a Drizzle schema for drizzle-kit
   -h, --help             Show this help
   -v, --version          Show the version
 
@@ -94,18 +113,20 @@ const COMMANDS: ReadonlySet<string> = new Set([
 	"migrate",
 	"check",
 	"sql",
+	"generate",
 	"text-search",
 ]);
 
 /** Flags that only some commands read; anywhere else they are a mistake. */
 const COMMAND_FLAGS = {
 	yes: ["migrate", "text-search"],
-	"dry-run": ["migrate", "init", "text-search"],
+	"dry-run": ["migrate", "init", "generate", "text-search"],
 	json: ["check", "migrate", "text-search"],
-	out: ["sql"],
+	out: ["sql", "generate"],
 	embedder: ["init"],
-	"text-search-config": ["migrate", "check", "sql"],
-	schema: ["migrate", "check", "sql", "text-search"],
+	adapter: ["generate"],
+	"text-search-config": ["migrate", "check", "sql", "generate"],
+	schema: ["migrate", "check", "sql", "generate", "text-search"],
 } as const satisfies Record<string, readonly CliCommand[]>;
 
 /** The commands whose `--json` needs `--dry-run`. */
@@ -178,12 +199,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	const [command, ...rest] = positionals;
 	if (command === undefined) {
 		throw usageError(
-			"Name a command: init, migrate, check, sql or text-search.",
+			"Name a command: init, migrate, check, sql, generate or text-search.",
 		);
 	}
 	if (!COMMANDS.has(command)) {
 		throw usageError(
-			`Unknown command "${command}". Commands: init, migrate, check, sql, text-search.`,
+			`Unknown command "${command}". Commands: init, migrate, check, sql, generate, text-search.`,
 		);
 	}
 	// text-search takes the configuration's name; no other command takes an
@@ -204,6 +225,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 		"json",
 		"out",
 		"embedder",
+		"adapter",
 		"text-search-config",
 		"schema",
 	] as const) {
@@ -247,6 +269,17 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			`Unknown embedder "${embedder}". Embedders: ${INIT_EMBEDDERS.join(", ")}.`,
 		);
 	}
+	const adapter = values.adapter;
+	if (command === "generate" && adapter === undefined) {
+		throw usageError(
+			`generate needs --adapter: ${GENERATE_ADAPTERS.join(", ")}.`,
+		);
+	}
+	if (adapter !== undefined && !isGenerateAdapter(adapter)) {
+		throw usageError(
+			`Unknown adapter "${adapter}". Adapters: ${GENERATE_ADAPTERS.join(", ")}.`,
+		);
+	}
 
 	const textSearchConfig =
 		name !== undefined
@@ -272,6 +305,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			: { dimensions: parseDimensions(values.dimensions) }),
 		...(values.out === undefined ? {} : { out: values.out }),
 		...(embedder === undefined ? {} : { embedder }),
+		...(adapter === undefined ? {} : { adapter }),
 		...(textSearchConfig === undefined ? {} : { textSearchConfig }),
 		...(values.schema === undefined
 			? {}
@@ -281,6 +315,10 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 
 function isInitEmbedder(value: string): value is InitEmbedder {
 	return (INIT_EMBEDDERS as readonly string[]).includes(value);
+}
+
+function isGenerateAdapter(value: string): value is GenerateAdapter {
+	return (GENERATE_ADAPTERS as readonly string[]).includes(value);
 }
 
 function parse(argv: readonly string[]) {
@@ -299,6 +337,7 @@ function parse(argv: readonly string[]) {
 			json: { type: "boolean" },
 			out: { type: "string" },
 			embedder: { type: "string" },
+			adapter: { type: "string" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },
 		},

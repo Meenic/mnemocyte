@@ -1,5 +1,6 @@
 import { type CliArgs, parseCliArgs, USAGE } from "./args.js";
 import { checkCommand } from "./check.js";
+import { generateCommand } from "./generate.js";
 import { initCommand } from "./init.js";
 import { CliError, type CliIo, errorCauses } from "./io.js";
 import { errorJson, writeJson } from "./json.js";
@@ -35,6 +36,8 @@ function run(args: CliArgs, io: CliIo, version: string): Promise<number> {
 			return checkCommand(args, io);
 		case "sql":
 			return sqlCommand(args, io);
+		case "generate":
+			return generateCommand(args, io, version);
 		case "text-search":
 			return textSearchCommand(args, io);
 	}

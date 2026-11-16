@@ -82,7 +82,7 @@ Each item ships as a numbered migration. Index changes need
   and its GIN index (`guide/limitations.md`).
 - [x] `feat/schema-name`: a `schemaName` option to keep the tables outside
   `public` (ARCHITECTURE.md "Setup").
-- [ ] `feat/drizzle-schema-export`: `mnemocyte generate --adapter drizzle`
+- [x] `feat/drizzle-schema-export`: `mnemocyte generate --adapter drizzle`
   writes the tables as a Drizzle schema, so `drizzle-kit` manages them
   (ARCHITECTURE.md "Setup").
 

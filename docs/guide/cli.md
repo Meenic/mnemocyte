@@ -2,8 +2,8 @@
 
 `mnemocyte` is a command that ships with the package. It writes a starting
 memory file, creates and upgrades the Postgres schema, checks an
-installation, prints the schema as SQL and changes the keyword search
-language. It uses the memory client your
+installation, prints the schema as SQL or as a Drizzle schema, and changes
+the keyword search language. It uses the memory client your
 app already exports, so the command and the app share one database client
 and one embedder.
 
@@ -289,6 +289,40 @@ memory file whose store has a `schemaName`, the file starts with
 first, so the tables land there. How to apply the file is in the
 [Postgres guide](./postgres.md#apply-the-sql-files-yourself).
 
+## `generate`
+
+```bash
+pnpm exec mnemocyte generate --adapter drizzle [--out <file>] [--dry-run] [--dimensions <n>] [--text-search-config <name>] [--schema <name>]
+```
+
+Writes the tables as a Drizzle schema, so drizzle-kit can create and
+upgrade them with the rest of your schema. `drizzle` is the only adapter
+for now. Like `sql`, it never queries a database, and it takes the size
+from `--dimensions` or your memory file's embedder.
+
+```txt
+Wrote mnemocyte-schema.ts (1536 dimensions, text search configuration english).
+
+Next, with drizzle-kit:
+  1. Add "./mnemocyte-schema.ts" to schema in drizzle.config.ts.
+  2. Unless pgvector is enabled already, run
+       pnpm exec drizzle-kit generate --custom --name=pgvector
+  ...
+```
+
+- **`--out <file>`** picks the path (default `mnemocyte-schema.ts`). Missing
+  folders are created.
+- **Running it again** replaces the file only when `generate` wrote it,
+  and says so when nothing changed. Any other file at that path is left as
+  is and the command exits 2. So is a file whose embedding size or schema
+  differs from the new one, because an installation keeps both.
+- **`--dry-run`** prints the file to standard output and the steps to
+  standard error, and writes nothing.
+- It prints the SQL drizzle-kit cannot write, for two custom migrations:
+  pgvector, then the key index and the installation row. The whole setup,
+  and what to do after an upgrade, is in the
+  [Postgres guide](./postgres.md#manage-the-tables-with-drizzle-kit).
+
 ## `text-search`
 
 ```bash
@@ -440,7 +474,7 @@ Good to know:
 |---|---|
 | 0 | Done; `check` found no problem; `init` also when it left existing files as they were. |
 | 1 | `check` found a problem, `migrate` or `text-search` failed, pgvector was not enabled, or the rewrite was not confirmed. |
-| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, or, for `check`, a database it cannot read. |
+| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, a file `generate` would not replace, or, for `check`, a database it cannot read. |
 
 Errors go to standard error as `mnemocyte: <message>`, followed by the
 database driver's own message as `cause:`. With `--json` they also go to

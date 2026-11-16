@@ -271,3 +271,14 @@ has one migration.
   migration; before it, that call throws `"MIGRATION"`.
 - **`listAuditLog({ memoryId })`** lists one memory's history; see
   [one memory's history](./api.md#one-memorys-history).
+
+## 1.1 → 1.2
+
+Nothing in your code or database has to change.
+
+- **No migration.** 1.1 and 1.2 clients share an installation, so deploy in
+  either order.
+- **New options, all opt-in.** `migrate` takes `textSearchConfig`,
+  `postgresStore` takes `schemaName`, and `mnemocyte generate --adapter
+  drizzle` writes the tables as a Drizzle schema. Without them nothing
+  behaves differently. See the [Postgres guide](./postgres.md).

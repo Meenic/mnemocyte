@@ -9,6 +9,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-16
+
+The second minor release: pick the language of keyword search, keep the
+tables in their own schema, and let drizzle-kit manage them. There is no
+migration, so 1.1 and 1.2 clients work with the same installation in either
+deploy order; see [upgrading](docs/guide/upgrading.md#11--12).
+
 ### Added
 
 - **Pick the keyword search language.** On Postgres, keyword search used
@@ -1582,7 +1589,10 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Meenic/mnemocyte/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Meenic/mnemocyte/compare/v1.0.1...v1.1.0
+[1.0.1]: https://github.com/Meenic/mnemocyte/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.2...v1.0.0
 [1.0.0-rc.2]: https://github.com/Meenic/mnemocyte/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/Meenic/mnemocyte/compare/v0.8.0...v1.0.0-rc.1

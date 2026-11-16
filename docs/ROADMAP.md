@@ -9,7 +9,8 @@ it.
 
 ## Done
 
-1.0.0 and 1.0.1 shipped on 2026-11-15. What each release changed is in
+1.0.0 and 1.0.1 shipped on 2026-11-15, 1.1.0 and 1.2.0 on 2026-11-16.
+What each release changed is in
 [CHANGELOG.md](../CHANGELOG.md), and why is in the ARCHITECTURE.md
 decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 [roadmap at v1.0.1](https://github.com/Meenic/mnemocyte/blob/v1.0.1/docs/ROADMAP.md).

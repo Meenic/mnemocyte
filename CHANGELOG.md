@@ -9,6 +9,15 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-16
+
+The first minor release after 1.0: more control over embedder requests,
+created-date filters on `list` and `context`, `delete` results, a context
+call that returns its memories, scope on observability events, `--json` on
+the CLI and a per-memory audit history. One migration,
+`0004_audit_memory_id.sql`, which 1.0 and 1.1 clients both work with; see
+[upgrading](docs/guide/upgrading.md#10--11).
+
 ### Added
 
 - **`mnemocyte/package.json` is exported.** Tools can read the installed

@@ -34,7 +34,8 @@ export async function sqlCommand(args: CliArgs, io: CliIo): Promise<number> {
 		dimensions = embedder.dimensions;
 	}
 
-	const schema = renderInitialSchema(dimensions);
+	// Postgres checks the configuration's name when the SQL is applied.
+	const schema = renderInitialSchema(dimensions, args.textSearchConfig);
 	if (args.out === undefined) {
 		io.write(schema);
 	} else {

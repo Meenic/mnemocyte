@@ -22,6 +22,7 @@ const HEALTHY: InstallationReport = {
 		model: "text-embedding-3-small",
 		vectorType: "vector",
 	},
+	textSearchConfig: "english",
 };
 
 const APP = { dimensions: 1536, model: "text-embedding-3-small" };
@@ -249,12 +250,13 @@ describe("evaluateInstallation", () => {
 });
 
 describe("describeInstallation", () => {
-	test("prints the four facts", () => {
+	test("prints the five facts", () => {
 		expect(describeInstallation(HEALTHY)).toEqual([
 			"pgvector    0.8.7",
 			"migrations  4 of 4 applied",
 			"dimensions  1536 (vector)",
 			"model       text-embedding-3-small",
+			"text search english",
 		]);
 		expect(
 			describeInstallation({
@@ -267,6 +269,7 @@ describe("describeInstallation", () => {
 			"migrations  not installed",
 			"dimensions  -",
 			"model       -",
+			"text search -",
 		]);
 		expect(
 			describeInstallation({
@@ -283,6 +286,7 @@ describe("describeInstallation", () => {
 			"migrations  3 of 4 applied, pending: 0003_schema_v2 (not recorded)",
 			"dimensions  3072 (halfvec)",
 			"model       -",
+			"text search -",
 		]);
 	});
 });
@@ -295,6 +299,7 @@ describe("installationJson", () => {
 			dimensions: 1536,
 			vectorType: "vector",
 			model: "text-embedding-3-small",
+			textSearchConfig: "english",
 		});
 		expect(
 			installationJson({
@@ -308,6 +313,7 @@ describe("installationJson", () => {
 			dimensions: null,
 			vectorType: null,
 			model: null,
+			textSearchConfig: null,
 		});
 	});
 

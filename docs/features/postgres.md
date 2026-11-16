@@ -10,7 +10,7 @@ the foreign key alone names `public`):
 
 | Table | Purpose |
 |---|---|
-| `mnemocyte_memories` | One row per memory: `id` (uuid PK), `entity_id`, `content`, `kind`, `importance`, `tags text[]`, `source`, `metadata jsonb`, `confidence real`, `embedding vector(N)` or `halfvec(N)` (nullable), `embedding_model`, `embedding_dimensions`, `superseded_by` (uuid, self FK, `ON DELETE NO ACTION`), `superseded_at`, `expires_at`, `last_accessed_at`, `access_count`, `created_at`, `updated_at`, then the scope columns `namespace`, `agent_id`, `session_id`, an optional `key`, and `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED`. |
+| `mnemocyte_memories` | One row per memory: `id` (uuid PK), `entity_id`, `content`, `kind`, `importance`, `tags text[]`, `source`, `metadata jsonb`, `confidence real`, `embedding vector(N)` or `halfvec(N)` (nullable), `embedding_model`, `embedding_dimensions`, `superseded_by` (uuid, self FK, `ON DELETE NO ACTION`), `superseded_at`, `expires_at`, `last_accessed_at`, `access_count`, `created_at`, `updated_at`, then the scope columns `namespace`, `agent_id`, `session_id`, an optional `key`, and `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('<config>'::regconfig, content)) STORED`, where `<config>` is the [text search configuration](#text-search-configuration), `english` by default. |
 | `mnemocyte_events` | Audit log: `id` (uuid), `entity_id`, `description` (the event's `type`), `metadata jsonb`, `timestamp`, `namespace`, `agent_id`, `session_id`, and `memory_id uuid GENERATED ALWAYS AS (…) STORED`, the event's `metadata.memoryId` as a uuid, or null when it is missing or not a UUID. |
 | `mnemocyte_meta` | One row, key `installation`: `embedding_dimensions`, `embedding_model` and `vector_type` (`vector` or `halfvec`, `CHECK`ed) for the whole installation. |
 
@@ -178,7 +178,7 @@ Files in `migrations/`:
 | `0003_schema_v2.sql` | Scope columns, `key`, `type` → `kind`, text ids → uuid, `content_tsv`, the new indexes, `mnemocyte_meta.vector_type`. |
 | `0004_audit_memory_id.sql` | Adds the generated `mnemocyte_events.memory_id` and `mnemocyte_events_memory_idx`. |
 | `fresh-install.sql` | The final schema of `0000`→`0004` in one file, rendered at 1536 dimensions. Only for an empty database. |
-| `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. Repository only: `mnemocyte sql --dimensions N` prints it rendered. |
+| `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}`, `{{VECTOR_TYPE}}` and `{{TEXT_SEARCH_CONFIG}}`. Repository only: `mnemocyte sql --dimensions N` prints it rendered. |
 
 The tarball ships `migrations/*.sql` only (`files` in `package.json`); a
 package test checks the packed folder against the repository's `.sql`
@@ -251,7 +251,9 @@ Install paths:
 `fresh-install.sql` is generated from the template; a unit test fails if the
 two drift, and an integration test compares its resulting catalog (columns
 in order, generated expressions, constraints, indexes, metadata) with the
-`0000`→`0004` sequence.
+`0000`→`0004` sequence. Another compares a fresh install rendered with
+`simple` with `fresh-install.sql` changed to `simple` by
+`setTextSearchConfig`'s statements.
 
 To change the schema: write the next numbered migration by hand, update the
 template so a fresh install matches the upgraded catalog column for column,
@@ -312,13 +314,15 @@ loaded backend of `store: client`.
   work. A statement failure becomes `"MIGRATION"` naming the migration, with
   the driver error as `cause`; the transaction rolls back.
 - **Inspection.** Every transaction starts with `inspect`: the lock, the
-  dimensions check, the tracking table, then, without tracked versions, the
+  dimensions check, the `textSearchConfig` check when one is given, the
+  tracking table, then, without tracked versions, the
   catalog level and, for a fresh install, `pg_extension`. It returns
   `fresh`, `untracked` or `tracked` and throws every error a run raises
   before its first change, so a real step and a dry run share them.
 - **Fresh install.** With no Mnemocyte tables, the runner requires
   `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`, runs
-  the template rendered for those dimensions (`halfvec` above 2,000), and
+  the template rendered for those dimensions (`halfvec` above 2,000) and
+  the [text search configuration](#text-search-configuration), and
   records `0000`→`0004`. A missing pgvector is `"MIGRATION"` unless
   `createExtension` is set; see the next section.
 - **Adoption.** With tables but an empty tracking table, `installedVersion`
@@ -383,6 +387,98 @@ default (ARCHITECTURE decision 20): pgvector's control file is not marked
   else becomes `"MIGRATION"` "CREATE EXTENSION vector failed". The driver
   error is the `cause` each time.
 - `extensionCreated` in the result is true when the call ran it.
+
+## Text search configuration
+
+`content_tsv` is `to_tsvector('<config>'::regconfig, content)`, a stored
+generated column with a GIN index. The configuration (`english` by
+default) is chosen at install time and can be changed later by a rewrite
+(ARCHITECTURE decision 50). The code is in `src/db/text-search.ts` and
+`src/db/migrations/text-search.ts`.
+
+- **Named, never the default.** Postgres accepts only immutable functions
+  in a generated column, and the one-argument `to_tsvector(text)` follows
+  `default_text_search_config`, a setting that differs between servers
+  (initdb picks it from the locale; the built-in default is `simple`). So
+  the expression always names the configuration.
+- **The column is the record.** Nothing in `mnemocyte_meta` repeats the
+  name, so the two cannot disagree after a manual `ALTER`, and no
+  migration was needed: every schema since `0003` has the column. Readers
+  take `pg_get_expr` of the column's `pg_attrdef` entry and parse
+  `to_tsvector('<name>'::regconfig, content)` (`parseContentTsvExpression`).
+  The name inside the literal is `regconfig`'s output: schema-qualified
+  only when the schema is not on `search_path`, quoted when it needs
+  quotes, with `'` doubled. Any other shape is `"MIGRATION"`
+  `SCHEMA_UNRECOGNIZED` for search, `setTextSearchConfig` and `migrate`
+  with `textSearchConfig`, and `invalid` for `check`. `pg_depend` cannot
+  replace the parse: built-in configurations are pinned objects, for
+  which Postgres records no dependency.
+- **Query time.** The store reads the configuration once, before its first
+  keyword search, and caches it like `vector_type`; a failed read is not
+  cached. `lexicalSearch` sends it as a parameter,
+  `websearch_to_tsquery($n::regconfig, $q)`. With the unnamed statements
+  every adapter uses, Postgres plans with the values and folds the call to
+  a constant `tsquery`, so the plan matches the old literal one (the
+  `textsearch` bench phase checks that the GIN is used). A store that runs
+  `setTextSearchConfig` updates its cache; every other store keeps the old
+  name until its process restarts, which costs weaker keyword matches, not
+  errors. A per-query catalog lookup would avoid that, at the cost of a
+  `pg_get_expr` and a regex in every keyword search.
+- **Fresh install.** `migrate({ textSearchConfig })` resolves the name in
+  the locked transaction with `$1::regconfig::text`, which gives the
+  canonical name, and `renderInitialSchema` writes it into the template's
+  `'{{TEXT_SEARCH_CONFIG}}'` as a string literal (DDL takes no
+  parameters). A name that does not resolve (SQLSTATE `42704`, `3F000`,
+  `0A000`, `42601`, `42602` or `22P02`) is `"VALIDATION"`. The failed cast
+  aborts the transaction, which the error then rolls back.
+- **Existing installation.** With `textSearchConfig`, `migrate` compares
+  OIDs (`$1::regconfig::oid = $2::regconfig::oid`), so `Simple` and
+  `pg_catalog.simple` match `simple`, and a different configuration is
+  `"CONFIG"` `TEXT_SEARCH_CONFIG_MISMATCH` before any step, dry runs
+  included. A schema from before `0003` has no column yet and counts as
+  `english`, which `0003` creates. Without the option nothing is compared.
+- **Changing it.** `setTextSearchConfig` (`setPostgresTextSearchConfig`)
+  runs one transaction: `SET TRANSACTION READ ONLY` for a dry run, the
+  migration advisory lock, a check that every bundled migration is applied
+  (tracked, or untracked and current), the name check, then the rewrite:
+  - Postgres 17+: `ALTER COLUMN content_tsv SET EXPRESSION AS (…)`, which
+    keeps the column's position and its index.
+  - Postgres 15 and 16 have no `SET EXPRESSION`: `DROP COLUMN` and
+    `ADD COLUMN … STORED` in one `ALTER TABLE` (one rewrite), then the GIN
+    index again, which the drop removed. `content_tsv` was the last
+    column, so it still is; only `attnum` has a gap. The version comes from
+    `server_version_num`. CI runs both statement lists on 17 and 18 (the
+    older one works there too), and the whole path ran once on Postgres 16.
+  - `ANALYZE mnemocyte_memories (content_tsv)`, because the rewrite drops
+    the column's statistics, which the planner uses to estimate a keyword
+    match, and autovacuum counts changed rows, not rewrites.
+
+  Either rewrite takes `ACCESS EXCLUSIVE` on `mnemocyte_memories` and
+  rebuilds every index on it, HNSW included. Measured below.
+- **Not a migration.** The numbered migrations are one sequence for every
+  installation; a per-installation value does not fit it, and the
+  tracking table would not record it.
+
+Measured with the `textsearch` phase of `pnpm bench:postgres` on the main
+dataset of [indexes measured](#indexes-measured) (132,000 memories at
+1,536 dimensions, a 1.09 GB table and a 1.01 GB HNSW index; Postgres 18.6
+and pgvector 0.8.7 in Docker, default settings, 2026-11-16):
+
+| Change `english` → `simple` | Time |
+|---|---|
+| `setTextSearchConfig`, `maintenance_work_mem` 64 MB (the default) | 260 s |
+| `SET EXPRESSION`, `maintenance_work_mem` 1 GB (rolled back) | 62.3 s, `ANALYZE` 0.1 s |
+| `DROP` + `ADD COLUMN`, 1 GB (rolled back) | 59.5 s, GIN index 0.4 s, `ANALYZE` 0.1 s |
+
+Building the HNSW index alone took 48.5 s at 1 GB when the dataset was
+loaded, so the HNSW rebuild is most of each rewrite, and at 64 MB its graph
+no longer fits in memory. The guide suggests raising
+`maintenance_work_mem` for the role that runs the change. Sizes did not
+change (the synthetic content tokenizes the same under both
+configurations). Keyword search used the GIN index before and after:
+0.95 ms and 0.70 ms for a 100-memory entity, 4.8 ms and 4.3 ms for the
+30,000-memory one (median of five), with the same buffers.
+
 
 ## Installation metadata
 
@@ -812,11 +908,6 @@ contributor meets in this backend.
 - `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` keeps going
   after an error and can leave a partial schema; `migrate()` then refuses to
   adopt it. The guide shows the flags.
-- The full-text column is `to_tsvector('english', content)`, fixed in
-  migration 0003 and `fresh-install.sql`, so every language gets English
-  stemming and stop words. An install-time configuration is an after-1.0
-  roadmap item; changing it needs a migration that rewrites the generated
-  column and its GIN index.
 - No method switches an installation's embedding model or dimensions;
   `migrate` rejects a different dimension and the installation check
   rejects a different model. Users re-embed or delete rows by hand

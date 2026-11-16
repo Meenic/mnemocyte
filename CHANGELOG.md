@@ -9,6 +9,31 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Added
+
+- **Pick the keyword search language.** On Postgres, keyword search used
+  English stemming and stop words for every installation. Pick another
+  Postgres text search configuration when you install:
+  `mnemocyte migrate --text-search-config simple`, or
+  `migrate({ memory, textSearchConfig: "simple" })`. `simple` does no
+  stemming and suits memories in several languages; `german`, `french`,
+  `turkish` and the other configurations your database lists work too.
+  `english` stays the default. `mnemocyte sql` takes the same flag, and
+  `mnemocyte check` shows the configuration (`textSearchConfig` in
+  `--json`) and, with `--text-search-config`, fails when it differs
+  (`TEXT_SEARCH_CONFIG_MISMATCH`). No migration: the configuration is
+  read from the existing keyword column, so nothing changes for current
+  installations.
+- **`setTextSearchConfig` and `mnemocyte text-search <name>`.** Change the
+  configuration of an existing installation. It rewrites the memories
+  table and rebuilds its indexes, HNSW included, while reads and writes of
+  memories wait, so the command asks first (`--yes` skips the question,
+  `--dry-run` changes nothing). App processes that are already running
+  keep the old configuration until they restart. See
+  [keyword search language](docs/guide/postgres.md#keyword-search-language).
+- **`TEXT_SEARCH_CONFIG_MISMATCH`.** A `"CONFIG"` reason for a `migrate`
+  whose `textSearchConfig` differs from the installation's.
+
 ## [1.1.0] - 2026-11-16
 
 The first minor release after 1.0: more control over embedder requests,

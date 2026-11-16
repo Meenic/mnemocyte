@@ -1,5 +1,8 @@
 import { parseArgs } from "node:util";
-import { assertMigrateDimensions } from "../memory/validation.js";
+import {
+	assertMigrateDimensions,
+	assertTextSearchConfigName,
+} from "../memory/validation.js";
 import { INIT_EMBEDDERS, type InitEmbedder } from "./init.js";
 import { CliError, EXIT_USAGE } from "./io.js";
 
@@ -8,6 +11,7 @@ export type CliCommand =
 	| "migrate"
 	| "check"
 	| "sql"
+	| "text-search"
 	| "help"
 	| "version";
 
@@ -20,11 +24,19 @@ export interface CliArgs {
 	readonly envFile?: string;
 	/** `--dimensions`: 1 to 4,000. */
 	readonly dimensions?: number;
-	/** `--yes`: enable pgvector without asking. */
+	/**
+	 * `--text-search-config` for `migrate`, `check` and `sql`, or the name
+	 * `text-search` takes.
+	 */
+	readonly textSearchConfig?: string;
+	/** `--yes`: enable pgvector, or rewrite for `text-search`, without asking. */
 	readonly yes: boolean;
-	/** `--dry-run`: report what `migrate` or `init` would do. */
+	/** `--dry-run`: report what `migrate`, `init` or `text-search` would do. */
 	readonly dryRun: boolean;
-	/** `--json`: print one JSON result for `check` or `migrate --dry-run`. */
+	/**
+	 * `--json`: print one JSON result for `check`, `migrate --dry-run` or
+	 * `text-search --dry-run`.
+	 */
 	readonly json: boolean;
 	/** `--out`: where `sql` writes instead of standard output. */
 	readonly out?: string;
@@ -35,21 +47,31 @@ export interface CliArgs {
 export const USAGE: string = `Usage: mnemocyte <command> [options]
 
 Commands
-  init      Write a memory.ts for the driver in package.json
-  migrate   Create or upgrade the Mnemocyte schema
-  check     Report pgvector, migrations and dimensions; exit 1 on a problem
-  sql       Print the fresh-install schema, without a database
+  init                Write a memory.ts for the driver in package.json
+  migrate             Create or upgrade the Mnemocyte schema
+  check               Report pgvector, migrations and dimensions; exit 1 on
+                      a problem
+  sql                 Print the fresh-install schema, without a database
+  text-search <name>  Change the text search configuration of keyword
+                      search; rewrites the memories table
 
 Options
   -c, --config <path>    Memory file to load (default: memory.ts, .mts, .js
                          or .mjs in ., lib, src or src/lib)
       --dimensions <n>   Embedding dimensions, when no memory file gives them
+      --text-search-config <name>
+                         migrate, sql: the text search configuration of a
+                         fresh install (default: english); check: the one
+                         expected
       --env-file <path>  Load this file instead of ./.env
-  -y, --yes              migrate: enable pgvector without asking
-      --dry-run          migrate, init: show what would run and change nothing
+  -y, --yes              migrate: enable pgvector without asking;
+                         text-search: rewrite without asking
+      --dry-run          migrate, init, text-search: show what would run and
+                         change nothing
       --embedder <name>  init: openai (default) or openai-compatible, such
                          as a local Ollama
-      --json             check, migrate --dry-run: print the result as JSON
+      --json             check, migrate --dry-run, text-search --dry-run:
+                         print the result as JSON
       --out <file>       sql: write to a file instead of standard output
   -h, --help             Show this help
   -v, --version          Show the version
@@ -63,16 +85,24 @@ const COMMANDS: ReadonlySet<string> = new Set([
 	"migrate",
 	"check",
 	"sql",
+	"text-search",
 ]);
 
 /** Flags that only some commands read; anywhere else they are a mistake. */
 const COMMAND_FLAGS = {
-	yes: ["migrate"],
-	"dry-run": ["migrate", "init"],
-	json: ["check", "migrate"],
+	yes: ["migrate", "text-search"],
+	"dry-run": ["migrate", "init", "text-search"],
+	json: ["check", "migrate", "text-search"],
 	out: ["sql"],
 	embedder: ["init"],
+	"text-search-config": ["migrate", "check", "sql"],
 } as const satisfies Record<string, readonly CliCommand[]>;
+
+/** The commands whose `--json` needs `--dry-run`. */
+const JSON_NEEDS_DRY_RUN: ReadonlySet<string> = new Set([
+	"migrate",
+	"text-search",
+]);
 
 /** Flags every command but `init` reads: it loads no memory file. */
 const NOT_FOR_INIT = ["config", "env-file", "dimensions"] as const;
@@ -90,6 +120,15 @@ function parseDimensions(value: string): number {
 		throw usageError(error instanceof Error ? error.message : String(error));
 	}
 	return dimensions;
+}
+
+function parseTextSearchConfig(value: string, field: string): string {
+	try {
+		assertTextSearchConfigName(value, field);
+	} catch (error) {
+		throw usageError(error instanceof Error ? error.message : String(error));
+	}
+	return value;
 }
 
 /**
@@ -119,32 +158,53 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	}
 	const [command, ...rest] = positionals;
 	if (command === undefined) {
-		throw usageError("Name a command: init, migrate, check or sql.");
+		throw usageError(
+			"Name a command: init, migrate, check, sql or text-search.",
+		);
 	}
 	if (!COMMANDS.has(command)) {
 		throw usageError(
-			`Unknown command "${command}". Commands: init, migrate, check, sql.`,
+			`Unknown command "${command}". Commands: init, migrate, check, sql, text-search.`,
 		);
 	}
-	if (rest.length > 0) {
-		throw usageError(`Unexpected argument "${rest[0]}".`);
+	// text-search takes the configuration's name; no other command takes an
+	// argument.
+	const [name, ...extra] = command === "text-search" ? rest : [];
+	if (command === "text-search" && name === undefined) {
+		throw usageError(
+			"Name the text search configuration: mnemocyte text-search <name>, such as simple.",
+		);
 	}
-	for (const flag of ["yes", "dry-run", "json", "out", "embedder"] as const) {
+	const unexpected = command === "text-search" ? extra : rest;
+	if (unexpected.length > 0) {
+		throw usageError(`Unexpected argument "${unexpected[0]}".`);
+	}
+	for (const flag of [
+		"yes",
+		"dry-run",
+		"json",
+		"out",
+		"embedder",
+		"text-search-config",
+	] as const) {
 		const owners: readonly string[] = COMMAND_FLAGS[flag];
 		if (values[flag] !== undefined && !owners.includes(command)) {
-			throw usageError(
-				`--${flag} applies to ${owners.join(" and ")}, not to ${command}.`,
-			);
+			const last = owners.at(-1);
+			const list =
+				owners.length > 1
+					? `${owners.slice(0, -1).join(", ")} and ${last}`
+					: `${last}`;
+			throw usageError(`--${flag} applies to ${list}, not to ${command}.`);
 		}
 	}
-	// A real migrate can ask about pgvector on standard output, which would
+	// A real migrate or text-search can ask on standard output, which would
 	// break the JSON, so --json reports only the plan.
 	if (
-		command === "migrate" &&
+		JSON_NEEDS_DRY_RUN.has(command) &&
 		values.json === true &&
 		values["dry-run"] !== true
 	) {
-		throw usageError("--json on migrate needs --dry-run.");
+		throw usageError(`--json on ${command} needs --dry-run.`);
 	}
 	if (command === "init") {
 		for (const flag of NOT_FOR_INIT) {
@@ -152,6 +212,9 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 				throw usageError(`--${flag} does not apply to init.`);
 			}
 		}
+	}
+	if (command === "text-search" && values.dimensions !== undefined) {
+		throw usageError("--dimensions does not apply to text-search.");
 	}
 	for (const flag of ["config", "env-file", "out"] as const) {
 		if (values[flag] === "") {
@@ -164,6 +227,16 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			`Unknown embedder "${embedder}". Embedders: ${INIT_EMBEDDERS.join(", ")}.`,
 		);
 	}
+
+	const textSearchConfig =
+		name !== undefined
+			? parseTextSearchConfig(name, "The configuration name")
+			: values["text-search-config"] === undefined
+				? undefined
+				: parseTextSearchConfig(
+						values["text-search-config"],
+						"--text-search-config",
+					);
 
 	return {
 		command: command as CliCommand,
@@ -179,6 +252,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			: { dimensions: parseDimensions(values.dimensions) }),
 		...(values.out === undefined ? {} : { out: values.out }),
 		...(embedder === undefined ? {} : { embedder }),
+		...(textSearchConfig === undefined ? {} : { textSearchConfig }),
 	};
 }
 
@@ -194,6 +268,7 @@ function parse(argv: readonly string[]) {
 		options: {
 			config: { type: "string", short: "c" },
 			dimensions: { type: "string" },
+			"text-search-config": { type: "string" },
 			"env-file": { type: "string" },
 			yes: { type: "boolean", short: "y" },
 			"dry-run": { type: "boolean" },

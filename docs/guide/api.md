@@ -792,6 +792,7 @@ import { migrate } from "mnemocyte";
 const { applied, adopted, extensionCreated } = await migrate({
   memory,                 // the client from createMemory()
   createExtension: true,  // optional; enable pgvector if it is missing
+  textSearchConfig: "simple", // optional; keyword search language, english by default
   dryRun: false,          // optional; report what would happen, change nothing
   signal,                 // optional
 });
@@ -823,6 +824,13 @@ and what enabling pgvector needs, is in
 - Without `createExtension`, a missing pgvector throws `"MIGRATION"`. With
   it, a role that may not create the extension, or a server without
   pgvector, throws `"MIGRATION"` and nothing is created.
+- `textSearchConfig` names the Postgres text search configuration keyword
+  search uses: `english` (the default), `simple`, `german` and so on (see
+  [keyword search language](./postgres.md#keyword-search-language)). A
+  fresh install builds the keyword column with it. On an existing
+  installation it is optional, and a different configuration throws
+  `"CONFIG"` before anything runs; `setTextSearchConfig` changes it. A name
+  the database does not have throws `"VALIDATION"`.
 - `dryRun: true` reads the database in one read-only transaction and
   returns what a run would return, changing nothing, the extension
   included.
@@ -832,6 +840,36 @@ and what enabling pgvector needs, is in
   nothing.
 - An abort cancels the running statement and rolls back the current
   migration.
+
+### `setTextSearchConfig`
+
+```ts
+import { setTextSearchConfig } from "mnemocyte";
+
+const { previous, current, changed } = await setTextSearchConfig({
+  memory,                     // or store, as migrate takes it
+  textSearchConfig: "simple", // the configuration keyword search should use
+  dryRun: false,              // optional; report what would change
+  signal,                     // optional
+});
+// { previous: "english", current: "simple", changed: true }
+```
+
+Changes the keyword search language of an existing installation;
+`pnpm exec mnemocyte text-search simple` calls it. On Postgres it rewrites
+the memories table and rebuilds every index on it, the vector index
+included, while reads and writes of memories wait, so run it in a quiet
+moment. [postgres.md](./postgres.md#change-it-later) has the timings.
+
+- Names come back as Postgres prints them. `changed` is false when the
+  installation already uses that configuration, and nothing runs.
+- Every migration must be applied first (`"MIGRATION"` otherwise), and the
+  client needs interactive transactions, like `migrate`.
+- Other running app processes keep the configuration they read at their
+  first search until they restart; the client that made the change uses
+  the new one at once.
+- An in-memory client has no configuration and returns `null` names with
+  `changed: false`.
 
 ## Retrieval tuning
 
@@ -924,12 +962,13 @@ try {
 | `CONFIG` | `INVALID_OPTION` | An option is missing, malformed or unknown (including `namespace`), the client or executor is not supported, or `migrate`'s `dimensions` differs from the client's embedder. |
 | | `DIMENSIONS_MISMATCH` | The embedder's dimensions, or `migrate`'s `dimensions`, differ from the installation's. |
 | | `MODEL_MISMATCH` | The embedder's model differs from the one the installation recorded. |
+| | `TEXT_SEARCH_CONFIG_MISMATCH` | `migrate`'s `textSearchConfig` differs from the installation's. |
 | `CONFLICT` | `KEY_IN_USE` | An update's key is already used in the memory's scope. |
 | | `HAS_DEPENDENTS` | `delete` with `dependents: "reject"` (the default), `deleteScope` or `prune` would remove a memory that others are consolidated into. |
 | | `HIDDEN_DEPENDENTS` | `dependents: "restore"` or `"delete"` meets a memory consolidated into the target that is not visible at the scope. |
 | | `CONSOLIDATION_CHANGED` | `consolidate`'s survivor is no longer active, or a superseded memory already belongs to another survivor. |
 | `MIGRATION` | `SCHEMA_MISSING` | Mnemocyte tables or columns are missing or out of date. Run `migrate`. |
-| | `SCHEMA_UNRECOGNIZED` | The tables match no migration, or `mnemocyte_migrations` has gaps. |
+| | `SCHEMA_UNRECOGNIZED` | The tables match no migration, `mnemocyte_migrations` has gaps, or the keyword column was changed by hand. |
 | | `SCHEMA_NEWER` | A newer Mnemocyte migrated the database. |
 | | `INSTALLATION_INVALID` | The `mnemocyte_meta` installation row is missing or holds a value Mnemocyte cannot use. |
 | | `MIXED_MODELS` | Stored memories hold more than one embedding model. |

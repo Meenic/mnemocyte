@@ -53,15 +53,18 @@ them.
 
 ## Retrieval
 
-- **Keyword search is English only on Postgres.** The schema builds the
-  full-text column with the `english` text search configuration, so every
-  language gets English stemming and stop words: keyword matches in other
-  languages are weaker, and vector search carries more of the ranking. The
-  configuration is fixed in the schema; choosing one at install time is
-  planned after 1.0.
-- **Keyword search differs by backend.** Postgres uses English full-text
-  search (stemming, stop words); the in-memory store matches query words as
-  substrings. Both fuse ranks the same way, but they can find different
+- **Keyword search uses one language per installation on Postgres.** It
+  follows the [text search configuration](./postgres.md#keyword-search-language)
+  picked at install time, `english` by default, for every memory. Memories
+  in other languages get that language's stemming and stop words, so their
+  keyword matches are weaker and vector search carries more of the
+  ranking; `simple`, with no stemming, treats every language alike.
+  Changing it later rewrites the memories table and rebuilds its indexes
+  while the app waits, and app processes that are already running keep the
+  old configuration for their queries until they restart.
+- **Keyword search differs by backend.** Postgres uses full-text search
+  (stemming and stop words, unless the configuration is `simple`); the
+  in-memory store matches query words as substrings. Both fuse ranks the same way, but they can find different
   keyword matches, so results for the same data can differ.
 - **Very selective filters cost more on Postgres.** The vector search keeps
   scanning the HNSW index until it has enough memories that pass the filters,

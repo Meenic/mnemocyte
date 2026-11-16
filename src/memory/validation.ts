@@ -29,6 +29,7 @@ import type {
 	RetrievalConfig,
 	ScopedReadOptions,
 	SearchInput,
+	SetTextSearchConfigInput,
 	StatsInput,
 	UpdateInput,
 } from "../types.js";
@@ -229,7 +230,8 @@ const CREATED_FIELDS = {
 /** The methods whose input {@link assertInputKeys} checks. */
 export type CheckedInput =
 	| Exclude<MnemocyteOperation, "trackAccess">
-	| "migrate";
+	| "migrate"
+	| "setTextSearchConfig";
 
 /** The keys each method input takes, by method name. */
 const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
@@ -369,6 +371,14 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 		store: true,
 		dimensions: true,
 		createExtension: true,
+		textSearchConfig: true,
+		dryRun: true,
+		signal: true,
+	}),
+	setTextSearchConfig: inputKeys<SetTextSearchConfigInput>({
+		memory: true,
+		store: true,
+		textSearchConfig: true,
 		dryRun: true,
 		signal: true,
 	}),
@@ -1455,6 +1465,56 @@ export function validateMigrateInput(input: MigrateInput): void {
 	if (input.dimensions !== undefined) {
 		assertMigrateDimensions(input.dimensions, "dimensions");
 	}
+	if (input.textSearchConfig !== undefined) {
+		assertTextSearchConfigName(input.textSearchConfig, "textSearchConfig");
+	}
+	assertOptionalSignal(input.signal);
+}
+
+/**
+ * A Postgres name is at most 63 bytes, so a schema-qualified, quoted one
+ * fits in 256; anything longer cannot resolve.
+ */
+const MAX_TEXT_SEARCH_CONFIG_BYTES = 256;
+
+/**
+ * Throw `"VALIDATION"` unless `value` can name a text search configuration:
+ * a non-empty string of at most 256 UTF-8 bytes without a NUL character.
+ * Whether it exists is the database's call.
+ */
+export function assertTextSearchConfigName(
+	value: unknown,
+	field: string,
+): asserts value is string {
+	assertNonEmptyString(value, field);
+	assertMaxBytes(value, field, MAX_TEXT_SEARCH_CONFIG_BYTES);
+	if (value.includes("\u0000")) {
+		throw new MnemocyteError({
+			message: `${field} must not contain a NUL character.`,
+			code: "VALIDATION",
+		});
+	}
+}
+
+export function validateSetTextSearchConfigInput(
+	input: SetTextSearchConfigInput,
+): void {
+	if (typeof input !== "object" || input === null) {
+		throw new MnemocyteError({
+			message: "setTextSearchConfig requires an input object.",
+			code: "VALIDATION",
+		});
+	}
+	assertInputKeys("setTextSearchConfig", input);
+	if ((input.memory !== undefined) === (input.store !== undefined)) {
+		throw new MnemocyteError({
+			message:
+				"setTextSearchConfig takes either memory (a client from createMemory()) or store, not both and not neither.",
+			code: "VALIDATION",
+		});
+	}
+	assertTextSearchConfigName(input.textSearchConfig, "textSearchConfig");
+	assertOptionalBoolean(input.dryRun, "dryRun");
 	assertOptionalSignal(input.signal);
 }
 

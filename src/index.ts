@@ -46,7 +46,7 @@ export {
 	MnemocyteError,
 	ProviderError,
 } from "./errors.js";
-export { migrate } from "./migrate.js";
+export { migrate, setTextSearchConfig } from "./migrate.js";
 export type { PostgresClient } from "./sql/detect.js";
 export type {
 	AddInput,
@@ -137,7 +137,9 @@ export type {
 	ScopeSelector,
 	ScopeSelectorInput,
 	SearchInput,
+	SetTextSearchConfigInput,
 	StatsInput,
+	TextSearchConfigResult,
 	TokenCounter,
 	UpdateInput,
 } from "./types.js";

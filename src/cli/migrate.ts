@@ -20,12 +20,15 @@ interface RunOptions {
 
 function runMigrate(
 	target: CliTarget,
-	dimensions: number | undefined,
+	args: CliArgs,
 	options: RunOptions,
 ): Promise<MigrateResult> {
 	const shared = {
 		...options,
-		...(dimensions === undefined ? {} : { dimensions }),
+		...(args.dimensions === undefined ? {} : { dimensions: args.dimensions }),
+		...(args.textSearchConfig === undefined
+			? {}
+			: { textSearchConfig: args.textSearchConfig }),
 	};
 	return target.kind === "memory"
 		? migrate({ memory: target.memory, ...shared })
@@ -70,7 +73,7 @@ async function planMigrate(
 	args: CliArgs,
 ): Promise<MigrateResult> {
 	try {
-		return await runMigrate(target, args.dimensions, {
+		return await runMigrate(target, args, {
 			createExtension: true,
 			dryRun: true,
 		});
@@ -168,7 +171,7 @@ export async function migrateTarget(
 			return 1;
 		}
 	}
-	const result = await runMigrate(target, args.dimensions, {
+	const result = await runMigrate(target, args, {
 		createExtension: plan.extensionCreated,
 		dryRun: false,
 	});

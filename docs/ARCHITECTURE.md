@@ -1032,3 +1032,37 @@ Dated 2026-10-26 unless noted.
       Postgres, as `get` returns `null`. The id stays in `metadata`, the
       column's source and a stable payload, and `AuditEvent` gets no
       top-level field.
+50. **Text search configuration at install time** (2026-11-16, landed):
+    the maintainer chose, with `feat/text-search-config`:
+    - The configuration is recorded only in `content_tsv`'s generated
+      expression, `to_tsvector('<name>'::regconfig, content)`, read back
+      with `pg_get_expr`. A `mnemocyte_meta` column would need a migration
+      and could disagree with the column after a manual `ALTER`, and a
+      client that read it would fail keyword search on a 1.1 schema until
+      `migrate` ran, a break in a minor. Every 1.x schema has the column,
+      so 1.1 and newer clients work in either deploy order.
+    - `migrate({ textSearchConfig })` and `--text-search-config` on
+      `migrate`, `check` and `sql`. It sets a fresh install; on an existing
+      one a different configuration is `"CONFIG"`
+      (`TEXT_SEARCH_CONFIG_MISMATCH`) and nothing runs. `english` stays the
+      default for new installs: switching to `simple` in a minor would
+      give English users weaker recall (no stemming) without asking.
+    - Changing it is `setTextSearchConfig()` from the root and
+      `mnemocyte text-search <name>`, not a numbered migration (one
+      sequence for every installation cannot carry a per-installation
+      value) and not only manual SQL (the version split, the lock and the
+      `ANALYZE` belong in one tested place; the guide still shows the SQL).
+      It runs under the migration advisory lock with every migration
+      applied: `SET EXPRESSION` on Postgres 17+, `DROP` and `ADD COLUMN`
+      plus the GIN index on 15 and 16, then `ANALYZE`. Both rewrite the
+      table and rebuild every index, HNSW included; the timings are in
+      features/postgres.md. The CLI asks before the rewrite.
+    - The store reads the configuration once, before its first keyword
+      search, and caches it; the query passes it as `$n::regconfig`. A
+      process that did not run the change keeps the old configuration until
+      it restarts (weaker matches, no errors), which the docs and the
+      command's output say. A lookup inside every keyword statement would
+      avoid that at a cost on every search.
+    - The in-memory backend matches substrings and has no configuration:
+      `migrate` ignores the option and `setTextSearchConfig` returns `null`
+      names with `changed: false`.

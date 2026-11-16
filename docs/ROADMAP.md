@@ -76,7 +76,7 @@ Each item ships as a numbered migration. Index changes need
 
 - [x] `feat/audit-memory-id`: an indexed memory id column on audit events
   for per-memory history. Today the id is only in the event's `metadata`.
-- [ ] `feat/text-search-config`: choose the text search configuration at
+- [x] `feat/text-search-config`: choose the text search configuration at
   install time. `english` is fixed in migration 0003 and
   `fresh-install.sql`; changing it rewrites the generated `tsvector` column
   and its GIN index (`guide/limitations.md`).

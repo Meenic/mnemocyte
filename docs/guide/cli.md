@@ -2,7 +2,8 @@
 
 `mnemocyte` is a command that ships with the package. It writes a starting
 memory file, creates and upgrades the Postgres schema, checks an
-installation, and prints the schema as SQL. It uses the memory client your
+installation, prints the schema as SQL and changes the keyword search
+language. It uses the memory client your
 app already exports, so the command and the app share one database client
 and one embedder.
 
@@ -186,7 +187,7 @@ write the default file and swap the embedder by hand.
 ## `migrate`
 
 ```bash
-pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run [--json]] [--dimensions <n>]
+pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run [--json]] [--dimensions <n>] [--text-search-config <name>]
 ```
 
 Creates the schema in an empty database and applies pending migrations to
@@ -210,11 +211,16 @@ Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_s
   asks no question. Add `--json` to get the plan as
   [JSON](#json-output).
 - **`--dimensions <n>`** with a memory file must equal the embedder's.
+- **`--text-search-config <name>`** picks the
+  [keyword search language](./postgres.md#keyword-search-language) of a
+  new installation, such as `simple`; `english` without it. On an existing
+  installation it must match the installed one, or `migrate` fails and
+  changes nothing; `text-search` changes it.
 
 ## `check`
 
 ```bash
-pnpm exec mnemocyte check [--config <path>] [--dimensions <n>] [--json]
+pnpm exec mnemocyte check [--config <path>] [--dimensions <n>] [--text-search-config <name>] [--json]
 ```
 
 Reads the database and reports what is installed. It changes nothing.
@@ -226,6 +232,7 @@ pgvector    0.8.7
 migrations  5 of 5 applied
 dimensions  1536 (vector)
 model       text-embedding-3-small
+text search english
 
 ok
 ```
@@ -240,7 +247,9 @@ your app throw:
 - the installed dimensions differ from the embedder's (or `--dimensions`);
 - the `installation` row of `mnemocyte_meta` is missing or contradicts the
   embedding column;
-- the recorded embedding model differs from the embedder's.
+- the recorded embedding model differs from the embedder's;
+- the keyword search language differs from `--text-search-config`, when
+  you pass it.
 
 Two states are reported as a `note:` and pass: a current schema that was
 installed with `psql` (the next `migrate` only records it), and an empty
@@ -259,12 +268,40 @@ Prints the schema a fresh install creates, for teams that apply SQL with
 their own tools. It never queries a database. With `--dimensions` it loads
 nothing; without it, the size is the embedder's in the memory file.
 `--out <file>` writes a file instead of standard output. Above 2,000
-dimensions the column is `halfvec`. How to apply the file is in the
+dimensions the column is `halfvec`. `--text-search-config <name>` sets the
+[keyword search language](./postgres.md#keyword-search-language); Postgres
+checks the name when you apply the file. How to apply the file is in the
 [Postgres guide](./postgres.md#apply-the-sql-files-yourself).
+
+## `text-search`
+
+```bash
+pnpm exec mnemocyte text-search <name> [--config <path>] [--yes] [--dry-run [--json]]
+```
+
+Changes the [keyword search language](./postgres.md#keyword-search-language)
+of an existing installation, for example from `english` to `simple`. It is
+[`setTextSearchConfig()`](./api.md#settextsearchconfig) with the store from
+the memory file.
+
+```txt
+Using memory.ts
+Change keyword search from "english" to "simple"? This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation. [y/N] y
+Changed keyword search from "english" to "simple". Restart other app processes so their keyword search uses it.
+```
+
+- It asks before the rewrite. `--yes` (`-y`) answers yes, for CI; without
+  it and without a terminal to ask on, it changes nothing and exits 1.
+- **`--dry-run`** checks the name and the schema and says what would
+  change. Add `--json` to get it as [JSON](#json-output).
+- When the installation already uses that configuration, it says so,
+  changes nothing and exits 0.
+- Every migration must be applied first; run `migrate` before it.
 
 ## JSON output
 
-`check --json` and `migrate --dry-run --json` print one JSON object on
+`check --json`, `migrate --dry-run --json` and
+`text-search <name> --dry-run --json` print one JSON object on
 one line, so a CI step can read the result. The exit codes stay the same.
 
 ```bash
@@ -286,7 +323,8 @@ pnpm exec mnemocyte check --json
     },
     "dimensions": 1536,
     "vectorType": "vector",
-    "model": null
+    "model": null,
+    "textSearchConfig": null
   },
   "problems": [
     {
@@ -308,7 +346,8 @@ pnpm exec mnemocyte check --json
   `null`. `migrations.applied` and `migrations.pending` are always there,
   and empty when `state` is `"none"` (no tables) or `"invalid"` (a schema
   `migrate` refuses). The other states are `"tracked"` and `"untracked"`
-  (installed with `psql`). `model` is `null` until one is recorded.
+  (installed with `psql`). `model` is `null` until one is recorded, and
+  `textSearchConfig` while migrations are pending.
 - **`problems`** fail the check and **`notes`** pass. Each has a `code` to
   branch on and a `message` for people:
 
@@ -325,6 +364,7 @@ pnpm exec mnemocyte check --json
   | `INSTALLATION_ROW_MISMATCH` | that row contradicts the embedding column |
   | `MODEL_AMBIGUOUS` | no model is recorded and the stored memories use several |
   | `MODEL_MISMATCH` | the recorded model differs from the embedder's |
+  | `TEXT_SEARCH_CONFIG_MISMATCH` | the keyword search language differs from `--text-search-config` |
 
   The notes are `SCHEMA_UNTRACKED` (a current schema installed without
   `migrate`) and `MODEL_NOT_RECORDED` (an empty installation).
@@ -341,6 +381,16 @@ as already applied (a schema installed with `psql`), and
 `extensionCreated` whether it would ask to enable pgvector. `upToDate` is
 true when a real run would change nothing. `--json` works only with
 `--dry-run`, because a real `migrate` may stop to ask a question.
+
+`text-search <name> --dry-run --json` prints what
+[`setTextSearchConfig()`](./api.md#settextsearchconfig) would return:
+
+```json
+{"command":"text-search","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","previous":"english","current":"simple","changed":true}
+```
+
+`previous` and `current` are `null` on the in-memory backend. `--json`
+needs `--dry-run` here too.
 
 When the command cannot run, for example when the database cannot be
 reached, it still prints one object, and the usual message goes to
@@ -369,7 +419,7 @@ Good to know:
 | Code | Meaning |
 |---|---|
 | 0 | Done; `check` found no problem; `init` also when it left existing files as they were. |
-| 1 | `check` found a problem, `migrate` failed or pgvector was not enabled. |
+| 1 | `check` found a problem, `migrate` or `text-search` failed, pgvector was not enabled, or the rewrite was not confirmed. |
 | 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, or, for `check`, a database it cannot read. |
 
 Errors go to standard error as `mnemocyte: <message>`, followed by the

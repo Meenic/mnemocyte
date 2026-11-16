@@ -23,10 +23,13 @@
      [postgres.md](./postgres.md#filtered-vector-search)); in-memory scans
      every row.
    - **lexical**: Postgres uses `content_tsv @@
-     websearch_to_tsquery('english', $query)` ordered by `ts_rank`, then
-     `id`, where `content_tsv` is a stored `to_tsvector('english', content)`
-     column with a GIN index; in-memory uses the fraction of whitespace-split
-     query terms found as substrings.
+     websearch_to_tsquery($config::regconfig, $query)` ordered by
+     `ts_rank`, then `id`, where `content_tsv` is a stored
+     `to_tsvector('<config>'::regconfig, content)` column with a GIN index
+     and `$config` is the configuration read from that column's expression
+     (see [postgres.md](./postgres.md#text-search-configuration));
+     in-memory uses the fraction of whitespace-split query terms found as
+     substrings.
 4. Rank each list and fuse the ranks (below). A memory missing from a list
    has no rank there; nothing is loaded to fill it in.
 5. Apply the boosts, filter by `minScore`, sort, keep `limit`.

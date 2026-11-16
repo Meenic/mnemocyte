@@ -47,6 +47,12 @@ function createFakeHandle(options: {
 			if (sql.includes("FROM pg_extension")) {
 				return [{ version: "0.8.7" }] as Row[];
 			}
+			if (sql.includes("pg_get_expr")) {
+				// content_tsv's generated expression, read before keyword search.
+				return [
+					{ expression: "to_tsvector('english'::regconfig, content)" },
+				] as Row[];
+			}
 			if (sql.includes("SELECT DISTINCT embedding_model")) {
 				distinctSelectCount += 1;
 				return (options.storedModels ?? []).map((embeddingModel) => ({

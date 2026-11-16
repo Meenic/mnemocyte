@@ -4,6 +4,13 @@ import type { SqlExecutor, SqlQueryOptions } from "../../sql/executor.js";
 import type { MigrateResult } from "../../types.js";
 import { postgresErrorCode } from "../errors.js";
 import {
+	DEFAULT_TEXT_SEARCH_CONFIG,
+	readInstalledTextSearchConfig,
+	resolveTextSearchConfig,
+	textSearchConfigLiteral,
+	unrecognizedTextSearchError,
+} from "../text-search.js";
+import {
 	type BundledMigration,
 	INITIAL_SCHEMA_TEMPLATE,
 	MIGRATIONS,
@@ -27,6 +34,7 @@ const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
 
 export interface RunMigrationsInput {
 	dimensions?: number;
+	textSearchConfig?: string;
 	createExtension?: boolean;
 	dryRun?: boolean;
 	signal?: AbortSignal;
@@ -47,6 +55,8 @@ type Inspection =
 			trackingTable: boolean;
 			pgvector: boolean;
 			dimensions: number;
+			/** Canonical, as `regconfig` prints it. */
+			textSearchConfig: string;
 	  }
 	| { kind: "untracked"; trackingTable: boolean; installed: number }
 	| { kind: "tracked"; versions: number[] };
@@ -72,13 +82,25 @@ export function splitStatements(sql: string): string[] {
 		.filter((statement) => statement.length > 0);
 }
 
-/** The final schema for `dimensions`: the template with `halfvec` above 2,000. */
-export function renderInitialSchema(dimensions: number): string {
+/**
+ * The final schema for `dimensions` (`halfvec` above 2,000) and the text
+ * search configuration of `content_tsv` (`english` by default). The name is
+ * written as a string literal; Postgres resolves it when the schema runs.
+ */
+export function renderInitialSchema(
+	dimensions: number,
+	textSearchConfig: string = DEFAULT_TEXT_SEARCH_CONFIG,
+): string {
 	const vectorType = dimensions > MAX_VECTOR_DIMENSIONS ? "halfvec" : "vector";
 	return INITIAL_SCHEMA_TEMPLATE.replaceAll(
 		"{{EMBEDDING_DIMENSIONS}}",
 		String(dimensions),
-	).replaceAll("{{VECTOR_TYPE}}", vectorType);
+	)
+		.replaceAll("{{VECTOR_TYPE}}", vectorType)
+		.replaceAll(
+			"'{{TEXT_SEARCH_CONFIG}}'",
+			textSearchConfigLiteral(textSearchConfig),
+		);
 }
 
 /**
@@ -311,6 +333,47 @@ async function createVectorExtension(
 }
 
 /**
+ * The configuration a fresh install gives `content_tsv`, canonical. When
+ * `migrate` names one and the installation exists, it must be the same
+ * configuration (`"CONFIG"` otherwise): `migrate` sets it only on a fresh
+ * install, because changing it rewrites the table. A schema before `0003`
+ * has no `content_tsv` yet and gets `english` from `0003`.
+ */
+async function checkTextSearchConfig(
+	tx: SqlExecutor,
+	input: RunMigrationsInput,
+	hasMemories: boolean,
+	options: SqlQueryOptions,
+): Promise<string> {
+	if (input.textSearchConfig === undefined) {
+		return DEFAULT_TEXT_SEARCH_CONFIG;
+	}
+	let installed: string | null = null;
+	if (hasMemories) {
+		const found = await readInstalledTextSearchConfig(tx, options);
+		if (found.kind === "unrecognized") {
+			throw unrecognizedTextSearchError(found.expression);
+		}
+		installed =
+			found.kind === "config" ? found.name : DEFAULT_TEXT_SEARCH_CONFIG;
+	}
+	const requested = await resolveTextSearchConfig(
+		tx,
+		input.textSearchConfig,
+		installed,
+		options,
+	);
+	if (installed !== null && !requested.same) {
+		throw new MnemocyteError({
+			message: `The installation's keyword search uses the "${installed}" text search configuration; migrate() was called with textSearchConfig "${input.textSearchConfig}". migrate() sets it only on a fresh install. Change it with setTextSearchConfig() or mnemocyte text-search ${requested.name}, which rewrites the memories table.`,
+			code: "CONFIG",
+			reason: "TEXT_SEARCH_CONFIG_MISMATCH",
+		});
+	}
+	return requested.name;
+}
+
+/**
  * Take the advisory lock and find out what a run has to do. Throws the
  * errors a real run raises before its first change, so a dry run raises
  * them too.
@@ -338,6 +401,15 @@ async function inspect(
 			reason: "DIMENSIONS_MISMATCH",
 		});
 	}
+
+	// The embedding column exists exactly when the memories table does: it
+	// is in every migration since 0000.
+	const textSearchConfig = await checkTextSearchConfig(
+		tx,
+		input,
+		installedDimensions !== null,
+		options,
+	);
 
 	const versions = await readAppliedVersions(tx, options);
 	if (versions !== null && versions.length > 0) {
@@ -371,6 +443,7 @@ async function inspect(
 		trackingTable,
 		pgvector,
 		dimensions: input.dimensions,
+		textSearchConfig,
 	};
 }
 
@@ -427,7 +500,7 @@ async function migrateStep(
 	await runStatements(
 		tx,
 		"0000_initial (fresh install)",
-		renderInitialSchema(found.dimensions),
+		renderInitialSchema(found.dimensions, found.textSearchConfig),
 		options,
 	);
 	return {

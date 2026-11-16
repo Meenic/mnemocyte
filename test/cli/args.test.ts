@@ -86,6 +86,58 @@ describe("parseCliArgs", () => {
 		});
 	});
 
+	test("text-search takes a name; --text-search-config goes with migrate, check and sql", () => {
+		expect(parseCliArgs(["text-search", "simple"])).toEqual({
+			command: "text-search",
+			textSearchConfig: "simple",
+			yes: false,
+			dryRun: false,
+			json: false,
+		});
+		expect(
+			parseCliArgs(["text-search", "german", "--dry-run", "--json", "-y"]),
+		).toMatchObject({
+			command: "text-search",
+			textSearchConfig: "german",
+			yes: true,
+			dryRun: true,
+			json: true,
+		});
+		for (const command of ["migrate", "check", "sql"]) {
+			expect(
+				parseCliArgs([command, "--text-search-config", "simple"])
+					.textSearchConfig,
+			).toBe("simple");
+		}
+	});
+
+	test.each([
+		[["text-search"], "Name the text search configuration"],
+		[["text-search", "simple", "german"], 'Unexpected argument "german"'],
+		[
+			["text-search", "simple", "--json"],
+			"--json on text-search needs --dry-run",
+		],
+		[
+			["text-search", "simple", "--dimensions", "8"],
+			"--dimensions does not apply",
+		],
+		[
+			["text-search", "simple", "--text-search-config", "simple"],
+			"--text-search-config applies to migrate, check and sql, not to text-search.",
+		],
+		[
+			["init", "--text-search-config", "simple"],
+			"--text-search-config applies to migrate, check and sql, not to init.",
+		],
+		[["migrate", "--text-search-config", ""], "must be a non-empty string"],
+		[["migrate", "simple"], 'Unexpected argument "simple"'],
+	])("rejects text search arguments %j", (argv, message) => {
+		const error = usageError(argv);
+		expect(error.exitCode).toBe(2);
+		expect(error.message).toContain(message);
+	});
+
 	test("help and version win over a command", () => {
 		for (const argv of [["--help"], ["-h"], ["help"], ["migrate", "--help"]]) {
 			expect(parseCliArgs(argv).command).toBe("help");
@@ -100,12 +152,18 @@ describe("parseCliArgs", () => {
 		[["deploy"], 'Unknown command "deploy"'],
 		[["migrate", "extra"], 'Unexpected argument "extra"'],
 		[["migrate", "--force"], "Unknown option '--force'."],
-		[["check", "--yes"], "--yes applies to migrate, not to check."],
+		[
+			["check", "--yes"],
+			"--yes applies to migrate and text-search, not to check.",
+		],
 		[
 			["sql", "--dry-run"],
-			"--dry-run applies to migrate and init, not to sql.",
+			"--dry-run applies to migrate, init and text-search, not to sql.",
 		],
-		[["init", "--yes"], "--yes applies to migrate, not to init."],
+		[
+			["init", "--yes"],
+			"--yes applies to migrate and text-search, not to init.",
+		],
 		[["init", "--config", "m.ts"], "--config does not apply to init."],
 		[["init", "--env-file", ".env.x"], "--env-file does not apply to init."],
 		[["init", "--dimensions", "8"], "--dimensions does not apply to init."],
@@ -113,8 +171,14 @@ describe("parseCliArgs", () => {
 		[["migrate", "--out", "x.sql"], "--out applies to sql, not to migrate."],
 		[["migrate", "--config="], "--config needs a path."],
 		[["migrate", "--config"], "--config"],
-		[["sql", "--json"], "--json applies to check and migrate, not to sql."],
-		[["init", "--json"], "--json applies to check and migrate, not to init."],
+		[
+			["sql", "--json"],
+			"--json applies to check, migrate and text-search, not to sql.",
+		],
+		[
+			["init", "--json"],
+			"--json applies to check, migrate and text-search, not to init.",
+		],
 		[
 			["migrate", "--embedder", "openai"],
 			"--embedder applies to init, not to migrate.",

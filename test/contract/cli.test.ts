@@ -8,6 +8,7 @@ import type { CliArgs } from "../../src/cli/args.js";
 import { checkTarget } from "../../src/cli/check.js";
 import { migrateTarget } from "../../src/cli/migrate.js";
 import type { MemoryTarget } from "../../src/cli/target.js";
+import { textSearchTarget } from "../../src/cli/text-search.js";
 import { readMemoryClientInternals } from "../../src/memory/client-internals.js";
 import { createTestIo } from "../cli/io.js";
 
@@ -144,6 +145,7 @@ describe("CLI commands (PGlite)", () => {
 				dimensions: null,
 				vectorType: null,
 				model: null,
+				textSearchConfig: null,
 			},
 			problems: [
 				{
@@ -176,6 +178,7 @@ describe("CLI commands (PGlite)", () => {
 				dimensions: 8,
 				vectorType: "vector",
 				model: null,
+				textSearchConfig: "english",
 			},
 			problems: [],
 			notes: [
@@ -195,6 +198,96 @@ describe("CLI commands (PGlite)", () => {
 				{ code: "DIMENSIONS_FLAG_MISMATCH" },
 			],
 		});
+	});
+
+	test("migrate --text-search-config sets a fresh install; check compares it", async () => {
+		await migrateTarget(
+			target(),
+			args({ yes: true, textSearchConfig: "simple" }),
+			createTestIo("."),
+		);
+		const ok = await check(target(), { textSearchConfig: "Simple" });
+		expect(ok.code).toBe(0);
+		expect(ok.stdout).toContain("text search simple\n");
+		const differs = await check(target(), {
+			textSearchConfig: "english",
+			json: true,
+		});
+		expect(differs.code).toBe(1);
+		expect(jsonLine(differs.stdout)).toMatchObject({
+			installation: { textSearchConfig: "simple" },
+			problems: [
+				{
+					code: "TEXT_SEARCH_CONFIG_MISMATCH",
+					message: expect.stringContaining("mnemocyte text-search english"),
+				},
+			],
+		});
+	});
+
+	test("text-search asks before the rewrite, and --yes, --dry-run and --json skip the question", async () => {
+		await migrateTarget(target(), args({ yes: true }), createTestIo("."));
+		const textSearch = (overrides: Partial<CliArgs> = {}) =>
+			args({
+				command: "text-search",
+				textSearchConfig: "simple",
+				...overrides,
+			});
+
+		const plan = createTestIo(".", true);
+		expect(
+			await textSearchTarget(
+				target(),
+				textSearch({ dryRun: true, json: true }),
+				plan,
+			),
+		).toBe(0);
+		expect(plan.questions).toEqual([]);
+		expect(jsonLine(plan.stdout())).toEqual({
+			command: "text-search",
+			ok: true,
+			dryRun: true,
+			target: "memory.ts",
+			backend: "postgres",
+			previous: "english",
+			current: "simple",
+			changed: true,
+		});
+
+		const dry = createTestIo(".", true);
+		expect(
+			await textSearchTarget(target(), textSearch({ dryRun: true }), dry),
+		).toBe(0);
+		expect(dry.stdout()).toContain(
+			'Would change keyword search from "english" to "simple".',
+		);
+
+		const no = createTestIo(".", false);
+		expect(await textSearchTarget(target(), textSearch(), no)).toBe(1);
+		expect(no.questions).toHaveLength(1);
+		expect(no.questions[0]).toContain("rebuilds every index");
+		expect(no.stderr()).toBe("Nothing changed.\n");
+
+		const noTerminal = createTestIo(".", undefined);
+		expect(await textSearchTarget(target(), textSearch(), noTerminal)).toBe(1);
+		expect(noTerminal.stderr()).toContain("Pass --yes");
+		expect((await check(target())).stdout).toContain("text search english\n");
+
+		const yes = createTestIo(".", true);
+		expect(await textSearchTarget(target(), textSearch(), yes)).toBe(0);
+		expect(yes.stdout()).toBe(
+			'Using memory.ts\nChanged keyword search from "english" to "simple". Restart other app processes so their keyword search uses it.\n',
+		);
+		expect((await check(target())).stdout).toContain("text search simple\n");
+
+		const again = createTestIo(".", false);
+		expect(
+			await textSearchTarget(target(), textSearch({ yes: true }), again),
+		).toBe(0);
+		expect(again.questions).toEqual([]);
+		expect(again.stdout()).toBe(
+			'Using memory.ts\nKeyword search already uses the "simple" text search configuration.\n',
+		);
 	});
 
 	test("asks before enabling pgvector, and a yes installs the schema", async () => {
@@ -284,6 +377,7 @@ describe("CLI commands (PGlite)", () => {
 				"migrations  5 of 5 applied",
 				"dimensions  8 (vector)",
 				"model       not recorded yet",
+				"text search english",
 				"",
 				"note: No embedding model is recorded yet; the first add or search records the embedder's.",
 				"ok",

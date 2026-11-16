@@ -1,6 +1,7 @@
 # CLI
 
-The `mnemocyte` bin: `init`, `migrate`, `check` and `sql`. The user reference is
+The `mnemocyte` bin: `init`, `migrate`, `check`, `sql` and `text-search`.
+The user reference is
 [guide/cli.md](../guide/cli.md); this page is how it is built and why.
 
 ## Packaging
@@ -31,7 +32,7 @@ src/cli/
   main.ts                main(argv, io, version) → exit code; error printing
   args.ts                parseCliArgs, USAGE
   io.ts                  CliIo (cwd, write, error, confirm), CliError, errorCauses, the process's own CliIo
-  json.ts                what --json prints: CheckJson, MigratePlanJson, ErrorJson, writeJson, errorJson
+  json.ts                what --json prints: CheckJson, MigratePlanJson, TextSearchPlanJson, ErrorJson, writeJson, errorJson
   memory-file.ts         where the memory file is looked up, loading it, reading the client
   resolve-hook.ts        the resolve hook for a TypeScript app's imports
   tsconfig.ts            JSON with comments, `extends`, `paths`
@@ -40,6 +41,7 @@ src/cli/
   migrate.ts             migrateTarget / migrateCommand
   check.ts               evaluateInstallation, describeInstallation, installationJson, checkTarget / checkCommand
   sql.ts                 sqlCommand
+  text-search.ts         textSearchTarget / textSearchCommand
 src/db/migrations/inspect.ts   inspectPostgresInstallation: the facts check reports
 src/db/pgvector.ts             assertPgvectorVersion (shared with the store)
 ```
@@ -214,15 +216,18 @@ and needs no transaction, so it also works on a `batch`-only executor:
   `readCatalogState`, `installedVersion` and `assertContiguous`, so `check`
   and `migrate` cannot disagree about a schema: `none`, `tracked`,
   `untracked` or `invalid` (the runner's refusal, as the reason);
-- when no migration is pending, the `installation` row, and the stored
-  models when the row records none.
+- when no migration is pending, the text search configuration from
+  `content_tsv`'s generated expression (a missing column or an expression
+  of another shape makes the migrations `invalid`), the `installation`
+  row, and the stored models when the row records none.
 
 `evaluateInstallation` (pure, unit-tested) turns the report into problems
 and notes. A problem is what makes the app throw (the maintainer's choice,
 2026-11-14): pgvector missing or older than 0.8.0, no tables, pending
 migrations, an invalid schema, dimensions that differ from the embedder's
 or `--dimensions`, a missing or contradicting installation row, a recorded
-model that differs. For an unrecorded model it follows the client: one
+model that differs, a text search configuration that differs from
+`--text-search-config`. For an unrecorded model it follows the client: one
 stored model is what the client would record and then compare; several are
 a problem. Notes pass: an untracked but current schema, and an empty
 installation without a model.
@@ -234,11 +239,41 @@ Each problem and note is a `{ code, message }` (`CheckFinding`), one code
 per branch of `evaluateInstallation`; the text output prints only the
 message.
 
+## `text-search`
+
+`textSearchTarget` calls the public `setTextSearchConfig()`
+(ARCHITECTURE decision 50):
+
+1. A dry run, which checks the name against the database and the schema
+   (every migration applied) under the migration advisory lock, and says
+   whether anything would change. `--json` (with `--dry-run`) prints it as
+   a `TextSearchPlanJson` and stops; so does `--dry-run` as text.
+2. Nothing to change: it says so and returns 0, asking nothing.
+3. Otherwise `io.confirm` asks, with the rewrite warning, unless `--yes`.
+   No terminal or anything but yes returns 1 with nothing changed.
+4. The real run, which prints the old and new names and asks to restart
+   other app processes, since their stores cached the old configuration.
+
+The name is the command's one positional argument; `parseCliArgs` stores
+it as `textSearchConfig`, the field `--text-search-config` fills for
+`migrate`, `check` and `sql`, and rejects `--text-search-config` and
+`--dimensions` on `text-search`. An in-memory client prints a note and
+returns 0.
+
+`--text-search-config` elsewhere: `migrate` passes it to `migrate()`;
+`sql` renders it into the schema without a database, so Postgres checks
+the name when the file is applied; `check` compares it with the
+installation's configuration after `normalizeTextSearchConfig` (unquoted
+names fold to lower case, a `pg_catalog.` prefix is dropped), because
+`check` sends only reads and never asks the server to resolve the name.
+
 ## `--json`
 
-`check --json` and `migrate --dry-run --json` print one result instead of
-the text (ARCHITECTURE decision 47). The shapes are the types in
-`src/cli/json.ts`: `CheckJson`, `MigratePlanJson` and `ErrorJson`.
+`check --json`, `migrate --dry-run --json` and
+`text-search <name> --dry-run --json` print one result instead of the text
+(ARCHITECTURE decision 47). The shapes are the types in
+`src/cli/json.ts`: `CheckJson`, `MigratePlanJson`, `TextSearchPlanJson` and
+`ErrorJson`.
 
 - **One line, last.** `writeJson` prints `JSON.stringify(value)` and a
   newline, and the `Using …` line is skipped. Loading the memory file runs
@@ -263,8 +298,9 @@ the text (ARCHITECTURE decision 47). The shapes are the types in
 
 ## `sql`
 
-`renderInitialSchema(dimensions)`, the string the runner applies on a fresh
-install and that `fresh-install.sql` holds at 1536. `--dimensions` alone
+`renderInitialSchema(dimensions, textSearchConfig)`, the string the runner
+applies on a fresh install and that `fresh-install.sql` holds at 1536 and
+`english`. `--dimensions` alone
 imports nothing else; without it the memory file is loaded for
 `embedder.dimensions`. It replaced `migrations/render-initial.mjs`, which
 was removed for 1.0.
@@ -289,7 +325,9 @@ Windows and an immediate exit can cut output short.
   terminal that says yes, no, or is absent, `--yes`, `--dry-run`; `check`
   on a fresh, adopted, behind, untracked and broken schema, with a recorded
   model and with mismatches; `migrate --dry-run --json` and `check --json`
-  as exactly one JSON line.
+  as exactly one JSON line; `migrate --text-search-config` with `check`
+  comparing it, and `text-search` with a yes, a no, no terminal, `--yes`,
+  `--dry-run` and `--dry-run --json`.
 - `test/package/cli.test.ts`: runs `dist/cli.mjs` as a child process in
   temporary projects whose `node_modules` link to this package. One project
   has a TypeScript memory file on PGlite with a `.js` import, an

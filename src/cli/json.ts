@@ -19,7 +19,8 @@ export type CheckProblemCode =
 	| "INSTALLATION_ROW_MISSING"
 	| "INSTALLATION_ROW_MISMATCH"
 	| "MODEL_AMBIGUOUS"
-	| "MODEL_MISMATCH";
+	| "MODEL_MISMATCH"
+	| "TEXT_SEARCH_CONFIG_MISMATCH";
 
 /** What `check` reports and passes. A minor release may add codes. */
 export type CheckNoteCode = "SCHEMA_UNTRACKED" | "MODEL_NOT_RECORDED";
@@ -46,6 +47,11 @@ export interface InstallationJson {
 	readonly vectorType: string | null;
 	/** `null` when none is recorded or the installation row was not read. */
 	readonly model: string | null;
+	/**
+	 * The text search configuration of keyword search; `null` when
+	 * migrations are pending or the schema is not one `migrate()` accepts.
+	 */
+	readonly textSearchConfig: string | null;
 }
 
 interface JsonBase {
@@ -80,9 +86,28 @@ export interface MigratePlanJson extends JsonBase {
 	readonly upToDate: boolean;
 }
 
+/**
+ * `mnemocyte text-search <name> --dry-run --json`: `setTextSearchConfig()`'s
+ * dry-run result. The names are `null` on the in-memory backend.
+ */
+export interface TextSearchPlanJson extends JsonBase {
+	readonly command: "text-search";
+	readonly ok: true;
+	readonly dryRun: true;
+	/** The configuration keyword search uses now. */
+	readonly previous: string | null;
+	/** The configuration it would use after a real run. */
+	readonly current: string | null;
+	/** True when a real run would rewrite the memories table. */
+	readonly changed: boolean;
+}
+
+/** The commands that take `--json`. */
+export type JsonCommand = "check" | "migrate" | "text-search";
+
 /** Any `--json` command that failed after its command line was read. */
 export interface ErrorJson {
-	readonly command: "check" | "migrate";
+	readonly command: JsonCommand;
 	readonly ok: false;
 	readonly error: {
 		readonly message: string;
@@ -101,7 +126,7 @@ export interface ErrorJson {
  */
 export function writeJson(
 	io: CliIo,
-	value: CheckJson | MigratePlanJson | ErrorJson,
+	value: CheckJson | MigratePlanJson | TextSearchPlanJson | ErrorJson,
 ): void {
 	io.write(`${JSON.stringify(value)}\n`);
 }

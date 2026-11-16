@@ -5,6 +5,7 @@ import { CliError, type CliIo, errorCauses } from "./io.js";
 import { errorJson, writeJson } from "./json.js";
 import { migrateCommand } from "./migrate.js";
 import { sqlCommand } from "./sql.js";
+import { textSearchCommand } from "./text-search.js";
 
 /**
  * An error as the CLI prints it: its message, then each `cause` (see
@@ -34,6 +35,8 @@ function run(args: CliArgs, io: CliIo, version: string): Promise<number> {
 			return checkCommand(args, io);
 		case "sql":
 			return sqlCommand(args, io);
+		case "text-search":
+			return textSearchCommand(args, io);
 	}
 }
 
@@ -61,7 +64,12 @@ export async function main(
 	} catch (error) {
 		// With --json, standard output still gets one result to read, and the
 		// text goes to standard error for the log as without it.
-		if (args.json && (args.command === "check" || args.command === "migrate")) {
+		if (
+			args.json &&
+			(args.command === "check" ||
+				args.command === "migrate" ||
+				args.command === "text-search")
+		) {
 			writeJson(io, errorJson(args.command, error));
 		}
 		io.error(describeError(error));

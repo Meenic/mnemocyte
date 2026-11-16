@@ -234,6 +234,23 @@ describe("scope fields on observability events", () => {
 		}
 	});
 
+	test("listAuditLog reports the memory id it filters by", async () => {
+		const { memory, events } = recordingClient();
+		await memory.listAuditLog({ allNamespaces: true, memoryId: "m-1" });
+		await memory.for(full).listAuditLog({ memoryId: "m-2" });
+		await memory.listAuditLog({ scope: { namespace: "app" } });
+		expect(
+			events.map((event) => [event.phase, event.namespace, event.memoryId]),
+		).toEqual([
+			["start", undefined, "m-1"],
+			["success", undefined, "m-1"],
+			["start", "app", "m-2"],
+			["success", "app", "m-2"],
+			["start", "app", undefined],
+			["success", "app", undefined],
+		]);
+	});
+
 	test("failed calls still report agentId and sessionId", async () => {
 		const { memory, events } = recordingClient();
 		await expectMnemocyteError(

@@ -610,6 +610,12 @@ export function createInMemoryStore(): MemoryStore {
 						return false;
 					}
 					if (
+						input.memoryId !== undefined &&
+						event.metadata.memoryId !== input.memoryId
+					) {
+						return false;
+					}
+					if (
 						input.before !== undefined &&
 						event.timestamp.getTime() >= input.before.getTime()
 					) {

@@ -670,6 +670,31 @@ On Postgres a page of one entity reads an index in order. A page of a
 namespace, or of every namespace, sorts the events it selects, so on a
 large log prefer an entity scope or narrow it with `before` / `after`.
 
+### One memory's history
+
+Pass `memoryId` to get the events about one memory: the ones whose
+`metadata.memoryId` is that id.
+
+```ts
+const { events } = await memory.listAuditLog({ scope: entity, memoryId: id });
+// Only the id at hand, from an admin tool:
+await memory.listAuditLog({ allNamespaces: true, memoryId: id });
+// A bound client:
+await memory.for(entity).listAuditLog({ memoryId: id });
+```
+
+It works with every scope, `allNamespaces`, `before`, `after` and the
+cursor. Events that mention the memory in another field are not part of
+its history: a consolidation shows up on the loser (`supersededBy` names
+the survivor), and a delete that restored dependents lists them in
+`restoredIds` on the survivor's event. `memory.pruned` events carry no
+memory id, so the filter never returns them. An id that is not a UUID
+finds nothing on Postgres.
+
+On Postgres it reads its own index at any scope, and needs migration
+`0004_audit_memory_id`: before `mnemocyte migrate` has run, the call
+throws `"MIGRATION"`. Everything else keeps working on the older schema.
+
 Events are written together with the change they record: if the audit
 write fails, the call rejects and neither the memory change nor the event
 is written. An event's `timestamp` is the time of the write. Events stay

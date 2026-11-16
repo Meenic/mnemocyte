@@ -1,6 +1,9 @@
 import { createMemory, type ListAuditLogInput } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { verifyAuditPages } from "../fixtures/audit-cursor.js";
+import {
+	verifyAuditMemoryHistory,
+	verifyAuditPages,
+} from "../fixtures/audit-cursor.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const embedder = {
@@ -18,6 +21,18 @@ function createClient() {
 describe("listAuditLog pages (in-memory)", () => {
 	test("follows the shared fixture", async () => {
 		await verifyAuditPages({
+			client: createClient(),
+			scopeFor: testScope,
+			otherScopeFor: (entityId, extra = {}) => ({
+				namespace: "other",
+				entityId,
+				...extra,
+			}),
+		});
+	});
+
+	test("filters by memory id", async () => {
+		await verifyAuditMemoryHistory({
 			client: createClient(),
 			scopeFor: testScope,
 			otherScopeFor: (entityId, extra = {}) => ({

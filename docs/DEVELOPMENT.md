@@ -473,8 +473,8 @@ Vitest has three projects (`vitest.config.ts`):
   ```
 
   `--shm-size` must exceed the 1 GB `maintenance_work_mem` the HNSW build
-  uses, or parallel builds fail. Three phases (`MNEMOCYTE_BENCH_PHASES`,
-  default `halfvec,vector,audit`) seed with SQL (`test/benchmarks/postgres/seed.ts`): rows of all
+  uses, or parallel builds fail. Four phases (`MNEMOCYTE_BENCH_PHASES`,
+  default `halfvec,vector,audit,history`) seed with SQL (`test/benchmarks/postgres/seed.ts`): rows of all
   entities interleaved in time order, vectors from 256 random cluster centers
   plus noise, one memory in ten a near-copy and one in ten superseded, and
   the HNSW index rebuilt after the load. A recording executor captures the
@@ -495,7 +495,13 @@ Vitest has three projects (`vitest.config.ts`):
   `experimental.findDuplicatesPage` walks the mid and large entities
   through the library (wall clock per page and in total, pairs against the
   exact ones for mid and against one `findDuplicates` call for large), and
-  measures the middle page with and without its re-check. Warm rows report the
+  measures the middle page with and without its re-check. The `history`
+  phase loads the retention dataset at the 1.0 schema, times migration
+  0004 against a plain column filled by one `UPDATE` (rolled back), then
+  measures `listAuditLog({ memoryId })` for a five-event and a 500-event
+  memory at each selector, with the default index, without it and with the
+  other shapes considered, and what the column and its index cost a
+  1,000-event insert. Warm rows report the
   slowest run next to the median. Results go to
   `MNEMOCYTE_BENCH_OUT` or `bench-results/postgres-plans-<time>.md`
   (ignored by git); Vitest hides a passing test's console output. At the

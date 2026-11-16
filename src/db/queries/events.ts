@@ -23,6 +23,7 @@ export interface EventFilter {
 	limit: number;
 	before?: Date;
 	after?: Date;
+	memoryId?: string;
 	position?: StoreAuditPosition;
 }
 
@@ -38,6 +39,10 @@ export interface PositionedEventRow {
  * skipped, and within one entity `mnemocyte_events_scope_time_idx` serves
  * the order read backwards. Across entities (a namespace, or every
  * namespace) no index serves it, and Postgres sorts the selected events.
+ * With `memoryId`, `mnemocyte_events_memory_idx` serves the page at any
+ * selector: its `memory_id` equality, then `(timestamp, id)` read backwards.
+ * The caller passes only UUIDs; `memory_id` is the generated column from
+ * migration 0004.
  */
 export async function listEvents(
 	db: SqlExecutor,
@@ -54,6 +59,9 @@ export async function listEvents(
 	}
 	if (filter.after) {
 		clauses.push(`timestamp > ${params.timestamp(filter.after)}`);
+	}
+	if (filter.memoryId !== undefined) {
+		clauses.push(`memory_id = ${params.uuid(filter.memoryId)}`);
 	}
 	if (filter.position) {
 		clauses.push(

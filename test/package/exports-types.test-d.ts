@@ -489,6 +489,12 @@ const listAuditEverywhere: ListAuditLogInput = { allNamespaces: true };
 // @ts-expect-error listAuditLog takes a scope or allNamespaces, not both.
 const listAuditBoth: ListAuditLogInput = { scope, allNamespaces: true };
 const listAuditOptions: ListAuditLogOptions = { limit: 10 };
+const listAuditHistory: ListAuditLogInput = {
+	allNamespaces: true,
+	memoryId: "01890a5d-ac96-774b-bcce-b302099a8057",
+};
+// @ts-expect-error memoryId is one id.
+const listAuditHistories: ListAuditLogOptions = { memoryId: ["a", "b"] };
 const auditType: AuditEventType = "memory.superseded";
 // @ts-expect-error Only the five event types exist.
 const unknownAuditType: AuditEventType = "memory.renamed";
@@ -765,6 +771,8 @@ void listAudit;
 void listAuditEverywhere;
 void listAuditBoth;
 void listAuditOptions;
+void listAuditHistory;
+void listAuditHistories;
 void unknownAuditType;
 void auditPage;
 void auditEvent;
@@ -839,6 +847,7 @@ void bound.context(boundContextCreated);
 void bound.findDuplicates();
 const boundAuditPage: Promise<ListAuditLogResult> = bound.listAuditLog({
 	cursor: "opaque",
+	memoryId: "01890a5d-ac96-774b-bcce-b302099a8057",
 });
 void boundAuditPage;
 // @ts-expect-error A bound client cannot list across namespaces.

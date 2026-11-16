@@ -115,7 +115,9 @@ them.
   because no index serves that order. Over 1,000,000 events a page took
   66 ms for a 100,000-event namespace and 330 ms for all namespaces,
   against 0.13 ms for one entity, which reads an index. Narrow a large log
-  with `before` / `after`.
+  with `before` / `after`. A page filtered by `memoryId` reads its own
+  index at any scope: under 0.2 ms for a few events, and 1–2 ms for a
+  memory with 500, which a scoped page sorts.
 - **Audit events stay until you prune them.** Nothing expires them on its
   own; schedule `pruneAuditLog` (see
   [retention](./api.md#retention)). On Postgres it deletes in batches that

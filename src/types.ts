@@ -1381,6 +1381,15 @@ export interface ListAuditLogOptions {
 	 */
 	after?: Date | undefined;
 	/**
+	 * Only return events about this memory: those whose
+	 * `metadata.memoryId` is this id. Events that name it in another field
+	 * (`deletedWith`, `supersededBy`, `restoredIds`) and `memory.pruned`
+	 * events, which carry no id, are left out. Combine it with the scope or
+	 * with `allNamespaces: true`. On Postgres it needs migration
+	 * `0004_audit_memory_id`.
+	 */
+	memoryId?: string | undefined;
+	/**
 	 * Optional cancellation signal. In-memory scans check it cooperatively;
 	 * Postgres requests cancellation of the active audit-log query.
 	 */

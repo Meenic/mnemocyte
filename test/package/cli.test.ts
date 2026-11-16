@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 const CLI = resolve("dist/cli.mjs");
 const ALL_MIGRATIONS =
-	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2";
+	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id";
 
 interface CliRun {
 	code: number;
@@ -418,7 +418,7 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 		expect(checked.stderr).toBe("");
 		expect(checked.code).toBe(0);
 		expect(checked.stdout).toMatch(/pgvector {4}0\.\d+\.\d+/);
-		expect(checked.stdout).toContain("migrations  4 of 4 applied");
+		expect(checked.stdout).toContain("migrations  5 of 5 applied");
 		expect(checked.stdout).toContain("dimensions  8 (vector)");
 		expect(checked.stdout).toContain("model       not recorded yet");
 		expect(checked.stdout.trimEnd().endsWith("ok")).toBe(true);

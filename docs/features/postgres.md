@@ -11,14 +11,25 @@ the foreign key alone names `public`):
 | Table | Purpose |
 |---|---|
 | `mnemocyte_memories` | One row per memory: `id` (uuid PK), `entity_id`, `content`, `kind`, `importance`, `tags text[]`, `source`, `metadata jsonb`, `confidence real`, `embedding vector(N)` or `halfvec(N)` (nullable), `embedding_model`, `embedding_dimensions`, `superseded_by` (uuid, self FK, `ON DELETE NO ACTION`), `superseded_at`, `expires_at`, `last_accessed_at`, `access_count`, `created_at`, `updated_at`, then the scope columns `namespace`, `agent_id`, `session_id`, an optional `key`, and `content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED`. |
-| `mnemocyte_events` | Audit log: `id` (uuid), `entity_id`, `description` (the event's `type`), `metadata jsonb`, `timestamp`, `namespace`, `agent_id`, `session_id`. |
+| `mnemocyte_events` | Audit log: `id` (uuid), `entity_id`, `description` (the event's `type`), `metadata jsonb`, `timestamp`, `namespace`, `agent_id`, `session_id`, and `memory_id uuid GENERATED ALWAYS AS (…) STORED`, the event's `metadata.memoryId` as a uuid, or null when it is missing or not a UUID. |
 | `mnemocyte_meta` | One row, key `installation`: `embedding_dimensions`, `embedding_model` and `vector_type` (`vector` or `halfvec`, `CHECK`ed) for the whole installation. |
 
-New columns sit at the end of each table, in the order `0003` adds them, so
-a fresh install and an upgraded one have identical catalogs.
+New columns sit at the end of each table, in the order `0003` and `0004`
+add them, so a fresh install and an upgraded one have identical catalogs.
 
-`content_tsv` must say `STORED`: from Postgres 18 a generated column is
-virtual by default, and a virtual column cannot be indexed.
+`content_tsv` and `memory_id` must say `STORED`: from Postgres 18 a
+generated column is virtual by default, and a virtual column cannot be
+indexed.
+
+`memory_id` is generated rather than written by the client, so no write
+path names it: a client on a schema without the column keeps writing and
+listing, and only the `memoryId` filter of `listAuditLog` needs it (it
+fails there with the `"MIGRATION"` error of [errors](#errors)). Postgres
+computes it from `metadata` on every insert, so it cannot drift from the
+payload, and rows written while `0004` waits for its lock are filled like
+the rest. The expression guards the cast with a UUID pattern, so a row
+inserted by hand with another `memoryId` gets null instead of failing.
+`memory.pruned` events carry no id and get null too.
 
 Indexes:
 
@@ -30,6 +41,7 @@ Indexes:
 | `mnemocyte_memories_content_tsv_idx` | GIN `(content_tsv)` | Full-text `@@` without parsing every row. |
 | `mnemocyte_memories_embedding_hnsw_idx` | HNSW `vector_cosine_ops` or `halfvec_cosine_ops` | Cosine kNN. |
 | `mnemocyte_events_scope_time_idx` | btree `(namespace, entity_id, timestamp, id)` | Audit pages of one entity, read backwards for newest first, and `pruneAuditLog` batches, read forwards. Pages across entities sort (see [maintenance.md](./maintenance.md#listing)). |
+| `mnemocyte_events_memory_idx` | btree `(memory_id, timestamp, id)` | `listAuditLog({ memoryId })` at any selector: one memory's events, without reading the rest of the log (see [maintenance.md](./maintenance.md#one-memorys-history)). |
 
 The `ORDER BY` of audit pages and `pruneAuditLog` batches names the table
 columns, because the select list's `id::text AS id` would otherwise shadow
@@ -164,7 +176,8 @@ Files in `migrations/`:
 | `0001_add_mnemocyte_meta.sql` | Creates `mnemocyte_meta(key, embedding_dimensions)` and inserts `('installation', 1536)`. |
 | `0002_add_embedding_model.sql` | Adds `mnemocyte_meta.embedding_model` and backfills it when the stored memories use exactly one model. |
 | `0003_schema_v2.sql` | Scope columns, `key`, `type` → `kind`, text ids → uuid, `content_tsv`, the new indexes, `mnemocyte_meta.vector_type`. |
-| `fresh-install.sql` | The final schema of `0000`→`0003` in one file, rendered at 1536 dimensions. Only for an empty database. |
+| `0004_audit_memory_id.sql` | Adds the generated `mnemocyte_events.memory_id` and `mnemocyte_events_memory_idx`. |
+| `fresh-install.sql` | The final schema of `0000`→`0004` in one file, rendered at 1536 dimensions. Only for an empty database. |
 | `0000_initial.sql.template` | The same final schema with `{{EMBEDDING_DIMENSIONS}}` and `{{VECTOR_TYPE}}`. Repository only: `mnemocyte sql --dimensions N` prints it rendered. |
 
 The tarball ships `migrations/*.sql` only (`files` in `package.json`); a
@@ -195,6 +208,33 @@ order, with no gap from `0000`; there is no journal.
   at once with `42701` and, inside one transaction, changes nothing. The
   integration tests rely on this (`test/integration/schema-v2.ts`).
 
+`0004` in detail (the first migration after 1.0):
+
+- One `ALTER TABLE … ADD COLUMN "memory_id" uuid GENERATED ALWAYS AS (…)
+  STORED`, then `CREATE INDEX "mnemocyte_events_memory_idx"`. Adding a
+  stored generated column rewrites `mnemocyte_events` under `ACCESS
+  EXCLUSIVE` and rebuilds its indexes, so audit reads and audited writes
+  wait for the rewrite and the index build. Memory reads and writes with
+  audit off do not touch the table and do not wait; `deleteScope` deletes
+  the scope's events, so it waits too. With the `history` phase of `pnpm
+  bench:postgres` on 1,000,000 events (a 150 MB table, the dataset of
+  [maintenance.md](./maintenance.md#one-memorys-history)), the rewrite took
+  8.5 s and the index 1.1 s; the table grew to 166 MB and the index is
+  56 MB.
+- The rewrite is also the backfill. The alternative, a plain column (no
+  rewrite) filled by one `UPDATE` and written by the client, takes row
+  locks instead, but writes a new version of every row, leaves the old ones
+  for `VACUUM` (the Postgres `UPDATE` docs recommend batches for large
+  updates) and breaks audited writes of a client that is upgraded before
+  `migrate` runs. On the same table the `UPDATE` took 19.6 s, the index
+  1.5 s, and the table held 316 MB until `VACUUM`.
+- No `CREATE INDEX CONCURRENTLY`: it cannot run inside a transaction
+  block, and the runner applies each migration in one transaction. It would
+  gain nothing here anyway, because the rewrite in the same step already
+  holds `ACCESS EXCLUSIVE`.
+- The first statement is `ADD COLUMN "memory_id"`, so a second run fails
+  at once with `42701` and changes nothing, like `0003`.
+
 Install paths:
 
 - Any database: `npx mnemocyte migrate` ([cli.md](./cli.md)), which calls
@@ -202,14 +242,16 @@ Install paths:
 - New database, 1536 dimensions: apply `fresh-install.sql`.
 - New database, other dimensions: render the template (`mnemocyte sql
   --dimensions N`) and apply the result.
-  It already contains the effects of `0001`→`0003`.
-- Existing 0.1.x database: apply `0001`, `0002`, then `0003`.
-- Existing 0.2.x or 0.3.x database: apply `0002`, then `0003`.
-- Existing 0.4.x or 0.5.x database: apply `0003`.
+  It already contains the effects of `0001`→`0004`.
+- Existing 0.1.x database: apply `0001`, `0002`, `0003`, then `0004`.
+- Existing 0.2.x or 0.3.x database: apply `0002`, `0003`, then `0004`.
+- Existing 0.4.x or 0.5.x database: apply `0003`, then `0004`.
+- Existing 0.6.x to 1.0.x database: apply `0004`.
 
 `fresh-install.sql` is generated from the template; a unit test fails if the
 two drift, and an integration test compares its resulting catalog (columns
-in order, constraints, indexes, metadata) with the `0000`→`0003` sequence.
+in order, generated expressions, constraints, indexes, metadata) with the
+`0000`→`0004` sequence.
 
 To change the schema: write the next numbered migration by hand, update the
 template so a fresh install matches the upgraded catalog column for column,
@@ -277,13 +319,14 @@ loaded backend of `store: client`.
 - **Fresh install.** With no Mnemocyte tables, the runner requires
   `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`, runs
   the template rendered for those dimensions (`halfvec` above 2,000), and
-  records `0000`→`0003`. A missing pgvector is `"MIGRATION"` unless
+  records `0000`→`0004`. A missing pgvector is `"MIGRATION"` unless
   `createExtension` is set; see the next section.
 - **Adoption.** With tables but an empty tracking table, `installedVersion`
   reads the level from the catalog: `mnemocyte_memories` and
   `mnemocyte_events` (`0000`), `mnemocyte_meta` (`0001`),
   `mnemocyte_meta.embedding_model` (`0002`), `mnemocyte_memories.namespace`
-  (`0003`). Those versions are recorded without running; any other
+  (`0003`), `mnemocyte_events.memory_id` (`0004`). Those versions are
+  recorded without running; any other
   combination throws `"MIGRATION"`.
 - **Dimensions.** Inside each locked transaction the runner reads the
   embedding column's `atttypmod`, which pgvector sets to the declared size
@@ -311,8 +354,11 @@ loaded backend of `store: client`.
   [cli.md](./cli.md#check).
 - **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
   migrate or dry-run. The self foreign key names `public.mnemocyte_memories`, so the
-  tables must be in `public`. There is no `lock_timeout`: `0003` waits for
-  its `ACCESS EXCLUSIVE` locks as long as the server allows.
+  tables must be in `public`. There is no `lock_timeout`: `0003` and `0004`
+  wait for their `ACCESS EXCLUSIVE` locks as long as the server allows, and
+  while one waits, statements queued behind it on the same table wait too.
+  Every step is one transaction, so a migration cannot use `CREATE INDEX
+  CONCURRENTLY`.
 
 ### Enabling pgvector
 

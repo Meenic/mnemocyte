@@ -151,7 +151,7 @@ dimensions, and asks before it enables pgvector:
 Using memory.ts
 pgvector is not enabled in this database. Run CREATE EXTENSION vector now? [y/N] y
 Enabled pgvector.
-Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2
+Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id
 ```
 
 `migrate` applies only what is missing, so run it on every deploy. Enabling

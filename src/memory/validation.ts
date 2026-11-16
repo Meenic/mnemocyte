@@ -341,6 +341,7 @@ const INPUT_KEYS: Readonly<Record<CheckedInput, readonly string[]>> = {
 		cursor: true,
 		before: true,
 		after: true,
+		memoryId: true,
 		signal: true,
 	}),
 	pruneAuditLog: inputKeys<PruneAuditLogInput>({
@@ -1400,8 +1401,8 @@ export function validateConsolidateInput(input: ConsolidateInput): StoreScope {
 
 /**
  * Validate a {@link ListAuditLogInput}: a selector (or `allNamespaces`), a
- * `limit`, valid `before` / `after` dates. The cursor is decoded by the
- * caller.
+ * `limit`, valid `before` / `after` dates and a non-empty `memoryId`. The
+ * cursor is decoded by the caller.
  */
 export function validateListAuditLogInput(
 	input: ListAuditLogInput,
@@ -1416,6 +1417,9 @@ export function validateListAuditLogInput(
 	}
 	if (input.after !== undefined) {
 		assertValidDate(input.after, "after");
+	}
+	if (input.memoryId !== undefined) {
+		assertNonEmptyString(input.memoryId, "memoryId");
 	}
 	assertOptionalSignal(input.signal);
 	return selector;

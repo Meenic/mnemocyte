@@ -255,3 +255,150 @@ export async function verifyAuditPages(input: {
 		);
 	}
 }
+
+/**
+ * `listAuditLog({ memoryId })`: one memory's history at an entity, a
+ * namespace, every namespace and a bound client, paged and with the time
+ * filters. Events that name the memory in another field (`supersededBy`,
+ * `restoredIds`) are not part of its history. The client must have audit
+ * enabled; `scopeFor` and `otherScopeFor` must be namespaces no one else
+ * writes to.
+ */
+export async function verifyAuditMemoryHistory(input: {
+	client: MemoryClient;
+	scopeFor: ScopeFor;
+	otherScopeFor: ScopeFor;
+}): Promise<void> {
+	const { client, scopeFor, otherScopeFor } = input;
+	const alice = scopeFor("history_alice");
+	const bob = scopeFor("history_bob");
+	const carol = otherScopeFor("history_carol");
+
+	// The survivor is created, updated by a keyed add and by `update`,
+	// absorbs a loser, and is deleted with the loser restored.
+	const survivor = await client.add({
+		scope: alice,
+		content: "survivor",
+		key: "favorite",
+	});
+	await pause(5);
+	await client.add({
+		scope: alice,
+		content: "survivor, again",
+		key: "favorite",
+	});
+	await pause(5);
+	await client.update({ scope: alice, id: survivor.id, importance: "high" });
+	await pause(5);
+	const loser = await client.add({ scope: alice, content: "loser" });
+	await pause(5);
+	await client.consolidate({
+		scope: alice,
+		survivorId: survivor.id,
+		supersededIds: [loser.id],
+	});
+	await pause(5);
+	await client.add({ scope: bob, content: "bob" });
+	const elsewhere = await client.add({ scope: carol, content: "carol" });
+	await pause(5);
+	await client.delete({ scope: alice, id: survivor.id, dependents: "restore" });
+
+	const entityScope = { namespace: alice.namespace, entityId: alice.entityId };
+	const history = await client.listAuditLog({
+		scope: entityScope,
+		memoryId: survivor.id,
+	});
+	expect(history.nextCursor).toBeNull();
+	expect(history.events.map((event) => event.type)).toEqual([
+		"memory.deleted",
+		"memory.updated",
+		"memory.updated",
+		"memory.created",
+	]);
+	expect(history.events).toEqual([...history.events].sort(compareNewestFirst));
+	for (const event of history.events) {
+		expect(event.metadata.memoryId).toBe(survivor.id);
+	}
+	expect(expectDefined(history.events[0]).metadata.restoredIds).toEqual([
+		loser.id,
+	]);
+
+	// The loser's own events, not the survivor's `restoredIds`.
+	const loserHistory = await client.listAuditLog({
+		scope: entityScope,
+		memoryId: loser.id,
+	});
+	expect(loserHistory.events.map((event) => event.type)).toEqual([
+		"memory.superseded",
+		"memory.created",
+	]);
+
+	// The same history at a namespace, every namespace and a bound client,
+	// and one event per page.
+	const sameHistory = [
+		await client.listAuditLog({
+			scope: { namespace: alice.namespace },
+			memoryId: survivor.id,
+		}),
+		await client.listAuditLog({ allNamespaces: true, memoryId: survivor.id }),
+		await client.for(entityScope).listAuditLog({ memoryId: survivor.id }),
+	];
+	for (const page of sameHistory) {
+		expect(ids(page.events)).toEqual(ids(history.events));
+	}
+	const single = await allPages(
+		(cursor) =>
+			client.listAuditLog({
+				allNamespaces: true,
+				memoryId: survivor.id,
+				limit: 1,
+				...(cursor === undefined ? {} : { cursor }),
+			}),
+		1,
+	);
+	expect(ids(single.events)).toEqual(ids(history.events));
+	expect(single.pages).toBe(4);
+
+	// The time filters still apply.
+	const created = expectDefined(history.events.at(-1));
+	const deleted = expectDefined(history.events[0]);
+	const between = await client.listAuditLog({
+		scope: entityScope,
+		memoryId: survivor.id,
+		after: created.timestamp,
+		before: deleted.timestamp,
+	});
+	expect(ids(between.events)).toEqual(ids(history.events.slice(1, 3)));
+
+	// The selector still applies: carol's memory is in another namespace.
+	expect(
+		(
+			await client.listAuditLog({
+				scope: { namespace: alice.namespace },
+				memoryId: elsewhere.id,
+			})
+		).events,
+	).toEqual([]);
+	expect(
+		(
+			await client.listAuditLog({ allNamespaces: true, memoryId: elsewhere.id })
+		).events.map((event) => event.type),
+	).toEqual(["memory.created"]);
+
+	// An id no event names, or one that is not a UUID, finds nothing.
+	for (const memoryId of ["01890a5d-ac96-774b-bcce-b302099a8057", "nope"]) {
+		await expect(
+			client.listAuditLog({ allNamespaces: true, memoryId }),
+		).resolves.toEqual({ events: [], nextCursor: null });
+	}
+
+	for (const memoryId of ["", 42, null]) {
+		await expectMnemocyteError(
+			client.listAuditLog({
+				scope: entityScope,
+				memoryId,
+			} as ListAuditLogInput),
+			"VALIDATION",
+		);
+	}
+}

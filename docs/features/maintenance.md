@@ -286,7 +286,7 @@ row inserted by hand comes back as it is rather than failing the page.
 ### Listing
 
 `listAuditLog({ scope | allNamespaces: true, limit = 50, cursor, before,
-after })` takes a selector as `prune` does (`validateListAuditLogInput`
+after, memoryId })` takes a selector as `prune` does (`validateListAuditLogInput`
 calls `validateSelectorInput`) and returns `{ events, nextCursor }`, newest
 first by `(timestamp, id)`. As in `list`, the client asks the store for
 `limit + 1` events and returns a cursor only when the extra one came back,
@@ -335,6 +335,71 @@ entities are an administrative read, so they stay without an index of
 their own until an application needs them faster; a `(timestamp, id)`
 index would serve the all-namespaces order at the cost measured for
 retention below.
+
+### One memory's history
+
+`memoryId` keeps the events whose `metadata.memoryId` is that id
+(`validateListAuditLogInput` requires a non-empty string). It is a filter
+like `before`, so the selector, the time filters and the cursor apply as
+usual. Only the event's subject matches: `deletedWith`, `supersededBy` and
+`restoredIds` name other memories and are not searched, and
+`memory.pruned` has no id.
+
+- **Postgres.** `listEvents` adds `memory_id = $n::uuid` on the generated
+  column of migration 0004 (see [postgres.md](./postgres.md#schema)). The
+  store returns an empty page without a query for an id that is not a
+  UUID, since the column cannot hold one; `get` does the same. On a schema
+  without the column the query fails with `42703`, which becomes the
+  `"MIGRATION"` error; unfiltered pages never name the column.
+- **In-memory.** The scan compares `metadata.memoryId` with the id, as
+  given.
+
+`mnemocyte_events_memory_idx` on `(memory_id, timestamp, id)` serves the
+filter at every selector: one equality, then `(timestamp, id)` in page
+order, with the selector's columns checked on the few rows it returns. Measured with the `history` phase of `pnpm
+bench:postgres` on the retention dataset (1,000,000 events, 10 namespaces
+of 100 entities, one event in a hundred a `memory.pruned`), pages of 50, a
+memory with 5 events and one with 500:
+
+| Page | Plan | Time | Without the index |
+|---|---|---|---|
+| 5-event memory, one entity, a namespace or all namespaces | `Index Scan` of the memory index, 5 rows, no sort | 0.05–0.07 ms, 8 buffers | 1.0 ms (entity), 65 ms (namespace), 45 ms (all: `Seq Scan`) |
+| 500-event memory, all namespaces, first or second page | `Index Scan` of the memory index, 51 rows, no sort | 0.14–0.15 ms, 55 buffers | 48–62 ms (`Seq Scan`) |
+| 500-event memory, one entity or one namespace, first or second page | `Bitmap Index Scan` of the memory index (in one entity combined with the scope index), top-N heapsort over its 500 rows | 1.1–2.0 ms, 460–520 buffers | 1.3–2.7 ms (entity), 73–95 ms (namespace) |
+
+Within a scope the planner prefers a bitmap scan of the 500 rows and a
+sort to reading the index in order and checking the scope on each row,
+which the all-namespaces page does in 0.14 ms. Both stay at a few
+milliseconds; a memory with tens of thousands of events would sort them
+all for every page in a scope.
+
+The other shapes, on the same pages and data:
+
+| Index | Size | Pages |
+|---|---|---|
+| `(memory_id, timestamp, id)` (default) | 56.0 MB | as above |
+| `(memory_id)` | 12.8 MB | 5-event memory the same (0.07–0.14 ms); a 500-event memory sorts at every selector, 1.0–2.0 ms, all namespaces included |
+| `(namespace, memory_id, timestamp, id)` | 64.5 MB | 500-event memory in a namespace 0.18 ms (ordered); across namespaces Postgres 18 skip-scans the leading column, 21 index searches per page, 0.16 ms for 5 events and 1.3–1.5 ms for 500 |
+| partial `WHERE memory_id IS NOT NULL` | 55.5 MB | the same as the default |
+
+`(memory_id)` is a quarter of the size because btree deduplication stores
+each repeated key once; the default shape repeats `(timestamp, id)`, which
+is unique. It keeps the order for long histories and the keyset cursor (a
+second page reads 55 buffers rather than every event of the memory). The
+partial index saves 1%, since only `memory.pruned` events are null.
+`namespace` first serves a namespace page in order but costs a search per
+namespace across them, and the client already filters the scope on the
+returned rows.
+
+What the column and its index cost a write, on 1,000 events inserted in
+one statement into the 1,000,000 (the audit step of an `addMany` chunk
+writes the same rows): 11.8 ms on the 1.0 schema, 17.4 ms with the
+generated column and no index, 36.0 ms with both. The bench's memory ids
+are random (v4), so every insert lands on a different index page; the
+library's are UUIDv7, so events of new memories append to the end of the
+index. `pruneAuditLog` keeps its plan: batches still walk
+`mnemocyte_events_scope_time_idx`, and a `DELETE` does not touch the other
+indexes.
 
 ### Retention
 

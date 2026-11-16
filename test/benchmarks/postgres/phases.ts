@@ -1,6 +1,8 @@
 import { createMemory, type Embedder, migrate } from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import { expect } from "vitest";
+import { MIGRATIONS } from "../../../src/db/migrations/bundled.js";
+import { splitStatements } from "../../../src/db/migrations/runner.js";
 import { encodeListCursor } from "../../../src/memory/cursor.js";
 import type { SqlExecutor, SqlStatement } from "../../../src/sql/executor.js";
 import {
@@ -17,6 +19,7 @@ import {
 	BENCH_MODEL,
 	type EntitySpec,
 	formatBytes,
+	HOT_MEMORY,
 	relationSizes,
 	resetSchema,
 	seedEvents,
@@ -45,6 +48,7 @@ const INDEX = {
 	tsv: "mnemocyte_memories_content_tsv_idx",
 	hnsw: "mnemocyte_memories_embedding_hnsw_idx",
 	events: "mnemocyte_events_scope_time_idx",
+	eventMemory: "mnemocyte_events_memory_idx",
 	pkey: "mnemocyte_memories_pkey",
 } as const;
 const drop = (index: string) => `DROP INDEX ${index}`;
@@ -1149,6 +1153,255 @@ export async function auditPhase(ctx: BenchContext): Promise<void> {
 				expect(middleBatch.indexes).toContain(INDEX.events);
 			}
 		}
+	}
+	await noteSizes(ctx);
+}
+
+/** Milliseconds `fn` takes. */
+async function elapsed(fn: () => Promise<unknown>): Promise<number> {
+	const start = performance.now();
+	await fn();
+	return performance.now() - start;
+}
+
+/**
+ * `listAuditLog({ memoryId })` and migration 0004 on the retention dataset
+ * (1,000,000 events, 10 namespaces of 100 entities): the migration as
+ * shipped against a plain column filled by `UPDATE`, history pages with the
+ * default index, without it and with the other shapes considered, and what
+ * the generated column and its index cost an insert.
+ */
+export async function auditHistoryPhase(ctx: BenchContext): Promise<void> {
+	const section = "audit history";
+	const total = scaled(ctx, 1_000_000, 10_000);
+	await resetSchema(ctx.db);
+	await migrate({ store: postgresStore({ client: ctx.db }), dimensions: 1536 });
+	// Load at the 1.0 schema, then migrate it the way an upgrade does.
+	await ctx.db.query("ALTER TABLE mnemocyte_events DROP COLUMN memory_id", []);
+	await ctx.db.query("VACUUM FULL mnemocyte_events", []);
+	const loadMs = await seedEvents(ctx.db, {
+		total,
+		namespaces: 10,
+		entitiesPerNamespace: 100,
+		days: 180,
+		memoryIds: true,
+	});
+	const tableBefore =
+		(await relationSizes(ctx.db)).find(
+			(size) => size.name === "mnemocyte_events",
+		)?.bytes ?? 0;
+	ctx.report.add(section, {
+		case: `${total} events loaded at the 1.0 schema`,
+		variant: "default",
+		note: `load ${(loadMs / 1000).toFixed(1)} s, table ${formatBytes(tableBefore)}`,
+	});
+
+	// The alternative: a plain column filled by one UPDATE, then the index.
+	const alternative = await rolledBack(ctx.db, async (tx) => {
+		const add = await elapsed(() =>
+			tx.query("ALTER TABLE mnemocyte_events ADD COLUMN memory_id uuid", []),
+		);
+		const update = await elapsed(() =>
+			tx.query(
+				`UPDATE mnemocyte_events SET memory_id = CASE
+					WHEN metadata->>'memoryId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+					THEN (metadata->>'memoryId')::uuid END`,
+				[],
+			),
+		);
+		const index = await elapsed(() =>
+			tx.query(
+				'CREATE INDEX mnemocyte_bench_memory_idx ON mnemocyte_events ("memory_id","timestamp","id")',
+				[],
+			),
+		);
+		const [size] = await tx.query<{ bytes: string | number }>(
+			"SELECT pg_table_size('mnemocyte_events') AS bytes",
+			[],
+		);
+		return { add, update, index, table: Number(size?.bytes ?? 0) };
+	});
+	ctx.report.add(section, {
+		case: "upgrade: plain column, UPDATE backfill, index (rolled back)",
+		variant: "alternative",
+		note: `ADD COLUMN ${alternative.add.toFixed(0)} ms, UPDATE ${(alternative.update / 1000).toFixed(2)} s, CREATE INDEX ${(alternative.index / 1000).toFixed(2)} s; table ${formatBytes(alternative.table)} before VACUUM`,
+	});
+
+	// 0004 as shipped: the rewrite that adds the generated column, then the
+	// index, each statement timed.
+	const migration = MIGRATIONS[4];
+	if (migration?.name !== "0004_audit_memory_id") {
+		throw new Error("Expected migration 0004_audit_memory_id.");
+	}
+	const timings: number[] = [];
+	for (const statement of splitStatements(migration.sql)) {
+		timings.push(await elapsed(() => ctx.db.query(statement, [])));
+	}
+	await ctx.db.query("ANALYZE mnemocyte_events", []);
+	const sizes = await relationSizes(ctx.db);
+	const sizeOf = (name: string) =>
+		formatBytes(sizes.find((size) => size.name === name)?.bytes ?? 0);
+	ctx.report.add(section, {
+		case: "upgrade: 0004 as shipped (generated column, index)",
+		variant: "default",
+		note: `ADD COLUMN … STORED ${((timings[0] ?? 0) / 1000).toFixed(2)} s, CREATE INDEX ${((timings[1] ?? 0) / 1000).toFixed(2)} s; table ${sizeOf("mnemocyte_events")}, ${INDEX.eventMemory} ${sizeOf(INDEX.eventMemory)}, ${INDEX.events} ${sizeOf(INDEX.events)}`,
+	});
+
+	const [memories] = await ctx.db.query<{ hot: string; typical: string }>(
+		`SELECT md5('audit_3/entity_42/${HOT_MEMORY}')::uuid::text AS hot,
+			md5('audit_3/entity_42/1')::uuid::text AS typical`,
+		[],
+	);
+	if (!memories) {
+		throw new Error("No memory ids.");
+	}
+	const [counts] = await ctx.db.query<{ hot: number; typical: number }>(
+		`SELECT count(*) FILTER (WHERE memory_id = $1::uuid)::int AS hot,
+			count(*) FILTER (WHERE memory_id = $2::uuid)::int AS typical
+		FROM mnemocyte_events`,
+		[memories.hot, memories.typical],
+	);
+
+	const recorder = createRecorder(ctx.db);
+	const memory = createMemory({
+		store: postgresStore({ client: recorder.executor }),
+		embedder: {
+			model: BENCH_MODEL,
+			dimensions: 1536,
+			async embed(texts) {
+				return texts.map(() => []);
+			},
+		},
+	});
+	const dropDefault = drop(INDEX.eventMemory);
+	const benchIndex =
+		"CREATE INDEX mnemocyte_bench_memory_idx ON mnemocyte_events";
+	const shapes: Array<{ variant: string; setup: string[] }> = [
+		{ variant: "default (memory_id, timestamp, id)", setup: [] },
+		{ variant: "no memory index", setup: [dropDefault] },
+		{
+			variant: "(memory_id)",
+			setup: [dropDefault, `${benchIndex} (memory_id)`],
+		},
+		{
+			variant: "(namespace, memory_id, timestamp, id)",
+			setup: [
+				dropDefault,
+				`${benchIndex} (namespace, memory_id, timestamp, id)`,
+			],
+		},
+		{
+			variant: "partial, WHERE memory_id IS NOT NULL",
+			setup: [
+				dropDefault,
+				`${benchIndex} (memory_id, timestamp, id) WHERE memory_id IS NOT NULL`,
+			],
+		},
+	];
+	const selectors: Array<{
+		label: string;
+		input:
+			| { allNamespaces: true }
+			| { scope: { namespace: string; entityId?: string } };
+	}> = [
+		{
+			label: "one entity",
+			input: { scope: { namespace: "audit_3", entityId: "entity_42" } },
+		},
+		{ label: "one namespace", input: { scope: { namespace: "audit_3" } } },
+		{ label: "all namespaces", input: { allNamespaces: true } },
+	];
+	const cases = [
+		{
+			label: "typical memory",
+			memoryId: memories.typical,
+			events: counts?.typical ?? 0,
+		},
+		{
+			label: "long history",
+			memoryId: memories.hot,
+			events: counts?.hot ?? 0,
+		},
+	];
+	for (const { label: memoryLabel, memoryId, events } of cases) {
+		for (const { label, input } of selectors) {
+			let cursor: string | undefined;
+			const pages =
+				events > 50 ? ["first page", "second page"] : ["first page"];
+			for (const page of pages) {
+				recorder.clear();
+				const result = await memory.listAuditLog({
+					...input,
+					memoryId,
+					limit: 50,
+					...(cursor === undefined ? {} : { cursor }),
+				});
+				cursor = result.nextCursor ?? undefined;
+				const statement = findStatement(recorder.log, "FROM mnemocyte_events");
+				for (const shape of shapes) {
+					const m = await measure(ctx.db, statement, {
+						runs: ctx.runs,
+						setup: shape.setup,
+					});
+					ctx.report.add(section, {
+						case: `history, ${memoryLabel} (${events} events), ${label}, ${page} of 50`,
+						variant: shape.variant,
+						measurement: m,
+					});
+					// Within one entity the planner may combine the memory index
+					// with the scope index and sort what remains (a few hundred
+					// rows at most), so only the index is required.
+					if (ctx.scale === 1 && shape.setup.length === 0) {
+						expect(m.indexes).toContain(INDEX.eventMemory);
+					}
+				}
+			}
+		}
+	}
+
+	// Index sizes of the other shapes.
+	for (const shape of shapes.slice(2)) {
+		const bytes = await rolledBack(ctx.db, async (tx) => {
+			for (const ddl of shape.setup) {
+				await tx.query(ddl, []);
+			}
+			const [row] = await tx.query<{ bytes: string | number }>(
+				"SELECT pg_relation_size('mnemocyte_bench_memory_idx') AS bytes",
+				[],
+			);
+			return Number(row?.bytes ?? 0);
+		});
+		ctx.report.add(section, {
+			case: "index size",
+			variant: shape.variant,
+			note: formatBytes(bytes),
+		});
+	}
+
+	// What an audited write pays: 1,000 events in one statement, as an
+	// addMany chunk's audit step inserts them.
+	const insert: SqlStatement = {
+		sql: `INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata, timestamp)
+			SELECT gen_random_uuid(), 'audit_3', 'entity_' || (g % 100), 'memory.created',
+				jsonb_build_object('memoryId', gen_random_uuid()::text, 'kind', 'fact', 'importance', 'normal'),
+				now()
+			FROM generate_series(1, 1000) AS g`,
+		params: [],
+	};
+	const writes: Array<{ variant: string; setup: string[] }> = [
+		{ variant: "default", setup: [] },
+		{ variant: "no memory index", setup: [dropDefault] },
+		{
+			variant: "no memory_id column (1.0)",
+			setup: ["ALTER TABLE mnemocyte_events DROP COLUMN memory_id"],
+		},
+	];
+	for (const { variant, setup } of writes) {
+		ctx.report.add(section, {
+			case: "insert 1,000 audit events",
+			variant,
+			measurement: await measure(ctx.db, insert, { runs: ctx.runs, setup }),
+		});
 	}
 	await noteSizes(ctx);
 }

@@ -249,13 +249,20 @@ Breaking changes now wait for a major release; see
 
 ## 1.0 → 1.1
 
-Nothing in your code has to change.
+Your code keeps working. TypeScript may flag one thing, and the database
+has one migration.
 
+- **`delete` returns a `DeleteResult`.** It used to resolve with nothing.
+  Code that awaits it is fine, but TypeScript flags a `Promise<void>`
+  annotation on the call or on a function that returns it, and a
+  hand-written `MemoryClient` fake whose `delete` returns nothing. Return a
+  `DeleteResult` there, or `await` the call inside an `async` function.
 - **Migration `0004_audit_memory_id.sql`.** It adds a `memory_id` column to
   `mnemocyte_events`, filled by Postgres from each event's
   `metadata.memoryId`, and an index on it. Adding the column rewrites the
   table under an `ACCESS EXCLUSIVE` lock, so audit reads and audited writes
-  wait until it finishes: on 1,000,000 events (150 MB) it took 9.6 s on a laptop, 8.5 s for the rewrite and 1.1 s for the index. Memory reads, and writes
+  wait until it finishes: on 1,000,000 events (150 MB) it took 9.6 s on a
+  laptop, 8.5 s for the rewrite and 1.1 s for the index. Memory reads, and writes
   with the audit log off, do not wait; `deleteScope` does, since it also
   deletes the scope's events.
 - **Deploy in either order.** 1.1 writes events exactly as 1.0 did, and

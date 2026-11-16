@@ -624,6 +624,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		},
 		async listAuditLog(input, options) {
 			return runPostgresOperation(async () => {
+				// `memory_id` is a uuid: no event is about an id that is not one.
+				if (input.memoryId !== undefined && !isUuid(input.memoryId)) {
+					throwIfAborted(options?.signal);
+					return [];
+				}
 				const rows = await listEvents(client, input, options?.signal);
 				return rows.map(({ row, position }) => ({
 					event: rowToAuditEvent(row),

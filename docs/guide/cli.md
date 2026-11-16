@@ -198,7 +198,7 @@ when the schema is current, so run it on every deploy.
 Using memory.ts
 pgvector is not enabled in this database. Run CREATE EXTENSION vector now? [y/N] y
 Enabled pgvector.
-Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2
+Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id
 ```
 
 - **pgvector.** When the extension is not enabled, `migrate` asks before
@@ -223,7 +223,7 @@ Reads the database and reports what is installed. It changes nothing.
 ```txt
 Using memory.ts
 pgvector    0.8.7
-migrations  4 of 4 applied
+migrations  5 of 5 applied
 dimensions  1536 (vector)
 model       text-embedding-3-small
 
@@ -281,8 +281,8 @@ pnpm exec mnemocyte check --json
     "pgvectorVersion": "0.8.7",
     "migrations": {
       "state": "tracked",
-      "applied": ["0000_initial", "0001_add_mnemocyte_meta", "0002_add_embedding_model"],
-      "pending": ["0003_schema_v2"]
+      "applied": ["0000_initial", "0001_add_mnemocyte_meta", "0002_add_embedding_model", "0003_schema_v2"],
+      "pending": ["0004_audit_memory_id"]
     },
     "dimensions": 1536,
     "vectorType": "vector",
@@ -291,7 +291,7 @@ pnpm exec mnemocyte check --json
   "problems": [
     {
       "code": "MIGRATIONS_PENDING",
-      "message": "1 migration is pending (0003_schema_v2). Run mnemocyte migrate."
+      "message": "1 migration is pending (0004_audit_memory_id). Run mnemocyte migrate."
     }
   ],
   "notes": []
@@ -333,7 +333,7 @@ pnpm exec mnemocyte check --json
 [`migrate()`](./postgres.md#what-migrate-does) returns:
 
 ```json
-{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0003_schema_v2"],"adopted":[],"extensionCreated":false,"upToDate":false}
+{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0004_audit_memory_id"],"adopted":[],"extensionCreated":false,"upToDate":false}
 ```
 
 `applied` is what a real run would apply, `adopted` what it would record

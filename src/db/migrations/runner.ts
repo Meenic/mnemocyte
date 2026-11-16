@@ -57,6 +57,7 @@ export interface CatalogState {
 	meta: boolean;
 	metaModel: boolean;
 	scoped: boolean;
+	eventMemoryId: boolean;
 }
 
 /**
@@ -84,18 +85,22 @@ export function renderInitialSchema(dimensions: number): string {
  * The newest migration an untracked schema has applied: -1 for no Mnemocyte
  * tables. Each migration leaves an object the previous one lacks: `0001`
  * creates `mnemocyte_meta`, `0002` adds its `embedding_model`, `0003` adds
- * `mnemocyte_memories.namespace`.
+ * `mnemocyte_memories.namespace`, `0004` adds `mnemocyte_events.memory_id`.
  */
 export function installedVersion(state: CatalogState): number {
-	const { memories, events, meta, metaModel, scoped } = state;
+	const { memories, events, meta, metaModel, scoped, eventMemoryId } = state;
 	if (!memories && !events && !meta) {
 		return -1;
 	}
 	if (memories && events) {
-		if (!meta && !metaModel && !scoped) return 0;
-		if (meta && !metaModel && !scoped) return 1;
-		if (meta && metaModel && !scoped) return 2;
-		if (meta && metaModel && scoped) return 3;
+		if (!eventMemoryId) {
+			if (!meta && !metaModel && !scoped) return 0;
+			if (meta && !metaModel && !scoped) return 1;
+			if (meta && metaModel && !scoped) return 2;
+			if (meta && metaModel && scoped) return 3;
+		} else if (meta && metaModel && scoped) {
+			return 4;
+		}
 	}
 	throw new MnemocyteError({
 		message: `The Mnemocyte tables match no migration (${JSON.stringify(state)}), so migrate() cannot tell which migrations were applied. Compare the schema with migrations/ and finish or undo the partial one.`,
@@ -124,7 +129,13 @@ export async function readCatalogState(
 				WHERE attrelid = to_regclass('mnemocyte_memories')
 					AND attname = 'namespace'
 					AND NOT attisdropped
-			) AS "scoped"`,
+			) AS "scoped",
+			EXISTS (
+				SELECT 1 FROM pg_catalog.pg_attribute
+				WHERE attrelid = to_regclass('mnemocyte_events')
+					AND attname = 'memory_id'
+					AND NOT attisdropped
+			) AS "eventMemoryId"`,
 		[],
 		options,
 	);

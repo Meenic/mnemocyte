@@ -6,7 +6,12 @@ CREATE TABLE "mnemocyte_events" (
 	"timestamp" timestamp with time zone DEFAULT now() NOT NULL,
 	"namespace" text NOT NULL,
 	"agent_id" text,
-	"session_id" text
+	"session_id" text,
+	"memory_id" uuid GENERATED ALWAYS AS (
+		CASE
+			WHEN "metadata"->>'memoryId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN ("metadata"->>'memoryId')::uuid
+		END
+	) STORED
 );
 --> statement-breakpoint
 CREATE TABLE "mnemocyte_meta" (
@@ -49,6 +54,8 @@ CREATE TABLE "mnemocyte_memories" (
 ALTER TABLE "mnemocyte_memories" ADD CONSTRAINT "mnemocyte_memories_superseded_by_mnemocyte_memories_id_fk" FOREIGN KEY ("superseded_by") REFERENCES "public"."mnemocyte_memories"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "mnemocyte_events_scope_time_idx" ON "mnemocyte_events" USING btree ("namespace","entity_id","timestamp","id");
+--> statement-breakpoint
+CREATE INDEX "mnemocyte_events_memory_idx" ON "mnemocyte_events" USING btree ("memory_id","timestamp","id");
 --> statement-breakpoint
 CREATE INDEX "mnemocyte_memories_scope_idx" ON "mnemocyte_memories" USING btree ("namespace","entity_id","agent_id","session_id");
 --> statement-breakpoint

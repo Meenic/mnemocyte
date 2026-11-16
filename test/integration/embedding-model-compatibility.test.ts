@@ -51,6 +51,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 	`;
 	await applyMigration(sql, "0002_add_embedding_model.sql", "42701");
 	await applyMigration(sql, "0003_schema_v2.sql", "42701");
+	await applyMigration(sql, "0004_audit_memory_id.sql", "42701");
 }
 
 function createEmbedder(model: string, embedCalls: string[]) {

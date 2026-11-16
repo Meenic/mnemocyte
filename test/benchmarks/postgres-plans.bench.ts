@@ -2,6 +2,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, test } from "vitest";
 import { postgresJs } from "../../src/sql/postgres-js.js";
 import {
+	auditHistoryPhase,
 	auditPhase,
 	type BenchContext,
 	describeServer,
@@ -20,7 +21,9 @@ const databaseUrl = process.env.DATABASE_URL;
 const disposable = process.env.MNEMOCYTE_BENCH_DISPOSABLE === "1";
 const scale = Number(process.env.MNEMOCYTE_BENCH_SCALE ?? "1");
 const runs = Number(process.env.MNEMOCYTE_BENCH_RUNS ?? "5");
-const phases = (process.env.MNEMOCYTE_BENCH_PHASES ?? "halfvec,vector,audit")
+const phases = (
+	process.env.MNEMOCYTE_BENCH_PHASES ?? "halfvec,vector,audit,history"
+)
 	.split(",")
 	.map((phase) => phase.trim());
 
@@ -76,6 +79,15 @@ describe.skipIf(!databaseUrl)("Postgres index plans", () => {
 		async () => {
 			await vectorPhase(ctx);
 			ctx.report.flush("vector(1536)");
+		},
+	);
+
+	test.runIf(phases.includes("history"))(
+		"listAuditLog by memory id and migration 0004",
+		{ timeout: 2 * HOUR },
+		async () => {
+			await auditHistoryPhase(ctx);
+			ctx.report.flush("Audit history");
 		},
 	);
 

@@ -175,6 +175,8 @@ export interface StoreAuditLogInput {
 	readonly limit: number;
 	readonly before?: Date;
 	readonly after?: Date;
+	/** Only events whose `metadata.memoryId` is this id. */
+	readonly memoryId?: string;
 	/** Return events strictly after this position in `(timestamp, id)` descending order. */
 	readonly position?: StoreAuditPosition;
 }

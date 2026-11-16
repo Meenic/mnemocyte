@@ -12,7 +12,7 @@ import { readMemoryClientInternals } from "../../src/memory/client-internals.js"
 import { createTestIo } from "../cli/io.js";
 
 const ALL_MIGRATIONS =
-	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2";
+	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id";
 
 function embedder(dimensions: number, model = "cli-contract"): Embedder {
 	return {
@@ -281,7 +281,7 @@ describe("CLI commands (PGlite)", () => {
 			[
 				"Using memory.ts",
 				"pgvector    0.8.7",
-				"migrations  4 of 4 applied",
+				"migrations  5 of 5 applied",
 				"dimensions  8 (vector)",
 				"model       not recorded yet",
 				"",
@@ -341,16 +341,16 @@ describe("CLI commands (PGlite)", () => {
 		const behind = await check(target(1536));
 		expect(behind.code).toBe(1);
 		expect(behind.stdout).toContain(
-			"migrations  3 of 4 applied, pending: 0003_schema_v2 (not recorded)",
+			"migrations  3 of 5 applied, pending: 0003_schema_v2, 0004_audit_memory_id (not recorded)",
 		);
 		expect(behind.stdout).toContain(
-			"problem: 1 migration is pending (0003_schema_v2). Run mnemocyte migrate.",
+			"problem: 2 migrations are pending (0003_schema_v2, 0004_audit_memory_id). Run mnemocyte migrate.",
 		);
 
 		const io = createTestIo(".");
 		expect(await migrateTarget(target(1536), args(), io)).toBe(0);
 		expect(io.stdout()).toBe(
-			"Using memory.ts\nRecorded as already applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model\nApplied: 0003_schema_v2\n",
+			"Using memory.ts\nRecorded as already applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model\nApplied: 0003_schema_v2, 0004_audit_memory_id\n",
 		);
 		expect((await check(target(1536))).code).toBe(0);
 	});
@@ -363,7 +363,7 @@ describe("CLI commands (PGlite)", () => {
 		const untracked = await check(target(1536));
 		expect(untracked.code).toBe(0);
 		expect(untracked.stdout).toContain(
-			"migrations  4 of 4 applied (not recorded)",
+			"migrations  5 of 5 applied (not recorded)",
 		);
 		expect(untracked.stdout).toContain(
 			"note: The schema was installed without migrate",

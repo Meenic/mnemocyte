@@ -857,7 +857,12 @@ export function createMemoryClient(
 				config,
 				store.backend,
 				"listAuditLog",
-				scopeMetadata(input),
+				{
+					...scopeMetadata(input),
+					...(typeof input?.memoryId === "string"
+						? { memoryId: input.memoryId }
+						: {}),
+				},
 				async () => {
 					throwIfAborted(input?.signal);
 					const selector = validateListAuditLogInput(input);
@@ -873,6 +878,9 @@ export function createMemoryClient(
 							limit: limit + 1,
 							...(input.before === undefined ? {} : { before: input.before }),
 							...(input.after === undefined ? {} : { after: input.after }),
+							...(input.memoryId === undefined
+								? {}
+								: { memoryId: input.memoryId }),
 							...(position === undefined ? {} : { position }),
 						},
 						storeOptions(input.signal),

@@ -85,6 +85,17 @@ marked **Breaking** in their entries. What semver covers is in
   server needs no key. Before, `init` always wrote `openaiEmbedder` and
   `OPENAI_API_KEY=`. Without the flag nothing changes. See
   [A local Ollama](docs/guide/cli.md#a-local-ollama).
+- **`listAuditLog({ memoryId })` and migration
+  `0004_audit_memory_id.sql`.** Lists the events about one memory, at any
+  scope, with `allNamespaces: true` or on a bound client, with the usual
+  cursor and `before` / `after`. On Postgres the migration adds a
+  `memory_id` column that Postgres fills from each event's
+  `metadata.memoryId`, and an index on it, so the history is found without
+  reading the log. Run `mnemocyte migrate`: the migration rewrites
+  `mnemocyte_events` under an `ACCESS EXCLUSIVE` lock, so audit reads and
+  audited writes wait for it. Writes are unchanged, so the app keeps
+  working before and after it; only the new filter needs it. See
+  [upgrading](docs/guide/upgrading.md#10--11).
 
 ### Changed
 

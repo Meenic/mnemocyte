@@ -74,7 +74,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
 Each item ships as a numbered migration. Index changes need
 `EXPLAIN (ANALYZE, BUFFERS)` evidence on representative data.
 
-- [ ] `feat/audit-memory-id`: an indexed memory id column on audit events
+- [x] `feat/audit-memory-id`: an indexed memory id column on audit events
   for per-memory history. Today the id is only in the event's `metadata`.
 - [ ] `feat/text-search-config`: choose the text search configuration at
   install time. `english` is fixed in migration 0003 and

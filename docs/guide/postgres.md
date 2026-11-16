@@ -102,7 +102,7 @@ return, and changes nothing:
 
 ```ts
 const plan = await migrate({ memory, createExtension: true, dryRun: true });
-// { applied: ["0003_schema_v2"], adopted: [], extensionCreated: false }
+// { applied: ["0004_audit_memory_id"], adopted: [], extensionCreated: false }
 ```
 
 It throws the errors a real run would throw before its first change: a
@@ -338,12 +338,13 @@ With `psql`, apply the numbered migrations yourself. Never apply
 
 | Installed version | Apply, in order |
 |---|---|
-| 0.1.x | `0001_add_mnemocyte_meta.sql`, `0002_add_embedding_model.sql`, `0003_schema_v2.sql` |
-| 0.2.x, 0.3.x | `0002_add_embedding_model.sql`, `0003_schema_v2.sql` |
-| 0.4.x, 0.5.x | `0003_schema_v2.sql` |
+| 0.1.x | `0001_add_mnemocyte_meta.sql`, `0002_add_embedding_model.sql`, `0003_schema_v2.sql`, `0004_audit_memory_id.sql` |
+| 0.2.x, 0.3.x | `0002_add_embedding_model.sql`, `0003_schema_v2.sql`, `0004_audit_memory_id.sql` |
+| 0.4.x, 0.5.x | `0003_schema_v2.sql`, `0004_audit_memory_id.sql` |
+| 0.6.x to 1.0.x | `0004_audit_memory_id.sql` |
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0003_schema_v2.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f node_modules/mnemocyte/migrations/0004_audit_memory_id.sql
 ```
 
 Installations from 0.1.x stay at 1536 dimensions. Changing the dimension of
@@ -354,6 +355,15 @@ an existing table is a migration you plan and run yourself.
 lock and turns ids into UUIDs. Plan a maintenance window for large tables,
 and see [schema migration 0003](./upgrading.md#schema-migration-0003_schema_v2sql)
 for what changes and how to convert ids your app stores.
+
+`0004_audit_memory_id.sql` (1.1) rewrites `mnemocyte_events` under an
+`ACCESS EXCLUSIVE` lock to add its `memory_id` column, then builds an
+index on it. Audit reads and audited writes wait for both:
+on 1,000,000 events (150 MB) it took 9.6 s on a laptop, 8.5 s for the rewrite and 1.1 s for the index. Memory reads, and writes with the audit log off,
+do not wait; `deleteScope` does, since it also deletes the scope's events.
+Run it at a quiet time if your audit log is large, or trim it
+first with `pruneAuditLog`. The app keeps working before and after it, in
+either deploy order (see [upgrading](./upgrading.md#10--11)).
 
 ## One embedding model per installation
 
@@ -413,6 +423,9 @@ The schema creates:
 
 - a btree on the scope, `(namespace, entity_id, agent_id, session_id)`, for
   memories, and `(namespace, entity_id, timestamp, id)` for audit events;
+- a btree on `(memory_id, timestamp, id)` for audit events, so one
+  memory's history (`listAuditLog({ memoryId })`) is found without reading
+  the log;
 - a unique btree on the scope plus `key`, only for rows with a key;
 - a partial btree on `superseded_by`, so deleting a memory does not scan
   the table to check that nothing was consolidated into it;

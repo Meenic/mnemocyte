@@ -14,7 +14,11 @@ import {
 	verifyAuditFailureRollsBack,
 	verifyAuditPayloads,
 } from "../fixtures/atomic-audit.js";
-import { allPages, verifyAuditPages } from "../fixtures/audit-cursor.js";
+import {
+	allPages,
+	verifyAuditMemoryHistory,
+	verifyAuditPages,
+} from "../fixtures/audit-cursor.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
 import { verifyContextMemories } from "../fixtures/context-memories.js";
@@ -449,6 +453,20 @@ export function describeStoreContract(
 			const { memory, namespace } = client("pages", { audit: true });
 			const other = client("pages_other").namespace;
 			await verifyAuditPages({
+				client: memory,
+				scopeFor: (entityId, extra = {}) => ({ namespace, entityId, ...extra }),
+				otherScopeFor: (entityId, extra = {}) => ({
+					namespace: other,
+					entityId,
+					...extra,
+				}),
+			});
+		});
+
+		test("audit history of one memory", async () => {
+			const { memory, namespace } = client("history", { audit: true });
+			const other = client("history_other").namespace;
+			await verifyAuditMemoryHistory({
 				client: memory,
 				scopeFor: (entityId, extra = {}) => ({ namespace, entityId, ...extra }),
 				otherScopeFor: (entityId, extra = {}) => ({

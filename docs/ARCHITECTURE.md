@@ -119,8 +119,9 @@ This has landed: `prune` requiring a scope or `allNamespaces: true`,
 survivor-aware deletes and their `DeleteResult` (decision 45), the
 k-nearest-neighbor `findDuplicates` and its
 pages (`experimental.findDuplicatesPage`, decision 35),
-`consolidate` on the stable client (decision 30) and audit retention
-through `pruneAuditLog` (decision 32); see
+`consolidate` on the stable client (decision 30), audit retention
+through `pruneAuditLog` (decision 32) and one memory's audit history
+through `listAuditLog({ memoryId })` (decision 49); see
 [features/maintenance.md](./features/maintenance.md).
 
 ## Embedders
@@ -992,3 +993,42 @@ Dated 2026-10-26 unless noted.
       script and CI, and `--dry-run` shows exactly what a run does. A
       prompt when the flag is missing and stdin is a terminal would be
       additive.
+49. **Audit history by memory id** (2026-11-16, landed): the maintainer
+    chose, with `feat/audit-memory-id`, the first migration after 1.0:
+    - `mnemocyte_events.memory_id uuid GENERATED ALWAYS AS (…) STORED`,
+      computed from `metadata.memoryId` with a UUID-pattern guard, instead
+      of a column the client writes. No write path names it, so a 1.1
+      client works on a 1.0 schema and a 1.0 client on a 1.1 schema, in
+      either deploy order and for `psql` users. Writing it from the client
+      would fail every audited write of an app upgraded before `migrate`
+      runs, a break in a minor; detecting the column at run time would
+      need a cached catalog probe that goes stale when `migrate` runs
+      while the app is up, leaving null ids the backfill never sees.
+    - The backfill is the rewrite that adds the column, inside the
+      migration, with no separate step. It holds `ACCESS EXCLUSIVE` on
+      `mnemocyte_events` for the rewrite and the index build: 8.5 s and
+      1.1 s for 1,000,000 events (150 MB) on a laptop, against 19.6 s and
+      1.5 s for a plain column filled by one `UPDATE`, which also left
+      316 MB until `VACUUM`.
+    - Index `mnemocyte_events_memory_idx` on `(memory_id, timestamp, id)`,
+      not partial. Memory ids are unique across the installation, so a
+      leading `memory_id` is selective at any selector, `allNamespaces`
+      included; `(timestamp, id)` gives the page order with no sort and
+      keyset pages for long histories. Measured on 1,000,000 events: 0.05–
+      0.07 ms for a 5-event memory at every selector (45–65 ms across a
+      namespace or all of them without it), 0.14 ms for a 500-event one
+      across namespaces and 1–2 ms within a scope, where the planner
+      prefers a bitmap scan and a sort. 56 MB, against 12.8 MB for a
+      deduplicated `(memory_id)` that sorts every page, and 36 ms against
+      17 ms for inserting 1,000 events with random ids (see
+      features/maintenance.md).
+    - No `CREATE INDEX CONCURRENTLY` and no runner change: the runner
+      applies each migration in one transaction, where it cannot run, and
+      the rewrite in the same step already holds the strongest lock. A
+      non-transactional step type stays out until someone asks.
+    - `listAuditLog` takes `memoryId?: string`, matching the event's
+      subject (`metadata.memoryId`) only; `deletedWith`, `supersededBy` and
+      `restoredIds` are not matched. A non-UUID returns an empty page on
+      Postgres, as `get` returns `null`. The id stays in `metadata`, the
+      column's source and a stable payload, and `AuditEvent` gets no
+      top-level field.

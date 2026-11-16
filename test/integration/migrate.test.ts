@@ -19,6 +19,7 @@ const ALL_MIGRATIONS = [
 	"0001_add_mnemocyte_meta",
 	"0002_add_embedding_model",
 	"0003_schema_v2",
+	"0004_audit_memory_id",
 ];
 
 // These tests commit, so they cannot run inside a rolled-back transaction.
@@ -114,7 +115,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			adopted: [],
 			extensionCreated: false,
 		});
-		expect(await trackedVersions()).toEqual([0, 1, 2, 3]);
+		expect(await trackedVersions()).toEqual([0, 1, 2, 3, 4]);
 		expect(await embeddingType()).toBe("vector(768)");
 
 		const client = createMemory({ store, embedder: fakeEmbedder(768) });
@@ -162,7 +163,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 
 		expect(result).toEqual({
 			adopted: ALL_MIGRATIONS.slice(0, 3),
-			applied: ["0003_schema_v2"],
+			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			extensionCreated: false,
 		});
 		const [row] = await sql<{ id: string; namespace: string }[]>`
@@ -179,6 +180,80 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 		});
 	});
 
+	test("a 1.0 schema keeps working until 0004 fills memory_id from metadata", async () => {
+		await applyFiles(
+			"0000_initial.sql",
+			"0001_add_mnemocyte_meta.sql",
+			"0002_add_embedding_model.sql",
+			"0003_schema_v2.sql",
+		);
+		const scope = testScope("migrate_memory_id");
+		const upper = randomUUID().toUpperCase();
+		await sql`
+			INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata)
+			VALUES
+				(${randomUUID()}, ${scope.namespace}, ${scope.entityId}, 'memory.created', ${sql.json({ memoryId: upper })}),
+				(${randomUUID()}, ${scope.namespace}, ${scope.entityId}, 'memory.pruned', ${sql.json({ count: 2 })}),
+				(${randomUUID()}, ${scope.namespace}, ${scope.entityId}, 'memory.created', ${sql.json({ memoryId: "mem_by_hand" })})
+		`;
+
+		// This client predates the migration: audited writes and unfiltered
+		// listings work, and only the new filter needs the column.
+		const memory = createMemory({
+			store,
+			embedder: fakeEmbedder(1536),
+			audit: { enabled: true },
+		});
+		const before = await memory.add({ scope, content: "Before 0004." });
+		const listed = await memory.listAuditLog({ scope });
+		expect(listed.events).toHaveLength(4);
+		const missing = await expectMnemocyteError(
+			memory.listAuditLog({ scope, memoryId: before.id }),
+			"MIGRATION",
+		);
+		expect(missing.message).toContain("mnemocyte migrate");
+
+		await expect(migrate({ store })).resolves.toEqual({
+			adopted: ALL_MIGRATIONS.slice(0, 4),
+			applied: ["0004_audit_memory_id"],
+			extensionCreated: false,
+		});
+		const rows = await sql<{ metadata: unknown; memoryId: string | null }[]>`
+			SELECT metadata, memory_id::text AS "memoryId" FROM mnemocyte_events
+		`;
+		expect(rows).toHaveLength(4);
+		expect(rows.map((row) => ({ ...row }))).toEqual(
+			expect.arrayContaining([
+				{ metadata: { count: 2 }, memoryId: null },
+				{ metadata: { memoryId: "mem_by_hand" }, memoryId: null },
+				{ metadata: { memoryId: upper }, memoryId: upper.toLowerCase() },
+				{
+					metadata: { memoryId: before.id, kind: "fact", importance: "normal" },
+					memoryId: before.id,
+				},
+			]),
+		);
+
+		// Events written before and after the migration are both found.
+		await memory.update({ scope, id: before.id, importance: "high" });
+		const history = await memory.listAuditLog({ scope, memoryId: before.id });
+		expect(history.events.map((event) => event.type)).toEqual([
+			"memory.updated",
+			"memory.created",
+		]);
+		expect(
+			(await memory.listAuditLog({ allNamespaces: true, memoryId: upper }))
+				.events,
+		).toHaveLength(1);
+
+		// A second run of the file fails on its first statement and changes
+		// nothing.
+		const error = await applyFiles("0004_audit_memory_id.sql").catch(
+			(caught: unknown) => caught,
+		);
+		expect(error).toMatchObject({ code: "42701" });
+	});
+
 	test("adopts a schema installed from fresh-install.sql without running anything", async () => {
 		await applyFiles("fresh-install.sql");
 
@@ -187,7 +262,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			adopted: ALL_MIGRATIONS,
 			extensionCreated: false,
 		});
-		expect(await trackedVersions()).toEqual([0, 1, 2, 3]);
+		expect(await trackedVersions()).toEqual([0, 1, 2, 3, 4]);
 	});
 
 	test("applies each migration once when two callers race", async () => {
@@ -204,7 +279,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 				ALL_MIGRATIONS,
 			);
 			expect(results.flatMap((result) => result.adopted)).toEqual([]);
-			expect(await trackedVersions()).toEqual([0, 1, 2, 3]);
+			expect(await trackedVersions()).toEqual([0, 1, 2, 3, 4]);
 		} finally {
 			await other.end();
 		}
@@ -346,7 +421,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 
 		expect(predicted).toEqual({
 			adopted: ALL_MIGRATIONS.slice(0, 3),
-			applied: ["0003_schema_v2"],
+			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			extensionCreated: false,
 		});
 		expect(await catalogSnapshot()).toEqual(before);

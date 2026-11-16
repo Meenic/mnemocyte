@@ -15,6 +15,7 @@ const sequentialMigrations = [
 	"0001_add_mnemocyte_meta.sql",
 	"0002_add_embedding_model.sql",
 	"0003_schema_v2.sql",
+	"0004_audit_memory_id.sql",
 ] as const;
 
 interface TableDefinition {
@@ -27,6 +28,8 @@ interface ColumnDefinition {
 	columnName: string;
 	dataType: string;
 	notNull: boolean;
+	/** `attgenerated`: `s` for a stored generated column, else empty. */
+	generated: string;
 	defaultExpression: string | null;
 }
 
@@ -68,6 +71,7 @@ async function readSchemaSnapshot(sql: ReturnType<typeof postgres>) {
 			attribute.attname AS "columnName",
 			pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) AS "dataType",
 			attribute.attnotnull AS "notNull",
+			attribute.attgenerated::text AS "generated",
 			pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid) AS "defaultExpression"
 		FROM pg_catalog.pg_attribute AS attribute
 		JOIN pg_catalog.pg_class AS class

@@ -22,7 +22,7 @@ if (!process.env.DATABASE_URL && existsSync(envPath)) {
 
 const databaseUrl = process.env.DATABASE_URL;
 const ALL_MIGRATIONS =
-	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2";
+	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id";
 
 // Like migrate.test.ts, these tests commit: each one drops the Mnemocyte
 // tables first, and the file leaves a tracked 1536-dimension schema behind
@@ -120,7 +120,7 @@ describe.skipIf(!databaseUrl)("CLI on Postgres through DATABASE_URL", () => {
 
 		const checked = await run(["check"]);
 		expect(checked.code).toBe(0);
-		expect(checked.io.stdout()).toContain("migrations  4 of 4 applied");
+		expect(checked.io.stdout()).toContain("migrations  5 of 5 applied");
 		expect(checked.io.stdout()).toContain("dimensions  768 (vector)");
 		expect(checked.io.stdout().trimEnd().endsWith("ok")).toBe(true);
 

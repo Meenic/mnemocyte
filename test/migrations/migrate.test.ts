@@ -109,6 +109,7 @@ function fakeDatabase(initial: Partial<FakeDatabaseState> = {}) {
 						meta: level >= 1,
 						metaModel: level >= 2,
 						scoped: level >= 3,
+						eventMemoryId: level >= 4,
 					},
 				]);
 			}
@@ -180,7 +181,7 @@ describe("migrate", () => {
 			adopted: [],
 			extensionCreated: false,
 		});
-		expect(db.state.tracked).toEqual([0, 1, 2, 3]);
+		expect(db.state.tracked).toEqual([0, 1, 2, 3, 4]);
 		expect(db.log.filter((entry) => entry === "BEGIN")).toHaveLength(1);
 		expect(db.executed).toEqual(splitStatements(renderInitialSchema(768)));
 		expect(db.executed.join("\n")).toContain('"embedding" vector(768)');
@@ -238,7 +239,8 @@ describe("migrate", () => {
 			2,
 			["0000_initial", "0001_add_mnemocyte_meta", "0002_add_embedding_model"],
 		],
-		[3, MIGRATION_NAMES],
+		[3, MIGRATION_NAMES.slice(0, 4)],
+		[4, MIGRATION_NAMES],
 	])(
 		"adopts an untracked schema at migration %i and applies the rest",
 		async (level, adopted) => {
@@ -251,7 +253,7 @@ describe("migrate", () => {
 				applied: MIGRATION_NAMES.slice(adopted.length),
 				extensionCreated: false,
 			});
-			expect(db.state.tracked).toEqual([0, 1, 2, 3]);
+			expect(db.state.tracked).toEqual([0, 1, 2, 3, 4]);
 			// One transaction to adopt, then one per applied migration.
 			expect(transactions(db.log)).toHaveLength(
 				1 + MIGRATION_NAMES.length - adopted.length,
@@ -260,24 +262,24 @@ describe("migrate", () => {
 	);
 
 	test("runs each pending migration's statements in its own transaction", async () => {
-		const db = fakeDatabase({ schemaLevel: 2, tracked: [0, 1, 2] });
+		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
 
 		const result = await migrate({ store: db.store });
 
 		expect(result).toEqual({
-			applied: ["0003_schema_v2"],
+			applied: ["0004_audit_memory_id"],
 			adopted: [],
 			extensionCreated: false,
 		});
 		const steps = transactions(db.log);
 		expect(steps).toHaveLength(1);
-		const migration = MIGRATIONS[3];
+		const migration = MIGRATIONS[4];
 		expect(migration).toBeDefined();
 		expect(db.executed).toEqual(splitStatements(migration?.sql ?? ""));
 	});
 
 	test("does nothing when every migration is recorded", async () => {
-		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
+		const db = fakeDatabase({ schemaLevel: 4, tracked: [0, 1, 2, 3, 4] });
 
 		await expect(migrate({ store: db.store })).resolves.toEqual({
 			applied: [],
@@ -318,7 +320,7 @@ describe("migrate", () => {
 	});
 
 	test("accepts matching dimensions on an existing installation", async () => {
-		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
+		const db = fakeDatabase({ schemaLevel: 4, tracked: [0, 1, 2, 3, 4] });
 
 		await expect(
 			migrate({ store: db.store, dimensions: 1536 }),
@@ -334,6 +336,7 @@ describe("migrate", () => {
 				meta: true,
 				metaModel: false,
 				scoped: false,
+				eventMemoryId: false,
 			},
 		});
 
@@ -356,7 +359,7 @@ describe("migrate", () => {
 	});
 
 	test("rejects a database migrated by a newer version", async () => {
-		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3, 4] });
+		const db = fakeDatabase({ schemaLevel: 4, tracked: [0, 1, 2, 3, 4, 5] });
 
 		const error = await expectMnemocyteError(
 			migrate({ store: db.store }),
@@ -461,7 +464,7 @@ describe("migrate({ memory })", () => {
 	});
 
 	test("checks the embedder's dimensions against the installation", async () => {
-		const db = fakeDatabase({ schemaLevel: 3, tracked: [0, 1, 2, 3] });
+		const db = fakeDatabase({ schemaLevel: 4, tracked: [0, 1, 2, 3, 4] });
 		const memory = createMemory({ store: db.store, embedder: embedderOf(768) });
 
 		await expectMnemocyteError(
@@ -565,7 +568,7 @@ describe("migrate({ createExtension })", () => {
 		const result = await migrate({ store: db.store, createExtension: true });
 
 		expect(result).toEqual({
-			applied: ["0003_schema_v2"],
+			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			adopted: [],
 			extensionCreated: false,
 		});
@@ -664,7 +667,7 @@ describe("migrate({ dryRun })", () => {
 		},
 	);
 
-	test.each([0, 1, 2, 3])(
+	test.each([0, 1, 2, 3, 4])(
 		"predicts a real run on an untracked schema at migration %i",
 		async (level) => {
 			const real = fakeDatabase({ schemaLevel: level });
@@ -677,7 +680,7 @@ describe("migrate({ dryRun })", () => {
 	);
 
 	test("predicts adoption when the tracking table exists but is empty", async () => {
-		await expect(dryRun({ schemaLevel: 3, tracked: [] }, {})).resolves.toEqual({
+		await expect(dryRun({ schemaLevel: 4, tracked: [] }, {})).resolves.toEqual({
 			applied: [],
 			adopted: MIGRATION_NAMES,
 			extensionCreated: false,
@@ -685,8 +688,12 @@ describe("migrate({ dryRun })", () => {
 	});
 
 	test.each([
-		[[0, 1, 2], ["0003_schema_v2"]],
-		[[0, 1, 2, 3], []],
+		[
+			[0, 1, 2],
+			["0003_schema_v2", "0004_audit_memory_id"],
+		],
+		[[0, 1, 2, 3], ["0004_audit_memory_id"]],
+		[[0, 1, 2, 3, 4], []],
 	])("lists pending tracked migrations after %o", async (tracked, applied) => {
 		await expect(
 			dryRun({ schemaLevel: tracked.length - 1, tracked }, {}),
@@ -708,7 +715,7 @@ describe("migrate({ dryRun })", () => {
 		],
 		[
 			"dimensions that differ from the installation",
-			{ schemaLevel: 3, tracked: [0, 1, 2, 3] },
+			{ schemaLevel: 4, tracked: [0, 1, 2, 3, 4] },
 			{ dimensions: 768 },
 			"CONFIG",
 		],
@@ -794,6 +801,29 @@ describe("bundled migrations", () => {
 		expect(schemaV2).toContain('RENAME COLUMN "type" TO "kind"');
 		expect(schemaV2).toContain('md5("id")::uuid');
 		expect(schemaV2).toContain("NULLS NOT DISTINCT");
+	});
+
+	test("add the audit memory id as a generated column with its index", () => {
+		const auditMemoryId = MIGRATIONS[4];
+
+		expect(auditMemoryId?.name).toBe("0004_audit_memory_id");
+		const statements = splitStatements(auditMemoryId?.sql ?? "");
+		expect(statements).toHaveLength(2);
+		expect(statements[0]).toMatch(
+			/^ALTER TABLE "mnemocyte_events" ADD COLUMN "memory_id" uuid GENERATED ALWAYS AS \(/,
+		);
+		expect(statements[0]).toMatch(/\) STORED;$/);
+		expect(statements[1]).toBe(
+			'CREATE INDEX "mnemocyte_events_memory_idx" ON "mnemocyte_events" USING btree ("memory_id","timestamp","id");',
+		);
+		// The fresh install computes the column with the same expression, so
+		// both catalogs match.
+		const when = statements[0]
+			?.split("\n")
+			.find((line) => line.trim().startsWith("WHEN"))
+			?.trim();
+		expect(when).toContain(`("metadata"->>'memoryId')::uuid`);
+		expect(renderInitialSchema(1536)).toContain(when);
 	});
 
 	test("split into statements at the Drizzle breakpoints", () => {

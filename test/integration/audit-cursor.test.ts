@@ -5,7 +5,10 @@ import { createMemory } from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import postgres from "postgres";
 import { describe, test } from "vitest";
-import { verifyAuditPages } from "../fixtures/audit-cursor.js";
+import {
+	verifyAuditMemoryHistory,
+	verifyAuditPages,
+} from "../fixtures/audit-cursor.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {
@@ -20,6 +23,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 		["0001_add_mnemocyte_meta.sql", "42P07"],
 		["0002_add_embedding_model.sql", "42701"],
 		["0003_schema_v2.sql", "42701"],
+		["0004_audit_memory_id.sql", "42701"],
 	] as const) {
 		try {
 			await sql.unsafe(await readFile(resolve("migrations", file), "utf8"));
@@ -46,7 +50,7 @@ function createEmbedding(seed: string): number[] {
 
 describe("Postgres audit cursor pagination", () => {
 	test.skipIf(!databaseUrl)(
-		"pages entity, namespace and all-namespace selectors",
+		"pages entity, namespace and all-namespace selectors, and one memory's history",
 		async () => {
 			const sql = postgres(databaseUrl ?? "", { max: 1 });
 			const suffix = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -68,19 +72,21 @@ describe("Postgres audit cursor pagination", () => {
 			});
 
 			try {
-				await verifyAuditPages({
+				const scopes = {
 					client,
-					scopeFor: (entityId, extra = {}) => ({
+					scopeFor: (entityId: string, extra = {}) => ({
 						namespace: namespaces[0] ?? "",
 						entityId,
 						...extra,
 					}),
-					otherScopeFor: (entityId, extra = {}) => ({
+					otherScopeFor: (entityId: string, extra = {}) => ({
 						namespace: namespaces[1] ?? "",
 						entityId,
 						...extra,
 					}),
-				});
+				};
+				await verifyAuditPages(scopes);
+				await verifyAuditMemoryHistory(scopes);
 			} finally {
 				for (const namespace of namespaces) {
 					await sql`DELETE FROM mnemocyte_memories WHERE namespace = ${namespace}`;

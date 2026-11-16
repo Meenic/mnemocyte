@@ -214,12 +214,22 @@ export interface SeedEventsInput {
 	namespaces: number;
 	entitiesPerNamespace: number;
 	days: number;
+	/**
+	 * Give events memory ids, as the library writes them. Off, every event
+	 * has empty metadata: the dataset the retention numbers were measured on.
+	 */
+	memoryIds?: boolean;
 }
 
 /**
  * Replaces the audit log with `total` events appended in time order over
  * `days` days, spread evenly over the namespaces (`audit_<n>`) and their
- * entities (`entity_<n>`).
+ * entities (`entity_<n>`), with empty metadata. With `memoryIds`, every
+ * hundredth event is a `memory.pruned` without a memory id; the others
+ * name one of 200 memories per entity,
+ * each with an event every 200 steps (five at full scale). In `audit_3` /
+ * `entity_42` every other event names one memory instead ({@link
+ * HOT_MEMORY}, 500 events at full scale). Ids are `md5('<namespace>/<entity>/<memory>')`.
  */
 export async function seedEvents(
 	db: SqlExecutor,
@@ -229,10 +239,22 @@ export async function seedEvents(
 		await db.query("TRUNCATE mnemocyte_events", []);
 		await db.query(
 			`INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata, timestamp)
-			SELECT ${sqlUuidV7("t")}, 'audit_' || (g % ${input.namespaces}),
-				'entity_' || ((g / ${input.namespaces}) % ${input.entitiesPerNamespace}),
-				'memory.created', '{}'::jsonb, t
+			SELECT ${sqlUuidV7("t")}, ns, entity,
+				${
+					input.memoryIds
+						? `CASE WHEN g % 100 = 0 THEN 'memory.pruned' ELSE 'memory.created' END,
+				CASE WHEN g % 100 = 0 THEN jsonb_build_object('count', 3)
+					ELSE jsonb_build_object('memoryId', md5(ns || '/' || entity || '/' || memory)::uuid::text) END,`
+						: `'memory.created', '{}'::jsonb,`
+				}
+				t
 			FROM generate_series(1, ${input.total}) AS g,
+				LATERAL (SELECT 'audit_' || (g % ${input.namespaces}) AS ns,
+					'entity_' || ((g / ${input.namespaces}) % ${input.entitiesPerNamespace}) AS entity,
+					g / (${input.namespaces} * ${input.entitiesPerNamespace}) AS step) AS place,
+				LATERAL (SELECT CASE
+					WHEN ns = 'audit_3' AND entity = 'entity_42' AND step % 2 = 0 THEN '${HOT_MEMORY}'
+					ELSE (step % 200)::text END AS memory) AS chosen,
 				LATERAL (SELECT now() - interval '${input.days} days'
 					+ g * (interval '${input.days} days' / ${input.total}) AS t) AS times`,
 			[],
@@ -240,6 +262,9 @@ export async function seedEvents(
 		await db.query("VACUUM (ANALYZE) mnemocyte_events", []);
 	});
 }
+
+/** The memory with a long history in `audit_3` / `entity_42`. */
+export const HOT_MEMORY = "hot";
 
 export interface RelationSize {
 	name: string;

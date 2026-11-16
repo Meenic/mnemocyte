@@ -28,6 +28,7 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 		"0001_add_mnemocyte_meta.sql",
 		"0002_add_embedding_model.sql",
 		"0003_schema_v2.sql",
+		"0004_audit_memory_id.sql",
 	]) {
 		try {
 			await sql.unsafe(await readFile(resolve("migrations", file), "utf8"));
@@ -40,7 +41,8 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
 				(file === "0000_initial.sql" && code === "42P07") ||
 				(file === "0001_add_mnemocyte_meta.sql" && code === "42P07") ||
 				(file === "0002_add_embedding_model.sql" && code === "42701") ||
-				(file === "0003_schema_v2.sql" && code === "42701")
+				(file === "0003_schema_v2.sql" && code === "42701") ||
+				(file === "0004_audit_memory_id.sql" && code === "42701")
 			) {
 				continue;
 			}

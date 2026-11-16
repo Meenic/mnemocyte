@@ -1,13 +1,13 @@
 # Upgrading
 
-How to move an app from Mnemocyte 0.5 to 1.0. Each section lists what a
-release changed that existing code or data notices; read the ones between
-your version and 1.0, in order. The full list of changes is in the
+How to move an app from Mnemocyte 0.5 to the current release. Each section
+lists what a release changed that existing code or data notices; read the
+ones between your version and the current one, in order. The full list of changes is in the
 [changelog](../../CHANGELOG.md).
 
 After upgrading the package, run `pnpm exec mnemocyte migrate` (or
-`migrate({ memory })`) in every deploy. Only 0.6 changes the schema; later
-releases add no migration. See
+`migrate({ memory })`) in every deploy. 0.6 and 1.1 change the schema;
+the other releases add no migration. See
 [upgrade an existing installation](./postgres.md#upgrade-an-existing-installation)
 for applying the SQL files with `psql` instead.
 
@@ -246,3 +246,21 @@ To apply it with `psql` instead of `migrate`, see
 
 Breaking changes now wait for a major release; see
 [stability](./api.md#stability) for what the promise covers.
+
+## 1.0 → 1.1
+
+Nothing in your code has to change.
+
+- **Migration `0004_audit_memory_id.sql`.** It adds a `memory_id` column to
+  `mnemocyte_events`, filled by Postgres from each event's
+  `metadata.memoryId`, and an index on it. Adding the column rewrites the
+  table under an `ACCESS EXCLUSIVE` lock, so audit reads and audited writes
+  wait until it finishes: on 1,000,000 events (150 MB) it took 9.6 s on a laptop, 8.5 s for the rewrite and 1.1 s for the index. Memory reads, and writes
+  with the audit log off, do not wait; `deleteScope` does, since it also
+  deletes the scope's events.
+- **Deploy in either order.** 1.1 writes events exactly as 1.0 did, and
+  Postgres fills the new column, so 1.1 keeps working before the migration
+  and 1.0 keeps working after it. Only the new `memoryId` filter needs the
+  migration; before it, that call throws `"MIGRATION"`.
+- **`listAuditLog({ memoryId })`** lists one memory's history; see
+  [one memory's history](./api.md#one-memorys-history).

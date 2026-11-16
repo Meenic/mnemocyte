@@ -1,6 +1,7 @@
 import { MnemocyteError } from "../errors.js";
 import { detectClient, SUPPORTED_CLIENTS } from "../sql/detect.js";
 import { createLazyStore } from "./lazy-store.js";
+import type { PostgresStoreSettings } from "./postgres.js";
 import type { MemoryStore } from "./store.js";
 import {
 	isMnemocyteStoreConfig,
@@ -17,9 +18,14 @@ import {
  * where top-level `await` would break `require()`. Detection runs here, so
  * an unrecognised value still throws synchronously.
  *
+ * `settings` apply to a client only; the CLI passes its `--schema` there.
+ *
  * @throws {MnemocyteError} `"CONFIG"` when `value` is neither.
  */
-export function resolveStore(value: unknown): MemoryStore {
+export function resolveStore(
+	value: unknown,
+	settings: PostgresStoreSettings = {},
+): MemoryStore {
 	if (isMnemocyteStoreConfig(value)) {
 		return unwrapMnemocyteStoreConfig(value);
 	}
@@ -33,7 +39,13 @@ export function resolveStore(value: unknown): MemoryStore {
 	}
 	return createLazyStore({
 		backend: "postgres",
+		...(settings.schemaName === undefined
+			? {}
+			: { schemaName: settings.schemaName }),
 		load: async () =>
-			(await import("./postgres-backend.js")).createClientStore(detected),
+			(await import("./postgres-backend.js")).createClientStore(
+				detected,
+				settings,
+			),
 	});
 }

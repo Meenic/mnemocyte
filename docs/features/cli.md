@@ -119,8 +119,22 @@ from the project, then from the bin's own location (under pnpm an optional
 peer is linked next to the package), and imported by path. There is no
 `import("postgres")` in the build, so the package keeps zero dependencies
 and the "no driver import" package tests hold. The client is created with
-`max: 1` and no notice output, wrapped by `resolveStore`, and ended by the
-command.
+`max: 1` and no notice output, wrapped by `resolveStore` (with `--schema`
+as the store's `schemaName`), and ended by the command. `migrate` and
+`text-search` pass that store to the public functions as a store config
+(`DatabaseUrlTarget.storeConfig`), so they use the same schema.
+
+## `--schema`
+
+`--schema <name>` is for `migrate`, `check`, `sql` and `text-search`, and
+`parseCliArgs` checks it with the same `assertSchemaName` as
+`postgresStore()`, as a usage error (exit 2). With a memory file the
+store already knows its schema: `MemoryStore.schemaName`, which
+`createPostgresStore` and the lazy client store set, is what the CLI reads.
+`assertSchemaFlag` allows the flag only when it repeats that name, and
+exits 2 otherwise, so the file stays the one place the schema is set. A
+store from an older copy of the package has no `schemaName` and counts as
+none.
 
 ## `init`
 
@@ -195,6 +209,11 @@ nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
    returns 1, with nothing changed.
 3. The real run, with `createExtension` only when the plan needed it.
 
+With a schema name, `schemaCreated` in the plan prints "Would create the
+schema *name*." and the run "Created the schema *name*.", before the
+other lines. Creating a schema needs no question: naming it is the
+request, and it stays inside the database's own privileges.
+
 With the `DATABASE_URL` target and no `--dimensions`, the runner's
 `"VALIDATION"` for a fresh install becomes exit 2 naming `--dimensions`.
 An in-memory client prints a note and returns 0.
@@ -220,6 +239,11 @@ and needs no transaction, so it also works on a `batch`-only executor:
   `content_tsv`'s generated expression (a missing column or an expression
   of another shape makes the migrations `invalid`), the `installation`
   row, and the stored models when the row records none.
+
+The report carries the store's `schema` (null without one).
+`describeInstallation` prints a `schema` line only when it is set, so the
+default output did not change, and `check --json` always has
+`installation.schema`.
 
 `evaluateInstallation` (pure, unit-tested) turns the report into problems
 and notes. A problem is what makes the app throw (the maintainer's choice,
@@ -298,9 +322,13 @@ names fold to lower case, a `pg_catalog.` prefix is dropped), because
 
 ## `sql`
 
-`renderInitialSchema(dimensions, textSearchConfig)`, the string the runner
-applies on a fresh install and that `fresh-install.sql` holds at 1536 and
-`english`. `--dimensions` alone
+`renderInitialSchema(dimensions, textSearchConfig, schema)`, the string the
+runner applies on a fresh install and that `fresh-install.sql` holds at
+1536 and `english`. With a schema (`--schema`, or the memory file's
+`schemaName`) the self foreign key names it, and the output starts with
+`CREATE SCHEMA IF NOT EXISTS` and `SET search_path TO "<schema>", public`,
+because the template's other names are bare; the comment above them says
+to keep pgvector's schema on the path. `--dimensions` alone
 imports nothing else; without it the memory file is loaded for
 `embedder.dimensions`. It replaced `migrations/render-initial.mjs`, which
 was removed for 1.0.
@@ -327,7 +355,8 @@ Windows and an immediate exit can cut output short.
   model and with mismatches; `migrate --dry-run --json` and `check --json`
   as exactly one JSON line; `migrate --text-search-config` with `check`
   comparing it, and `text-search` with a yes, a no, no terminal, `--yes`,
-  `--dry-run` and `--dry-run --json`.
+  `--dry-run` and `--dry-run --json`; a memory file whose store has a
+  `schemaName` through `migrate` and `check`, and `assertSchemaFlag`.
 - `test/package/cli.test.ts`: runs `dist/cli.mjs` as a child process in
   temporary projects whose `node_modules` link to this package. One project
   has a TypeScript memory file on PGlite with a `.js` import, an
@@ -346,6 +375,8 @@ Windows and an immediate exit can cut output short.
   `halfvec`, the extension question after `DROP EXTENSION vector`, and an
   unreachable database, also with `check --json`. Like `migrate.test.ts` it drops the Mnemocyte
   tables and the extension, and leaves a tracked 1536-dimension schema.
+  `test/integration/schema-name.test.ts` runs `migrate`, `check`,
+  `text-search` and `sql` with `--schema` through `DATABASE_URL`.
 
 ## Known limits
 

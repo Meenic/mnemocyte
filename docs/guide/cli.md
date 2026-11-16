@@ -101,6 +101,11 @@ DATABASE_URL=postgres://… pnpm exec mnemocyte migrate --dimensions 1536
 installation and `check` work without it. Without the `postgres` package
 the command stops with an install hint.
 
+If the tables live in [a schema of their own](./postgres.md#keep-the-tables-in-their-own-schema),
+add `--schema <name>` to `migrate`, `check`, `sql` and `text-search`. With
+a memory file, the schema comes from its `postgresStore({ schemaName })`,
+and `--schema` may only repeat it; a different name exits 2.
+
 ## `init`
 
 ```bash
@@ -187,7 +192,7 @@ write the default file and swap the embedder by hand.
 ## `migrate`
 
 ```bash
-pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run [--json]] [--dimensions <n>] [--text-search-config <name>]
+pnpm exec mnemocyte migrate [--config <path>] [--yes] [--dry-run [--json]] [--dimensions <n>] [--text-search-config <name>] [--schema <name>]
 ```
 
 Creates the schema in an empty database and applies pending migrations to
@@ -216,11 +221,16 @@ Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_s
   new installation, such as `simple`; `english` without it. On an existing
   installation it must match the installed one, or `migrate` fails and
   changes nothing; `text-search` changes it.
+- **A schema name.** With `schemaName` (or `--schema`), a fresh install
+  creates the schema when it is missing and says so first:
+  `Created the schema memory.` It will not install next to Mnemocyte
+  tables that `search_path` finds in another schema; see
+  [moving an installation](./postgres.md#move-an-existing-installation).
 
 ## `check`
 
 ```bash
-pnpm exec mnemocyte check [--config <path>] [--dimensions <n>] [--text-search-config <name>] [--json]
+pnpm exec mnemocyte check [--config <path>] [--dimensions <n>] [--text-search-config <name>] [--schema <name>] [--json]
 ```
 
 Reads the database and reports what is installed. It changes nothing.
@@ -251,6 +261,9 @@ your app throw:
 - the keyword search language differs from `--text-search-config`, when
   you pass it.
 
+With a schema name, the report starts with a `schema` line, such as
+`schema      memory`, and looks only in that schema.
+
 Two states are reported as a `note:` and pass: a current schema that was
 installed with `psql` (the next `migrate` only records it), and an empty
 installation with no embedding model recorded yet.
@@ -270,13 +283,16 @@ nothing; without it, the size is the embedder's in the memory file.
 `--out <file>` writes a file instead of standard output. Above 2,000
 dimensions the column is `halfvec`. `--text-search-config <name>` sets the
 [keyword search language](./postgres.md#keyword-search-language); Postgres
-checks the name when you apply the file. How to apply the file is in the
+checks the name when you apply the file. With `--schema <name>`, or a
+memory file whose store has a `schemaName`, the file starts with
+`CREATE SCHEMA IF NOT EXISTS` and a `SET search_path` that puts the schema
+first, so the tables land there. How to apply the file is in the
 [Postgres guide](./postgres.md#apply-the-sql-files-yourself).
 
 ## `text-search`
 
 ```bash
-pnpm exec mnemocyte text-search <name> [--config <path>] [--yes] [--dry-run [--json]]
+pnpm exec mnemocyte text-search <name> [--config <path>] [--yes] [--dry-run [--json]] [--schema <name>]
 ```
 
 Changes the [keyword search language](./postgres.md#keyword-search-language)
@@ -315,6 +331,7 @@ pnpm exec mnemocyte check --json
   "target": "memory.ts",
   "backend": "postgres",
   "installation": {
+    "schema": null,
     "pgvectorVersion": "0.8.7",
     "migrations": {
       "state": "tracked",
@@ -347,7 +364,9 @@ pnpm exec mnemocyte check --json
   and empty when `state` is `"none"` (no tables) or `"invalid"` (a schema
   `migrate` refuses). The other states are `"tracked"` and `"untracked"`
   (installed with `psql`). `model` is `null` until one is recorded, and
-  `textSearchConfig` while migrations are pending.
+  `textSearchConfig` while migrations are pending. `schema` is the schema
+  name the store or `--schema` gave, and `null` when the tables are found
+  through `search_path`.
 - **`problems`** fail the check and **`notes`** pass. Each has a `code` to
   branch on and a `message` for people:
 
@@ -373,12 +392,13 @@ pnpm exec mnemocyte check --json
 [`migrate()`](./postgres.md#what-migrate-does) returns:
 
 ```json
-{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0004_audit_memory_id"],"adopted":[],"extensionCreated":false,"upToDate":false}
+{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0004_audit_memory_id"],"adopted":[],"extensionCreated":false,"schemaCreated":false,"upToDate":false}
 ```
 
 `applied` is what a real run would apply, `adopted` what it would record
 as already applied (a schema installed with `psql`), and
-`extensionCreated` whether it would ask to enable pgvector. `upToDate` is
+`extensionCreated` whether it would ask to enable pgvector, and
+`schemaCreated` whether it would create the store's schema. `upToDate` is
 true when a real run would change nothing. `--json` works only with
 `--dry-run`, because a real `migrate` may stop to ask a question.
 

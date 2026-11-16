@@ -23,6 +23,7 @@ import {
 	type VectorType,
 } from "../rows.js";
 import { createSqlParams, type SqlParams, sqlUuidV7 } from "../sql.js";
+import type { PostgresTables } from "../tables.js";
 import { formatVector } from "../vector.js";
 
 export interface MemoryFilter {
@@ -287,6 +288,7 @@ const UPSERT_REPLACED_COLUMNS = [
  */
 export async function insertMemories(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	rows: readonly NewMemoryRow[],
 	vectorType: VectorType,
 	signal?: AbortSignal,
@@ -306,7 +308,7 @@ export async function insertMemories(
 			? undefined
 			: chunk(auditEventIds, INSERT_CHUNK_ROWS);
 	const statements = chunk(rows, INSERT_CHUNK_ROWS).map((part, index) =>
-		insertMemoriesStatement(part, vectorType, eventIdChunks?.[index]),
+		insertMemoriesStatement(tables, part, vectorType, eventIdChunks?.[index]),
 	);
 	const results = await runAtomically(
 		db,
@@ -325,6 +327,7 @@ export async function insertMemories(
  * memory, which keeps that memory's id (Postgres 17 has no `RETURNING OLD`).
  */
 function insertMemoriesStatement(
+	tables: PostgresTables,
 	rows: readonly NewMemoryRow[],
 	vectorType: VectorType,
 	eventIds?: readonly string[],
@@ -360,7 +363,7 @@ function insertMemoriesStatement(
 	const replaced = UPSERT_REPLACED_COLUMNS.map(
 		(name) => `${name} = EXCLUDED.${name}`,
 	).join(", ");
-	const insert = `INSERT INTO mnemocyte_memories (
+	const insert = `INSERT INTO ${tables.memories} (
 			id, namespace, entity_id, agent_id, session_id, key, content, kind,
 			importance, tags, source, metadata, confidence, embedding,
 			embedding_model, embedding_dimensions, superseded_by, superseded_at,
@@ -386,7 +389,7 @@ function insertMemoriesStatement(
 			${insert}
 		),
 		audit AS (
-			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			INSERT INTO ${tables.events} (${EVENT_INSERT_COLUMNS})
 			SELECT
 				prepared.event_id,
 				written.namespace,
@@ -416,6 +419,7 @@ function insertMemoriesStatement(
 
 export async function getMemoryById(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	visibility: StoreVisibility,
 	memoryId: string,
 	signal?: AbortSignal,
@@ -423,7 +427,7 @@ export async function getMemoryById(
 	const params = createSqlParams();
 	const rows = await db.query<RawMemoryRow>(
 		`SELECT ${MEMORY_COLUMNS}
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${visibilityConditions(params, visibility)} AND id = ${params.uuid(memoryId)}
 		LIMIT 1`,
 		params.values,
@@ -435,6 +439,7 @@ export async function getMemoryById(
 
 export async function getMemoryByKey(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	scope: StoreScope,
 	key: string,
 	signal?: AbortSignal,
@@ -442,7 +447,7 @@ export async function getMemoryByKey(
 	const params = createSqlParams();
 	const rows = await db.query<RawMemoryRow>(
 		`SELECT ${MEMORY_COLUMNS}
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${exactScopeConditions(params, scope)} AND key = ${params.add(key)}
 		LIMIT 1`,
 		params.values,
@@ -471,6 +476,7 @@ const LIST_CREATED_AT =
  */
 export async function listMemories(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: ListMemoriesInput,
 	signal?: AbortSignal,
 ): Promise<MemoryRow[]> {
@@ -483,7 +489,7 @@ export async function listMemories(
 	}
 	const rows = await db.query<RawMemoryRow>(
 		`SELECT ${MEMORY_COLUMNS}
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${clauses.join("\n\t\t\tAND ")}
 		ORDER BY ${LIST_CREATED_AT} DESC, mnemocyte_memories.id DESC
 		LIMIT ${params.add(input.limit)}`,
@@ -534,6 +540,7 @@ export function isScopeKeyViolation(error: unknown): boolean {
  */
 export async function updateMemory(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: UpdateMemoryInput,
 ): Promise<MemoryRow | null> {
 	const params = createSqlParams();
@@ -584,7 +591,7 @@ export async function updateMemory(
 		set("expires_at", nullableTimestamp(params, input.expiresAt));
 	}
 	set("updated_at", params.timestamp(input.now));
-	const update = `UPDATE mnemocyte_memories
+	const update = `UPDATE ${tables.memories}
 		SET ${assignments.join(", ")}
 		WHERE ${visibilityConditions(params, input.visibility)}
 			AND id = ${params.uuid(input.id)}
@@ -596,7 +603,7 @@ export async function updateMemory(
 			${update}
 		),
 		audit AS (
-			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			INSERT INTO ${tables.events} (${EVENT_INSERT_COLUMNS})
 			SELECT
 				${params.uuid(input.audit.eventId)},
 				updated.namespace,
@@ -620,6 +627,7 @@ export async function updateMemory(
 
 export async function getMemoryStatsCounts(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	selector: StoreSelector,
 	now: Date,
 	signal?: AbortSignal,
@@ -629,7 +637,7 @@ export async function getMemoryStatsCounts(
 	const columns = memoryStatsCountColumns(params, now);
 	const rows = await db.query<GlobalMemoryStatsCounts>(
 		`SELECT count(DISTINCT (namespace, entity_id))::int AS "entityCount", ${columns}
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${conditions}`,
 		params.values,
 		signal ? { signal } : undefined,
@@ -678,19 +686,26 @@ export interface DeleteMemoryResult {
  */
 export async function deleteMemory(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: DeleteMemoryInput,
 	signal?: AbortSignal,
 ): Promise<DeleteMemoryResult> {
 	const params = createSqlParams();
 	const target = `${visibilityConditions(params, input.visibility)} AND id = ${params.uuid(input.memoryId)}`;
 	if (input.dependents === "reject") {
-		const result = await deleteMemoriesWithDependentGuard(db, target, params, {
-			allowSelectedDependents: false,
-			...(input.audit
-				? { auditCte: deletedEventsCte(params, input, false) }
-				: {}),
-			...(signal ? { signal } : {}),
-		});
+		const result = await deleteMemoriesWithDependentGuard(
+			db,
+			tables,
+			target,
+			params,
+			{
+				allowSelectedDependents: false,
+				...(input.audit
+					? { auditCte: deletedEventsCte(tables, params, input, false) }
+					: {}),
+				...(signal ? { signal } : {}),
+			},
+		);
 		return {
 			found: result.matchedCount > 0,
 			hasDependents: result.hasDependents,
@@ -704,19 +719,19 @@ export async function deleteMemory(
 		input.dependents === "restore"
 			? `target AS MATERIALIZED (
 			SELECT id
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${target}
 		),
 		members AS MATERIALIZED (
 			SELECT member.id, (${visible}) AS visible
-			FROM mnemocyte_memories AS member
+			FROM ${tables.memories} AS member
 			INNER JOIN target ON member.superseded_by = target.id
 		),
 		blocked AS MATERIALIZED (
 			SELECT EXISTS (SELECT 1 FROM members WHERE NOT visible) AS hidden
 		),
 		restored AS (
-			UPDATE mnemocyte_memories AS memory
+			UPDATE ${tables.memories} AS memory
 			SET superseded_by = NULL, superseded_at = NULL,
 				updated_at = ${params.timestamp(input.now)}
 			FROM members
@@ -725,26 +740,26 @@ export async function deleteMemory(
 			RETURNING memory.id
 		),
 		deleted AS (
-			DELETE FROM mnemocyte_memories
+			DELETE FROM ${tables.memories}
 			WHERE id IN (SELECT id FROM target)
 				AND NOT (SELECT hidden FROM blocked)
 			RETURNING id
 		)`
 			: `target AS MATERIALIZED (
 			SELECT id
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${target}
 		),
 		tree (id) AS (
 			SELECT id FROM target
 			UNION
 			SELECT dependent.id
-			FROM mnemocyte_memories AS dependent
+			FROM ${tables.memories} AS dependent
 			INNER JOIN tree ON dependent.superseded_by = tree.id
 		),
 		members AS MATERIALIZED (
 			SELECT member.id, (${visible}) AS visible
-			FROM mnemocyte_memories AS member
+			FROM ${tables.memories} AS member
 			WHERE member.id IN (SELECT id FROM tree)
 		),
 		blocked AS MATERIALIZED (
@@ -754,13 +769,13 @@ export async function deleteMemory(
 			SELECT NULL::uuid AS id WHERE false
 		),
 		deleted AS (
-			DELETE FROM mnemocyte_memories
+			DELETE FROM ${tables.memories}
 			WHERE id IN (SELECT id FROM members)
 				AND NOT (SELECT hidden FROM blocked)
 			RETURNING id
 		)`;
 	const audit = input.audit
-		? `,\n\t\t${deletedEventsCte(params, input, true)}`
+		? `,\n\t\t${deletedEventsCte(tables, params, input, true)}`
 		: "";
 	const rows = await db.query<{
 		found: boolean;
@@ -803,6 +818,7 @@ export async function deleteMemory(
  * statement runs, so event ids are built in SQL ({@link sqlUuidV7}).
  */
 function deletedEventsCte(
+	tables: PostgresTables,
 	params: SqlParams,
 	input: DeleteMemoryInput,
 	hasRestored: boolean,
@@ -818,7 +834,7 @@ function deletedEventsCte(
 						ELSE '{}'::jsonb END`
 		: "";
 	return `audit AS (
-			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			INSERT INTO ${tables.events} (${EVENT_INSERT_COLUMNS})
 			SELECT
 				${sqlUuidV7(now)},
 				${params.add(scope.namespace)},
@@ -845,13 +861,14 @@ function deletedEventsCte(
  */
 export async function deleteScope(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	selector: StoreSelector,
 	signal?: AbortSignal,
 ): Promise<GuardedDeleteResult> {
 	const params = createSqlParams();
 	const conditions = selectorConditions(params, selector);
 	const eventConditions = selectorConditions(params, selector);
-	return deleteMemoriesWithDependentGuard(db, conditions, params, {
+	return deleteMemoriesWithDependentGuard(db, tables, conditions, params, {
 		allowSelectedDependents: true,
 		eventConditions,
 		...(signal ? { signal } : {}),
@@ -900,6 +917,7 @@ function pruneConditions(params: SqlParams, filter: PruneFilter): string {
 
 export async function countPruneMatches(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	filter: PruneFilter,
 	signal?: AbortSignal,
 ): Promise<number> {
@@ -907,7 +925,7 @@ export async function countPruneMatches(
 	const conditions = pruneConditions(params, filter);
 	const rows = await db.query<{ count: number | string }>(
 		`SELECT count(*)::int AS count
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${conditions}`,
 		params.values,
 		signal ? { signal } : undefined,
@@ -924,6 +942,7 @@ export async function countPruneMatches(
  */
 export async function pruneMemories(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	filter: PruneFilter,
 	audit?: { now: Date },
 	signal?: AbortSignal,
@@ -934,7 +953,7 @@ export async function pruneMemories(
 	if (audit !== undefined) {
 		const now = params.timestamp(audit.now);
 		auditCte = `audit AS (
-			INSERT INTO mnemocyte_events (${EVENT_INSERT_COLUMNS})
+			INSERT INTO ${tables.events} (${EVENT_INSERT_COLUMNS})
 			SELECT
 				${sqlUuidV7(now)},
 				namespace,
@@ -948,7 +967,7 @@ export async function pruneMemories(
 			GROUP BY namespace, entity_id
 		)`;
 	}
-	return deleteMemoriesWithDependentGuard(db, conditions, params, {
+	return deleteMemoriesWithDependentGuard(db, tables, conditions, params, {
 		allowSelectedDependents: true,
 		...(auditCte === undefined ? {} : { auditCte }),
 		...(signal ? { signal } : {}),
@@ -976,6 +995,7 @@ interface DependentGuardOptions {
  */
 async function deleteMemoriesWithDependentGuard(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	conditions: string,
 	params: SqlParams,
 	options: DependentGuardOptions,
@@ -988,7 +1008,7 @@ async function deleteMemoriesWithDependentGuard(
 			? ""
 			: `,
 		deleted_events AS (
-			DELETE FROM mnemocyte_events
+			DELETE FROM ${tables.events}
 			WHERE ${options.eventConditions}
 				AND NOT EXISTS (SELECT 1 FROM dependents)
 		)`;
@@ -1001,18 +1021,18 @@ async function deleteMemoriesWithDependentGuard(
 	}>(
 		`WITH candidates AS MATERIALIZED (
 			SELECT id, namespace, entity_id
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${conditions}
 		),
 		dependents AS MATERIALIZED (
 			SELECT 1
-			FROM mnemocyte_memories AS dependent
+			FROM ${tables.memories} AS dependent
 			INNER JOIN candidates AS target
 				ON dependent.superseded_by = target.id${outsideOnly}
 			LIMIT 1
 		),
 		deleted AS (
-			DELETE FROM mnemocyte_memories
+			DELETE FROM ${tables.memories}
 			WHERE id IN (SELECT id FROM candidates)
 				AND NOT EXISTS (SELECT 1 FROM dependents)
 			RETURNING id, namespace, entity_id
@@ -1092,6 +1112,7 @@ function duplicateFilters(
  */
 export async function findDuplicatePairs(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: DuplicateSearchInput,
 	signal?: AbortSignal,
 ): Promise<Array<{ a: MemoryRow; b: MemoryRow; similarity: number }>> {
@@ -1103,10 +1124,10 @@ export async function findDuplicatePairs(
 				LEAST(a.id, neighbor.id) AS a_id,
 				GREATEST(a.id, neighbor.id) AS b_id,
 				1 - neighbor.distance AS similarity
-			FROM mnemocyte_memories AS a
+			FROM ${tables.memories} AS a
 			CROSS JOIN LATERAL (
 				SELECT b.id, b.embedding <=> a.embedding AS distance
-				FROM mnemocyte_memories AS b
+				FROM ${tables.memories} AS b
 				WHERE ${inner}
 					AND b.id <> a.id
 				ORDER BY distance
@@ -1131,8 +1152,8 @@ export async function findDuplicatePairs(
 			${selectMemoryColumns({ table: "b", prefix: "b" })},
 			top.similarity AS "similarity"
 		FROM top
-		INNER JOIN mnemocyte_memories AS a ON a.id = top.a_id
-		INNER JOIN mnemocyte_memories AS b ON b.id = top.b_id
+		INNER JOIN ${tables.memories} AS a ON a.id = top.a_id
+		INNER JOIN ${tables.memories} AS b ON b.id = top.b_id
 		ORDER BY top.similarity DESC, top.a_id, top.b_id`;
 	const [, found = []] = await runAtomically(
 		db,
@@ -1174,6 +1195,7 @@ export interface DuplicatePageInput
  */
 export async function findDuplicatePage(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: DuplicatePageInput,
 	signal?: AbortSignal,
 ): Promise<{
@@ -1193,7 +1215,7 @@ export async function findDuplicatePage(
 	const neighbors = params.add(input.neighbors);
 	const text = `WITH compared AS MATERIALIZED (
 			SELECT a.id, a.embedding
-			FROM mnemocyte_memories AS a
+			FROM ${tables.memories} AS a
 			WHERE ${outer}
 				${after}
 			ORDER BY a.id
@@ -1207,7 +1229,7 @@ export async function findDuplicatePage(
 			FROM compared
 			CROSS JOIN LATERAL (
 				SELECT b.id, b.embedding <=> compared.embedding AS distance
-				FROM mnemocyte_memories AS b
+				FROM ${tables.memories} AS b
 				WHERE ${inner}
 					AND b.id <> compared.id
 				ORDER BY distance
@@ -1225,10 +1247,10 @@ export async function findDuplicatePage(
 					neighbor_id > from_id
 					OR NOT EXISTS (
 						SELECT 1
-						FROM mnemocyte_memories AS n
+						FROM ${tables.memories} AS n
 						CROSS JOIN LATERAL (
 							SELECT c.id
-							FROM mnemocyte_memories AS c
+							FROM ${tables.memories} AS c
 							WHERE ${recheck}
 								AND c.id <> n.id
 							ORDER BY c.embedding <=> n.embedding
@@ -1253,8 +1275,8 @@ export async function findDuplicatePage(
 			${selectMemoryColumns({ table: "b", prefix: "b" })}
 		FROM page
 		LEFT JOIN owned ON true
-		LEFT JOIN mnemocyte_memories AS a ON a.id = owned.a_id
-		LEFT JOIN mnemocyte_memories AS b ON b.id = owned.b_id
+		LEFT JOIN ${tables.memories} AS a ON a.id = owned.a_id
+		LEFT JOIN ${tables.memories} AS b ON b.id = owned.b_id
 		ORDER BY owned.similarity DESC, owned.a_id, owned.b_id`;
 	const [, rows = []] = await runAtomically(
 		db,
@@ -1287,6 +1309,7 @@ export async function findDuplicatePage(
 
 export async function loadConsolidationTargets(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	visibility: StoreVisibility,
 	ids: readonly string[],
 	signal?: AbortSignal,
@@ -1297,7 +1320,7 @@ export async function loadConsolidationTargets(
 	const params = createSqlParams();
 	return db.query(
 		`SELECT id::text AS id, tags, superseded_by::text AS "supersededBy"
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${visibilityConditions(params, visibility)}
 			AND id IN (${params.uuidList(ids)})`,
 		params.values,
@@ -1336,6 +1359,7 @@ export interface ConsolidateMemoriesResult {
  */
 export async function consolidateMemories(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: ConsolidateMemoriesInput,
 	signal?: AbortSignal,
 ): Promise<ConsolidateMemoriesResult> {
@@ -1351,7 +1375,7 @@ export async function consolidateMemories(
 		)`,
 		`locked AS MATERIALIZED (
 			SELECT id, tags, superseded_by
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${scope}
 				AND (id = ${survivorId} OR id IN (SELECT id FROM requested))
 			ORDER BY id
@@ -1375,7 +1399,7 @@ export async function consolidateMemories(
 				AND NOT EXISTS (SELECT 1 FROM conflict) AS ok
 		)`,
 		`superseded AS (
-			UPDATE mnemocyte_memories AS memory
+			UPDATE ${tables.memories} AS memory
 			SET superseded_by = ${survivorId}, superseded_at = ${now}, updated_at = ${now}
 			FROM locked
 			WHERE memory.id = locked.id
@@ -1407,7 +1431,7 @@ export async function consolidateMemories(
 				) AS first_occurrences
 			)`,
 			`tags_updated AS (
-				UPDATE mnemocyte_memories AS memory
+				UPDATE ${tables.memories} AS memory
 				SET tags = merged.tags, updated_at = ${now}
 				FROM survivor, merged
 				WHERE memory.id = survivor.id
@@ -1424,7 +1448,7 @@ export async function consolidateMemories(
 				FROM ${eventIds}
 			)`,
 			`audit AS (
-				INSERT INTO mnemocyte_events (
+				INSERT INTO ${tables.events} (
 					id, namespace, entity_id, agent_id, session_id, description,
 					metadata, timestamp
 				)
@@ -1482,6 +1506,7 @@ export async function consolidateMemories(
  */
 export async function markMemoriesAccessed(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	visibility: StoreVisibility,
 	memoryIds: readonly string[],
 ): Promise<void> {
@@ -1492,13 +1517,13 @@ export async function markMemoriesAccessed(
 	await db.query(
 		`WITH target AS (
 			SELECT id
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${visibilityConditions(params, visibility)}
 				AND id IN (${params.uuidList(memoryIds)})
 			ORDER BY id
 			FOR UPDATE
 		)
-		UPDATE mnemocyte_memories AS m
+		UPDATE ${tables.memories} AS m
 		SET last_accessed_at = ${params.timestamp(new Date())}, access_count = m.access_count + 1
 		FROM target
 		WHERE m.id = target.id`,
@@ -1554,6 +1579,7 @@ export function hnswEfSearch(limit: number): number {
  */
 export async function vectorSearch(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: VectorSearchInput,
 ): Promise<VectorSearchRow[]> {
 	const params = createSqlParams();
@@ -1561,7 +1587,7 @@ export async function vectorSearch(
 	const filters = recallFilters(params, input);
 	const text = `WITH nearest AS MATERIALIZED (
 			SELECT ${MEMORY_COLUMNS}, embedding <=> ${embedding} AS "vectorDistance"
-			FROM mnemocyte_memories
+			FROM ${tables.memories}
 			WHERE ${filters}
 				AND embedding IS NOT NULL
 			ORDER BY "vectorDistance"
@@ -1589,6 +1615,7 @@ export async function vectorSearch(
 
 export async function lexicalSearch(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	input: LexicalSearchInput,
 ): Promise<LexicalSearchRow[]> {
 	const params = createSqlParams();
@@ -1598,7 +1625,7 @@ export async function lexicalSearch(
 	const filters = recallFilters(params, input);
 	const rows = await db.query<RawMemoryRow & { lexicalScore: number }>(
 		`SELECT ${MEMORY_COLUMNS}, ts_rank(content_tsv, ${query}) AS "lexicalScore"
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		WHERE ${filters}
 			AND content_tsv @@ ${query}
 		ORDER BY "lexicalScore" DESC, id

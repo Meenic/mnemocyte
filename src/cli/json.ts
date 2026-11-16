@@ -33,6 +33,11 @@ export interface CheckFinding<Code extends string> {
 
 /** What `check --json` found in the database. */
 export interface InstallationJson {
+	/**
+	 * The schema the tables were looked up in, from `schemaName` or
+	 * `--schema`; `null` when they resolve through `search_path`.
+	 */
+	readonly schema: string | null;
 	/** `null` when pgvector is not enabled. */
 	readonly pgvectorVersion: string | null;
 	/** Both lists are empty when the state is `none` or `invalid`. */
@@ -82,6 +87,8 @@ export interface MigratePlanJson extends JsonBase {
 	readonly adopted: readonly string[];
 	/** True when a real run would ask to run `CREATE EXTENSION vector`. */
 	readonly extensionCreated: boolean;
+	/** True when a real run would run `CREATE SCHEMA` for `schemaName`. */
+	readonly schemaCreated: boolean;
 	/** True when a real run would change nothing. */
 	readonly upToDate: boolean;
 }

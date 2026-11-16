@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { assertSchemaName } from "../db/tables.js";
 import {
 	assertMigrateDimensions,
 	assertTextSearchConfigName,
@@ -29,6 +30,11 @@ export interface CliArgs {
 	 * `text-search` takes.
 	 */
 	readonly textSearchConfig?: string;
+	/**
+	 * `--schema`: the schema of the tables, for a run without a memory file
+	 * (the memory file's `postgresStore()` names its own).
+	 */
+	readonly schema?: string;
 	/** `--yes`: enable pgvector, or rewrite for `text-search`, without asking. */
 	readonly yes: boolean;
 	/** `--dry-run`: report what `migrate`, `init` or `text-search` would do. */
@@ -63,6 +69,9 @@ Options
                          migrate, sql: the text search configuration of a
                          fresh install (default: english); check: the one
                          expected
+      --schema <name>    The Postgres schema of the tables, when no memory
+                         file names one (default: search_path, usually
+                         public)
       --env-file <path>  Load this file instead of ./.env
   -y, --yes              migrate: enable pgvector without asking;
                          text-search: rewrite without asking
@@ -96,6 +105,7 @@ const COMMAND_FLAGS = {
 	out: ["sql"],
 	embedder: ["init"],
 	"text-search-config": ["migrate", "check", "sql"],
+	schema: ["migrate", "check", "sql", "text-search"],
 } as const satisfies Record<string, readonly CliCommand[]>;
 
 /** The commands whose `--json` needs `--dry-run`. */
@@ -120,6 +130,15 @@ function parseDimensions(value: string): number {
 		throw usageError(error instanceof Error ? error.message : String(error));
 	}
 	return dimensions;
+}
+
+function parseSchema(value: string): string {
+	try {
+		assertSchemaName(value, "--schema");
+	} catch (error) {
+		throw usageError(error instanceof Error ? error.message : String(error));
+	}
+	return value;
 }
 
 function parseTextSearchConfig(value: string, field: string): string {
@@ -186,6 +205,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 		"out",
 		"embedder",
 		"text-search-config",
+		"schema",
 	] as const) {
 		const owners: readonly string[] = COMMAND_FLAGS[flag];
 		if (values[flag] !== undefined && !owners.includes(command)) {
@@ -253,6 +273,9 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 		...(values.out === undefined ? {} : { out: values.out }),
 		...(embedder === undefined ? {} : { embedder }),
 		...(textSearchConfig === undefined ? {} : { textSearchConfig }),
+		...(values.schema === undefined
+			? {}
+			: { schema: parseSchema(values.schema) }),
 	};
 }
 
@@ -269,6 +292,7 @@ function parse(argv: readonly string[]) {
 			config: { type: "string", short: "c" },
 			dimensions: { type: "string" },
 			"text-search-config": { type: "string" },
+			schema: { type: "string" },
 			"env-file": { type: "string" },
 			yes: { type: "boolean", short: "y" },
 			"dry-run": { type: "boolean" },

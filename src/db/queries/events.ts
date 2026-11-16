@@ -7,6 +7,7 @@ import {
 	toEventRow,
 } from "../rows.js";
 import { createSqlParams, type SqlParams } from "../sql.js";
+import type { PostgresTables } from "../tables.js";
 import { selectorConditions } from "./memories.js";
 
 /**
@@ -46,6 +47,7 @@ export interface PositionedEventRow {
  */
 export async function listEvents(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	filter: EventFilter,
 	signal?: AbortSignal,
 ): Promise<PositionedEventRow[]> {
@@ -71,7 +73,7 @@ export async function listEvents(
 	const rows = await db.query<RawEventRow & { position: string }>(
 		`SELECT ${EVENT_COLUMNS},
 			${timestampText("timestamp")} AS "position"
-		FROM mnemocyte_events
+		FROM ${tables.events}
 		WHERE ${clauses.join("\n\t\t\tAND ")}
 		ORDER BY mnemocyte_events.timestamp DESC, mnemocyte_events.id DESC
 		LIMIT ${params.add(filter.limit)}`,
@@ -101,13 +103,14 @@ function eventPruneConditions(
 /** Number of events a `pruneAuditLog` dry run would delete. */
 export async function countEventsBefore(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	filter: EventPruneFilter,
 	signal?: AbortSignal,
 ): Promise<number> {
 	const params = createSqlParams();
 	const rows = await db.query<{ count: number | string }>(
 		`SELECT count(*)::int AS count
-		FROM mnemocyte_events
+		FROM ${tables.events}
 		WHERE ${eventPruneConditions(params, filter)}`,
 		params.values,
 		signal ? { signal } : undefined,
@@ -176,6 +179,7 @@ function resumeCondition(
  */
 export async function deleteEventsBatch(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	filter: EventPruneFilter,
 	batchSize: number,
 	after: EventPosition | null,
@@ -196,13 +200,13 @@ export async function deleteEventsBatch(
 	}>(
 		`WITH batch AS MATERIALIZED (
 			SELECT namespace, entity_id, timestamp, id
-			FROM mnemocyte_events
+			FROM ${tables.events}
 			WHERE ${conditions.join("\n\t\t\tAND ")}
 			ORDER BY namespace, entity_id, timestamp, id
 			LIMIT ${params.add(batchSize)}
 		),
 		deleted AS (
-			DELETE FROM mnemocyte_events
+			DELETE FROM ${tables.events}
 			WHERE id IN (SELECT id FROM batch)
 			RETURNING 1
 		),

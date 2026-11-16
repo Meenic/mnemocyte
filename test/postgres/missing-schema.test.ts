@@ -128,6 +128,7 @@ describe("missing-schema errors on PGlite", { timeout: 30_000 }, () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 
 		const error = await expectMnemocyteError(

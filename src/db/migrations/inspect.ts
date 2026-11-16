@@ -6,6 +6,7 @@ import {
 	getPgvectorVersion,
 	getStoredEmbeddingModels,
 } from "../queries/meta.js";
+import { DEFAULT_TABLES, type PostgresTables, regclass } from "../tables.js";
 import { readInstalledTextSearchConfig } from "../text-search.js";
 import { MIGRATIONS } from "./bundled.js";
 import {
@@ -41,6 +42,11 @@ export interface InstallationMeta {
 
 /** What {@link inspectPostgresInstallation} found. Facts only, no verdicts. */
 export interface InstallationReport {
+	/**
+	 * The `schemaName` the store was given, or null when the tables resolve
+	 * through `search_path`.
+	 */
+	readonly schema: string | null;
 	/** `pg_extension.extversion` of `vector`, or null when it is not enabled. */
 	readonly pgvectorVersion: string | null;
 	readonly migrations: InstalledMigrations;
@@ -72,6 +78,7 @@ const MISSING_OBJECT_CODES = new Set(["42P01", "42703"]);
 
 async function readEmbeddingColumn(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<InstallationReport["column"]> {
 	// pgvector stores the declared size of `vector(n)` and `halfvec(n)` as the
@@ -80,7 +87,7 @@ async function readEmbeddingColumn(
 		`SELECT a.atttypmod AS "dimensions", t.typname AS "vectorType"
 		FROM pg_catalog.pg_attribute a
 		JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
-		WHERE a.attrelid = to_regclass('mnemocyte_memories')
+		WHERE a.attrelid = ${regclass(tables.memories)}
 			AND a.attname = 'embedding'
 			AND NOT a.attisdropped`,
 		[],
@@ -94,11 +101,12 @@ async function readEmbeddingColumn(
 
 async function readMigrations(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<InstalledMigrations> {
 	const names = MIGRATIONS.map((migration) => migration.name);
-	const versions = await readAppliedVersions(db, options);
-	const state = await readCatalogState(db, options);
+	const versions = await readAppliedVersions(db, options, tables);
+	const state = await readCatalogState(db, options, tables);
 	try {
 		if (versions !== null && versions.length > 0) {
 			assertContiguous(versions);
@@ -139,21 +147,28 @@ async function readMigrations(
 export async function inspectPostgresInstallation(
 	db: SqlExecutor,
 	options: SqlQueryOptions = {},
+	tables: PostgresTables = DEFAULT_TABLES,
 ): Promise<InstallationReport> {
+	const { schema } = tables;
 	try {
 		const pgvectorVersion = await getPgvectorVersion(db);
-		const column = await readEmbeddingColumn(db, options);
-		const migrations = await readMigrations(db, options);
+		const column = await readEmbeddingColumn(db, tables, options);
+		const migrations = await readMigrations(db, tables, options);
 		const current =
 			(migrations.state === "tracked" || migrations.state === "untracked") &&
 			migrations.pending.length === 0;
 		if (!current) {
-			return { pgvectorVersion, migrations, column };
+			return { schema, pgvectorVersion, migrations, column };
 		}
 		try {
-			const textSearch = await readInstalledTextSearchConfig(db, options);
+			const textSearch = await readInstalledTextSearchConfig(
+				db,
+				options,
+				tables,
+			);
 			if (textSearch.kind !== "config") {
 				return {
+					schema,
 					pgvectorVersion,
 					column,
 					migrations: {
@@ -166,9 +181,16 @@ export async function inspectPostgresInstallation(
 				};
 			}
 			const current = { textSearchConfig: textSearch.name };
-			const row = await getInstallationMeta(db);
+			const row = await getInstallationMeta(db, tables);
 			if (row === null) {
-				return { pgvectorVersion, migrations, column, ...current, meta: null };
+				return {
+					schema,
+					pgvectorVersion,
+					migrations,
+					column,
+					...current,
+					meta: null,
+				};
 			}
 			const meta: InstallationMeta = {
 				dimensions: Number(row.embeddingDimensions),
@@ -176,10 +198,18 @@ export async function inspectPostgresInstallation(
 				vectorType: row.vectorType,
 			};
 			if (meta.model !== null) {
-				return { pgvectorVersion, migrations, column, ...current, meta };
+				return {
+					schema,
+					pgvectorVersion,
+					migrations,
+					column,
+					...current,
+					meta,
+				};
 			}
-			const storedModels = await getStoredEmbeddingModels(db);
+			const storedModels = await getStoredEmbeddingModels(db, tables);
 			return {
+				schema,
 				pgvectorVersion,
 				migrations,
 				column,
@@ -194,6 +224,7 @@ export async function inspectPostgresInstallation(
 			}
 			// Every migration is recorded, yet a table or column is gone.
 			return {
+				schema,
 				pgvectorVersion,
 				column,
 				migrations: {

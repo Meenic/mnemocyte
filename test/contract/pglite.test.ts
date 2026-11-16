@@ -93,6 +93,17 @@ describeStoreContract("PGlite, parameter types checked", async () => {
 	};
 });
 
+// Every query must name the schema: "mnemocyte_test" is not on search_path,
+// so a bare table name fails with 42P01.
+describeStoreContract(
+	"PGlite, tables in a schema",
+	async () => {
+		const db = await createPGlite();
+		return { client: db, close: () => db.close() };
+	},
+	{ schemaName: "mnemocyte_test" },
+);
+
 describe("migrate on a PGlite without pgvector enabled", () => {
 	const names = MIGRATIONS.map((migration) => migration.name);
 	const embedder: Embedder = {
@@ -136,6 +147,7 @@ describe("migrate on a PGlite without pgvector enabled", () => {
 				applied: names,
 				adopted: [],
 				extensionCreated: true,
+				schemaCreated: false,
 			});
 			expect(await catalog(db)).toEqual(empty);
 
@@ -144,6 +156,7 @@ describe("migrate on a PGlite without pgvector enabled", () => {
 					applied: names,
 					adopted: [],
 					extensionCreated: true,
+					schemaCreated: false,
 				},
 			);
 			expect(await catalog(db)).toEqual({
@@ -152,7 +165,12 @@ describe("migrate on a PGlite without pgvector enabled", () => {
 				tracking: true,
 			});
 
-			const current = { applied: [], adopted: [], extensionCreated: false };
+			const current = {
+				applied: [],
+				adopted: [],
+				extensionCreated: false,
+				schemaCreated: false,
+			};
 			await expect(migrate({ memory, createExtension: true })).resolves.toEqual(
 				current,
 			);

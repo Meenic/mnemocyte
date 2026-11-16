@@ -54,6 +54,24 @@ describe("main", () => {
 		expect(io.stderr()).toBe("");
 	});
 
+	test("sql --schema creates the schema and installs into it", async () => {
+		const io = createTestIo(cwd);
+		expect(
+			await main(
+				["sql", "--dimensions", "1536", "--schema", "memory"],
+				io,
+				"1",
+			),
+		).toBe(0);
+		const output = io.stdout();
+		expect(output).toContain('CREATE SCHEMA IF NOT EXISTS "memory";');
+		expect(output).toContain('SET search_path TO "memory", public;');
+		expect(
+			output.endsWith(renderInitialSchema(1536, "english", "memory")),
+		).toBe(true);
+		expect(output).toContain('REFERENCES "memory"."mnemocyte_memories"');
+	});
+
 	test("sql --out writes the file and keeps stdout empty", async () => {
 		const io = createTestIo(cwd);
 		expect(

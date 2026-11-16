@@ -33,6 +33,18 @@ marked **Breaking** in their entries. What semver covers is in
   [keyword search language](docs/guide/postgres.md#keyword-search-language).
 - **`TEXT_SEARCH_CONFIG_MISMATCH`.** A `"CONFIG"` reason for a `migrate`
   whose `textSearchConfig` differs from the installation's.
+- **Keep the tables in their own schema.**
+  `postgresStore({ client, schemaName: "memory" })` puts every Mnemocyte
+  table, `mnemocyte_migrations` included, in that schema instead of
+  wherever `search_path` points, and every query names it. `migrate`
+  creates the schema on a fresh install when it is missing and reports
+  `schemaCreated`. Without a memory file, `migrate`, `check`, `sql` and
+  `text-search` take `--schema <name>`; `check` shows the schema
+  (`installation.schema` in `--json`). `migrate` does not move an existing
+  installation: it stops with the new `"CONFIG"` reason
+  `INSTALLATION_ELSEWHERE`, and the guide shows the `ALTER TABLE … SET
+  SCHEMA` to run. Without `schemaName` nothing changes. See
+  [keep the tables in their own schema](docs/guide/postgres.md#keep-the-tables-in-their-own-schema).
 
 ## [1.1.0] - 2026-11-16
 

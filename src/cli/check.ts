@@ -195,6 +195,7 @@ function installedModel(report: InstallationReport): string | null | undefined {
 export function installationJson(report: InstallationReport): InstallationJson {
 	const { migrations, column } = report;
 	return {
+		schema: report.schema,
 		pgvectorVersion: report.pgvectorVersion,
 		migrations:
 			migrations.state === "none" || migrations.state === "invalid"
@@ -236,6 +237,8 @@ export function describeInstallation(report: InstallationReport): string[] {
 	const recorded = installedModel(report);
 	const model = recorded === undefined ? "-" : (recorded ?? "not recorded yet");
 	return [
+		// Only with a schemaName, so the default output stays as it was.
+		...(report.schema === null ? [] : [`schema      ${report.schema}`]),
 		`pgvector    ${report.pgvectorVersion ?? "not enabled"}`,
 		`migrations  ${installed}`,
 		`dimensions  ${column === null ? "-" : `${column.dimensions} (${column.vectorType})`}`,

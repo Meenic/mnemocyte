@@ -6,6 +6,8 @@ import type { MemoryStore } from "./store.js";
 export interface LazyStoreInput {
 	/** Known before loading, because the client says which backend it is. */
 	readonly backend: MnemocyteBackend;
+	/** {@link MemoryStore.schemaName}, known before loading. */
+	readonly schemaName?: string;
 	/** Loads the backend, typically with a dynamic `import()`. */
 	readonly load: () => Promise<MemoryStore>;
 }
@@ -36,6 +38,7 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 
 	return {
 		backend: input.backend,
+		...(input.schemaName === undefined ? {} : { schemaName: input.schemaName }),
 		migrate: async (...args) => (await load()).migrate(...args),
 		setTextSearchConfig: async (...args) =>
 			(await load()).setTextSearchConfig(...args),

@@ -192,6 +192,7 @@ describe("bound scopes (in-memory)", () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 	});
 });

@@ -3,11 +3,12 @@ import { resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { createMemory, type Embedder } from "mnemocyte";
+import { postgresStore } from "mnemocyte/postgres";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { CliArgs } from "../../src/cli/args.js";
 import { checkTarget } from "../../src/cli/check.js";
 import { migrateTarget } from "../../src/cli/migrate.js";
-import type { MemoryTarget } from "../../src/cli/target.js";
+import { assertSchemaFlag, type MemoryTarget } from "../../src/cli/target.js";
 import { textSearchTarget } from "../../src/cli/text-search.js";
 import { readMemoryClientInternals } from "../../src/memory/client-internals.js";
 import { createTestIo } from "../cli/io.js";
@@ -55,11 +56,18 @@ describe("CLI commands (PGlite)", () => {
 		await db.close();
 	});
 
-	function target(dimensions = 8, model?: string): MemoryTarget {
+	function target(
+		dimensions = 8,
+		model?: string,
+		schemaName?: string,
+	): MemoryTarget {
 		const configured = embedder(dimensions, model);
 		const memory = createMemory({
 			namespace: "cli",
-			store: db,
+			store:
+				schemaName === undefined
+					? db
+					: postgresStore({ client: db, schemaName }),
 			embedder: configured,
 		});
 		return {
@@ -116,6 +124,7 @@ describe("CLI commands (PGlite)", () => {
 			applied: ALL_MIGRATIONS.split(", "),
 			adopted: [],
 			extensionCreated: true,
+			schemaCreated: false,
 			upToDate: false,
 		});
 		expect(await hasPgvector()).toBe(false);
@@ -127,6 +136,7 @@ describe("CLI commands (PGlite)", () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 			upToDate: true,
 		});
 	});
@@ -140,6 +150,7 @@ describe("CLI commands (PGlite)", () => {
 			target: "memory.ts",
 			backend: "postgres",
 			installation: {
+				schema: null,
 				pgvectorVersion: null,
 				migrations: { state: "none", applied: [], pending: [] },
 				dimensions: null,
@@ -169,6 +180,7 @@ describe("CLI commands (PGlite)", () => {
 			target: "memory.ts",
 			backend: "postgres",
 			installation: {
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: {
 					state: "tracked",
@@ -486,6 +498,60 @@ describe("CLI commands (PGlite)", () => {
 		expect(partial.code).toBe(1);
 		expect(partial.stdout).toContain(
 			"problem: The Mnemocyte tables match no migration",
+		);
+	});
+
+	test("a memory file's schemaName: migrate creates the schema, check names it", async () => {
+		await db.exec("CREATE EXTENSION vector;");
+		const named = target(8, undefined, "memory");
+
+		const planned = createTestIo(".");
+		expect(await migrateTarget(named, args({ dryRun: true }), planned)).toBe(0);
+		expect(planned.stdout()).toContain("Would create the schema memory.");
+
+		const json = createTestIo(".");
+		await migrateTarget(named, args({ dryRun: true, json: true }), json);
+		expect(jsonLine(json.stdout())).toMatchObject({
+			schemaCreated: true,
+			upToDate: false,
+		});
+
+		const io = createTestIo(".");
+		expect(await migrateTarget(named, args(), io)).toBe(0);
+		expect(io.stdout()).toBe(
+			`Using memory.ts\nCreated the schema memory.\nApplied: ${ALL_MIGRATIONS}\n`,
+		);
+
+		const checked = await check(named);
+		expect(checked.code).toBe(0);
+		expect(checked.stdout).toContain("schema      memory\n");
+		const checkedJson = await check(named, { json: true });
+		expect(jsonLine(checkedJson.stdout)).toMatchObject({
+			ok: true,
+			installation: { schema: "memory" },
+		});
+		// Without schemaName, the same database has nothing in public.
+		expect((await check(target())).stdout).toContain(
+			"migrations  not installed",
+		);
+	});
+
+	test("--schema may only repeat the memory file's schemaName", () => {
+		const named = target(8, undefined, "memory").store;
+		const plain = target().store;
+		expect(() => assertSchemaFlag(undefined, named, "memory.ts")).not.toThrow();
+		expect(() => assertSchemaFlag("memory", named, "memory.ts")).not.toThrow();
+		expect(() => assertSchemaFlag("other", named, "memory.ts")).toThrow(
+			expect.objectContaining({
+				exitCode: 2,
+				message: expect.stringContaining('uses the "memory" schema'),
+			}),
+		);
+		expect(() => assertSchemaFlag("memory", plain, "memory.ts")).toThrow(
+			expect.objectContaining({
+				exitCode: 2,
+				message: expect.stringContaining('Set schemaName: "memory"'),
+			}),
 		);
 	});
 });

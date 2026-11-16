@@ -108,6 +108,7 @@ src/
     queries/            memories, events, meta SQL on a SqlExecutor
     migrations/         Postgres migration runner, inspect.ts (read-only report), text-search.ts (setTextSearchConfig) and bundled.ts (generated)
     text-search.ts      content_tsv's text search configuration: read, resolve, change statements
+    tables.ts           table names for a schemaName (or search_path), schema name validation
     pgvector.ts         assertPgvectorVersion
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
@@ -418,14 +419,19 @@ Vitest has three projects (`vitest.config.ts`):
   detection and the lazily imported backend end to end. One more
   PGlite run wraps the executor and fails on any parameter that is not a
   string, finite number or null, the values postgres.js 3.x and 4.x write
-  the same.
+  the same. A last PGlite run (`schemaName`) keeps the tables in a schema
+  that is not on `search_path`, so a query that names a table bare fails.
   `test/integration/drivers.test.ts` runs it on real Postgres through
-  postgres.js, a node-postgres `Pool`, and Drizzle over each. Each run
+  postgres.js, a node-postgres `Pool`, and Drizzle over each, and once on
+  postgres.js with the tables in a schema, installed from the rendered
+  template and adopted, because `public` already holds the other files'
+  installation (see features/postgres.md, "Schema name"). Each run
   migrates (adopting an existing schema), works in its own namespaces,
   deletes them afterwards, and uses the integration files' embedding model
   name so it can share their database.
 - The integration suite needs a **disposable** Postgres database with
-  pgvector available and a role that can create tables in `public`. Each file
+  pgvector available and a role that can create tables in `public` and
+  create schemas. Each file
   applies the bundled migrations, ignoring "already exists" errors, and uses
   random entity ids. Some tests rewrite `mnemocyte_meta` and drop tables
   inside a transaction they roll back. `migrate.test.ts` cannot roll back,
@@ -435,7 +441,9 @@ Vitest has three projects (`vitest.config.ts`):
   extension and create and drop a non-superuser role
   (`mnemocyte_restricted_test`), so the role in `DATABASE_URL` must be a
   superuser, as it is on the Docker image and in CI. `cli.test.ts` drops
-  the tables and the extension the same way and leaves the same schema. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
+  the tables and the extension the same way and leaves the same schema, and
+  so does `schema-name.test.ts`, which also creates and drops its own
+  schemas. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
   explicitly.
 - postgres.js is a dev dependency on 4.x, and `postgres-3`
   (`npm:postgres@3.4.9`) installs 3.x next to it, so both are in the

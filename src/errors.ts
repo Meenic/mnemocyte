@@ -39,12 +39,16 @@ interface MnemocyteErrorReasons {
 	 *   installation recorded.
 	 * - `"TEXT_SEARCH_CONFIG_MISMATCH"`: `migrate`'s `textSearchConfig`
 	 *   differs from the installation's.
+	 * - `"INSTALLATION_ELSEWHERE"`: `migrate` would install into the
+	 *   `schemaName` schema while the connection finds an existing
+	 *   installation in another schema through `search_path`.
 	 */
 	CONFIG:
 		| "INVALID_OPTION"
 		| "DIMENSIONS_MISMATCH"
 		| "MODEL_MISMATCH"
-		| "TEXT_SEARCH_CONFIG_MISMATCH";
+		| "TEXT_SEARCH_CONFIG_MISMATCH"
+		| "INSTALLATION_ELSEWHERE";
 	/**
 	 * - `"KEY_IN_USE"`: another memory in the scope already uses the key.
 	 * - `"HAS_DEPENDENTS"`: memories are consolidated into one that `delete`
@@ -87,7 +91,8 @@ interface MnemocyteErrorReasons {
  * {@link MnemocyteError.reason}. Each reason belongs to one code:
  *
  * - `"CONFIG"`: `"INVALID_OPTION"`, `"DIMENSIONS_MISMATCH"`,
- *   `"MODEL_MISMATCH"`.
+ *   `"MODEL_MISMATCH"`, `"TEXT_SEARCH_CONFIG_MISMATCH"`,
+ *   `"INSTALLATION_ELSEWHERE"`.
  * - `"CONFLICT"`: `"KEY_IN_USE"`, `"HAS_DEPENDENTS"`, `"HIDDEN_DEPENDENTS"`,
  *   `"CONSOLIDATION_CHANGED"`.
  * - `"MIGRATION"`: `"SCHEMA_MISSING"`, `"SCHEMA_UNRECOGNIZED"`,

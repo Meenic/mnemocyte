@@ -8,6 +8,7 @@ import {
 } from "mnemocyte";
 import { type PostgresClient, postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { postgresTables } from "../../src/db/tables.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
 import {
@@ -120,14 +121,16 @@ async function sortedIds(
 /**
  * Register the contract for one driver. `connect` runs once per file; the
  * suite migrates the database (adopting a schema installed another way) and
- * then works only in namespaces it created.
+ * then works only in namespaces it created. With `schemaName`, the store
+ * gets it, `migrate` installs there, and the suite's own SQL names it too.
  */
 export function describeStoreContract(
 	name: string,
 	connect: () => Promise<ContractTarget>,
-	options: { skip?: boolean; directClient?: boolean } = {},
+	options: { skip?: boolean; directClient?: boolean; schemaName?: string } = {},
 ): void {
 	const suiteOptions = options;
+	const tables = postgresTables(options.schemaName ?? null);
 	describe.skipIf(options.skip ?? false)(`Postgres contract (${name})`, () => {
 		let target: ContractTarget | undefined;
 		let executor: SqlExecutor | undefined;
@@ -145,7 +148,12 @@ export function describeStoreContract(
 			const connected = expectDefined(target, "not connected").client;
 			return suiteOptions.directClient === true
 				? connected
-				: postgresStore({ client: connected });
+				: postgresStore({
+						client: connected,
+						...(suiteOptions.schemaName === undefined
+							? {}
+							: { schemaName: suiteOptions.schemaName }),
+					});
 		}
 
 		function client(
@@ -182,11 +190,11 @@ export function describeStoreContract(
 					// One statement per table, so consolidation links between
 					// deleted rows never block the delete.
 					await db().query(
-						"DELETE FROM mnemocyte_memories WHERE namespace LIKE $1",
+						`DELETE FROM ${tables.memories} WHERE namespace LIKE $1`,
 						[`${namespace}%`],
 					);
 					await db().query(
-						"DELETE FROM mnemocyte_events WHERE namespace LIKE $1",
+						`DELETE FROM ${tables.events} WHERE namespace LIKE $1`,
 						[`${namespace}%`],
 					);
 				}
@@ -198,7 +206,12 @@ export function describeStoreContract(
 		test("migrate is a no-op once the schema is current", async () => {
 			await expect(
 				migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS }),
-			).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
+			).resolves.toEqual({
+				applied: [],
+				adopted: [],
+				extensionCreated: false,
+				schemaCreated: false,
+			});
 		});
 
 		test("transactions commit, roll back and nest as savepoints", async () => {
@@ -209,14 +222,14 @@ export function describeStoreContract(
 			);
 			const insertEvent = (tx: SqlExecutor, description: string) =>
 				tx.query(
-					`INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata)
+					`INSERT INTO ${tables.events} (id, namespace, entity_id, description, metadata)
 					 VALUES (gen_random_uuid(), $1, 'tx', $2, '{}'::jsonb)`,
 					[namespace, description],
 				);
 			const descriptions = async () =>
 				(
 					await db().query<{ description: string }>(
-						"SELECT description FROM mnemocyte_events WHERE namespace = $1 ORDER BY description",
+						`SELECT description FROM ${tables.events} WHERE namespace = $1 ORDER BY description`,
 						[namespace],
 					)
 				).map((row) => row.description);
@@ -377,7 +390,7 @@ export function describeStoreContract(
 				namespace,
 				async (id, micros) => {
 					await db().query(
-						`UPDATE mnemocyte_memories
+						`UPDATE ${tables.memories}
 					SET created_at = created_at + make_interval(secs => $1::double precision)
 					WHERE id = $2::uuid`,
 						[micros / 1_000_000, id],
@@ -491,7 +504,7 @@ export function describeStoreContract(
 			];
 			for (const [index, time] of times.entries()) {
 				await db().query(
-					`INSERT INTO mnemocyte_events (id, namespace, entity_id, description, metadata, timestamp)
+					`INSERT INTO ${tables.events} (id, namespace, entity_id, description, metadata, timestamp)
 					 VALUES (gen_random_uuid(), $1, $2, 'memory.created', '{}'::jsonb, $3::timestamptz)`,
 					[namespace, index % 2 === 0 ? "even" : "odd", time],
 				);
@@ -499,7 +512,7 @@ export function describeStoreContract(
 			const expected = async (entity: string | null) =>
 				(
 					await db().query<{ id: string }>(
-						`SELECT id::text AS id FROM mnemocyte_events
+						`SELECT id::text AS id FROM ${tables.events}
 						 WHERE namespace = $1 AND ($2::text IS NULL OR entity_id = $2)
 						 ORDER BY timestamp DESC, id DESC`,
 						[namespace, entity],
@@ -559,7 +572,7 @@ export function describeStoreContract(
 							[],
 						);
 						await db().query(
-							`CREATE TRIGGER ${name} BEFORE INSERT ON mnemocyte_events
+							`CREATE TRIGGER ${name} BEFORE INSERT ON ${tables.events}
 							FOR EACH ROW WHEN (NEW.namespace = '${namespace}')
 							EXECUTE FUNCTION ${name}()`,
 							[],
@@ -567,7 +580,7 @@ export function describeStoreContract(
 						return;
 					}
 					await db().query(
-						`DROP TRIGGER IF EXISTS ${name} ON mnemocyte_events`,
+						`DROP TRIGGER IF EXISTS ${name} ON ${tables.events}`,
 						[],
 					);
 					await db().query(`DROP FUNCTION IF EXISTS ${name}()`, []);

@@ -155,6 +155,7 @@ export async function verifyBoundScope(input: {
 		applied: [],
 		adopted: [],
 		extensionCreated: false,
+		schemaCreated: false,
 	});
 
 	// deleteScope erases the bound scope only.

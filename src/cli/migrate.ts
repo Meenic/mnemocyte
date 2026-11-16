@@ -32,11 +32,20 @@ function runMigrate(
 	};
 	return target.kind === "memory"
 		? migrate({ memory: target.memory, ...shared })
-		: migrate({ store: target.client, ...shared });
+		: migrate({ store: target.storeConfig, ...shared });
 }
 
-function describe(result: MigrateResult, dryRun: boolean): string {
+function describe(
+	result: MigrateResult,
+	dryRun: boolean,
+	schema: string | undefined,
+): string {
 	const lines: string[] = [];
+	if (result.schemaCreated) {
+		lines.push(
+			`${dryRun ? "Would create" : "Created"} the schema ${schema ?? ""}.`,
+		);
+	}
 	if (result.extensionCreated) {
 		lines.push(
 			dryRun
@@ -102,7 +111,12 @@ async function printPlanJson(
 ): Promise<number> {
 	const plan: MigrateResult =
 		target.store.backend === "in-memory"
-			? { applied: [], adopted: [], extensionCreated: false }
+			? {
+					applied: [],
+					adopted: [],
+					extensionCreated: false,
+					schemaCreated: false,
+				}
 			: await planMigrate(target, args);
 	writeJson(io, {
 		command: "migrate",
@@ -113,10 +127,12 @@ async function printPlanJson(
 		applied: plan.applied,
 		adopted: plan.adopted,
 		extensionCreated: plan.extensionCreated,
+		schemaCreated: plan.schemaCreated,
 		upToDate:
 			plan.applied.length === 0 &&
 			plan.adopted.length === 0 &&
-			!plan.extensionCreated,
+			!plan.extensionCreated &&
+			!plan.schemaCreated,
 	} satisfies MigratePlanJson);
 	return 0;
 }
@@ -152,7 +168,7 @@ export async function migrateTarget(
 
 	const plan = await planMigrate(target, args);
 	if (args.dryRun) {
-		io.write(describe(plan, true));
+		io.write(describe(plan, true, target.store.schemaName));
 		return 0;
 	}
 
@@ -175,7 +191,7 @@ export async function migrateTarget(
 		createExtension: plan.extensionCreated,
 		dryRun: false,
 	});
-	io.write(describe(result, false));
+	io.write(describe(result, false, target.store.schemaName));
 	return 0;
 }
 

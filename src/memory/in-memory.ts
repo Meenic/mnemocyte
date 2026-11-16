@@ -241,7 +241,12 @@ export function createInMemoryStore(): MemoryStore {
 	return {
 		backend: "in-memory",
 		async migrate() {
-			return { applied: [], adopted: [], extensionCreated: false };
+			return {
+				applied: [],
+				adopted: [],
+				extensionCreated: false,
+				schemaCreated: false,
+			};
 		},
 		async setTextSearchConfig() {
 			// Keyword search matches substrings here; no configuration applies.

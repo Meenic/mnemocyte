@@ -305,7 +305,12 @@ describe("text search configuration (in-memory)", () => {
 		const memory = createMemory({ namespace: "text-search", embedder });
 		await expect(
 			migrate({ memory, textSearchConfig: "simple" }),
-		).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
+		).resolves.toEqual({
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			schemaCreated: false,
+		});
 		await expect(
 			setTextSearchConfig({ memory, textSearchConfig: "simple" }),
 		).resolves.toEqual({ previous: null, current: null, changed: false });

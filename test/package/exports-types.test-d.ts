@@ -204,6 +204,12 @@ const batchOnlyExecutor: SqlExecutor = {
 	batch: async (input) => input.map(() => []),
 };
 const postgresOptions: PostgresStoreOptions = { client: executor };
+const namedSchemaOptions: PostgresStoreOptions = {
+	client: executor,
+	schemaName: "memory",
+};
+// @ts-expect-error schemaName is a string.
+const numericSchema: PostgresStoreOptions = { client: executor, schemaName: 1 };
 // Each driver's own client fits postgresStore without a wrapper.
 declare const postgresJsSql: Sql;
 declare const nodePostgresPool: Pool;
@@ -303,6 +309,11 @@ const migrateFromClient: MigrateInput = {
 const dryRunResult: Promise<boolean> = migrate(migrateFromClient).then(
 	(result) => result.extensionCreated,
 );
+const schemaCreated: Promise<boolean> = migrate({
+	store: postgresStore(namedSchemaOptions),
+	dimensions: 1536,
+}).then((result) => result.schemaCreated);
+const installationElsewhere: MnemocyteErrorReason = "INSTALLATION_ELSEWHERE";
 // @ts-expect-error migrate takes memory or store, not both.
 const migrateBoth: MigrateInput = {
 	memory: client,
@@ -1238,3 +1249,6 @@ void explainedK;
 void observedAgent;
 void observedSession;
 void nullAgent;
+void numericSchema;
+void schemaCreated;
+void installationElsewhere;

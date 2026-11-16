@@ -184,6 +184,68 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 		expect(noSize.stderr).toContain("--dimensions <n>");
 	});
 
+	test("generate --adapter drizzle writes a schema that type-checks against drizzle-orm", async () => {
+		const app = await project("drizzle-schema", {
+			"tsconfig.json": JSON.stringify({
+				compilerOptions: {
+					strict: true,
+					noEmit: true,
+					module: "nodenext",
+					moduleResolution: "nodenext",
+					target: "es2022",
+					skipLibCheck: true,
+					exactOptionalPropertyTypes: true,
+					noUncheckedIndexedAccess: true,
+				},
+				include: ["*.ts", "src/**/*.ts"],
+			}),
+		});
+		await linkPackage(app, "drizzle-orm", resolve("node_modules/drizzle-orm"));
+
+		const run = await runCli(app, [
+			"generate",
+			"--adapter",
+			"drizzle",
+			"--dimensions",
+			"1536",
+		]);
+		expect(run.stderr).toBe("");
+		expect(run.code).toBe(0);
+		expect(run.stdout).toMatch(/^Wrote mnemocyte-schema\.ts \(1536 dimensions/);
+		expect(run.stdout).toContain("npx drizzle-kit generate --custom");
+
+		const named = await runCli(app, [
+			"generate",
+			"--adapter",
+			"drizzle",
+			"--dimensions",
+			"3072",
+			"--schema",
+			"memory",
+			"--text-search-config",
+			"simple",
+			"--out",
+			"src/db/mnemocyte.ts",
+		]);
+		expect(named.code).toBe(0);
+		expect(await readFile(join(app, "src/db/mnemocyte.ts"), "utf8")).toContain(
+			'halfvec("embedding", { dimensions: 3072 })',
+		);
+
+		const tsc = await new Promise<CliRun>((done) => {
+			execFile(
+				process.execPath,
+				[resolve("node_modules/typescript/bin/tsc"), "-p", app],
+				{ cwd: app, windowsHide: true },
+				(error, stdout, stderr) => {
+					done({ code: error === null ? 0 : 1, stdout, stderr });
+				},
+			);
+		});
+		expect(tsc.stdout).toBe("");
+		expect(tsc.code).toBe(0);
+	});
+
 	test("without a memory file or DATABASE_URL, migrate and check exit 2", async () => {
 		const empty = await project("no-target", {});
 		for (const command of ["migrate", "check"]) {

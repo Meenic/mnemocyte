@@ -67,7 +67,7 @@ src/
   ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
   ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
-  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql, text-search
+  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql, generate, drizzle, text-search
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
@@ -237,10 +237,11 @@ Exports:
   `PostgresStoreOptions`, and the `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
   types) and `DrizzleClient` types.
-- The `mnemocyte` bin: `init`, `migrate`, `check`, `sql` and
-  `text-search <name>`, with `--config`, `--dimensions`, `--env-file`,
-  `--text-search-config`, `--yes`, `--dry-run`, `--json`, `--embedder` and
-  `--out`. Its
+- The `mnemocyte` bin: `init`, `migrate`, `check`, `sql`,
+  `generate --adapter drizzle` and `text-search <name>`, with `--config`,
+  `--dimensions`, `--env-file`, `--text-search-config`, `--schema`,
+  `--yes`, `--dry-run`, `--json`, `--embedder`, `--adapter` and `--out`.
+  The schema file `generate` writes is public too. Its
   commands, flags and exit codes (0, 1, 2) are public; its modules are not
   exported. See [features/cli.md](./features/cli.md).
 

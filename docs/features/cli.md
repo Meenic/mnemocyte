@@ -1,6 +1,7 @@
 # CLI
 
-The `mnemocyte` bin: `init`, `migrate`, `check`, `sql` and `text-search`.
+The `mnemocyte` bin: `init`, `migrate`, `check`, `sql`, `generate` and
+`text-search`.
 The user reference is
 [guide/cli.md](../guide/cli.md); this page is how it is built and why.
 
@@ -40,7 +41,9 @@ src/cli/
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
   migrate.ts             migrateTarget / migrateCommand
   check.ts               evaluateInstallation, describeInstallation, installationJson, checkTarget / checkCommand
-  sql.ts                 sqlCommand
+  sql.ts                 resolveSchemaShape (shared with generate), sqlCommand
+  drizzle.ts             renderDrizzleSchema, renderDrizzleSetupSql, renderDrizzleTextSearchIndexSql, readDrizzleSchemaShape
+  generate.ts            generateCommand and the steps it prints
   text-search.ts         textSearchTarget / textSearchCommand
 src/db/migrations/inspect.ts   inspectPostgresInstallation: the facts check reports
 src/db/pgvector.ts             assertPgvectorVersion (shared with the store)
@@ -291,6 +294,50 @@ installation's configuration after `normalizeTextSearchConfig` (unquoted
 names fold to lower case, a `pg_catalog.` prefix is dropped), because
 `check` sends only reads and never asks the server to resolve the name.
 
+## `generate`
+
+`generateCommand` writes the tables as a Drizzle schema for an app whose
+migrations drizzle-kit runs (ARCHITECTURE decision 52). `--adapter` is
+required and `drizzle` is its only value, so another format can be added
+without changing what the bare command means.
+
+- **Input.** `resolveSchemaShape`, shared with `sql`: `--dimensions`
+  alone loads no file; otherwise the memory file gives
+  `embedder.dimensions` and the store's `schemaName`, and `--schema` may
+  only repeat it. `--text-search-config` defaults to `english`. Nothing
+  connects to a database.
+- **Rendering.** `renderDrizzleSchema` (pure) returns the module as text;
+  nothing in the package imports drizzle-orm. It targets drizzle-orm
+  0.45: `pgTable` (or `pgSchema(name).table` with a schema, exported as
+  `mnemocyteSchema` so drizzle-kit writes `CREATE SCHEMA`), the array form
+  of the extra config, `vector`/`halfvec` with `dimensions`, a `tsvector`
+  `customType`, `generatedAlwaysAs(sql…)` for `content_tsv` and
+  `memory_id`, `index().using()` with `.op("…_cosine_ops")` and `.where()`,
+  `check()` and a named self `foreignKey()`. `tags` uses `.default([])`;
+  ``sql`'{}'::text[]` `` gives the same catalog. Template text is escaped
+  for a JavaScript template literal (backslash, backtick, `${`), because
+  drizzle's `sql` tag reads the cooked strings, so any configuration name
+  comes out as written.
+- **What drizzle-kit cannot write.** `renderDrizzleSetupSql` returns the
+  SQL for two custom migrations: `CREATE EXTENSION IF NOT EXISTS vector`
+  before the tables, then `mnemocyte_memories_scope_key_idx` (partial and
+  `NULLS NOT DISTINCT`, which drizzle-orm has only on unique constraints)
+  and the `installation` row, with schema-qualified names.
+- **Overwrite.** A file that starts with `DRIZZLE_SCHEMA_HEADER` is the
+  command's own and may be replaced; any other file is kept (exit 2). An
+  identical file prints "is up to date". `readDrizzleSchemaShape` reads
+  the dimensions and schema back from the file's own lines; a different
+  size or schema, or a file whose embedding line was edited, is exit 2.
+  A new file is created with `wx` after `mkdir -p` of its folder.
+- **Output.** The steps name the project's runner (`projectRunner` in
+  `init.ts`: `pnpm exec`, `yarn`, `bunx` or `npx`, from `package.json`
+  or the lockfile) and the path as `drizzle.config.ts` takes it (`./`,
+  forward slashes). After a replace, the steps are `drizzle-kit generate`
+  and `migrate`, plus `renderDrizzleTextSearchIndexSql` when the file did
+  not contain the new `content_tsv` expression: drizzle-kit drops and adds
+  the column, which drops its GIN index, and its snapshot still lists the
+  index. `--dry-run` writes the file to stdout and the steps to stderr.
+
 ## `--json`
 
 `check --json`, `migrate --dry-run --json` and
@@ -357,6 +404,22 @@ Windows and an immediate exit can cut output short.
   comparing it, and `text-search` with a yes, a no, no terminal, `--yes`,
   `--dry-run` and `--dry-run --json`; a memory file whose store has a
   `schemaName` through `migrate` and `check`, and `assertSchemaFlag`.
+- `test/cli/generate.test.ts` (unit): the rendered text (`vector` and
+  `halfvec`, `pgSchema`, a configuration name with a backtick, `${` and a
+  backslash evaluated through a stand-in `sql` tag), the setup SQL, and
+  the command's writes, replaces, refusals, `--dry-run`, `--out` and the
+  printed runner.
+- `test/contract/drizzle-schema.test.ts` (PGlite, drizzle-kit 0.31.11's
+  `drizzle-kit/api`): each generated schema goes through
+  `generateDrizzleJson` and `generateMigration` from an empty snapshot,
+  between the two custom migrations, and its catalog (columns in order,
+  defaults and generated expressions, constraints, indexes, the
+  `installation` row) must equal a `migrate` fresh install at 1536, 3072
+  (`halfvec`), `simple` and in a schema. `check` reports it untracked
+  with no problem; a client's keyed `add` without `agentId` updates in
+  place; a configuration change through drizzle-kit plus the printed
+  index matches a fresh `simple` install; `pushSchema` would drop the key
+  index (and sets the `text[]` default again, which changes nothing).
 - `test/package/cli.test.ts`: runs `dist/cli.mjs` as a child process in
   temporary projects whose `node_modules` link to this package. One project
   has a TypeScript memory file on PGlite with a `.js` import, an
@@ -368,7 +431,10 @@ Windows and an immediate exit can cut output short.
   `init --dry-run`, `init`, then `sql`, `migrate --yes` and `check` on the
   file `init` wrote, and `init` again. An in-memory project whose memory
   file prints a line runs `check --json` and `migrate --dry-run --json`
-  and reads the JSON from the last line. It also checks the shebang, the `bin` field, that the bin
+  and reads the JSON from the last line. A Drizzle project runs
+  `generate --adapter drizzle`, with and without `--schema` and `--out`
+  in a folder that does not exist, and type-checks both files with `tsc`
+  (strict, `exactOptionalPropertyTypes`) against drizzle-orm 0.45.4. It also checks the shebang, the `bin` field, that the bin
   imports no driver, and the load errors.
 - `test/integration/cli.test.ts`: `main` in process against real Postgres
   through `DATABASE_URL`: fresh install, the missing `--dimensions`,

@@ -261,10 +261,14 @@ To change the schema: write the next numbered migration by hand, update the
 template so a fresh install matches the upgraded catalog column for column,
 and run `pnpm migration:bundle`, which regenerates the bundled module and
 `fresh-install.sql`. Teach `installedVersion` in `src/db/migrations/runner.ts` the object the new
-migration adds, so untracked schemas at that level are still adopted. There is no Drizzle schema to generate from: the
-table definitions in `src/db/schema.ts` were removed with `0003`, because
-drizzle-kit cannot express the dimension-dependent vector type, and their
-inferred types blocked `isolatedDeclarations`.
+migration adds, so untracked schemas at that level are still adopted. Then
+change `renderDrizzleSchema` in `src/cli/drizzle.ts` the same way:
+`test/contract/drizzle-schema.test.ts` runs the generated schema through
+drizzle-kit and fails until its catalog matches a fresh install, and the
+release notes tell drizzle-kit users to run `generate` again (see
+[cli.md](./cli.md#generate)). The table definitions in `src/db/schema.ts`
+were removed with `0003`; their inferred types blocked
+`isolatedDeclarations`, so the Drizzle schema is generated text instead.
 
 ### The `migrate()` runner
 

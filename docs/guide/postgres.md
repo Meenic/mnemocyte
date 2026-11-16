@@ -23,7 +23,8 @@ in-memory backend needs none of this.
 
 Mnemocyte never creates extensions, tables or indexes when a client is
 created. You create the schema with the `mnemocyte migrate` command, with
-the `migrate()` function, or by applying the bundled SQL files yourself.
+the `migrate()` function, by applying the bundled SQL files yourself, or
+[with drizzle-kit](#manage-the-tables-with-drizzle-kit).
 
 ## Install the schema
 
@@ -248,6 +249,82 @@ second installation next to the one in `public`, apply the output of
 `mnemocyte sql --schema <name>` with `psql`; `migrate` adopts it after
 that.
 
+## Manage the tables with drizzle-kit
+
+If drizzle-kit already runs your app's migrations, it can run Mnemocyte's
+too. `mnemocyte generate` writes the tables as a Drizzle schema file:
+
+```bash
+pnpm exec mnemocyte generate --adapter drizzle
+```
+
+It writes `mnemocyte-schema.ts` (`--out` picks another path) for your
+memory file's embedding size, or for `--dimensions`. Like `sql`, it takes
+`--text-search-config` and `--schema` (or your store's `schemaName`) and
+never connects to a database. The file is written for drizzle-orm 0.45
+and exports `mnemocyteMemories`, `mnemocyteEvents` and `mnemocyteMeta`.
+
+Add it to your `drizzle.config.ts`:
+
+```ts
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: ["./src/db/schema.ts", "./mnemocyte-schema.ts"],
+  out: "./drizzle",
+  dbCredentials: { url: process.env.DATABASE_URL ?? "" },
+});
+```
+
+drizzle-kit cannot write three parts of the schema: the pgvector
+extension, the unique index that makes keyed `add` calls update in place
+(it needs `NULLS NOT DISTINCT`, which drizzle-orm only has on constraints)
+and the row in `mnemocyte_meta` that records the embedding size. They go
+in custom migrations, which `drizzle-kit generate --custom` creates empty
+for you to fill. `generate` prints the steps with the SQL for your setup:
+
+1. Unless pgvector is enabled already,
+   `pnpm exec drizzle-kit generate --custom --name=pgvector`, and put
+   `CREATE EXTENSION IF NOT EXISTS vector;` in the new file.
+2. `pnpm exec drizzle-kit generate` for the tables.
+3. `pnpm exec drizzle-kit generate --custom --name=mnemocyte`, and put
+   the SQL `generate` printed in the new file. For 1536 dimensions in
+   `public` it is:
+
+   ```sql
+   CREATE UNIQUE INDEX "mnemocyte_memories_scope_key_idx" ON "mnemocyte_memories" USING btree ("namespace","entity_id","agent_id","session_id","key") NULLS NOT DISTINCT WHERE "key" IS NOT NULL;
+   --> statement-breakpoint
+   INSERT INTO "mnemocyte_meta" ("key", "embedding_dimensions", "vector_type") VALUES ('installation', 1536, 'vector');
+   ```
+
+4. `pnpm exec drizzle-kit migrate`, then `pnpm exec mnemocyte check`.
+
+`check` says the migrations are "not recorded". That is expected:
+drizzle-kit keeps its own history, so Mnemocyte's `mnemocyte_migrations`
+table does not exist.
+
+From then on, drizzle-kit manages these tables:
+
+- **Don't run `mnemocyte migrate` on them.** It would record Mnemocyte's
+  migrations and later apply new ones that drizzle-kit applies too.
+- **Don't use `drizzle-kit push` on them.** Push compares the database
+  with your schema files, finds the unique index that is not in them, and
+  drops it. Every `add` with a `key` fails after that.
+- **After a Mnemocyte upgrade,** run `generate` again. It replaces its own
+  file, never one it did not write. Then run `drizzle-kit generate`, read
+  the migration, and `drizzle-kit migrate`. When nothing changed, `generate`
+  says the file is up to date.
+- **To change the [keyword search language](#keyword-search-language),**
+  run `generate` with the new `--text-search-config`, then
+  `drizzle-kit generate`. drizzle-kit drops the keyword column and adds it
+  back, which drops its index too, so `generate` prints a `CREATE INDEX`
+  and an `ANALYZE` to add to the end of that migration before you apply it.
+  The rewrite takes as long as described there.
+- **The embedding size and the schema stay.** `generate` refuses to
+  change either in an existing file, as `migrate` does for an
+  installation; `--out` writes a file for a new installation instead.
+
 ## Connect
 
 Pass the client your app already has as `store`. Mnemocyte recognises it
@@ -346,7 +423,8 @@ Mnemocyte runs its own SQL on `db.$client` and shares its pool. Supported:
 `drizzle-orm/postgres-js`, `drizzle-orm/node-postgres` with a `Pool`, and
 `drizzle-orm/pglite`; any other Drizzle driver throws `"CONFIG"`. Your
 Drizzle schema does not need to include Mnemocyte's tables, but the
-migrations must be applied.
+migrations must be applied. To let drizzle-kit apply them, see
+[Manage the tables with drizzle-kit](#manage-the-tables-with-drizzle-kit).
 
 Let the type be inferred from `drizzle()`. drizzle-orm's
 `PostgresJsDatabase` type does not declare `$client`, so an instance
@@ -413,7 +491,8 @@ exits 1 while migrations are pending. The code changes between releases
 are in [upgrading.md](./upgrading.md).
 
 With `psql`, apply the numbered migrations yourself. Never apply
-`fresh-install.sql` over an existing Mnemocyte schema.
+`fresh-install.sql` over an existing Mnemocyte schema. With drizzle-kit,
+see [after a Mnemocyte upgrade](#manage-the-tables-with-drizzle-kit).
 
 | Installed version | Apply, in order |
 |---|---|

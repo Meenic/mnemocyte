@@ -45,6 +45,25 @@ marked **Breaking** in their entries. What semver covers is in
   `INSTALLATION_ELSEWHERE`, and the guide shows the `ALTER TABLE … SET
   SCHEMA` to run. Without `schemaName` nothing changes. See
   [keep the tables in their own schema](docs/guide/postgres.md#keep-the-tables-in-their-own-schema).
+- **Let drizzle-kit manage the tables.**
+  `mnemocyte generate --adapter drizzle` writes Mnemocyte's tables as a
+  Drizzle schema file (`mnemocyte-schema.ts`, or `--out`) for your
+  embedding size, keyword search language and schema. Add it to
+  `drizzle.config.ts` and drizzle-kit creates and upgrades the tables with
+  the rest of your schema. drizzle-kit cannot write three parts of it (the
+  pgvector extension, the unique key index and the installation row), so
+  the command prints them as SQL for two custom migrations. Run
+  `generate` again after an upgrade; it only replaces a file it wrote.
+  Don't use `drizzle-kit push` or `mnemocyte migrate` on these tables. It
+  needs no database, and nothing changes for apps that use `migrate`. See
+  [manage the tables with drizzle-kit](docs/guide/postgres.md#manage-the-tables-with-drizzle-kit).
+
+### Changed
+
+- **`mnemocyte check` on a schema installed without `migrate`** now says
+  that drizzle-kit installations keep upgrading through
+  `mnemocyte generate --adapter drizzle`, instead of only suggesting
+  `mnemocyte migrate`.
 
 ## [1.1.0] - 2026-11-16
 

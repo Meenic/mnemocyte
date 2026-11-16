@@ -124,11 +124,11 @@ describe("parseCliArgs", () => {
 		],
 		[
 			["text-search", "simple", "--text-search-config", "simple"],
-			"--text-search-config applies to migrate, check and sql, not to text-search.",
+			"--text-search-config applies to migrate, check, sql and generate, not to text-search.",
 		],
 		[
 			["init", "--text-search-config", "simple"],
-			"--text-search-config applies to migrate, check and sql, not to init.",
+			"--text-search-config applies to migrate, check, sql and generate, not to init.",
 		],
 		[["migrate", "--text-search-config", ""], "must be a non-empty string"],
 		[["migrate", "simple"], 'Unexpected argument "simple"'],
@@ -153,12 +153,67 @@ describe("parseCliArgs", () => {
 	test.each([
 		[
 			["init", "--schema", "memory"],
-			"--schema applies to migrate, check, sql and text-search, not to init.",
+			"--schema applies to migrate, check, sql, generate and text-search, not to init.",
 		],
 		[["migrate", "--schema", "Memory"], "--schema must be lower case letters"],
 		[["migrate", "--schema", "pg_memory"], "must not start with pg_"],
 		[["migrate", "--schema"], "argument missing"],
 	])("rejects schema arguments %j", (argv, message) => {
+		const error = usageError(argv);
+		expect(error.exitCode).toBe(2);
+		expect(error.message).toContain(message);
+	});
+
+	test("generate takes an adapter and the schema flags", () => {
+		expect(
+			parseCliArgs([
+				"generate",
+				"--adapter",
+				"drizzle",
+				"--dimensions",
+				"768",
+				"--text-search-config",
+				"simple",
+				"--schema",
+				"memory",
+				"--out",
+				"src/db/mnemocyte.ts",
+				"--dry-run",
+			]),
+		).toEqual({
+			command: "generate",
+			adapter: "drizzle",
+			dimensions: 768,
+			textSearchConfig: "simple",
+			schema: "memory",
+			out: "src/db/mnemocyte.ts",
+			yes: false,
+			dryRun: true,
+			json: false,
+		});
+	});
+
+	test.each([
+		[["generate"], "generate needs --adapter: drizzle."],
+		[
+			["generate", "--adapter", "prisma"],
+			'Unknown adapter "prisma". Adapters: drizzle.',
+		],
+		[
+			["sql", "--adapter", "drizzle"],
+			"--adapter applies to generate, not to sql.",
+		],
+		[
+			["generate", "--adapter", "drizzle", "--json"],
+			"--json applies to check, migrate and text-search, not to generate.",
+		],
+		[
+			["generate", "--adapter", "drizzle", "--yes"],
+			"--yes applies to migrate and text-search, not to generate.",
+		],
+		[["generate", "--adapter", "drizzle", "--out="], "--out needs a path."],
+		[["generate", "drizzle"], 'Unexpected argument "drizzle"'],
+	])("rejects generate arguments %j", (argv, message) => {
 		const error = usageError(argv);
 		expect(error.exitCode).toBe(2);
 		expect(error.message).toContain(message);
@@ -184,7 +239,7 @@ describe("parseCliArgs", () => {
 		],
 		[
 			["sql", "--dry-run"],
-			"--dry-run applies to migrate, init and text-search, not to sql.",
+			"--dry-run applies to migrate, init, generate and text-search, not to sql.",
 		],
 		[
 			["init", "--yes"],
@@ -194,7 +249,10 @@ describe("parseCliArgs", () => {
 		[["init", "--env-file", ".env.x"], "--env-file does not apply to init."],
 		[["init", "--dimensions", "8"], "--dimensions does not apply to init."],
 		[["init", "extra"], 'Unexpected argument "extra"'],
-		[["migrate", "--out", "x.sql"], "--out applies to sql, not to migrate."],
+		[
+			["migrate", "--out", "x.sql"],
+			"--out applies to sql and generate, not to migrate.",
+		],
 		[["migrate", "--config="], "--config needs a path."],
 		[["migrate", "--config"], "--config"],
 		[

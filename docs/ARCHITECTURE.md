@@ -972,3 +972,23 @@ Dated 2026-10-26 unless noted.
     - `migrate --json` needs `--dry-run`: a real run may ask on stdout.
       Allowing it later, without a prompt, is additive. `init` and `sql`
       get no `--json`, and no roadmap item is added until someone asks.
+48. **`init --embedder`** (2026-11-16, landed): the maintainer chose, with
+    `feat/init-embedder`, a `--embedder` flag on `init` with two values,
+    `openai` (the default, unchanged output) and `openai-compatible`:
+    - No hosted embedders yet (Voyage, Cohere, Gemini). Each needs its own
+      template, key variable and hint; adding a value later is additive,
+      and no roadmap item is added until someone asks.
+    - `openai-compatible` writes the getting-started Ollama embedder as it
+      stands: `baseURL` `http://localhost:11434/v1`, `nomic-embed-text`,
+      768 dimensions and the `search_query: ` and `search_document: `
+      prefixes. Ollama's own embeddings page now shows `embeddinggemma`;
+      moving to it would change the guide too, so it is its own change.
+    - No `.env` variable for it. Ollama's OpenAI-compatible API needs no
+      key ("required but ignored" in its docs), and an empty variable
+      would suggest one is needed. `.env` is not written; the "Next" list
+      says to pull the model, or to change `baseURL`, `model` and
+      `dimensions` first for another server.
+    - No interactive prompt, so `init` behaves the same in a terminal, a
+      script and CI, and `--dry-run` shows exactly what a run does. A
+      prompt when the flag is missing and stdin is a terminal would be
+      additive.

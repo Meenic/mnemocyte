@@ -65,7 +65,7 @@ decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
   events, next to `namespace` and `entityId`.
 - [x] `feat/cli-json`: `--json` for `check` and `migrate --dry-run`, so CI
   can read the result.
-- [ ] `feat/init-embedder`: `init --embedder openai-compatible`. Today
+- [x] `feat/init-embedder`: `init --embedder openai-compatible`. Today
   `init` always writes `openaiEmbedder` and `OPENAI_API_KEY=`, even for the
   Ollama setup the getting-started guide shows.
 

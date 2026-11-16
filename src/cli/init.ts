@@ -102,6 +102,54 @@ export function usesDatabaseUrl(driver: InitDriver): boolean {
 	);
 }
 
+/** The embedders `init --embedder` writes, the default first. */
+export const INIT_EMBEDDERS = ["openai", "openai-compatible"] as const;
+
+export type InitEmbedder = (typeof INIT_EMBEDDERS)[number];
+
+interface EmbedderTemplate {
+	readonly import: string;
+	/** The `embedder:` property, unindented, as the guide shows it. */
+	readonly property: string;
+	/** The `.env` variable `init` adds, or none for a local server. */
+	readonly envVariable?: string;
+	/** The "Next" line while `envVariable` is empty. */
+	readonly keyHint?: string;
+	/** A line printed once the file is chosen, or none. */
+	readonly note?: string;
+	/** A "Next" line after the file is written, or none. */
+	readonly next?: string;
+}
+
+const OPENAI_IMPORT = 'import { openaiEmbedder } from "mnemocyte/embedders";';
+
+// The OpenAI file is a getting-started `memory.ts` block; the
+// OpenAI-compatible one swaps in the guide's Ollama block. A unit test
+// holds both to the guide.
+const EMBEDDERS: Readonly<Record<InitEmbedder, EmbedderTemplate>> = {
+	openai: {
+		import: OPENAI_IMPORT,
+		property: 'embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+		envVariable: "OPENAI_API_KEY",
+		keyHint: "Put your OpenAI API key after OPENAI_API_KEY= in .env",
+	},
+	"openai-compatible": {
+		import: 'import { openaiCompatibleEmbedder } from "mnemocyte/embedders";',
+		property: `embedder: openaiCompatibleEmbedder({
+  baseURL: "http://localhost:11434/v1",
+  model: "nomic-embed-text",
+  dimensions: 768,
+  // nomic-embed-text expects these prefixes on queries and documents
+  purposes: {
+    query: { prefix: "search_query: " },
+    document: { prefix: "search_document: " },
+  },
+}),`,
+		note: "Embedder: nomic-embed-text (768 dimensions) on a local Ollama at http://localhost:11434/v1.",
+		next: "Pull the model: ollama pull nomic-embed-text (for another server, change baseURL, model and dimensions in memory.ts first)",
+	},
+};
+
 interface Template {
 	readonly imports: readonly string[];
 	/** The lines that create the database client, or none. */
@@ -112,7 +160,7 @@ interface Template {
 
 const MNEMOCYTE_IMPORTS = [
 	'import { createMemory } from "mnemocyte";',
-	'import { openaiEmbedder } from "mnemocyte/embedders";',
+	OPENAI_IMPORT,
 ];
 
 const POSTGRES_SETUP =
@@ -177,20 +225,25 @@ const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
 	"in-memory": { imports: MNEMOCYTE_IMPORTS },
 };
 
-/** The `memory.ts` `init` writes for a driver and namespace. */
+/** The `memory.ts` `init` writes for a driver, namespace and embedder. */
 export function renderMemoryFile(input: {
 	driver: InitDriver;
 	namespace: string;
+	/** Defaults to `openai`. */
+	embedder?: InitEmbedder;
 }): string {
 	const { imports, setup, store } = TEMPLATES[input.driver];
+	const embedder = EMBEDDERS[input.embedder ?? "openai"];
 	const lines = [
-		imports.join("\n"),
+		imports
+			.map((line) => (line === OPENAI_IMPORT ? embedder.import : line))
+			.join("\n"),
 		"",
 		...(setup === undefined ? [] : [setup, ""]),
 		"export const memory = createMemory({",
 		`  namespace: ${JSON.stringify(input.namespace)},`,
 		...(store === undefined ? [] : [`  store: ${store},`]),
-		'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+		...embedder.property.split("\n").map((line) => `  ${line}`),
 		"});",
 	];
 	return `${lines.join("\n")}\n`;
@@ -202,24 +255,25 @@ export type EnvChange =
 	| { readonly action: "create"; readonly text: string }
 	| { readonly action: "append"; readonly text: string };
 
-export const ENV_VARIABLE = "OPENAI_API_KEY";
-
 /**
- * Plan the `.env` change for its current content, or `null` when there is
- * no file: nothing when `OPENAI_API_KEY` is defined (even empty), else one
- * line in the file's own line ending, after a line break when the last line
- * has none.
+ * Plan adding `variable=` to `.env` for its current content, or `null` when
+ * there is no file: nothing when the variable is defined (even empty), else
+ * one line in the file's own line ending, after a line break when the last
+ * line has none.
  */
-export function planEnvChange(content: string | null): EnvChange {
+export function planEnvChange(
+	content: string | null,
+	variable: string,
+): EnvChange {
 	if (content === null) {
-		return { action: "create", text: `${ENV_VARIABLE}=\n` };
+		return { action: "create", text: `${variable}=\n` };
 	}
-	if (parseEnv(content)[ENV_VARIABLE] !== undefined) {
+	if (parseEnv(content)[variable] !== undefined) {
 		return { action: "none" };
 	}
 	const eol = content.includes("\r\n") ? "\r\n" : "\n";
 	const separator = content === "" || content.endsWith("\n") ? "" : eol;
-	return { action: "append", text: `${separator}${ENV_VARIABLE}=${eol}` };
+	return { action: "append", text: `${separator}${variable}=${eol}` };
 }
 
 /** Whether a `.gitignore` has a line that ignores `.env` in the root. */
@@ -384,7 +438,9 @@ function packageNames(pkg: PackageJson): Set<string> {
 
 /**
  * `mnemocyte init`: write a `memory.ts` for the driver in `package.json`
- * and add `OPENAI_API_KEY=` to `.env` when it is not defined there. It
+ * and the embedder `--embedder` names, and add the embedder's key variable
+ * (`OPENAI_API_KEY=`; none for `openai-compatible`) to `.env` when it is
+ * not defined there. It
  * never overwrites a file: an existing memory file anywhere the CLI looks
  * is left as is, and `memory.ts` is created with `O_EXCL` (`flag: "wx"`),
  * so a file that appears in the meantime is not replaced either. Every
@@ -397,6 +453,7 @@ function packageNames(pkg: PackageJson): Set<string> {
 export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 	const { cwd } = io;
 	const dryRun = args.dryRun;
+	const embedder = EMBEDDERS[args.embedder ?? "openai"];
 	const pkg = await readPackageJson(cwd);
 	const out: string[] = [];
 	const next: string[] = [];
@@ -413,7 +470,11 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 			typeof pkg.name === "string" && pkg.name !== ""
 				? pkg.name
 				: DEFAULT_NAMESPACE;
-		const content = renderMemoryFile({ driver: choice.driver, namespace });
+		const content = renderMemoryFile({
+			driver: choice.driver,
+			namespace,
+			...(args.embedder === undefined ? {} : { embedder: args.embedder }),
+		});
 		if (choice.driver === "in-memory") {
 			out.push(
 				`No database driver in package.json (${DRIVER_PACKAGES.join(", ")}): using the in-memory backend, whose memories are gone when the process exits. To use Postgres later, install a driver, delete ${INIT_FILE} and run mnemocyte init again.`,
@@ -422,6 +483,9 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 			out.push(
 				`Found ${choice.found.join(", ")} in package.json: using ${choice.label}.`,
 			);
+		}
+		if (embedder.note !== undefined) {
+			out.push(embedder.note);
 		}
 		if (dryRun) {
 			out.push(`Would write ${INIT_FILE}:`, "", content);
@@ -433,26 +497,31 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 		}
 	}
 
-	// .env
+	// .env, for an embedder that reads a key from it. A local server needs
+	// none, so .env is not touched.
 	const envPath = join(cwd, ".env");
 	const envContent = await readText(envPath);
-	const change = planEnvChange(envContent);
 	const env = envContent === null ? {} : parseEnv(envContent);
-	if (change.action === "none") {
-		out.push(`.env already defines ${ENV_VARIABLE}, left as is.`);
-	} else {
+	const variable = embedder.envVariable;
+	const change: EnvChange =
+		variable === undefined
+			? { action: "none" }
+			: planEnvChange(envContent, variable);
+	if (variable !== undefined && change.action === "none") {
+		out.push(`.env already defines ${variable}, left as is.`);
+	} else if (variable !== undefined && change.action !== "none") {
 		const verb = change.action === "create" ? "create .env with" : "add";
 		if (dryRun) {
 			out.push(
-				`Would ${verb} ${ENV_VARIABLE}=${change.action === "append" ? " to .env" : ""}`,
+				`Would ${verb} ${variable}=${change.action === "append" ? " to .env" : ""}`,
 			);
 		} else {
 			if (change.action === "create") {
 				await writeFile(envPath, change.text, { flag: "wx" });
-				out.push(`Created .env with ${ENV_VARIABLE}=`);
+				out.push(`Created .env with ${variable}=`);
 			} else {
 				await appendFile(envPath, change.text);
-				out.push(`Added ${ENV_VARIABLE}= to .env`);
+				out.push(`Added ${variable}= to .env`);
 			}
 		}
 		const gitignore = await readText(join(cwd, ".gitignore"));
@@ -473,13 +542,20 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 	if (choice !== undefined && choice.missing.length > 0) {
 		next.push(`Install: ${await installCommand(cwd, choice.missing)}`);
 	}
-	if (!env[ENV_VARIABLE]) {
-		next.push(`Put your OpenAI API key after ${ENV_VARIABLE}= in .env`);
+	if (
+		variable !== undefined &&
+		embedder.keyHint !== undefined &&
+		!env[variable]
+	) {
+		next.push(embedder.keyHint);
 	}
 	if (choice !== undefined && usesDatabaseUrl(choice.driver)) {
 		if (env.DATABASE_URL === undefined) {
 			next.push("Add DATABASE_URL=postgres://… to .env");
 		}
+	}
+	if (choice !== undefined && embedder.next !== undefined) {
+		next.push(embedder.next);
 	}
 	if (choice !== undefined && choice.driver !== "in-memory") {
 		next.push(`Create the schema: ${await runnerCommand(cwd, pkg)} migrate`);

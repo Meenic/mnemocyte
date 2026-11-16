@@ -103,12 +103,13 @@ the command stops with an install hint.
 ## `init`
 
 ```bash
-pnpm exec mnemocyte init [--dry-run]
+pnpm exec mnemocyte init [--embedder <openai|openai-compatible>] [--dry-run]
 ```
 
 Writes `memory.ts` in the project root, the file `migrate` and `check`
 then load, and adds `OPENAI_API_KEY=` to `.env`. Run it in the folder with
-your `package.json`.
+your `package.json`. For a local model, see
+[A local Ollama](#a-local-ollama).
 
 ```txt
 Found drizzle-orm, postgres in package.json: using Drizzle on postgres.js.
@@ -151,6 +152,36 @@ above is from a pnpm project.
 - **`"type": "module"`.** Without it in `package.json`, Node still loads
   `memory.ts` as an ES module but warns on every run, so `init` prints a
   note with `npm pkg set type=module`.
+
+### A local Ollama
+
+`--embedder openai-compatible` writes the same file with the embedder from
+[Use Ollama instead of OpenAI](./getting-started.md#use-ollama-instead-of-openai):
+`openaiCompatibleEmbedder` with `nomic-embed-text` (768 dimensions) at
+`http://localhost:11434/v1`. A local server needs no key, so `init` leaves
+`.env` alone:
+
+```bash
+pnpm exec mnemocyte init --embedder openai-compatible
+```
+
+```txt
+Found postgres in package.json: using postgres.js.
+Embedder: nomic-embed-text (768 dimensions) on a local Ollama at http://localhost:11434/v1.
+Wrote memory.ts
+
+Next:
+  Add DATABASE_URL=postgres://… to .env
+  Pull the model: ollama pull nomic-embed-text (for another server, change baseURL, model and dimensions in memory.ts first)
+  Create the schema: pnpm exec mnemocyte migrate
+```
+
+For LM Studio, vLLM or another OpenAI-compatible server, change `baseURL`,
+`model` and `dimensions` in `memory.ts` before the first `migrate`, and add
+`apiKey` if the server needs one (see the
+[embedders guide](./embedders.md#openaicompatibleembedder)).
+`--embedder openai` is the default. Other embedders are not offered yet:
+write the default file and swap the embedder by hand.
 
 ## `migrate`
 

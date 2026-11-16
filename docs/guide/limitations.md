@@ -31,11 +31,18 @@ them.
   `signal` stops the next statement and the call rejects with `"ABORTED"`,
   but a statement already sent runs to the end. postgres.js cancels it on
   the server.
-- **`migrate` needs interactive transactions and the `public` schema.** It
-  runs each migration in a transaction, so HTTP drivers without one (Neon's
-  HTTP driver) cannot run it; use a regular connection for migrating. The
-  consolidation foreign key names `public.mnemocyte_memories`, so the tables
-  must live in `public`.
+- **`migrate` needs interactive transactions.** It runs each migration in
+  a transaction, so HTTP drivers without one (Neon's HTTP driver) cannot
+  run it; use a regular connection for migrating.
+- **`migrate` does not move an installation between schemas.** With
+  `schemaName` set, a fresh install throws `"CONFIG"`
+  (`INSTALLATION_ELSEWHERE`) while `search_path` finds Mnemocyte tables in
+  another schema. Move them with `ALTER TABLE … SET SCHEMA`, or install a
+  second one from `mnemocyte sql --schema`
+  ([postgres.md](./postgres.md#move-an-existing-installation)).
+- **Schema names are lower case.** `schemaName` takes letters `a`–`z`,
+  digits and underscores only, so a schema created as `"Memory"` (quoted,
+  mixed case) cannot be used.
 - **Recall needs pgvector 0.8.** The vector search uses iterative index
   scans; pgvector before 0.8.0 throws `"MIGRATION"`.
 - **`addMany` takes at most 1,000 memories.** Larger calls throw

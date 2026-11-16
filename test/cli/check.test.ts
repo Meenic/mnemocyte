@@ -14,6 +14,7 @@ const ALL = [
 ];
 
 const HEALTHY: InstallationReport = {
+	schema: null,
 	pgvectorVersion: "0.8.7",
 	migrations: { state: "tracked", applied: ALL, pending: [] },
 	column: { dimensions: 1536, vectorType: "vector" },
@@ -64,7 +65,12 @@ describe("evaluateInstallation", () => {
 
 	test("missing tables, pending migrations and refused schemas are problems", () => {
 		const none = evaluateInstallation(
-			{ pgvectorVersion: "0.8.7", migrations: { state: "none" }, column: null },
+			{
+				schema: null,
+				pgvectorVersion: "0.8.7",
+				migrations: { state: "none" },
+				column: null,
+			},
 			APP,
 		);
 		expect(none.problems).toEqual([
@@ -76,6 +82,7 @@ describe("evaluateInstallation", () => {
 
 		const pending = evaluateInstallation(
 			{
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: {
 					state: "tracked",
@@ -96,6 +103,7 @@ describe("evaluateInstallation", () => {
 
 		const two = evaluateInstallation(
 			{
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: {
 					state: "untracked",
@@ -119,6 +127,7 @@ describe("evaluateInstallation", () => {
 
 		const invalid = evaluateInstallation(
 			{
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: { state: "invalid", reason: "matches no migration" },
 				column: null,
@@ -167,6 +176,7 @@ describe("evaluateInstallation", () => {
 		]);
 		const behind = evaluateInstallation(
 			{
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: {
 					state: "tracked",
@@ -260,6 +270,7 @@ describe("describeInstallation", () => {
 		]);
 		expect(
 			describeInstallation({
+				schema: null,
 				pgvectorVersion: null,
 				migrations: { state: "none" },
 				column: null,
@@ -273,6 +284,7 @@ describe("describeInstallation", () => {
 		]);
 		expect(
 			describeInstallation({
+				schema: null,
 				pgvectorVersion: "0.8.7",
 				migrations: {
 					state: "untracked",
@@ -294,6 +306,7 @@ describe("describeInstallation", () => {
 describe("installationJson", () => {
 	test("gives the same facts with null for what is missing", () => {
 		expect(installationJson(HEALTHY)).toEqual({
+			schema: null,
 			pgvectorVersion: "0.8.7",
 			migrations: { state: "tracked", applied: ALL, pending: [] },
 			dimensions: 1536,
@@ -303,11 +316,13 @@ describe("installationJson", () => {
 		});
 		expect(
 			installationJson({
+				schema: null,
 				pgvectorVersion: null,
 				migrations: { state: "none" },
 				column: null,
 			}),
 		).toEqual({
+			schema: null,
 			pgvectorVersion: null,
 			migrations: { state: "none", applied: [], pending: [] },
 			dimensions: null,

@@ -10,6 +10,7 @@ import {
 	type NewMemoryRow,
 	vectorSearch,
 } from "../../src/db/queries/memories.js";
+import { DEFAULT_TABLES } from "../../src/db/tables.js";
 import { createPostgresStore } from "../../src/memory/postgres.js";
 import { createUuidV7 } from "../../src/memory/records.js";
 import type {
@@ -201,7 +202,13 @@ describe("chunked memory inserts", () => {
 		);
 		const controller = new AbortController();
 
-		await insertMemories(executor, rows, "vector", controller.signal);
+		await insertMemories(
+			executor,
+			DEFAULT_TABLES,
+			rows,
+			"vector",
+			controller.signal,
+		);
 
 		expect(recorded.queries).toHaveLength(0);
 		expect(recorded.batches).toHaveLength(1);
@@ -229,7 +236,7 @@ describe("chunked memory inserts", () => {
 			newMemoryRow(index),
 		);
 
-		await insertMemories(executor, rows, "vector");
+		await insertMemories(executor, DEFAULT_TABLES, rows, "vector");
 
 		expect(recorded.transactions).toBe(1);
 		expect(recorded.queries).toHaveLength(2);
@@ -241,7 +248,7 @@ describe("chunked memory inserts", () => {
 			transaction: true,
 		});
 
-		await insertMemories(executor, [newMemoryRow(0)], "vector");
+		await insertMemories(executor, DEFAULT_TABLES, [newMemoryRow(0)], "vector");
 
 		expect(recorded.queries).toHaveLength(1);
 		expect(recorded.batches).toHaveLength(0);
@@ -283,7 +290,12 @@ describe("chunked memory inserts", () => {
 			newMemoryRow(index),
 		);
 
-		const inserted = await insertMemories(executor, rows, "vector");
+		const inserted = await insertMemories(
+			executor,
+			DEFAULT_TABLES,
+			rows,
+			"vector",
+		);
 
 		expect(inserted).toHaveLength(2);
 		expect(inserted.every((row) => row.id === id)).toBe(true);
@@ -299,6 +311,7 @@ describe("audit events with chunked inserts", () => {
 
 		await insertMemories(
 			executor,
+			DEFAULT_TABLES,
 			rows,
 			"vector",
 			undefined,
@@ -316,7 +329,14 @@ describe("audit events with chunked inserts", () => {
 		const { executor, recorded } = createExecutor({ batch: true });
 
 		await expectMnemocyteError(
-			insertMemories(executor, [newMemoryRow(0)], "vector", undefined, []),
+			insertMemories(
+				executor,
+				DEFAULT_TABLES,
+				[newMemoryRow(0)],
+				"vector",
+				undefined,
+				[],
+			),
 			"DB",
 		);
 		expect(recorded.batches).toHaveLength(0);
@@ -331,7 +351,7 @@ describe("vector search through batch", () => {
 			transaction: true,
 		});
 
-		const rows = await vectorSearch(executor, {
+		const rows = await vectorSearch(executor, DEFAULT_TABLES, {
 			visibility: testVisibility("alice"),
 			embedding: [1, 0, 0],
 			limit: 150,

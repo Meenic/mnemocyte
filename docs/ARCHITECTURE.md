@@ -194,6 +194,10 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 - **Getting started.** Landed as
   [guide/getting-started.md](./guide/getting-started.md), which creates the
   schema with `npx mnemocyte migrate`.
+- **`schemaName`.** Landed (decision 51):
+  `postgresStore({ client, schemaName })` keeps the tables, the tracking
+  table included, in one schema; see
+  [features/postgres.md](./features/postgres.md#schema-name).
 
 After 1.0:
 
@@ -202,9 +206,6 @@ After 1.0:
   `drizzle-kit` owns the migrations. `migrate` already adopts a schema
   installed outside it; the open question is keeping a generated schema in
   step with later Mnemocyte migrations.
-- **`schemaName`.** Tables in a schema other than `public`. Every query and
-  migration needs schema-qualified names, and the tracking table moves with
-  them.
 
 ## Packaging
 
@@ -1066,3 +1067,42 @@ Dated 2026-10-26 unless noted.
     - The in-memory backend matches substrings and has no configuration:
       `migrate` ignores the option and `setTextSearchConfig` returns `null`
       names with `changed: false`.
+51. **Tables in a schema of their own** (2026-11-16, landed): the
+    maintainer chose, with `feat/schema-name`:
+    - `schemaName` is an option of `postgresStore()` only. `migrate`,
+      `setTextSearchConfig` and the CLI's memory file take it from the
+      store, so it is set in one place and cannot disagree;
+      `createMemory({ store: sql })` stays the shortcut for the default.
+      Without a memory file the CLI takes `--schema` on `migrate`, `check`,
+      `sql` and `text-search`; with one, `--schema` may only repeat the
+      store's name.
+    - `migrate` creates a missing schema on a fresh install, under the lock
+      and in the install's transaction, with no flag (`createExtension`
+      has one because it needs a superuser; this needs `CREATE` on the
+      database). The result gains `schemaCreated`.
+    - Names match `^[a-z_][a-z0-9_]*$`, up to 63 characters, not `pg_…`,
+      checked when `postgresStore` is called (`"CONFIG"`), and are always
+      double-quoted in SQL. Lower case only, so they work unquoted in
+      `psql`; widening later is not a break.
+    - The tracking table moves with the tables, so each schema is its own
+      installation. The advisory lock key stays one for every schema:
+      migrations are rare, and a key per schema would stop a 1.1 client
+      and a newer one from excluding each other on the default
+      installation unless the newer one took both keys.
+    - Queries and catalog reads name the schema; the bundled migrations
+      and the template stay bare and run after a `SET LOCAL search_path`
+      that puts the schema first, so `psql` users can still apply the
+      files and later migrations need no placeholders. Only the self
+      foreign key's `"public"` is replaced. Placeholders in every
+      migration would have made the SQL files unusable without rendering.
+    - `migrate` does not move an installation. A fresh install into a
+      named schema throws `"CONFIG"` (`INSTALLATION_ELSEWHERE`) while the
+      bare table name resolves to another schema, so adding `schemaName`
+      to an existing app does not silently start an empty installation.
+      The guide shows the `ALTER TABLE … SET SCHEMA` move; a second
+      installation next to one on `search_path` comes from
+      `mnemocyte sql --schema` and is adopted. An opt-out flag stays out
+      until someone needs it.
+    - Without `schemaName` the SQL is the text 1.1 sent and no migration
+      was added, so 1.1 and newer clients share an installation in either
+      deploy order.

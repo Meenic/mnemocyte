@@ -13,7 +13,8 @@ in-memory backend needs none of this.
   postgres.js, a node-postgres `Pool`, PGlite, a Drizzle instance over one
   of them, or your own `SqlExecutor` (see [Connect](#connect)).
 - A database role that can create the Mnemocyte tables in the `public`
-  schema, and once, the extension.
+  schema (or in [a schema of their own](#keep-the-tables-in-their-own-schema)),
+  and once, the extension.
 - Your driver installed next to Mnemocyte: `postgres` 3.4.9+ or 4.x, `pg`
   8.23.1+, or `@electric-sql/pglite` 0.5.16+ with
   `@electric-sql/pglite-pgvector`, plus `drizzle-orm` 0.45.4+ if you use
@@ -172,6 +173,80 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f migrations/0000_
 your memory file's embedder. The rendered file is a complete schema, so do
 not also apply the numbered migrations. If you switch to `migrate` later,
 it adopts a schema installed this way.
+
+## Keep the tables in their own schema
+
+By default the tables go wherever your connection's `search_path` points,
+which is `public` on a standard setup. To keep them in a schema of their
+own, such as `memory`, pass `schemaName` to `postgresStore`:
+
+```ts
+import { createMemory } from "mnemocyte";
+import { postgresStore } from "mnemocyte/postgres";
+
+export const memory = createMemory({
+  store: postgresStore({ client: sql, schemaName: "memory" }),
+  embedder,
+});
+```
+
+Then run `mnemocyte migrate` as usual. On a fresh install it creates the
+schema when it is missing and puts every Mnemocyte table there, the
+`mnemocyte_migrations` tracking table too. Every query names the schema,
+so the app finds the tables whatever `search_path` says.
+
+- The name is lower case letters, digits and underscores, up to 63
+  characters, and cannot start with a digit or `pg_`. Anything else throws
+  `"CONFIG"` when `postgresStore` is called.
+- Creating a schema needs the `CREATE` privilege on the database. Without
+  it, `migrate` fails with `"MIGRATION"` and changes nothing; have an admin
+  run `CREATE SCHEMA memory AUTHORIZATION your_role;` once, and `migrate`
+  uses that schema.
+- pgvector stays where it is. Its `vector` type must still be on
+  `search_path`, as it is when pgvector lives in `public`.
+- `createMemory({ store: sql })` always uses `search_path`. Wrap the client
+  in `postgresStore` to pick a schema.
+- Without a memory file, the CLI takes `--schema memory`, and
+  `mnemocyte sql --schema memory` prints SQL that creates the schema and
+  puts it first on `search_path` before the tables.
+- Each schema holds its own installation, with its own embedding size and
+  keyword search language.
+
+### Move an existing installation
+
+`migrate` never moves tables. If your app already keeps its memories in
+`public` and you add `schemaName`, `migrate` stops with `"CONFIG"`
+(`INSTALLATION_ELSEWHERE`) instead of installing an empty copy next to
+them. Move the tables yourself, in one transaction:
+
+```sql
+BEGIN;
+-- Waits for a migrate that is running right now.
+SELECT pg_advisory_xact_lock(7885351518266947956);
+CREATE SCHEMA memory;
+ALTER TABLE public.mnemocyte_memories SET SCHEMA memory;
+ALTER TABLE public.mnemocyte_events SET SCHEMA memory;
+ALTER TABLE public.mnemocyte_meta SET SCHEMA memory;
+ALTER TABLE public.mnemocyte_migrations SET SCHEMA memory;
+COMMIT;
+```
+
+Indexes and constraints move with their tables, and the consolidation
+link between memories keeps working. No rows are copied, so it is quick,
+but each `ALTER TABLE` waits for the queries running on its table. Skip the
+last `ALTER TABLE` if you installed with `psql` and have no
+`mnemocyte_migrations`.
+
+An app without `schemaName` stops finding the tables as soon as this
+commits and throws `"MIGRATION"`, so stop the app for the move, or deploy
+the `schemaName` change right after it. `mnemocyte check --schema memory`
+then reports the moved installation.
+
+The same check means `migrate` will not make a fresh install in a schema
+while `search_path` finds Mnemocyte tables somewhere else. To keep a
+second installation next to the one in `public`, apply the output of
+`mnemocyte sql --schema <name>` with `psql`; `migrate` adopts it after
+that.
 
 ## Connect
 

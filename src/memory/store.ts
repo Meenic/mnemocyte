@@ -322,6 +322,13 @@ export function assertPruneFilterHasSelector(
  */
 export interface MemoryStore {
 	readonly backend: MnemocyteBackend;
+	/**
+	 * The Postgres schema of the tables when the store was given one
+	 * (`schemaName`); left out when they resolve through `search_path`. The
+	 * CLI reads it from the memory file's store. A store from an older copy
+	 * of the package has none.
+	 */
+	readonly schemaName?: string;
 
 	/**
 	 * Applies the store's pending schema migrations. This is the only method

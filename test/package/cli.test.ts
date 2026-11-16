@@ -279,6 +279,7 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 			upToDate: true,
 		});
 	});

@@ -138,6 +138,32 @@ describe("parseCliArgs", () => {
 		expect(error.message).toContain(message);
 	});
 
+	test("--schema goes with migrate, check, sql and text-search", () => {
+		for (const argv of [
+			["migrate", "--schema", "memory"],
+			["check", "--schema", "memory"],
+			["sql", "--dimensions", "3", "--schema", "memory"],
+			["text-search", "simple", "--schema", "memory"],
+		]) {
+			expect(parseCliArgs(argv).schema).toBe("memory");
+		}
+		expect(parseCliArgs(["migrate"])).not.toHaveProperty("schema");
+	});
+
+	test.each([
+		[
+			["init", "--schema", "memory"],
+			"--schema applies to migrate, check, sql and text-search, not to init.",
+		],
+		[["migrate", "--schema", "Memory"], "--schema must be lower case letters"],
+		[["migrate", "--schema", "pg_memory"], "must not start with pg_"],
+		[["migrate", "--schema"], "argument missing"],
+	])("rejects schema arguments %j", (argv, message) => {
+		const error = usageError(argv);
+		expect(error.exitCode).toBe(2);
+		expect(error.message).toContain(message);
+	});
+
 	test("help and version win over a command", () => {
 		for (const argv of [["--help"], ["-h"], ["help"], ["migrate", "--help"]]) {
 			expect(parseCliArgs(argv).command).toBe("help");

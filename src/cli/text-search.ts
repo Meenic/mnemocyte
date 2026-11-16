@@ -15,7 +15,11 @@ function run(
 ): Promise<TextSearchConfigResult> {
 	return target.kind === "memory"
 		? setTextSearchConfig({ memory: target.memory, textSearchConfig, dryRun })
-		: setTextSearchConfig({ store: target.client, textSearchConfig, dryRun });
+		: setTextSearchConfig({
+				store: target.storeConfig,
+				textSearchConfig,
+				dryRun,
+			});
 }
 
 /**

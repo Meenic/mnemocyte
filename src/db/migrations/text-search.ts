@@ -2,6 +2,7 @@ import { isMnemocyteError, MnemocyteError } from "../../errors.js";
 import { throwIfAborted } from "../../resilience.js";
 import type { SqlExecutor, SqlQueryOptions } from "../../sql/executor.js";
 import type { TextSearchConfigResult } from "../../types.js";
+import { DEFAULT_TABLES, type PostgresTables } from "../tables.js";
 import {
 	changeTextSearchStatements,
 	readInstalledTextSearchConfig,
@@ -18,6 +19,8 @@ import {
 } from "./runner.js";
 
 export interface TextSearchChangeInput {
+	/** Where the tables live. @defaultValue {@link DEFAULT_TABLES} */
+	readonly tables?: PostgresTables;
 	readonly textSearchConfig: string;
 	readonly dryRun?: boolean;
 	readonly signal?: AbortSignal;
@@ -33,15 +36,16 @@ const MIGRATE_FIRST =
  */
 async function assertCurrentSchema(
 	tx: SqlExecutor,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<void> {
-	const versions = await readAppliedVersions(tx, options);
+	const versions = await readAppliedVersions(tx, options, tables);
 	let applied: number;
 	if (versions !== null && versions.length > 0) {
 		assertContiguous(versions);
 		applied = versions.length;
 	} else {
-		applied = installedVersion(await readCatalogState(tx, options)) + 1;
+		applied = installedVersion(await readCatalogState(tx, options, tables)) + 1;
 	}
 	if (applied === 0) {
 		throw new MnemocyteError({
@@ -75,6 +79,7 @@ async function changeStep(
 	tx: SqlExecutor,
 	input: TextSearchChangeInput,
 ): Promise<TextSearchConfigResult> {
+	const tables = input.tables ?? DEFAULT_TABLES;
 	const options: SqlQueryOptions =
 		input.signal === undefined ? {} : { signal: input.signal };
 	if (input.dryRun === true) {
@@ -88,8 +93,8 @@ async function changeStep(
 		[],
 		options,
 	);
-	await assertCurrentSchema(tx, options);
-	const installed = await readInstalledTextSearchConfig(tx, options);
+	await assertCurrentSchema(tx, tables, options);
+	const installed = await readInstalledTextSearchConfig(tx, options, tables);
 	if (installed.kind === "missing") {
 		throw new MnemocyteError({
 			message:
@@ -118,6 +123,7 @@ async function changeStep(
 		const statements = changeTextSearchStatements(
 			requested.name,
 			await serverVersionNum(tx, options),
+			tables,
 		);
 		try {
 			for (const statement of statements) {

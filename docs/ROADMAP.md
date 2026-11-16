@@ -80,7 +80,7 @@ Each item ships as a numbered migration. Index changes need
   install time. `english` is fixed in migration 0003 and
   `fresh-install.sql`; changing it rewrites the generated `tsvector` column
   and its GIN index (`guide/limitations.md`).
-- [ ] `feat/schema-name`: a `schemaName` option to keep the tables outside
+- [x] `feat/schema-name`: a `schemaName` option to keep the tables outside
   `public` (ARCHITECTURE.md "Setup").
 - [ ] `feat/drizzle-schema-export`: `mnemocyte generate --adapter drizzle`
   writes the tables as a Drizzle schema, so `drizzle-kit` manages them

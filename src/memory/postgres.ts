@@ -40,6 +40,7 @@ import {
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
 import type { VectorType } from "../db/rows.js";
+import { postgresTables } from "../db/tables.js";
 import {
 	readInstalledTextSearchConfig,
 	unrecognizedTextSearchError,
@@ -74,8 +75,17 @@ const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = [
 	"critical",
 ];
 
-/** Missing table, column, object or function: the schema is behind. */
-const MIGRATION_ERROR_CODES = new Set(["42P01", "42703", "42704", "42883"]);
+/**
+ * Missing table, column, object or function: the schema is behind. `3F000`
+ * is a missing schema, for a `schemaName` that was never migrated.
+ */
+const MIGRATION_ERROR_CODES = new Set([
+	"42P01",
+	"42703",
+	"42704",
+	"42883",
+	"3F000",
+]);
 /**
  * The fix the missing-schema error names. No runner prefix: the store does
  * not know the project's package manager, and `npx` fails in a pnpm one.
@@ -135,10 +145,14 @@ function driverDetail(error: unknown): string | undefined {
  * names the fix and repeats the driver's text, because many log pipelines
  * drop `cause`.
  */
-function missingSchemaError(error: unknown): MnemocyteError {
+function missingSchemaError(
+	error: unknown,
+	schema: string | null,
+): MnemocyteError {
 	const detail = driverDetail(error);
+	const where = schema === null ? "this database" : `the "${schema}" schema`;
 	return new MnemocyteError({
-		message: `Mnemocyte's tables are missing or out of date in this database${detail ? ` (${detail})` : ""}. Run ${MIGRATE_COMMAND} to create or upgrade them: ${INSTALL_GUIDE_URL}`,
+		message: `Mnemocyte's tables are missing or out of date in ${where}${detail ? ` (${detail})` : ""}. Run ${MIGRATE_COMMAND} to create or upgrade them: ${INSTALL_GUIDE_URL}`,
 		code: "MIGRATION",
 		reason: "SCHEMA_MISSING",
 		cause: error,
@@ -157,13 +171,16 @@ function missingInstallationRowError(): MnemocyteError {
 	});
 }
 
-function normalizePostgresError(error: unknown): MnemocyteError {
+function normalizePostgresError(
+	error: unknown,
+	schema: string | null,
+): MnemocyteError {
 	if (isMnemocyteError(error)) {
 		return error;
 	}
 	const code = postgresErrorCode(error);
 	if (code && MIGRATION_ERROR_CODES.has(code)) {
-		return missingSchemaError(error);
+		return missingSchemaError(error, schema);
 	}
 	return new MnemocyteError({
 		message: "Postgres operation failed.",
@@ -174,16 +191,18 @@ function normalizePostgresError(error: unknown): MnemocyteError {
 
 async function runPostgresOperation<T>(
 	operation: () => Promise<T>,
+	schema: string | null,
 ): Promise<T> {
 	try {
 		return await operation();
 	} catch (error) {
-		throw normalizePostgresError(error);
+		throw normalizePostgresError(error, schema);
 	}
 }
 
 async function runPostgresDeleteOperation<T>(
 	operation: () => Promise<T>,
+	schema: string | null,
 ): Promise<T> {
 	try {
 		return await operation();
@@ -197,7 +216,7 @@ async function runPostgresDeleteOperation<T>(
 		) {
 			throw memoryHasDependentsError(error);
 		}
-		throw normalizePostgresError(error);
+		throw normalizePostgresError(error, schema);
 	}
 }
 
@@ -263,8 +282,26 @@ function compatibilityKey(embedder: Embedder): string {
 	return `${embedder.dimensions}:${embedder.model}`;
 }
 
-export function createPostgresStore(client: SqlExecutor): MemoryStore {
+/** Options for {@link createPostgresStore}, already validated. */
+export interface PostgresStoreSettings {
+	/** The schema of the tables; omitted, they resolve through `search_path`. */
+	readonly schemaName?: string;
+}
+
+export function createPostgresStore(
+	client: SqlExecutor,
+	settings: PostgresStoreSettings = {},
+): MemoryStore {
 	assertSqlExecutor(client);
+	const tables = postgresTables(settings.schemaName ?? null);
+	const missingSchema = (error: unknown): MnemocyteError =>
+		missingSchemaError(error, tables.schema);
+	const normalize = (error: unknown): MnemocyteError =>
+		normalizePostgresError(error, tables.schema);
+	const run = <T>(operation: () => Promise<T>): Promise<T> =>
+		runPostgresOperation(operation, tables.schema);
+	const runDelete = <T>(operation: () => Promise<T>): Promise<T> =>
+		runPostgresDeleteOperation(operation, tables.schema);
 	// Keyed by model and dimensions, not by store: one store value shared by
 	// clients with different embedders checks each embedder.
 	const compatibilityChecks = new Map<string, Promise<void>>();
@@ -290,7 +327,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	/** The installation's vector column type, read once from `mnemocyte_meta`. */
 	function getVectorType(): Promise<VectorType> {
 		if (!vectorTypePromise) {
-			vectorTypePromise = getInstallationVectorType(client)
+			vectorTypePromise = getInstallationVectorType(client, tables)
 				.then(assertVectorType)
 				.catch((error: unknown) => {
 					vectorTypePromise = undefined;
@@ -309,7 +346,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	 */
 	function getTextSearchConfig(): Promise<string> {
 		if (!textSearchConfigPromise) {
-			textSearchConfigPromise = readInstalledTextSearchConfig(client)
+			textSearchConfigPromise = readInstalledTextSearchConfig(
+				client,
+				{},
+				tables,
+			)
 				.then((found) => {
 					if (found.kind === "unrecognized") {
 						throw unrecognizedTextSearchError(found.expression);
@@ -317,7 +358,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					if (found.kind === "missing") {
 						// No content_tsv: a schema before 0003, which the keyword
 						// query would fail on with 42703 too.
-						throw missingSchemaError(undefined);
+						throw missingSchema(undefined);
 					}
 					return found.name;
 				})
@@ -347,10 +388,10 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 	): Promise<void> {
 		let meta: Awaited<ReturnType<typeof getInstallationMeta>>;
 		try {
-			meta = await getInstallationMeta(client);
+			meta = await getInstallationMeta(client, tables);
 		} catch (error) {
 			// A missing table or column (an older schema) gets the migrate hint.
-			throw normalizePostgresError(error);
+			throw normalize(error);
 		}
 		if (!meta) {
 			throw missingInstallationRowError();
@@ -367,7 +408,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 		let installationModel = meta.embeddingModel;
 		if (installationModel === null) {
 			try {
-				const storedModels = await getStoredEmbeddingModels(client);
+				const storedModels = await getStoredEmbeddingModels(client, tables);
 				if (storedModels.length > 1) {
 					throw new MnemocyteError({
 						message:
@@ -379,16 +420,20 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				const inferredModel = storedModels[0] ?? embedder.model;
 				const recorded = await recordInstallationEmbeddingModel(
 					client,
+					tables,
 					inferredModel,
 				);
 				if (recorded) {
 					installationModel = recorded.embeddingModel;
 				} else {
-					const concurrentlyRecorded = await getInstallationMeta(client);
+					const concurrentlyRecorded = await getInstallationMeta(
+						client,
+						tables,
+					);
 					installationModel = concurrentlyRecorded?.embeddingModel ?? null;
 				}
 			} catch (error) {
-				throw normalizePostgresError(error);
+				throw normalize(error);
 			}
 			if (installationModel === null) {
 				throw new MnemocyteError({
@@ -410,25 +455,30 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 
 	return {
 		backend: "postgres",
+		...(tables.schema === null ? {} : { schemaName: tables.schema }),
 		migrate(input) {
-			return runPostgresMigrations(client, input);
+			return runPostgresMigrations(client, { ...input, tables });
 		},
 		async setTextSearchConfig(input) {
-			const result = await setPostgresTextSearchConfig(client, input);
+			const result = await setPostgresTextSearchConfig(client, {
+				...input,
+				tables,
+			});
 			if (result.changed && input.dryRun !== true && result.current !== null) {
 				textSearchConfigPromise = Promise.resolve(result.current);
 			}
 			return result;
 		},
 		inspectInstallation(options) {
-			return inspectPostgresInstallation(client, options);
+			return inspectPostgresInstallation(client, options, tables);
 		},
 		ensureEmbeddingCompatibility,
 		async insertMemories(memories, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				const rows = await insertMemoryRows(
 					client,
+					tables,
 					memories.map(toMemoryRow),
 					await getVectorType(),
 					options?.signal,
@@ -440,13 +490,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async vectorSearch(input: StoreVectorSearchInput) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				const { minVectorScore = 0, ...filters } = input;
 				const [vectorType] = await Promise.all([
 					getVectorType(),
 					ensurePgvectorVersion(),
 				]);
-				const rows = await vectorSearchQuery(client, {
+				const rows = await vectorSearchQuery(client, tables, {
 					...filters,
 					vectorType,
 				});
@@ -465,8 +515,8 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async lexicalSearch(input: StoreLexicalSearchInput) {
-			return runPostgresOperation(async () => {
-				const rows = await lexicalSearchQuery(client, {
+			return run(async () => {
+				const rows = await lexicalSearchQuery(client, tables, {
 					...input,
 					textSearchConfig: await getTextSearchConfig(),
 				});
@@ -480,25 +530,31 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async listMemories(input, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
-				const rows = await listMemoriesQuery(client, input, options?.signal);
+				const rows = await listMemoriesQuery(
+					client,
+					tables,
+					input,
+					options?.signal,
+				);
 				return rows.map(rowToMemory);
 			});
 		},
 		async markMemoriesAccessed(visibility, memoryIds) {
-			return runPostgresOperation(() =>
-				markMemoriesAccessed(client, visibility, uuidsOnly(memoryIds)),
+			return run(() =>
+				markMemoriesAccessed(client, tables, visibility, uuidsOnly(memoryIds)),
 			);
 		},
 		async getMemory(visibility, memoryId, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				if (!isUuid(memoryId)) {
 					return null;
 				}
 				const row = await getMemoryById(
 					client,
+					tables,
 					visibility,
 					memoryId,
 					options?.signal,
@@ -507,10 +563,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async getMemoryByKey(scope, key, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				const row = await getMemoryByKeyQuery(
 					client,
+					tables,
 					scope,
 					key,
 					options?.signal,
@@ -524,7 +581,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					return null;
 				}
 				const { patch } = input;
-				const row = await updateMemoryQuery(client, {
+				const row = await updateMemoryQuery(client, tables, {
 					visibility: input.visibility,
 					id: input.id,
 					now: input.now,
@@ -550,16 +607,21 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 						cause: error,
 					});
 				}
-				throw normalizePostgresError(error);
+				throw normalize(error);
 			}
 		},
 		async deleteMemory(input, options) {
-			return runPostgresDeleteOperation(async () => {
+			return runDelete(async () => {
 				throwIfAborted(options?.signal);
 				if (!isUuid(input.memoryId)) {
 					return null;
 				}
-				const result = await deleteMemoryQuery(client, input, options?.signal);
+				const result = await deleteMemoryQuery(
+					client,
+					tables,
+					input,
+					options?.signal,
+				);
 				if (!result.found) {
 					return null;
 				}
@@ -583,10 +645,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async deleteScope(selector, options) {
-			return runPostgresDeleteOperation(async () => {
+			return runDelete(async () => {
 				throwIfAborted(options?.signal);
 				const result = await deleteScopeQuery(
 					client,
+					tables,
 					selector,
 					options?.signal,
 				);
@@ -597,7 +660,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async prune(input, options) {
-			return runPostgresDeleteOperation(async () => {
+			return runDelete(async () => {
 				throwIfAborted(options?.signal);
 				assertPruneFilterHasSelector(input);
 				const filter = toPruneFilter(input);
@@ -606,6 +669,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					return {
 						matchedCount: await countPruneMatches(
 							client,
+							tables,
 							filter,
 							options?.signal,
 						),
@@ -615,6 +679,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 				}
 				const result = await pruneMemories(
 					client,
+					tables,
 					filter,
 					input.audit ? { now: input.now } : undefined,
 					options?.signal,
@@ -630,9 +695,10 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async findDuplicatePairs(input, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				const rows = await findDuplicatePairsQuery(
 					client,
+					tables,
 					input,
 					options?.signal,
 				);
@@ -647,9 +713,10 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async findDuplicatePage(input, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				const page = await findDuplicatePageQuery(
 					client,
+					tables,
 					input,
 					options?.signal,
 				);
@@ -668,13 +735,13 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async listAuditLog(input, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				// `memory_id` is a uuid: no event is about an id that is not one.
 				if (input.memoryId !== undefined && !isUuid(input.memoryId)) {
 					throwIfAborted(options?.signal);
 					return [];
 				}
-				const rows = await listEvents(client, input, options?.signal);
+				const rows = await listEvents(client, tables, input, options?.signal);
 				return rows.map(({ row, position }) => ({
 					event: rowToAuditEvent(row),
 					position,
@@ -682,13 +749,14 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async pruneAuditLog(input, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				const filter = { selector: input.selector, before: input.before };
 				if (input.dryRun) {
 					return {
 						matchedCount: await countEventsBefore(
 							client,
+							tables,
 							filter,
 							options?.signal,
 						),
@@ -706,6 +774,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 					throwIfAborted(options?.signal);
 					const batch = await deleteEventsBatch(
 						client,
+						tables,
 						filter,
 						input.batchSize,
 						after,
@@ -721,10 +790,11 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async loadConsolidationTargets(visibility, ids, options) {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				return loadConsolidationTargets(
 					client,
+					tables,
 					visibility,
 					uuidsOnly(ids),
 					options?.signal,
@@ -735,11 +805,12 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			input: StoreConsolidateInput,
 			options,
 		): Promise<StoreConsolidateResult> {
-			return runPostgresOperation(async () => {
+			return run(async () => {
 				throwIfAborted(options?.signal);
 				const supersededIds = uuidsOnly(input.supersededIds);
 				const result = await consolidateMemories(
 					client,
+					tables,
 					{
 						visibility: input.visibility,
 						survivorId: input.survivorId,
@@ -771,8 +842,8 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 			});
 		},
 		async stats(selector, now, options) {
-			return runPostgresOperation(() =>
-				getMemoryStatsCounts(client, selector, now, options?.signal),
+			return run(() =>
+				getMemoryStatsCounts(client, tables, selector, now, options?.signal),
 			);
 		},
 	};
@@ -781,6 +852,7 @@ export function createPostgresStore(client: SqlExecutor): MemoryStore {
 export function createPostgresClient(
 	config: MemoryConfig,
 	client: SqlExecutor,
+	settings: PostgresStoreSettings = {},
 ): CoreMemoryClient {
-	return createMemoryClient(config, createPostgresStore(client));
+	return createMemoryClient(config, createPostgresStore(client, settings));
 }

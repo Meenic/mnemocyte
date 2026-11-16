@@ -3,9 +3,15 @@ import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MemoryStore } from "../memory/store.js";
+import { createMnemocyteStoreConfig } from "../memory/store-config.js";
 import { resolveStore } from "../memory/store-input.js";
 import type { PostgresJsClient } from "../sql/detect.js";
-import type { BoundMemoryClient, Embedder, MemoryClient } from "../types.js";
+import type {
+	BoundMemoryClient,
+	Embedder,
+	MemoryClient,
+	MnemocyteStoreConfig,
+} from "../types.js";
 import type { CliArgs } from "./args.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 import {
@@ -33,6 +39,8 @@ export interface MemoryTarget extends TargetBase {
 export interface DatabaseUrlTarget extends TargetBase {
 	readonly kind: "database-url";
 	readonly client: PostgresJsClient;
+	/** `store` as `migrate()` and `setTextSearchConfig()` take it. */
+	readonly storeConfig: MnemocyteStoreConfig;
 }
 
 export type CliTarget = MemoryTarget | DatabaseUrlTarget;
@@ -120,9 +128,11 @@ export async function resolveTarget(
 	const file = locateMemoryFile(io.cwd, args.config);
 	if (file !== null) {
 		const loaded = await loadMemoryFile(file, io.cwd);
+		const label = relative(io.cwd, file).replaceAll("\\", "/") || file;
+		assertSchemaFlag(args.schema, loaded.store, label);
 		return {
 			kind: "memory",
-			label: relative(io.cwd, file).replaceAll("\\", "/") || file,
+			label,
 			memory: loaded.memory,
 			store: loaded.store,
 			embedder: loaded.embedder,
@@ -140,11 +150,38 @@ export async function resolveTarget(
 	const postgres = await importPostgres(io.cwd);
 	// One connection is enough, and notices would print over the output.
 	const client = postgres(url, { max: 1, onnotice() {} });
+	const store = resolveStore(
+		client,
+		args.schema === undefined ? {} : { schemaName: args.schema },
+	);
 	return {
 		kind: "database-url",
 		label: "DATABASE_URL",
 		client,
-		store: resolveStore(client),
+		store,
+		storeConfig: createMnemocyteStoreConfig(store),
 		close: () => client.end({ timeout: 5 }),
 	};
+}
+
+/**
+ * `--schema` with a memory file: the file's `postgresStore()` already says
+ * where the tables are, so the flag may only repeat it.
+ *
+ * @throws {CliError} With exit code 2 when the two differ.
+ */
+export function assertSchemaFlag(
+	flag: string | undefined,
+	store: MemoryStore,
+	label: string,
+): void {
+	if (flag === undefined || flag === store.schemaName) {
+		return;
+	}
+	throw new CliError(
+		store.schemaName === undefined
+			? `--schema is ${flag}, but the store in ${label} names no schema. Set schemaName: "${flag}" in its postgresStore(), or run without the memory file (DATABASE_URL).`
+			: `--schema is ${flag}, but the store in ${label} uses the "${store.schemaName}" schema. Drop --schema; the memory file decides.`,
+		EXIT_USAGE,
+	);
 }

@@ -180,6 +180,7 @@ describe("migrate", () => {
 			applied: MIGRATION_NAMES,
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(db.state.tracked).toEqual([0, 1, 2, 3, 4]);
 		expect(db.log.filter((entry) => entry === "BEGIN")).toHaveLength(1);
@@ -252,6 +253,7 @@ describe("migrate", () => {
 				adopted,
 				applied: MIGRATION_NAMES.slice(adopted.length),
 				extensionCreated: false,
+				schemaCreated: false,
 			});
 			expect(db.state.tracked).toEqual([0, 1, 2, 3, 4]);
 			// One transaction to adopt, then one per applied migration.
@@ -270,6 +272,7 @@ describe("migrate", () => {
 			applied: ["0004_audit_memory_id"],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		const steps = transactions(db.log);
 		expect(steps).toHaveLength(1);
@@ -285,6 +288,7 @@ describe("migrate", () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(db.executed).toEqual([]);
 	});
@@ -324,7 +328,12 @@ describe("migrate", () => {
 
 		await expect(
 			migrate({ store: db.store, dimensions: 1536 }),
-		).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
+		).resolves.toEqual({
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			schemaCreated: false,
+		});
 	});
 
 	test("rejects a schema that matches no migration", async () => {
@@ -437,6 +446,7 @@ describe("migrate({ memory })", () => {
 			applied: MIGRATION_NAMES,
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(db.executed.join("\n")).toContain('"embedding" vector(768)');
 	});
@@ -491,7 +501,12 @@ describe("migrate({ memory })", () => {
 
 		await expect(
 			migrate({ memory, createExtension: true, dryRun: true }),
-		).resolves.toEqual({ applied: [], adopted: [], extensionCreated: false });
+		).resolves.toEqual({
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			schemaCreated: false,
+		});
 	});
 
 	test("rejects both memory and store, and neither", async () => {
@@ -539,6 +554,7 @@ describe("migrate({ createExtension })", () => {
 			applied: MIGRATION_NAMES,
 			adopted: [],
 			extensionCreated: true,
+			schemaCreated: false,
 		});
 		const steps = transactions(db.log);
 		expect(steps).toHaveLength(1);
@@ -571,6 +587,7 @@ describe("migrate({ createExtension })", () => {
 			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(db.log.join("\n")).not.toContain("pg_extension");
 	});
@@ -663,6 +680,7 @@ describe("migrate({ dryRun })", () => {
 				applied: MIGRATION_NAMES,
 				adopted: [],
 				extensionCreated,
+				schemaCreated: false,
 			});
 		},
 	);
@@ -684,6 +702,7 @@ describe("migrate({ dryRun })", () => {
 			applied: [],
 			adopted: MIGRATION_NAMES,
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 	});
 
@@ -697,7 +716,12 @@ describe("migrate({ dryRun })", () => {
 	])("lists pending tracked migrations after %o", async (tracked, applied) => {
 		await expect(
 			dryRun({ schemaLevel: tracked.length - 1, tracked }, {}),
-		).resolves.toEqual({ applied, adopted: [], extensionCreated: false });
+		).resolves.toEqual({
+			applied,
+			adopted: [],
+			extensionCreated: false,
+			schemaCreated: false,
+		});
 	});
 
 	const failures: [

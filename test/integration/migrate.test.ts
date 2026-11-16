@@ -114,6 +114,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: ALL_MIGRATIONS,
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(await trackedVersions()).toEqual([0, 1, 2, 3, 4]);
 		expect(await embeddingType()).toBe("vector(768)");
@@ -144,6 +145,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		await expectMnemocyteError(migrate({ store, dimensions: 768 }), "CONFIG");
 	});
@@ -165,6 +167,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			adopted: ALL_MIGRATIONS.slice(0, 3),
 			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		const [row] = await sql<{ id: string; namespace: string }[]>`
 			SELECT id::text AS id, namespace FROM mnemocyte_memories
@@ -177,6 +180,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: [],
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 	});
 
@@ -217,6 +221,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			adopted: ALL_MIGRATIONS.slice(0, 4),
 			applied: ["0004_audit_memory_id"],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		const rows = await sql<{ metadata: unknown; memoryId: string | null }[]>`
 			SELECT metadata, memory_id::text AS "memoryId" FROM mnemocyte_events
@@ -261,6 +266,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: [],
 			adopted: ALL_MIGRATIONS,
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(await trackedVersions()).toEqual([0, 1, 2, 3, 4]);
 	});
@@ -313,6 +319,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: ALL_MIGRATIONS,
 			adopted: [],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(await embeddingType()).toBe("vector(384)");
 		await expectMnemocyteError(migrate({ memory, dimensions: 768 }), "CONFIG");
@@ -327,6 +334,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			applied: ALL_MIGRATIONS,
 			adopted: [],
 			extensionCreated: true,
+			schemaCreated: false,
 		});
 		expect(await embeddingType()).toBe("vector(768)");
 	});
@@ -423,6 +431,7 @@ describe.skipIf(!databaseUrl)("migrate on Postgres", () => {
 			adopted: ALL_MIGRATIONS.slice(0, 3),
 			applied: ["0003_schema_v2", "0004_audit_memory_id"],
 			extensionCreated: false,
+			schemaCreated: false,
 		});
 		expect(await catalogSnapshot()).toEqual(before);
 		await expect(migrate({ store })).resolves.toEqual(predicted);

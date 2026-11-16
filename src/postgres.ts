@@ -1,3 +1,4 @@
+import { assertSchemaName } from "./db/tables.js";
 import { createPostgresStore } from "./memory/postgres.js";
 import { createMnemocyteStoreConfig } from "./memory/store-config.js";
 import { assertKnownKeys } from "./options.js";
@@ -33,6 +34,17 @@ export interface PostgresStoreOptions {
 	 * them, or a hand-written {@link SqlExecutor}.
 	 */
 	client: PostgresClient;
+	/**
+	 * The Postgres schema that holds Mnemocyte's tables, such as `"memory"`.
+	 * Every query names it, so the tables are found whatever `search_path`
+	 * says; `migrate()` installs into it and creates the schema when it is
+	 * missing. Lower case letters, digits and underscores, at most 63
+	 * characters, not starting with a digit or `pg_`.
+	 *
+	 * Left out, the tables are found through the connection's `search_path`,
+	 * which is `public` on a default setup.
+	 */
+	schemaName?: string | undefined;
 }
 
 /**
@@ -42,9 +54,9 @@ export interface PostgresStoreOptions {
  * The client is recognised by its shape, without importing any driver:
  * postgres.js, then Drizzle (`db.$client`), then PGlite, then a
  * node-postgres `Pool`, then a {@link SqlExecutor}. The Mnemocyte tables must
- * already exist in the schema the connection's `search_path` resolves,
- * through `migrate()` or the bundled migrations. Mnemocyte never closes
- * `client`.
+ * already exist, through `migrate()` or the bundled migrations: in
+ * `schemaName` when it is set, otherwise in the schema the connection's
+ * `search_path` resolves. Mnemocyte never closes `client`.
  *
  * @example
  * ```ts
@@ -52,17 +64,25 @@ export interface PostgresStoreOptions {
  * import { postgresStore } from "mnemocyte/postgres";
  *
  * const sql = postgres(process.env.DATABASE_URL!, { ssl: "require", max: 5 });
- * const store = postgresStore({ client: sql });
+ * const store = postgresStore({ client: sql, schemaName: "memory" });
  * ```
  *
  * @throws {MnemocyteError} `"CONFIG"` when `client` is none of the above,
- * including a node-postgres `Client` (pass a `Pool`).
+ * including a node-postgres `Client` (pass a `Pool`), or `schemaName` is
+ * not a name Mnemocyte accepts.
  */
 export function postgresStore(
 	options: PostgresStoreOptions,
 ): MnemocyteStoreConfig {
-	assertKnownKeys("postgresStore", options, ["client"]);
+	assertKnownKeys("postgresStore", options, ["client", "schemaName"]);
+	const { schemaName } = options;
+	if (schemaName !== undefined) {
+		assertSchemaName(schemaName, "schemaName");
+	}
 	return createMnemocyteStoreConfig(
-		createPostgresStore(toSqlExecutor(options.client)),
+		createPostgresStore(
+			toSqlExecutor(options.client),
+			schemaName === undefined ? {} : { schemaName },
+		),
 	);
 }

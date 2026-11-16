@@ -1,6 +1,7 @@
 import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import type { SqlExecutor, SqlQueryOptions } from "../sql/executor.js";
 import { postgresErrorCode } from "./errors.js";
+import { DEFAULT_TABLES, type PostgresTables, regclass } from "./tables.js";
 
 /**
  * The text search configuration `0003` and the default fresh install give
@@ -75,13 +76,14 @@ export type InstalledTextSearchConfig =
 export async function readInstalledTextSearchConfig(
 	db: SqlExecutor,
 	options: SqlQueryOptions = {},
+	tables: PostgresTables = DEFAULT_TABLES,
 ): Promise<InstalledTextSearchConfig> {
 	const rows = await db.query<{ expression: string | null }>(
 		`SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS "expression"
 		FROM pg_catalog.pg_attribute a
 		LEFT JOIN pg_catalog.pg_attrdef d
 			ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-		WHERE a.attrelid = to_regclass('mnemocyte_memories')
+		WHERE a.attrelid = ${regclass(tables.memories)}
 			AND a.attname = 'content_tsv'
 			AND NOT a.attisdropped`,
 		[],
@@ -174,16 +176,18 @@ export async function resolveTextSearchConfig(
 export function changeTextSearchStatements(
 	name: string,
 	serverVersionNum: number,
+	tables: PostgresTables = DEFAULT_TABLES,
 ): string[] {
 	const expression = contentTsvExpression(name);
+	const memories = tables.memories;
 	const rewrite =
 		serverVersionNum >= 170000
 			? [
-					`ALTER TABLE "mnemocyte_memories" ALTER COLUMN "content_tsv" SET EXPRESSION AS (${expression})`,
+					`ALTER TABLE ${memories} ALTER COLUMN "content_tsv" SET EXPRESSION AS (${expression})`,
 				]
 			: [
-					`ALTER TABLE "mnemocyte_memories" DROP COLUMN "content_tsv", ADD COLUMN "content_tsv" tsvector GENERATED ALWAYS AS (${expression}) STORED`,
-					`CREATE INDEX "mnemocyte_memories_content_tsv_idx" ON "mnemocyte_memories" USING gin ("content_tsv")`,
+					`ALTER TABLE ${memories} DROP COLUMN "content_tsv", ADD COLUMN "content_tsv" tsvector GENERATED ALWAYS AS (${expression}) STORED`,
+					`CREATE INDEX "mnemocyte_memories_content_tsv_idx" ON ${memories} USING gin ("content_tsv")`,
 				];
-	return [...rewrite, `ANALYZE "mnemocyte_memories" ("content_tsv")`];
+	return [...rewrite, `ANALYZE ${memories} ("content_tsv")`];
 }

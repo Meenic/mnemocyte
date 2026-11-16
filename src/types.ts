@@ -355,7 +355,8 @@ interface MigrateOptions {
 	textSearchConfig?: string | undefined;
 	/**
 	 * Inspect the database as a real run would and return the `applied`,
-	 * `adopted` and `extensionCreated` it would produce, changing nothing.
+	 * `adopted`, `extensionCreated` and `schemaCreated` it would produce,
+	 * changing nothing.
 	 * It rejects with the errors a real run would raise before its first
 	 * statement; a migration that would fail partway through is not detected.
 	 */
@@ -426,6 +427,12 @@ export interface MigrateResult {
 	 * false when pgvector was already installed or nothing was created.
 	 */
 	extensionCreated: boolean;
+	/**
+	 * True when this call ran `CREATE SCHEMA` for the `schemaName` of
+	 * `postgresStore()`, which a fresh install does when the schema is
+	 * missing; false otherwise, and always without `schemaName`.
+	 */
+	schemaCreated: boolean;
 }
 
 /** Options {@link setTextSearchConfig} takes with either input shape. */

@@ -1,14 +1,16 @@
 import type { SqlExecutor } from "../../sql/executor.js";
 import { META_COLUMNS, type MetaRow, type VectorType } from "../rows.js";
+import type { PostgresTables } from "../tables.js";
 
 export const INSTALLATION_META_KEY = "installation";
 
 export async function getInstallationMeta(
 	db: SqlExecutor,
+	tables: PostgresTables,
 ): Promise<MetaRow | null> {
 	const rows = await db.query<MetaRow>(
 		`SELECT ${META_COLUMNS}
-		FROM mnemocyte_meta
+		FROM ${tables.meta}
 		WHERE key = $1
 		LIMIT 1`,
 		[INSTALLATION_META_KEY],
@@ -18,10 +20,11 @@ export async function getInstallationMeta(
 
 export async function getStoredEmbeddingModels(
 	db: SqlExecutor,
+	tables: PostgresTables,
 ): Promise<string[]> {
 	const rows = await db.query<{ embeddingModel: string }>(
 		`SELECT DISTINCT embedding_model AS "embeddingModel"
-		FROM mnemocyte_memories
+		FROM ${tables.memories}
 		LIMIT 2`,
 		[],
 	);
@@ -30,10 +33,11 @@ export async function getStoredEmbeddingModels(
 
 export async function recordInstallationEmbeddingModel(
 	db: SqlExecutor,
+	tables: PostgresTables,
 	embeddingModel: string,
 ): Promise<MetaRow | null> {
 	const rows = await db.query<MetaRow>(
-		`UPDATE mnemocyte_meta
+		`UPDATE ${tables.meta}
 		SET embedding_model = $1
 		WHERE key = $2 AND embedding_model IS NULL
 		RETURNING ${META_COLUMNS}`,
@@ -57,10 +61,11 @@ export async function getPgvectorVersion(
 
 export async function getInstallationVectorType(
 	db: SqlExecutor,
+	tables: PostgresTables,
 ): Promise<VectorType | null> {
 	const rows = await db.query<{ vectorType: VectorType }>(
 		`SELECT vector_type AS "vectorType"
-		FROM mnemocyte_meta
+		FROM ${tables.meta}
 		WHERE key = $1
 		LIMIT 1`,
 		[INSTALLATION_META_KEY],

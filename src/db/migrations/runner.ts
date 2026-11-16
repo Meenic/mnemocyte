@@ -4,6 +4,12 @@ import type { SqlExecutor, SqlQueryOptions } from "../../sql/executor.js";
 import type { MigrateResult } from "../../types.js";
 import { postgresErrorCode } from "../errors.js";
 import {
+	DEFAULT_TABLES,
+	type PostgresTables,
+	quoteIdentifier,
+	regclass,
+} from "../tables.js";
+import {
 	DEFAULT_TEXT_SEARCH_CONFIG,
 	readInstalledTextSearchConfig,
 	resolveTextSearchConfig,
@@ -33,6 +39,8 @@ const MAX_VECTOR_DIMENSIONS = 2000;
 const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
 
 export interface RunMigrationsInput {
+	/** Where the tables live. @defaultValue {@link DEFAULT_TABLES} */
+	tables?: PostgresTables;
 	dimensions?: number;
 	textSearchConfig?: string;
 	createExtension?: boolean;
@@ -42,6 +50,16 @@ export interface RunMigrationsInput {
 
 interface MigrationStep extends MigrateResult {
 	done: boolean;
+}
+
+/** A result that applied, adopted and created nothing. */
+function nothing(): MigrateResult {
+	return {
+		applied: [],
+		adopted: [],
+		extensionCreated: false,
+		schemaCreated: false,
+	};
 }
 
 /**
@@ -54,6 +72,8 @@ type Inspection =
 			kind: "fresh";
 			trackingTable: boolean;
 			pgvector: boolean;
+			/** False when `schemaName` names a schema that does not exist yet. */
+			schema: boolean;
 			dimensions: number;
 			/** Canonical, as `regconfig` prints it. */
 			textSearchConfig: string;
@@ -83,16 +103,42 @@ export function splitStatements(sql: string): string[] {
 }
 
 /**
+ * The self foreign key's target as `0000`, `0003` and the template name
+ * it. Every other name in the migrations is bare and resolves through
+ * `search_path`.
+ */
+const PUBLIC_SELF_REFERENCE = '"public"."mnemocyte_memories"';
+
+/**
+ * `sql` with the self foreign key pointing at the memories table in
+ * `schema`, for an installation outside `public`. Unchanged without one.
+ */
+export function qualifySelfReference(
+	sql: string,
+	schema: string | null,
+): string {
+	return schema === null
+		? sql
+		: sql.replaceAll(
+				PUBLIC_SELF_REFERENCE,
+				`${quoteIdentifier(schema)}."mnemocyte_memories"`,
+			);
+}
+
+/**
  * The final schema for `dimensions` (`halfvec` above 2,000) and the text
  * search configuration of `content_tsv` (`english` by default). The name is
  * written as a string literal; Postgres resolves it when the schema runs.
+ * With `schema`, the self foreign key names that schema; the other names
+ * stay bare, so the caller puts the schema first on `search_path`.
  */
 export function renderInitialSchema(
 	dimensions: number,
 	textSearchConfig: string = DEFAULT_TEXT_SEARCH_CONFIG,
+	schema: string | null = null,
 ): string {
 	const vectorType = dimensions > MAX_VECTOR_DIMENSIONS ? "halfvec" : "vector";
-	return INITIAL_SCHEMA_TEMPLATE.replaceAll(
+	const rendered = INITIAL_SCHEMA_TEMPLATE.replaceAll(
 		"{{EMBEDDING_DIMENSIONS}}",
 		String(dimensions),
 	)
@@ -101,6 +147,7 @@ export function renderInitialSchema(
 			"'{{TEXT_SEARCH_CONFIG}}'",
 			textSearchConfigLiteral(textSearchConfig),
 		);
+	return qualifySelfReference(rendered, schema);
 }
 
 /**
@@ -134,27 +181,31 @@ export function installedVersion(state: CatalogState): number {
 export async function readCatalogState(
 	tx: SqlExecutor,
 	options: SqlQueryOptions,
+	tables: PostgresTables = DEFAULT_TABLES,
 ): Promise<CatalogState> {
+	const memories = regclass(tables.memories);
+	const events = regclass(tables.events);
+	const meta = regclass(tables.meta);
 	const rows = await tx.query<CatalogState>(
 		`SELECT
-			to_regclass('mnemocyte_memories') IS NOT NULL AS "memories",
-			to_regclass('mnemocyte_events') IS NOT NULL AS "events",
-			to_regclass('mnemocyte_meta') IS NOT NULL AS "meta",
+			${memories} IS NOT NULL AS "memories",
+			${events} IS NOT NULL AS "events",
+			${meta} IS NOT NULL AS "meta",
 			EXISTS (
 				SELECT 1 FROM pg_catalog.pg_attribute
-				WHERE attrelid = to_regclass('mnemocyte_meta')
+				WHERE attrelid = ${meta}
 					AND attname = 'embedding_model'
 					AND NOT attisdropped
 			) AS "metaModel",
 			EXISTS (
 				SELECT 1 FROM pg_catalog.pg_attribute
-				WHERE attrelid = to_regclass('mnemocyte_memories')
+				WHERE attrelid = ${memories}
 					AND attname = 'namespace'
 					AND NOT attisdropped
 			) AS "scoped",
 			EXISTS (
 				SELECT 1 FROM pg_catalog.pg_attribute
-				WHERE attrelid = to_regclass('mnemocyte_events')
+				WHERE attrelid = ${events}
 					AND attname = 'memory_id'
 					AND NOT attisdropped
 			) AS "eventMemoryId"`,
@@ -178,12 +229,13 @@ export async function readCatalogState(
  */
 async function readInstalledDimensions(
 	tx: SqlExecutor,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<number | null> {
 	const rows = await tx.query<{ dimensions: number }>(
 		`SELECT atttypmod AS "dimensions"
 		FROM pg_catalog.pg_attribute
-		WHERE attrelid = to_regclass('mnemocyte_memories')
+		WHERE attrelid = ${regclass(tables.memories)}
 			AND attname = 'embedding'
 			AND NOT attisdropped`,
 		[],
@@ -197,9 +249,10 @@ async function readInstalledDimensions(
 export async function readAppliedVersions(
 	tx: SqlExecutor,
 	options: SqlQueryOptions,
+	tables: PostgresTables = DEFAULT_TABLES,
 ): Promise<number[] | null> {
 	const [table] = await tx.query<{ exists: boolean }>(
-		`SELECT to_regclass('mnemocyte_migrations') IS NOT NULL AS "exists"`,
+		`SELECT ${regclass(tables.migrations)} IS NOT NULL AS "exists"`,
 		[],
 		options,
 	);
@@ -207,7 +260,7 @@ export async function readAppliedVersions(
 		return null;
 	}
 	const rows = await tx.query<{ version: number }>(
-		"SELECT version FROM mnemocyte_migrations ORDER BY version",
+		`SELECT version FROM ${tables.migrations} ORDER BY version`,
 		[],
 		options,
 	);
@@ -216,12 +269,13 @@ export async function readAppliedVersions(
 
 async function createTrackingTable(
 	tx: SqlExecutor,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<void> {
 	// Checked for absence under the lock first, so no `IF NOT EXISTS`, which
 	// would send a notice on every later call.
 	await tx.query(
-		`CREATE TABLE mnemocyte_migrations (
+		`CREATE TABLE ${tables.migrations} (
 			version integer PRIMARY KEY NOT NULL,
 			name text NOT NULL,
 			applied_at timestamp with time zone DEFAULT now() NOT NULL
@@ -233,12 +287,13 @@ async function createTrackingTable(
 
 async function recordMigrations(
 	tx: SqlExecutor,
+	tables: PostgresTables,
 	migrations: readonly BundledMigration[],
 	options: SqlQueryOptions,
 ): Promise<string[]> {
 	for (const migration of migrations) {
 		await tx.query(
-			"INSERT INTO mnemocyte_migrations (version, name) VALUES ($1::integer, $2)",
+			`INSERT INTO ${tables.migrations} (version, name) VALUES ($1::integer, $2)`,
 			[migration.version, migration.name],
 			options,
 		);
@@ -300,6 +355,92 @@ async function hasPgvector(
 	return rows.length > 0;
 }
 
+async function hasSchema(
+	tx: SqlExecutor,
+	schema: string,
+	options: SqlQueryOptions,
+): Promise<boolean> {
+	const rows = await tx.query(
+		"SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = $1",
+		[schema],
+		options,
+	);
+	return rows.length > 0;
+}
+
+/**
+ * The schema that the bare name `mnemocyte_memories` resolves to through
+ * `search_path`, or null when it resolves to none. That is the installation
+ * a client without `schemaName` uses.
+ */
+async function searchPathInstallation(
+	tx: SqlExecutor,
+	options: SqlQueryOptions,
+): Promise<string | null> {
+	const rows = await tx.query<{ schema: string }>(
+		`SELECT n.nspname AS "schema"
+		FROM pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.oid = to_regclass('mnemocyte_memories')`,
+		[],
+		options,
+	);
+	return rows[0]?.schema ?? null;
+}
+
+/**
+ * `CREATE SCHEMA` for a fresh install outside `public`, in the install's
+ * transaction, so a schema that fails takes the new schema with it.
+ * Checked for absence under the lock first, so no `IF NOT EXISTS`, which
+ * would send a notice.
+ */
+async function createSchema(
+	tx: SqlExecutor,
+	schema: string,
+	options: SqlQueryOptions,
+): Promise<void> {
+	try {
+		await tx.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`, [], options);
+	} catch (error) {
+		if (isMnemocyteError(error)) {
+			throw error;
+		}
+		throw new MnemocyteError({
+			message:
+				postgresErrorCode(error) === "42501"
+					? `This database role may not create the schema "${schema}": CREATE SCHEMA needs the CREATE privilege on the database. Have an admin run CREATE SCHEMA ${schema} AUTHORIZATION <your role>; then run migrate again.`
+					: `CREATE SCHEMA ${schema} failed and was rolled back.`,
+			code: "MIGRATION",
+			reason: "MIGRATION_FAILED",
+			cause: error,
+		});
+	}
+}
+
+/**
+ * Put `schema` first on `search_path` until the transaction ends
+ * (`set_config(…, true)` is `SET LOCAL`), so the bundled SQL, whose names
+ * are bare, creates and changes the tables there. The rest of the path
+ * stays, so `vector` and its operators resolve as before, wherever
+ * pgvector is installed.
+ */
+async function useSchema(
+	tx: SqlExecutor,
+	schema: string,
+	options: SqlQueryOptions,
+): Promise<void> {
+	await tx.query(
+		`SELECT set_config(
+			'search_path',
+			CASE WHEN current_setting('search_path') = '' THEN $1
+				ELSE $1 || ', ' || current_setting('search_path') END,
+			true
+		)`,
+		[quoteIdentifier(schema)],
+		options,
+	);
+}
+
 /**
  * `CREATE EXTENSION` under the advisory lock, in the fresh install's
  * transaction: concurrent callers take turns, and a schema that fails rolls
@@ -342,6 +483,7 @@ async function createVectorExtension(
 async function checkTextSearchConfig(
 	tx: SqlExecutor,
 	input: RunMigrationsInput,
+	tables: PostgresTables,
 	hasMemories: boolean,
 	options: SqlQueryOptions,
 ): Promise<string> {
@@ -350,7 +492,7 @@ async function checkTextSearchConfig(
 	}
 	let installed: string | null = null;
 	if (hasMemories) {
-		const found = await readInstalledTextSearchConfig(tx, options);
+		const found = await readInstalledTextSearchConfig(tx, options, tables);
 		if (found.kind === "unrecognized") {
 			throw unrecognizedTextSearchError(found.expression);
 		}
@@ -381,6 +523,7 @@ async function checkTextSearchConfig(
 async function inspect(
 	tx: SqlExecutor,
 	input: RunMigrationsInput,
+	tables: PostgresTables,
 	options: SqlQueryOptions,
 ): Promise<Inspection> {
 	await tx.query(
@@ -389,7 +532,11 @@ async function inspect(
 		options,
 	);
 
-	const installedDimensions = await readInstalledDimensions(tx, options);
+	const installedDimensions = await readInstalledDimensions(
+		tx,
+		tables,
+		options,
+	);
 	if (
 		input.dimensions !== undefined &&
 		installedDimensions !== null &&
@@ -407,20 +554,35 @@ async function inspect(
 	const textSearchConfig = await checkTextSearchConfig(
 		tx,
 		input,
+		tables,
 		installedDimensions !== null,
 		options,
 	);
 
-	const versions = await readAppliedVersions(tx, options);
+	const versions = await readAppliedVersions(tx, options, tables);
 	if (versions !== null && versions.length > 0) {
 		assertContiguous(versions);
 		return { kind: "tracked", versions };
 	}
 
 	const trackingTable = versions !== null;
-	const installed = installedVersion(await readCatalogState(tx, options));
+	const installed = installedVersion(
+		await readCatalogState(tx, options, tables),
+	);
 	if (installed !== -1) {
 		return { kind: "untracked", trackingTable, installed };
+	}
+	if (tables.schema !== null) {
+		// A client without schemaName would use the tables `search_path`
+		// finds; a fresh install here would leave its memories behind.
+		const elsewhere = await searchPathInstallation(tx, options);
+		if (elsewhere !== null && elsewhere !== tables.schema) {
+			throw new MnemocyteError({
+				message: `schemaName is "${tables.schema}", which has no Mnemocyte tables, but this connection already finds them in the "${elsewhere}" schema. migrate() does not move an installation: move the tables first as the Postgres guide shows (ALTER TABLE … SET SCHEMA ${tables.schema}), or remove schemaName to keep using "${elsewhere}".`,
+				code: "CONFIG",
+				reason: "INSTALLATION_ELSEWHERE",
+			});
+		}
 	}
 	if (input.dimensions === undefined) {
 		throw new MnemocyteError({
@@ -442,6 +604,8 @@ async function inspect(
 		kind: "fresh",
 		trackingTable,
 		pgvector,
+		schema:
+			tables.schema === null || (await hasSchema(tx, tables.schema, options)),
 		dimensions: input.dimensions,
 		textSearchConfig,
 	};
@@ -456,57 +620,77 @@ async function inspect(
 async function migrateStep(
 	tx: SqlExecutor,
 	input: RunMigrationsInput,
+	tables: PostgresTables,
 ): Promise<MigrationStep> {
 	const options: SqlQueryOptions =
 		input.signal === undefined ? {} : { signal: input.signal };
-	const found = await inspect(tx, input, options);
+	const found = await inspect(tx, input, tables, options);
+	const { schema } = tables;
 
 	if (found.kind === "tracked") {
 		const next = MIGRATIONS[found.versions.length];
 		if (!next) {
-			return { applied: [], adopted: [], extensionCreated: false, done: true };
+			return { ...nothing(), done: true };
 		}
-		await runStatements(tx, next.name, next.sql, options);
-		await recordMigrations(tx, [next], options);
+		if (schema !== null) {
+			await useSchema(tx, schema, options);
+		}
+		await runStatements(
+			tx,
+			next.name,
+			qualifySelfReference(next.sql, schema),
+			options,
+		);
+		await recordMigrations(tx, tables, [next], options);
 		return {
+			...nothing(),
 			applied: [next.name],
-			adopted: [],
-			extensionCreated: false,
 			done: next.version + 1 === MIGRATIONS.length,
 		};
 	}
 
-	if (!found.trackingTable) {
-		await createTrackingTable(tx, options);
-	}
-
 	if (found.kind === "untracked") {
+		if (!found.trackingTable) {
+			await createTrackingTable(tx, tables, options);
+		}
 		const adopted = await recordMigrations(
 			tx,
+			tables,
 			MIGRATIONS.slice(0, found.installed + 1),
 			options,
 		);
 		return {
-			applied: [],
+			...nothing(),
 			adopted,
-			extensionCreated: false,
 			done: found.installed + 1 === MIGRATIONS.length,
 		};
 	}
 
+	if (!found.schema && schema !== null) {
+		await createSchema(tx, schema, options);
+	}
+	if (!found.trackingTable) {
+		await createTrackingTable(tx, tables, options);
+	}
+	// Before useSchema: CREATE EXTENSION without a SCHEMA clause installs
+	// into the first schema on search_path, which must not be Mnemocyte's.
 	if (!found.pgvector) {
 		await createVectorExtension(tx, options);
+	}
+	if (schema !== null) {
+		await useSchema(tx, schema, options);
 	}
 	await runStatements(
 		tx,
 		"0000_initial (fresh install)",
-		renderInitialSchema(found.dimensions, found.textSearchConfig),
+		renderInitialSchema(found.dimensions, found.textSearchConfig, schema),
 		options,
 	);
 	return {
-		applied: await recordMigrations(tx, MIGRATIONS, options),
+		applied: await recordMigrations(tx, tables, MIGRATIONS, options),
 		adopted: [],
 		extensionCreated: !found.pgvector,
+		schemaCreated: !found.schema,
 		done: true,
 	};
 }
@@ -519,29 +703,31 @@ async function migrateStep(
 async function dryRun(
 	tx: SqlExecutor,
 	input: RunMigrationsInput,
+	tables: PostgresTables,
 ): Promise<MigrateResult> {
 	const options: SqlQueryOptions =
 		input.signal === undefined ? {} : { signal: input.signal };
 	// Must be the transaction's first statement. Any write, even one this
 	// code should never send, then fails instead of changing the database.
 	await tx.query("SET TRANSACTION READ ONLY", [], options);
-	const found = await inspect(tx, input, options);
+	const found = await inspect(tx, input, tables, options);
 	const names = MIGRATIONS.map((migration) => migration.name);
 	switch (found.kind) {
 		case "tracked":
-			return {
-				applied: names.slice(found.versions.length),
-				adopted: [],
-				extensionCreated: false,
-			};
+			return { ...nothing(), applied: names.slice(found.versions.length) };
 		case "untracked":
 			return {
+				...nothing(),
 				applied: names.slice(found.installed + 1),
 				adopted: names.slice(0, found.installed + 1),
-				extensionCreated: false,
 			};
 		case "fresh":
-			return { applied: names, adopted: [], extensionCreated: !found.pgvector };
+			return {
+				applied: names,
+				adopted: [],
+				extensionCreated: !found.pgvector,
+				schemaCreated: !found.schema,
+			};
 	}
 }
 
@@ -574,10 +760,11 @@ export async function runPostgresMigrations(
 			reason: "INVALID_OPTION",
 		});
 	}
+	const tables = input.tables ?? DEFAULT_TABLES;
 	if (input.dryRun === true) {
 		throwIfAborted(input.signal);
 		try {
-			return await transaction((tx) => dryRun(tx, input));
+			return await transaction((tx) => dryRun(tx, input, tables));
 		} catch (error) {
 			throw toMigrationError(error);
 		}
@@ -586,18 +773,20 @@ export async function runPostgresMigrations(
 		applied: [],
 		adopted: [],
 		extensionCreated: false,
+		schemaCreated: false,
 	};
 	for (;;) {
 		throwIfAborted(input.signal);
 		let step: MigrationStep;
 		try {
-			step = await transaction((tx) => migrateStep(tx, input));
+			step = await transaction((tx) => migrateStep(tx, input, tables));
 		} catch (error) {
 			throw toMigrationError(error);
 		}
 		result.applied.push(...step.applied);
 		result.adopted.push(...step.adopted);
 		result.extensionCreated ||= step.extensionCreated;
+		result.schemaCreated ||= step.schemaCreated;
 		if (step.done) {
 			return result;
 		}

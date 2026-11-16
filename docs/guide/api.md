@@ -58,6 +58,12 @@ Drizzle instance over one of them, a `SqlExecutor`, or a store from
 `store`, memories live in process memory, which suits tests and
 prototypes.
 
+`postgresStore({ client, schemaName })` from `mnemocyte/postgres` puts the
+tables in a schema of their own, such as `"memory"`, instead of wherever
+`search_path` points: lower case letters, digits and underscores, up to
+63 characters, not starting with a digit or `pg_` (`"CONFIG"` otherwise).
+See [postgres.md](./postgres.md#keep-the-tables-in-their-own-schema).
+
 The client holds no connections or timers, so it has no `close()`. With
 Postgres, the database client you passed in is yours to end.
 
@@ -789,7 +795,7 @@ const counts = await user.stats({ signal: AbortSignal.timeout(2_000) });
 ```ts
 import { migrate } from "mnemocyte";
 
-const { applied, adopted, extensionCreated } = await migrate({
+const { applied, adopted, extensionCreated, schemaCreated } = await migrate({
   memory,                 // the client from createMemory()
   createExtension: true,  // optional; enable pgvector if it is missing
   textSearchConfig: "simple", // optional; keyword search language, english by default
@@ -806,8 +812,9 @@ Creates or upgrades the Postgres schema; `pnpm exec mnemocyte migrate` calls
 it.
 `applied` lists the migrations this call ran, `adopted` those it found
 already applied in a schema installed with `psql` or drizzle-kit and
-recorded without running, and `extensionCreated` says whether it ran
-`CREATE EXTENSION vector`. Calling it again applies nothing, and
+recorded without running, `extensionCreated` says whether it ran
+`CREATE EXTENSION vector`, and `schemaCreated` whether it ran
+`CREATE SCHEMA` for the store's `schemaName`. Calling it again applies nothing, and
 concurrent calls apply every migration once. What it does in each case,
 and what enabling pgvector needs, is in
 [postgres.md](./postgres.md#install-the-schema).
@@ -838,6 +845,11 @@ and what enabling pgvector needs, is in
   error as `cause`; migrations that committed before it stay applied.
 - A schema that matches no migration throws `"MIGRATION"` and changes
   nothing.
+- With a `schemaName`, a fresh install creates the schema when it is
+  missing. It throws `"CONFIG"` (`INSTALLATION_ELSEWHERE`) instead when
+  `search_path` already finds Mnemocyte tables in another schema; `migrate`
+  does not move them
+  ([postgres.md](./postgres.md#move-an-existing-installation)).
 - An abort cancels the running statement and rolls back the current
   migration.
 
@@ -963,6 +975,7 @@ try {
 | | `DIMENSIONS_MISMATCH` | The embedder's dimensions, or `migrate`'s `dimensions`, differ from the installation's. |
 | | `MODEL_MISMATCH` | The embedder's model differs from the one the installation recorded. |
 | | `TEXT_SEARCH_CONFIG_MISMATCH` | `migrate`'s `textSearchConfig` differs from the installation's. |
+| | `INSTALLATION_ELSEWHERE` | `migrate` would make a fresh install in `schemaName`, but the connection already finds Mnemocyte's tables in another schema. |
 | `CONFLICT` | `KEY_IN_USE` | An update's key is already used in the memory's scope. |
 | | `HAS_DEPENDENTS` | `delete` with `dependents: "reject"` (the default), `deleteScope` or `prune` would remove a memory that others are consolidated into. |
 | | `HIDDEN_DEPENDENTS` | `dependents: "restore"` or `"delete"` meets a memory consolidated into the target that is not visible at the scope. |

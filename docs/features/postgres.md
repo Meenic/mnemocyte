@@ -5,8 +5,10 @@ at the end with the roadmap item that fixes each one.
 
 ## Schema
 
-Three tables, all unqualified in queries (they resolve through `search_path`;
-the foreign key alone names `public`):
+Three tables, plus the runner's `mnemocyte_migrations`. Without a
+[schema name](#schema-name) every query names them bare, so they resolve
+through `search_path` (the self foreign key in `0000`, `0003` and the
+template alone names `public`); with one, every query qualifies them:
 
 | Table | Purpose |
 |---|---|
@@ -293,8 +295,9 @@ loaded backend of `store: client`.
   `.sql` files, and when `renderInitialSchema(1536)` differs from
   `fresh-install.sql`.
 - **Tracking table.** `mnemocyte_migrations(version integer PK, name text,
-  applied_at timestamptz)`, resolved through `search_path` like the other
-  tables. The runner creates it on its first call, after checking with
+  applied_at timestamptz)`, in the same schema as the other tables (bare,
+  or qualified with the [schema name](#schema-name)), so each schema is an
+  installation with its own versions. The runner creates it on its first call, after checking with
   `to_regclass` that it is missing (`CREATE TABLE IF NOT EXISTS` would send a
   notice on every later call, and postgres.js logs notices by default). It is
   not part of `fresh-install.sql` or the template.
@@ -316,14 +319,19 @@ loaded backend of `store: client`.
 - **Inspection.** Every transaction starts with `inspect`: the lock, the
   dimensions check, the `textSearchConfig` check when one is given, the
   tracking table, then, without tracked versions, the
-  catalog level and, for a fresh install, `pg_extension`. It returns
+  catalog level and, for a fresh install, the
+  [schema name](#schema-name) checks and `pg_extension`. Every catalog read
+  goes through `to_regclass` with the same (qualified or bare) name the
+  queries use. It returns
   `fresh`, `untracked` or `tracked` and throws every error a run raises
   before its first change, so a real step and a dry run share them.
 - **Fresh install.** With no Mnemocyte tables, the runner requires
   `dimensions` (`"VALIDATION"`), checks `pg_extension` for `vector`, runs
   the template rendered for those dimensions (`halfvec` above 2,000) and
   the [text search configuration](#text-search-configuration), and
-  records `0000`→`0004`. A missing pgvector is `"MIGRATION"` unless
+  records `0000`→`0004`. With a schema name, the schema is created first
+  when it is missing, and the template runs with the schema first on
+  `search_path`. A missing pgvector is `"MIGRATION"` unless
   `createExtension` is set; see the next section.
 - **Adoption.** With tables but an empty tracking table, `installedVersion`
   reads the level from the catalog: `mnemocyte_memories` and
@@ -357,8 +365,7 @@ loaded backend of `store: client`.
   `assertContiguous`, without the lock or a transaction; see
   [cli.md](./cli.md#check).
 - **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
-  migrate or dry-run. The self foreign key names `public.mnemocyte_memories`, so the
-  tables must be in `public`. There is no `lock_timeout`: `0003` and `0004`
+  migrate or dry-run. There is no `lock_timeout`: `0003` and `0004`
   wait for their `ACCESS EXCLUSIVE` locks as long as the server allows, and
   while one waits, statements queued behind it on the same table wait too.
   Every step is one transaction, so a migration cannot use `CREATE INDEX
@@ -368,7 +375,8 @@ loaded backend of `store: client`.
 
 `createExtension: true` lets a fresh install run `CREATE EXTENSION IF NOT
 EXISTS vector` (no `SCHEMA` clause, so pgvector's objects go into the first
-schema on `search_path`, normally `public` like the tables). It is off by
+schema on `search_path`, normally `public`; with a [schema name](#schema-name)
+it runs before that schema is put on `search_path`). It is off by
 default (ARCHITECTURE decision 20): pgvector's control file is not marked
 `trusted`, so only a superuser, or a provider's admin role, may create it.
 
@@ -387,6 +395,89 @@ default (ARCHITECTURE decision 20): pgvector's control file is not marked
   else becomes `"MIGRATION"` "CREATE EXTENSION vector failed". The driver
   error is the `cause` each time.
 - `extensionCreated` in the result is true when the call ran it.
+
+## Schema name
+
+`postgresStore({ client, schemaName })` keeps the tables in one schema
+(ARCHITECTURE decision 51). The code is in `src/db/tables.ts`.
+
+- **Validation.** `assertSchemaName` runs when `postgresStore` is called:
+  `^[a-z_][a-z0-9_]*$`, at most 63 characters (Postgres truncates a longer
+  identifier silently), not starting with `pg_` (reserved for system
+  schemas). Anything else is `"CONFIG"` (`INVALID_OPTION`). The CLI's
+  `--schema` uses the same check. Lower case only, so the name works
+  unquoted in `psql`; the quoting would accept more, so this can widen
+  later without a break.
+- **Names.** `postgresTables(schema)` gives the four table names:
+  `mnemocyte_memories` without a schema, which is the exact text 1.1 sent,
+  or `"memory".mnemocyte_memories` with one (the schema always quoted, so
+  a keyword such as `user` works). Every query in `src/db/queries/` takes
+  them as its second parameter and uses them for `FROM`, `JOIN`, `INTO`,
+  `UPDATE` and `DELETE FROM`. Column references such as
+  `mnemocyte_memories.id` stay bare: Postgres resolves them against the
+  `FROM` item, qualified or not. Index and constraint names are unchanged
+  (an index lives in its table's schema), so `SCOPE_KEY_INDEX` and the
+  survivor foreign key name still match driver errors.
+- **Catalog reads.** `regclass(name)` is `to_regclass('<name>')` with the
+  same text; it returns null for a missing table and for a missing schema.
+  `readCatalogState`, `readAppliedVersions`, the dimension and
+  `content_tsv` reads, and `inspectPostgresInstallation` take the names,
+  so `check` and `migrate` look only in the store's schema.
+- **Bundled SQL stays bare.** Numbered migrations and the template name
+  tables without a schema, so `psql` users can apply them. For a named
+  schema the runner sends `set_config('search_path', '"memory", ' ||
+  current_setting('search_path'), true)` (a `SET LOCAL`) inside the step's
+  transaction, before the SQL: bare names create and change tables in the
+  schema, and the rest of the path still finds pgvector's `vector` type
+  and operators, wherever the extension lives. The setting ends with the
+  transaction, which also suits transaction-mode poolers. The one
+  qualified name, `"public"."mnemocyte_memories"` in the self foreign key
+  of `0000`, `0003` and the template, is replaced with the schema's by
+  `qualifySelfReference`. Future migrations must keep table names bare.
+- **Creating the schema.** Only on the fresh-install path, under the lock,
+  in the same transaction: `pg_namespace` is checked first (no
+  `IF NOT EXISTS`, which sends a notice), then `CREATE SCHEMA "memory"`,
+  the tracking table, `CREATE EXTENSION` when asked, then `SET LOCAL
+  search_path` and the template. The extension comes before the
+  `search_path` change, because `CREATE EXTENSION` without `SCHEMA` puts
+  pgvector into the first schema on the path. `42501` (no `CREATE` on the
+  database) is `"MIGRATION"` (`MIGRATION_FAILED`) with the
+  `CREATE SCHEMA … AUTHORIZATION` an admin can run. `schemaCreated` in the
+  result says it ran; dry runs report it. No flag guards it, unlike
+  `createExtension`: the caller named the schema, and the privilege is the
+  database's own, not a superuser's.
+- **An installation elsewhere.** Before a fresh install into a named
+  schema, the runner resolves the bare `to_regclass('mnemocyte_memories')`.
+  When it finds the table in another schema, that is the installation a
+  client without `schemaName` uses, so it throws `"CONFIG"`
+  (`INSTALLATION_ELSEWHERE`) and changes nothing, rather than leave the
+  app's memories behind next to an empty new install. Naming that same
+  schema (`schemaName: "public"`) is no fresh install and passes. A second
+  installation next to one on `search_path` is installed from
+  `mnemocyte sql --schema` and then adopted.
+- **The lock.** One advisory key for every schema, as before. Migrations
+  of two schemas take turns, which costs little since they are rare; a key
+  per schema would let a 1.1 client and a newer one migrate the same
+  default installation at once, unless the newer one took both keys.
+- **Moving.** Not done by `migrate`. The guide's recipe takes the advisory
+  lock and runs `ALTER TABLE … SET SCHEMA` on the four tables in one
+  transaction; indexes and constraints move with their tables, and the
+  self foreign key references the table by OID, so it follows. Tested on
+  PGlite and on Postgres 17 and 18.
+- **Without `schemaName`** nothing changed: queries, catalog reads and the
+  tracking table use the bare names and `search_path`, and a 1.1 client
+  and this one work on the same installation in either deploy order. An
+  installation in a named schema is visible to an older client only when
+  its role's `search_path` includes the schema.
+- **`createMemory({ store: sql })`** has no schema option: the shortcut
+  stays the default, and `postgresStore` is where store options go.
+- **Tests.** `test/db/tables.test.ts` (names, validation, rendering),
+  `test/contract/schema-name.test.ts` (PGlite: fresh install, adoption and
+  `0004` inside a schema, the guard, the move, two installations), the
+  whole store contract on PGlite and on postgres.js with the tables off
+  `search_path` (a bare name there fails with `42P01`), and
+  `test/integration/schema-name.test.ts` (catalog equal to a `public`
+  install, concurrent first runs, the move, the CLI).
 
 ## Text search configuration
 
@@ -862,9 +953,10 @@ ids) use the same trick.
 ## Errors
 
 - SQLSTATE `42P01`, `42703`, `42704`, `42883` (missing table, column, object,
-  function) become `"MIGRATION"`, from `missingSchemaError` in
-  `src/memory/postgres.ts`: "Mnemocyte's tables are missing or out of date
-  in this database (*driver message*). Run mnemocyte migrate to create or
+  function) and `3F000` (missing schema) become `"MIGRATION"`, from
+  `missingSchemaError` in `src/memory/postgres.ts`: "Mnemocyte's tables are
+  missing or out of date in this database (*driver message*); with a
+  schema name, "in the "*name*" schema". Run mnemocyte migrate to create or
   upgrade them:" followed by the guide's `#install-the-schema` URL. The
   driver message is repeated (whitespace collapsed, cut at 200 characters)
   because many log pipelines drop `cause`; the driver error is still the

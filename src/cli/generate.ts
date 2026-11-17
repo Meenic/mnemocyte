@@ -94,13 +94,15 @@ function configPath(cwd: string, path: string): string {
  * installation row keeps the old size; `migrate` refuses both for the same
  * reason.
  *
+ * @returns What the file was made for, so the caller can keep its text
+ * search configuration.
  * @throws {CliError} With exit code 2 when either differs.
  */
 function assertSameInstallation(
 	out: string,
 	existing: string,
-	wanted: DrizzleSchemaShape,
-): void {
+	wanted: Omit<DrizzleSchemaShape, "textSearchConfig">,
+): DrizzleSchemaShape {
 	const found = readDrizzleSchemaShape(existing);
 	if (found === null) {
 		throw new CliError(
@@ -122,6 +124,7 @@ function assertSameInstallation(
 			EXIT_USAGE,
 		);
 	}
+	return found;
 }
 
 async function readExisting(path: string): Promise<string | null> {
@@ -147,6 +150,13 @@ async function readExisting(path: string): Promise<string | null> {
  * with `wx` (`O_CREAT | O_EXCL`), so one that appears after the check is
  * kept too.
  *
+ * The text search configuration is `--text-search-config`, else the one the
+ * existing file has, else `english` for a new file. Without the flag the
+ * command never changes it: drizzle-kit would drop and re-add `content_tsv`,
+ * which rewrites the table. When the file's `content_tsv` line cannot be
+ * read and there is no flag, the command exits 2; `--dry-run` falls back to
+ * `english` and says so on standard error.
+ *
  * @returns The exit code.
  */
 export async function generateCommand(
@@ -155,27 +165,40 @@ export async function generateCommand(
 	version: string,
 ): Promise<number> {
 	const { dimensions, schema } = await resolveSchemaShape(args, io);
-	const textSearchConfig = args.textSearchConfig ?? DEFAULT_TEXT_SEARCH_CONFIG;
-	const source = renderDrizzleSchema({
-		dimensions,
-		textSearchConfig,
-		schema: schema ?? null,
-		version,
-	});
 	const out = args.out ?? DEFAULT_DRIZZLE_SCHEMA_FILE;
 	const path = resolve(io.cwd, out);
 	const run = await projectRunner(io.cwd);
-	const what = `${dimensions} dimensions, text search configuration ${textSearchConfig}${schema === undefined ? "" : `, schema ${schema}`}`;
 	const firstSteps = drizzleNextSteps({
 		file: configPath(io.cwd, path),
 		dimensions,
 		schema: schema ?? null,
 		run,
 	});
+	const render = (textSearchConfig: string) =>
+		renderDrizzleSchema({
+			dimensions,
+			textSearchConfig,
+			schema: schema ?? null,
+			version,
+		});
 
 	if (args.dryRun) {
-		io.write(source);
-		io.error(`\n${firstSteps}`);
+		// Nothing is written, so a file that cannot be read is no reason to fail.
+		let kept: string | null = null;
+		let unreadable = false;
+		if (args.textSearchConfig === undefined) {
+			const existing = await readExisting(path).catch(() => null);
+			if (existing?.startsWith(DRIZZLE_SCHEMA_HEADER)) {
+				kept = readDrizzleSchemaShape(existing)?.textSearchConfig ?? null;
+				unreadable = kept === null;
+			}
+		}
+		io.write(
+			render(args.textSearchConfig ?? kept ?? DEFAULT_TEXT_SEARCH_CONFIG),
+		);
+		io.error(
+			`${unreadable ? `\nCould not read the text search configuration from ${out}, so this shows ${DEFAULT_TEXT_SEARCH_CONFIG}.\n` : ""}\n${firstSteps}`,
+		);
 		return 0;
 	}
 
@@ -186,12 +209,26 @@ export async function generateCommand(
 			EXIT_USAGE,
 		);
 	}
-	if (existing !== null) {
-		assertSameInstallation(out, existing, {
-			dimensions,
-			schema: schema ?? null,
-		});
+	const found =
+		existing === null
+			? null
+			: assertSameInstallation(out, existing, {
+					dimensions,
+					schema: schema ?? null,
+				});
+	const textSearchConfig =
+		args.textSearchConfig ??
+		(existing === null
+			? DEFAULT_TEXT_SEARCH_CONFIG
+			: (found?.textSearchConfig ?? null));
+	if (textSearchConfig === null) {
+		throw new CliError(
+			`${out} was changed by hand: its content_tsv column is not the one generate writes, so it was left as is. Restore it from version control, pass --text-search-config <name> to write the configuration you want, or pass --out <file> to write somewhere else.`,
+			EXIT_USAGE,
+		);
 	}
+	const source = render(textSearchConfig);
+	const what = `${dimensions} dimensions, text search configuration ${textSearchConfig}${schema === undefined ? "" : `, schema ${schema}`}`;
 	if (existing === source) {
 		io.write(`${out} is up to date (${what}).\n`);
 		return 0;

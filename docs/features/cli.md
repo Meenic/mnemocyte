@@ -309,8 +309,13 @@ without changing what the bare command means.
 - **Input.** `resolveSchemaShape`, shared with `sql`: `--dimensions`
   alone loads no file; otherwise the memory file gives
   `embedder.dimensions` and the store's `schemaName`, and `--schema` may
-  only repeat it. `--text-search-config` defaults to `english`. Nothing
-  connects to a database.
+  only repeat it. `--text-search-config` defaults to `english` for a new
+  file only; for an existing one it is the flag, else the configuration
+  `readDrizzleSchemaShape` reads from the file's `content_tsv` line, since
+  drizzle-kit drops and re-adds the column (rewriting the table) when it
+  changes. A line that no longer parses exits 2 without the flag;
+  `--dry-run` falls back to `english` and says so on standard error.
+  Nothing connects to a database.
 - **Rendering.** `renderDrizzleSchema` (pure) returns the module as text;
   nothing in the package imports drizzle-orm. It targets drizzle-orm
   0.45: `pgTable` (or `pgSchema(name).table` with a schema, exported as

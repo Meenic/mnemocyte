@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
 	DRIZZLE_SCHEMA_HEADER,
+	readDrizzleSchemaShape,
 	renderDrizzleSchema,
 	renderDrizzleSetupSql,
 } from "../../src/cli/drizzle.js";
@@ -96,6 +97,44 @@ describe("renderDrizzleSchema", () => {
 	});
 });
 
+describe("readDrizzleSchemaShape", () => {
+	// A backslash, a backtick and `$` + `{` are what templateText escapes.
+	const names = [
+		"english",
+		"simple",
+		"it's",
+		"a\\b`c$" + "{d}",
+		'"Mixed Case"',
+	];
+	test.each(names)(
+		"reads back the configuration it wrote: %s",
+		(textSearchConfig) => {
+			const source = renderDrizzleSchema({
+				dimensions: 3,
+				textSearchConfig,
+				schema: "memory",
+				version: "1",
+			});
+			expect(readDrizzleSchemaShape(source)).toEqual({
+				dimensions: 3,
+				schema: "memory",
+				textSearchConfig,
+			});
+		},
+	);
+
+	test("has no configuration when the content_tsv line was edited", () => {
+		const source = renderDrizzleSchema({ dimensions: 3, version: "1" })
+			.replace("to_tsvector(", "to_tsvector(unaccent(")
+			.replace('"content")`', '"content"))`');
+		expect(readDrizzleSchemaShape(source)).toEqual({
+			dimensions: 3,
+			schema: null,
+			textSearchConfig: null,
+		});
+	});
+});
+
 describe("renderDrizzleSetupSql", () => {
 	test("is pgvector, then the key index and the installation row", () => {
 		expect(renderDrizzleSetupSql({ dimensions: 1536 })).toEqual({
@@ -182,6 +221,120 @@ describe("generate --adapter drizzle", () => {
 				version: "1.2.4",
 			}),
 		);
+	});
+
+	test("keeps the text search configuration when run again without the flag", async () => {
+		const args = ["generate", "--adapter", "drizzle", "--dimensions", "3"];
+		await main(
+			[...args, "--text-search-config", "simple"],
+			createTestIo(cwd),
+			"1.2.3",
+		);
+		const before = await readFile(file(), "utf8");
+
+		const again = createTestIo(cwd);
+		expect(await main(args, again, "1.2.3")).toBe(0);
+		expect(again.stdout()).toBe(
+			"mnemocyte-schema.ts is up to date (3 dimensions, text search configuration simple).\n",
+		);
+		expect(await readFile(file(), "utf8")).toBe(before);
+
+		// A new release changes the header only: no index steps.
+		const upgraded = createTestIo(cwd);
+		expect(await main(args, upgraded, "1.2.4")).toBe(0);
+		expect(upgraded.stdout()).toBe(
+			"Updated mnemocyte-schema.ts (3 dimensions, text search configuration simple).\n\nNext: npx drizzle-kit generate, read the new migration, then\nnpx drizzle-kit migrate.\n",
+		);
+		expect(await readFile(file(), "utf8")).toBe(
+			renderDrizzleSchema({
+				dimensions: 3,
+				textSearchConfig: "simple",
+				version: "1.2.4",
+			}),
+		);
+
+		// The flag still changes it.
+		const back = createTestIo(cwd);
+		expect(
+			await main([...args, "--text-search-config", "english"], back, "1.2.4"),
+		).toBe(0);
+		expect(back.stdout()).toContain(
+			"text search configuration english).\n\n" +
+				drizzleUpdateSteps({ textSearchChanged: true, run: "npx" }),
+		);
+	});
+
+	describe("when content_tsv was edited by hand", () => {
+		const args = ["generate", "--adapter", "drizzle", "--dimensions", "3"];
+		let edited: string;
+
+		beforeEach(async () => {
+			await main(
+				[...args, "--text-search-config", "simple"],
+				createTestIo(cwd),
+				"1",
+			);
+			edited = (await readFile(file(), "utf8")).replace(
+				'"content")`',
+				"\"content\") || ''`",
+			);
+			await writeFile(file(), edited);
+		});
+
+		test("exits 2 without the flag and keeps the file", async () => {
+			const io = createTestIo(cwd);
+			expect(await main(args, io, "1")).toBe(2);
+			expect(io.stderr()).toContain("content_tsv column is not the one");
+			expect(await readFile(file(), "utf8")).toBe(edited);
+		});
+
+		test("the flag replaces it", async () => {
+			expect(
+				await main(
+					[...args, "--text-search-config", "simple"],
+					createTestIo(cwd),
+					"1",
+				),
+			).toBe(0);
+			expect(await readFile(file(), "utf8")).toBe(
+				renderDrizzleSchema({
+					dimensions: 3,
+					textSearchConfig: "simple",
+					version: "1",
+				}),
+			);
+		});
+
+		test("--dry-run shows english and says why, writing nothing", async () => {
+			const io = createTestIo(cwd);
+			expect(await main([...args, "--dry-run"], io, "1")).toBe(0);
+			expect(io.stdout()).toBe(
+				renderDrizzleSchema({ dimensions: 3, version: "1" }),
+			);
+			expect(io.stderr()).toContain(
+				"Could not read the text search configuration from mnemocyte-schema.ts, so this shows english.",
+			);
+			expect(await readFile(file(), "utf8")).toBe(edited);
+		});
+	});
+
+	test("--dry-run uses the configuration of the existing file", async () => {
+		const args = ["generate", "--adapter", "drizzle", "--dimensions", "3"];
+		await main(
+			[...args, "--text-search-config", "simple"],
+			createTestIo(cwd),
+			"1",
+		);
+		const io = createTestIo(cwd);
+		expect(await main([...args, "--dry-run"], io, "1")).toBe(0);
+		expect(io.stdout()).toBe(
+			renderDrizzleSchema({
+				dimensions: 3,
+				textSearchConfig: "simple",
+				version: "1",
+			}),
+		);
+		expect(io.stderr()).not.toContain("Could not read");
 	});
 
 	test.each([

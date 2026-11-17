@@ -316,8 +316,14 @@ Next, with drizzle-kit:
   and says so when nothing changed. Any other file at that path is left as
   is and the command exits 2. So is a file whose embedding size or schema
   differs from the new one, because an installation keeps both.
+- **`--text-search-config <name>`** is `english` for a new file. When you
+  run `generate` again, the file's own language stays unless you pass the
+  flag, since changing it makes drizzle-kit rewrite the table. If the
+  file's `content_tsv` line was edited by hand, `generate` exits 2 unless
+  you pass the flag.
 - **`--dry-run`** prints the file to standard output and the steps to
-  standard error, and writes nothing.
+  standard error, and writes nothing. It shows the language of the
+  existing file, or `english` with a note when it cannot read it.
 - It prints the SQL drizzle-kit cannot write, for two custom migrations:
   pgvector, then the key index and the installation row. The whole setup,
   and what to do after an upgrade, is in the

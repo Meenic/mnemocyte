@@ -1118,8 +1118,11 @@ Dated 2026-10-26 unless noted.
       schema differs, because drizzle-kit would `ALTER` the column or move
       the tables while the installation row keeps the old size.
     - The size, text search configuration and schema come from the flags
-      or the memory file, exactly as for `sql`. It never reads a database,
-      so an installation that changed its configuration passes the flag.
+      or the memory file, exactly as for `sql`. It never reads a database.
+      For an existing file the configuration is the one in its
+      `content_tsv` line unless `--text-search-config` is passed, because
+      `english` over a `simple` file makes drizzle-kit drop and re-add the
+      column (fix/drizzle-generate-keep-config).
     - drizzle-kit owns these tables: no `mnemocyte_migrations`, and
       `mnemocyte migrate` is not run on them (it would adopt, then apply
       the next migration that drizzle-kit also applies). Upgrades are

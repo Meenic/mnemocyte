@@ -102,7 +102,7 @@ and 18.
   run 1.2 before a non-`english` configuration or a `schemaName` is
   adopted, and have `mnemocyte text-search` say so too ("Restart other app
   processes" does not help a 1.1 process).
-- [ ] `fix/drizzle-generate-keep-config`: `generate --adapter drizzle`
+- [x] `fix/drizzle-generate-keep-config`: `generate --adapter drizzle`
   without `--text-search-config` writes `english` over a file generated
   with another configuration, and `drizzle-kit generate` then drops and
   re-adds `content_tsv`, rewriting the table. The guide's upgrade step

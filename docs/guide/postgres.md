@@ -314,12 +314,15 @@ From then on, drizzle-kit manages these tables:
 - **Don't use `drizzle-kit push` on them.** Push compares the database
   with your schema files, finds the unique index that is not in them, and
   drops it. Every `add` with a `key` fails after that.
-- **After a Mnemocyte upgrade,** run `generate` again. It replaces its own
-  file, never one it did not write. Then run `drizzle-kit generate`, read
-  the migration, and `drizzle-kit migrate`. When nothing changed, `generate`
-  says the file is up to date.
+- **After a Mnemocyte upgrade,** run `generate` again. You don't need to
+  repeat any flag: it keeps the embedding size, schema and keyword search
+  language of the file it wrote. It replaces its own file, never one it
+  did not write. Then run `drizzle-kit generate`, read the migration, and
+  `drizzle-kit migrate`. When nothing changed, `generate` says the file is
+  up to date.
 - **To change the [keyword search language](#keyword-search-language),**
-  run `generate` with the new `--text-search-config`, then
+  run `generate` with the new `--text-search-config` (it is the only time
+  the flag is needed), then
   `drizzle-kit generate`. drizzle-kit drops the keyword column and adds it
   back, which drops its index too, so `generate` prints a `CREATE INDEX`
   and an `ANALYZE` to add to the end of that migration before you apply it.

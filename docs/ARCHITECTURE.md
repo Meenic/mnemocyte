@@ -1037,7 +1037,14 @@ Dated 2026-10-26 unless noted.
       and could disagree with the column after a manual `ALTER`, and a
       client that read it would fail keyword search on a 1.1 schema until
       `migrate` ran, a break in a minor. Every 1.x schema has the column,
-      so 1.1 and newer clients work in either deploy order.
+      so 1.1 and newer clients work in either deploy order while the
+      installation uses `english`. A 1.1 client builds its query with
+      `websearch_to_tsquery('english', …)` whatever the column uses, so on
+      `simple` its keyword matches are lost without an error. Every
+      process must run 1.2 before a non-`english` configuration is picked
+      (fresh install or `text-search`), and before a `schemaName`, which
+      1.1 ignores. The guide and `mnemocyte text-search`'s output say so
+      (`fix/mixed-version-text-search-docs`).
     - `migrate({ textSearchConfig })` and `--text-search-config` on
       `migrate`, `check` and `sql`. It sets a fresh install; on an existing
       one a different configuration is `"CONFIG"`

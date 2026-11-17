@@ -281,6 +281,11 @@ message.
 4. The real run, which prints the old and new names and asks to restart
    other app processes, since their stores cached the old configuration.
 
+Unless the new configuration is `english`, the dry run, the question and
+the real run's output also say that every app process must run 1.2 or
+later: a 1.1 client searches with `english` whatever the installation
+uses, so a restart does not help it.
+
 The name is the command's one positional argument; `parseCliArgs` stores
 it as `textSearchConfig`, the field `--text-search-config` fills for
 `migrate`, `check` and `sql`, and rejects `--text-search-config` and

@@ -238,6 +238,8 @@ describe("CLI commands (PGlite)", () => {
 	});
 
 	test("text-search asks before the rewrite, and --yes, --dry-run and --json skip the question", async () => {
+		const olderClients =
+			'Every app process must run Mnemocyte 1.2 or later: 1.1 searches with "english" whatever the installation uses, so its keyword matches are lost.';
 		await migrateTarget(target(), args({ yes: true }), createTestIo("."));
 		const textSearch = (overrides: Partial<CliArgs> = {}) =>
 			args({
@@ -273,11 +275,13 @@ describe("CLI commands (PGlite)", () => {
 		expect(dry.stdout()).toContain(
 			'Would change keyword search from "english" to "simple".',
 		);
+		expect(dry.stdout()).toContain(olderClients);
 
 		const no = createTestIo(".", false);
 		expect(await textSearchTarget(target(), textSearch(), no)).toBe(1);
 		expect(no.questions).toHaveLength(1);
 		expect(no.questions[0]).toContain("rebuilds every index");
+		expect(no.questions[0]).toContain(olderClients);
 		expect(no.stderr()).toBe("Nothing changed.\n");
 
 		const noTerminal = createTestIo(".", undefined);
@@ -288,7 +292,7 @@ describe("CLI commands (PGlite)", () => {
 		const yes = createTestIo(".", true);
 		expect(await textSearchTarget(target(), textSearch(), yes)).toBe(0);
 		expect(yes.stdout()).toBe(
-			'Using memory.ts\nChanged keyword search from "english" to "simple". Restart other app processes so their keyword search uses it.\n',
+			`Using memory.ts\nChanged keyword search from "english" to "simple". Restart other app processes so their keyword search uses it. ${olderClients}\n`,
 		);
 		expect((await check(target())).stdout).toContain("text search simple\n");
 
@@ -299,6 +303,19 @@ describe("CLI commands (PGlite)", () => {
 		expect(again.questions).toEqual([]);
 		expect(again.stdout()).toBe(
 			'Using memory.ts\nKeyword search already uses the "simple" text search configuration.\n',
+		);
+
+		// 1.1 searches with english, so going back to it needs no warning.
+		const back = createTestIo(".", false);
+		expect(
+			await textSearchTarget(
+				target(),
+				textSearch({ textSearchConfig: "english", yes: true }),
+				back,
+			),
+		).toBe(0);
+		expect(back.stdout()).toBe(
+			'Using memory.ts\nChanged keyword search from "simple" to "english". Restart other app processes so their keyword search uses it.\n',
 		);
 	});
 

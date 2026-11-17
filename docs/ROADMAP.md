@@ -92,7 +92,7 @@ Each item ships as a numbered migration. Index changes need
 Found by reading and running the 1.1 and 1.2 items against Postgres 16
 and 18.
 
-- [ ] `fix/mixed-version-text-search-docs`: 1.1 clients search with
+- [x] `fix/mixed-version-text-search-docs`: 1.1 clients search with
   `websearch_to_tsquery('english', …)` whatever the installation uses, so
   on a `simple` installation their keyword matches are silently lost
   (`lexicalRank: null` for "running" where 1.2 finds it), and they ignore

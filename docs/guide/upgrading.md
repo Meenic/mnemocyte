@@ -277,8 +277,16 @@ has one migration.
 Nothing in your code or database has to change.
 
 - **No migration.** 1.1 and 1.2 clients share an installation, so deploy in
-  either order.
+  either order, as long as the installation keeps the defaults: `english`
+  keyword search and the tables on `search_path`.
 - **New options, all opt-in.** `migrate` takes `textSearchConfig`,
   `postgresStore` takes `schemaName`, and `mnemocyte generate --adapter
   drizzle` writes the tables as a Drizzle schema. Without them nothing
   behaves differently. See the [Postgres guide](./postgres.md).
+- **Update every process before you use them.** Pick a keyword search
+  language other than `english` (on a fresh install or with
+  `mnemocyte text-search`) or a `schemaName` only once every app process,
+  worker and script runs 1.2. A 1.1 client searches with `english`
+  whatever the installation uses, so on a `simple` installation a search
+  for "running" loses its keyword match without an error. It also ignores
+  `schemaName` and looks for the tables on `search_path`.

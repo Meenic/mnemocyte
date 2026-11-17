@@ -179,13 +179,28 @@ The items, in order:
   out of scope: they use variables they never declare; only a few
   `guide/api.md` loops are copied by hand into
   `test/package/exports-types.test-d.ts`.
-- [ ] `docs/jsdoc-examples`: a top-level doc comment on the options
+- [x] `docs/jsdoc-examples`: a top-level doc comment on the options
   interfaces that lack one (`MemoryMiddlewareOptions`, `WithMemoryOptions`,
   `MemoryToolsOptions`, `AiSdkEmbedderOptions` and the five HTTP embedder
   options), an `@example` on every `MemoryClient` method and on
   `openaiEmbedder`, and `@throws` with error codes where a method has
   well-defined ones. Skip `@param` that repeats the input type's field
-  docs.
+  docs. Decided: the `BoundMemoryClient` methods keep their
+  `{@link MemoryClient.x}` pointer instead of examples of their own (the
+  `MemoryClient` examples use `memory.for(...)`). `@throws` names the
+  class in braces and the code and reason in the text
+  (`{MnemocyteError} "CONFLICT" with reason "KEY_IN_USE"`). Codes any
+  method can throw (`VALIDATION`, `ABORTED`, `DB`, `MIGRATION`,
+  `EMBEDDING`, `TIMEOUT`, the `CONFIG` mismatches) are listed once on the
+  `MemoryClient` interface; a method's `@throws` lists only its own.
+- [ ] `chore/jsdoc-examples-check`: type-check the ```` ```ts ```` blocks
+  in `@example` comments under `src/` in CI, the way `pnpm test:readme`
+  checks the README. Examples use names they never declare (`memory`,
+  `embedder`, `id`, `openai`, `scope`, …), so each block goes in its own
+  function behind one shared preamble of `declare` lines, and the import
+  lines of all blocks are merged at the top. The generated file sits in
+  the gitignored `test/package/.readme/` for the self-reference. A
+  one-off run of this shape passed on all 36 examples on 2026-11-17.
 - [ ] `docs/ai-tools-guide`: `guide/ai-tools.md`, with a block users paste
   into their own `AGENTS.md` or `CLAUDE.md`, and the mistakes coding agents
   make with Mnemocyte, each checked against the code: expecting

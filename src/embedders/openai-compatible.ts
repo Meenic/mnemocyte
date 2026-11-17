@@ -5,6 +5,10 @@ import type { Embedder } from "../types.js";
 
 export type { PurposeHint, PurposeHints } from "../http-embedder.js";
 
+/**
+ * Options for {@link openaiCompatibleEmbedder}. `baseURL`, `model` and
+ * `dimensions` are required; the API key is optional, for local servers.
+ */
 export interface OpenAICompatibleEmbedderOptions {
 	/**
 	 * Base URL of the API; requests go to `{baseURL}/embeddings`. For example

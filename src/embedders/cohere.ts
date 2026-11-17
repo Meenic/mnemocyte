@@ -41,6 +41,10 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModelSize> = new Map([
 	["embed-multilingual-light-v3.0", { dimensions: 384 }],
 ]);
 
+/**
+ * Options for {@link cohereEmbedder}. Only `model` is required; a model it
+ * does not know also needs `dimensions`.
+ */
 export interface CohereEmbedderOptions {
 	/** Cohere API key. Defaults to `process.env.COHERE_API_KEY`. */
 	readonly apiKey?: string | undefined;

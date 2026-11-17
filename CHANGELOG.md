@@ -43,6 +43,17 @@ marked **Breaking** in their entries. What semver covers is in
   `mnemocyte text-search` says it too when it asks, in `--dry-run` and
   after the change, unless the new configuration is `english`.
 
+### Documentation
+
+- **Examples in the editor.** Every `MemoryClient` method and
+  `openaiEmbedder` now has an example in its doc comment, so hovering a
+  call shows how to use it. The `MemoryClient` comment lists the error
+  codes any method can throw, and each method's own `@throws` names the
+  codes and reasons particular to it, such as `"KEY_IN_USE"` on `update`
+  and `"HAS_DEPENDENTS"` on `delete`, `deleteScope` and `prune`. The
+  options of the AI SDK helpers and the HTTP embedders have a comment of
+  their own.
+
 ## [1.2.0] - 2026-11-16
 
 The second minor release: pick the language of keyword search, keep the

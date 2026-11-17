@@ -92,6 +92,11 @@ export interface MemoryMiddlewareError {
 	readonly error: unknown;
 }
 
+/**
+ * Options for {@link memoryMiddleware}: the bound client to recall from,
+ * where the context goes, and an optional `save` step after each response.
+ * {@link withMemory} takes the same options plus `model`.
+ */
 export interface MemoryMiddlewareOptions {
 	/**
 	 * A client bound to one scope, from `memory.for(scope)`. Context is read
@@ -135,6 +140,10 @@ export interface MemoryMiddlewareOptions {
 	readonly onError?: ((error: MemoryMiddlewareError) => void) | undefined;
 }
 
+/**
+ * Options for {@link withMemory}: the {@link MemoryMiddlewareOptions} plus
+ * the `model` to wrap.
+ */
 export interface WithMemoryOptions extends MemoryMiddlewareOptions {
 	/**
 	 * The language model to wrap, as a model object such as

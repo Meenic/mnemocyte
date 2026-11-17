@@ -8,6 +8,10 @@ import type {
 	MemoryWithScore,
 } from "./types.js";
 
+/**
+ * Options for {@link memoryTools}: the bound client whose scope the tools
+ * read and write.
+ */
 export interface MemoryToolsOptions {
 	/**
 	 * A client bound to one scope, from `memory.for(scope)`. Every tool reads

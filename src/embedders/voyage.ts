@@ -37,6 +37,10 @@ const KNOWN_MODELS: ReadonlyMap<string, KnownModelSize> = new Map([
 	["voyage-law-2", { dimensions: 1024 }],
 ]);
 
+/**
+ * Options for {@link voyageEmbedder}. Only `model` is required; a model it
+ * does not know also needs `dimensions`.
+ */
 export interface VoyageEmbedderOptions {
 	/** Voyage API key. Defaults to `process.env.VOYAGE_API_KEY`. */
 	readonly apiKey?: string | undefined;

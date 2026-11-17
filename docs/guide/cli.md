@@ -336,8 +336,8 @@ the memory file.
 
 ```txt
 Using memory.ts
-Change keyword search from "english" to "simple"? This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation. [y/N] y
-Changed keyword search from "english" to "simple". Restart other app processes so their keyword search uses it.
+Change keyword search from "english" to "simple"? This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation. Every app process must run Mnemocyte 1.2 or later: 1.1 searches with "english" whatever the installation uses, so its keyword matches are lost. [y/N] y
+Changed keyword search from "english" to "simple". Restart other app processes so their keyword search uses it. Every app process must run Mnemocyte 1.2 or later: 1.1 searches with "english" whatever the installation uses, so its keyword matches are lost.
 ```
 
 - It asks before the rewrite. `--yes` (`-y`) answers yes, for CI; without

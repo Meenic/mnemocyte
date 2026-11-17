@@ -879,7 +879,8 @@ moment. [postgres.md](./postgres.md#change-it-later) has the timings.
   client needs interactive transactions, like `migrate`.
 - Other running app processes keep the configuration they read at their
   first search until they restart; the client that made the change uses
-  the new one at once.
+  the new one at once. A process still on 1.1 searches with `english`
+  whatever you pick, so update every process to 1.2 first.
 - An in-memory client has no configuration and returns `null` names with
   `changed: false`.
 

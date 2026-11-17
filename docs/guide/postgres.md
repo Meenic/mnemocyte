@@ -212,6 +212,9 @@ so the app finds the tables whatever `search_path` says.
   puts it first on `search_path` before the tables.
 - Each schema holds its own installation, with its own embedding size and
   keyword search language.
+- Every process that uses the installation must run Mnemocyte 1.2 or
+  later. A 1.1 client ignores `schemaName` and looks for the tables on
+  `search_path`.
 
 ### Move an existing installation
 
@@ -584,6 +587,11 @@ common words such as "the" (stop words). Postgres calls these rules a
 *text search configuration*. Mnemocyte uses `english` unless you pick
 another one when you install.
 
+Every process that uses the installation must run Mnemocyte 1.2 or later
+before you pick anything other than `english`. A 1.1 client always searches
+with `english`, so its keyword matches are lost on another configuration,
+and nothing tells you.
+
 Pick one with `--text-search-config` the first time you migrate:
 
 ```bash
@@ -639,7 +647,8 @@ change if you can (`ALTER ROLE … SET maintenance_work_mem = '1GB'`, or
 App processes that were already running keep using the old configuration
 for the words of a query until they restart, so their keyword matches get
 weaker (an `english` query stems "running" to "run", which a `simple`
-column does not contain). Restart them after the change.
+column does not contain). Restart them after the change. Restarting does
+not help a process still on 1.1; update it to 1.2 first.
 
 To make the change with `psql` instead, run it in one transaction. On
 Postgres 17 and later:

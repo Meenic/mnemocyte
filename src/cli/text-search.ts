@@ -1,3 +1,4 @@
+import { DEFAULT_TEXT_SEARCH_CONFIG } from "../db/text-search.js";
 import { setTextSearchConfig } from "../migrate.js";
 import type { TextSearchConfigResult } from "../types.js";
 import type { CliArgs } from "./args.js";
@@ -7,6 +8,18 @@ import { type CliTarget, resolveTarget } from "./target.js";
 
 const REWRITE_WARNING =
 	"This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation.";
+
+/**
+ * What a change to `name` means for app processes that still run 1.1, which
+ * search with `english` whatever the installation uses: a restart does not
+ * help them, only an update. Empty when `name` is `english`, which 1.1
+ * matches, or `null` (the in-memory backend, which has no configuration).
+ */
+function olderClientWarning(name: string | null): string {
+	return name === null || name === DEFAULT_TEXT_SEARCH_CONFIG
+		? ""
+		: ` Every app process must run Mnemocyte 1.2 or later: 1.1 searches with "${DEFAULT_TEXT_SEARCH_CONFIG}" whatever the installation uses, so its keyword matches are lost.`;
+}
 
 function run(
 	target: CliTarget,
@@ -76,13 +89,13 @@ export async function textSearchTarget(
 	}
 	if (args.dryRun) {
 		io.write(
-			`Would change keyword search from "${plan.previous}" to "${plan.current}". ${REWRITE_WARNING}\n`,
+			`Would change keyword search from "${plan.previous}" to "${plan.current}". ${REWRITE_WARNING}${olderClientWarning(plan.current)}\n`,
 		);
 		return 0;
 	}
 	if (!args.yes) {
 		const answer = await io.confirm(
-			`Change keyword search from "${plan.previous}" to "${plan.current}"? ${REWRITE_WARNING} [y/N] `,
+			`Change keyword search from "${plan.previous}" to "${plan.current}"? ${REWRITE_WARNING}${olderClientWarning(plan.current)} [y/N] `,
 		);
 		if (answer !== true) {
 			io.error(
@@ -96,7 +109,7 @@ export async function textSearchTarget(
 	const result = await run(target, name, false);
 	io.write(
 		result.changed
-			? `Changed keyword search from "${result.previous}" to "${result.current}". Restart other app processes so their keyword search uses it.\n`
+			? `Changed keyword search from "${result.previous}" to "${result.current}". Restart other app processes so their keyword search uses it.${olderClientWarning(result.current)}\n`
 			: `Keyword search already uses the "${result.current}" text search configuration.\n`,
 	);
 	return 0;

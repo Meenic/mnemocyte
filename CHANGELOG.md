@@ -9,6 +9,19 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mixed 1.1 and 1.2 deploys.** The 1.2 notes said 1.1 and 1.2 clients
+  work on the same installation in either deploy order. That holds only
+  while the installation keeps `english` keyword search and its tables on
+  `search_path`. A 1.1 client searches with `english` whatever the
+  installation uses, so on a `simple` installation its keyword matches
+  are lost without an error, and it ignores `schemaName`. Update every
+  process to 1.2 before you pick another keyword search language or a
+  `schemaName`; [upgrading](docs/guide/upgrading.md#11--12) now says so.
+  `mnemocyte text-search` says it too when it asks, in `--dry-run` and
+  after the change, unless the new configuration is `english`.
+
 ## [1.2.0] - 2026-11-16
 
 The second minor release: pick the language of keyword search, keep the

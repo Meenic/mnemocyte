@@ -3,7 +3,10 @@ import { describe, expect, test } from "vitest";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
 import { createMnemocyteStoreConfig } from "../../src/memory/store-config.js";
 import { CONTRACT_DIMENSIONS, embedText } from "../contract/suite.js";
-import { verifyContextMemories } from "../fixtures/context-memories.js";
+import {
+	verifyContextMemories,
+	verifyContextTracksRenderedMemories,
+} from "../fixtures/context-memories.js";
 import { testScope } from "../helpers.js";
 
 const embedder: Embedder = {
@@ -20,6 +23,20 @@ describe("experimental.contextWithMemories (in-memory)", () => {
 		await verifyContextMemories({
 			memory: createMemory({ store, embedder }),
 			defaulted: createMemory({ namespace: "context", store, embedder }),
+			namespace: "context",
+		});
+	});
+
+	test("tracks access only for the memories in the text", async () => {
+		const store = createMnemocyteStoreConfig(createInMemoryStore());
+		await verifyContextTracksRenderedMemories({
+			createTracked: (onEvent) =>
+				createMemory({
+					store,
+					embedder,
+					retrieval: { trackAccess: true },
+					observability: { onEvent },
+				}),
 			namespace: "context",
 		});
 	});

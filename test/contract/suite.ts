@@ -22,7 +22,10 @@ import {
 } from "../fixtures/audit-cursor.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { verifyBoundScope } from "../fixtures/bound-scope.js";
-import { verifyContextMemories } from "../fixtures/context-memories.js";
+import {
+	verifyContextMemories,
+	verifyContextTracksRenderedMemories,
+} from "../fixtures/context-memories.js";
 import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
 import {
@@ -422,6 +425,22 @@ export function describeStoreContract(
 					store: storeInput(),
 					embedder: createContractEmbedder(),
 				}),
+				namespace,
+			});
+		});
+
+		test("context tracks access only for the memories in the text", async () => {
+			// client() registers the namespace for cleanup; the tracked client
+			// needs its own config.
+			const { namespace } = client("ctxaccess");
+			await verifyContextTracksRenderedMemories({
+				createTracked: (onEvent) =>
+					createMemory({
+						store: storeInput(),
+						embedder: createContractEmbedder(),
+						retrieval: { trackAccess: true },
+						observability: { onEvent },
+					}),
 				namespace,
 			});
 		});

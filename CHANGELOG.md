@@ -11,6 +11,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ### Fixed
 
+- **`context` counted memories it left out.** With `trackAccess` on,
+  `context` and `experimental.contextWithMemories` marked every search
+  result as accessed, including the ones `maxTokens` left out of the
+  text. They now mark only the memories in the text, on both backends;
+  `search` still marks every result. Memories that keep getting cut by the
+  budget no longer gain `accessCount` or `lastAccessedAt`, so
+  `prune({ notAccessedSince })` treats them as unused.
 - **`text-search` on a drizzle-kit installation said nothing.** It changed
   `content_tsv` and left drizzle-kit's schema file behind, so the next
   `drizzle-kit generate` rewrote the column again. When the migrations are

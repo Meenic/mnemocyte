@@ -947,9 +947,16 @@ Dated 2026-10-26 unless noted.
       says of `findDuplicatesPage`. It is its own `"contextWithMemories"`
       operation, with `count` = `memories.length`.
     `buildContext` returns the result and `context` keeps only the
-    string, so the two methods cannot render differently. Left open:
-    access tracking marks every search result, the omitted ones included,
-    for both methods.
+    string, so the two methods cannot render differently. Access tracking
+    (resolved 2026-11-17, `fix/context-track-access`): both methods mark
+    only `memories`, not `omitted`. The search hands its visibility back
+    through a `deferAccess` callback instead of starting the write, and the
+    context call starts the same single access statement after the token
+    budget, so it costs no extra round trip. Marking inside the search SQL
+    was rejected: the budget is counted in the client after ranking, and
+    it would make every search a write. `search` still marks every result.
+    The maintainer chose a `Fixed` CHANGELOG entry, since omitted memories
+    never reached the prompt.
 47. **CLI JSON output** (2026-11-16, landed): the maintainer chose, with
     `feat/cli-json`, a `--json` flag on `check` and `migrate --dry-run`
     that prints one JSON object on one line, last on stdout, with the exit

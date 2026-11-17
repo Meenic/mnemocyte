@@ -117,7 +117,7 @@ and 18.
   `guide/postgres.md` "Change it later" names the bare
   `mnemocyte_memories`, which misses an installation in a `schemaName`;
   show the qualified name.
-- [ ] `fix/context-track-access`: with `trackAccess` on, `context` and
+- [x] `fix/context-track-access`: with `trackAccess` on, `context` and
   `experimental.contextWithMemories` mark every search result as accessed,
   the ones the token budget left out of the prompt included, because
   tracking runs inside `search` (decision 46, "Left open";

@@ -34,7 +34,7 @@
    has no rank there; nothing is loaded to fill it in.
 5. Apply the boosts, filter by `minScore`, sort, keep `limit`.
 6. Return them; with access tracking on, start the access write first (see
-   below).
+   below). Inside `context`, the write waits for the token budget instead.
 
 ## Fusion and boosts
 
@@ -103,10 +103,19 @@ counts do not affect ranking.
 
 When it is on and search returns at least one memory, `trackAccess` in
 `memory/client-core.ts` calls `markMemoriesAccessed` for the returned ids and
-does not wait for it ("fire-and-forget"):
+does not wait for it ("fire-and-forget"). `context` and
+`contextWithMemories` mark only the memories in the text, not the ones the
+token budget left out: they run the search through `runSearch` with a
+`deferAccess` callback, which receives the search's visibility instead of
+the write starting, and `buildTrackedContext` then calls `trackAccess` with
+`memories`' ids. That is still one statement with the same scope, issued
+after the token budget instead of inside the search, so it costs no extra
+round trip. Its `start` event comes after the inner search's `success` and
+before the context call's own `success`. When nothing fits, nothing is
+written.
 
-- The store call starts before search resolves, so the driver already has the
-  statement, but search's result never waits on it. The postgres.js adapter
+- The store call starts before search (or the context call) resolves, so the
+  driver already has the statement, but the result never waits on it. The postgres.js adapter
   calls `execute()` on every query, because postgres.js otherwise sends a
   query only on the next tick; a caller that ends its client right after
   search therefore still gets the write (`sql.end()` waits for queued
@@ -199,8 +208,8 @@ success event has `count` = `memories.length`; the search inside it emits
 its usual `"search"` events. The default-namespace and bound clients wrap
 it like `findDuplicatesPage`.
 
-Access tracking is unchanged: a tracked call marks every search result,
-the omitted ones included, as `context` does.
+With access tracking on, both methods mark only `memories`; `omitted`
+keeps its counts (see [access tracking](#access-tracking)).
 
 **Tests.** `test/fixtures/context-memories.ts` runs on the in-memory
 backend (`test/context/context-memories.test.ts`) and in the Postgres
@@ -210,4 +219,8 @@ then `omitted` equals `search`'s ids, a tight budget fills `omitted` and
 its count is the omitted line's, a budget nothing fits omits everything,
 no match gives the empty result, `explain` fills both lists, `limit`
 reaches the search, the default-namespace and bound clients match, and
-bad inputs throw `"VALIDATION"`.
+bad inputs throw `"VALIDATION"`. `verifyContextTracksRenderedMemories`
+runs in the same places with a tracked client: with a tight budget,
+`contextWithMemories` and `context` mark only `memories` (the event's
+`count` is `memories.length`) and leave `omitted` at 0, a budget nothing
+fits starts no write, and `search` still marks every result.

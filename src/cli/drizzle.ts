@@ -3,6 +3,7 @@ import { quoteIdentifier, sqlStringLiteral } from "../db/tables.js";
 import {
 	contentTsvExpression,
 	DEFAULT_TEXT_SEARCH_CONFIG,
+	parseContentTsvExpression,
 } from "../db/text-search.js";
 
 /**
@@ -303,16 +304,26 @@ ANALYZE ${table} ("content_tsv");
 export interface DrizzleSchemaShape {
 	readonly dimensions: number;
 	readonly schema: string | null;
+	/**
+	 * `content_tsv`'s configuration, or null when its line no longer has the
+	 * shape `generate` writes.
+	 */
+	readonly textSearchConfig: string | null;
 }
 
 const EMBEDDING_SOURCE =
 	/^\t\tembedding: (?:vector|halfvec)\("embedding", \{ dimensions: (\d+) \}\),$/m;
 const SCHEMA_SOURCE =
 	/^export const mnemocyteSchema = pgSchema\(("[^"\n]*")\);$/m;
+const CONTENT_TSV_SOURCE =
+	/^\t\tcontentTsv: tsvector\("content_tsv"\)\.generatedAlwaysAs\(\n\t\t\tsql`((?:[^`\\]|\\.)*)`,\n\t\t\),$/m;
 
 /**
- * The dimensions and schema of a file {@link renderDrizzleSchema} wrote, or
- * null when its source no longer has the lines it wrote.
+ * The dimensions, schema and text search configuration of a file
+ * {@link renderDrizzleSchema} wrote, or null when its source no longer has
+ * the embedding line it wrote. The configuration is read from the
+ * `content_tsv` line, not the header comment, because that line is what
+ * drizzle-kit compares.
  */
 export function readDrizzleSchemaShape(
 	source: string,
@@ -322,8 +333,14 @@ export function readDrizzleSchemaShape(
 		return null;
 	}
 	const schema = SCHEMA_SOURCE.exec(source)?.[1];
+	const expression = CONTENT_TSV_SOURCE.exec(source)?.[1];
 	return {
 		dimensions: Number(dimensions),
 		schema: schema === undefined ? null : (JSON.parse(schema) as string),
+		// Undo templateText: `\\`, `` \` `` and `\${` come back as written.
+		textSearchConfig:
+			expression === undefined
+				? null
+				: parseContentTsvExpression(expression.replace(/\\([\\`$])/g, "$1")),
 	};
 }

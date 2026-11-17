@@ -11,6 +11,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ### Fixed
 
+- **`generate --adapter drizzle` kept the wrong language.** Run again
+  without `--text-search-config`, it wrote `english` over a file made for
+  another configuration, and `drizzle-kit generate` then dropped and
+  re-added `content_tsv`, rewriting the table. It now keeps the
+  configuration of the existing file and changes it only when you pass the
+  flag. If the file's `content_tsv` line was edited by hand, it exits 2
+  unless you pass the flag.
 - **Mixed 1.1 and 1.2 deploys.** The 1.2 notes said 1.1 and 1.2 clients
   work on the same installation in either deploy order. That holds only
   while the installation keeps `english` keyword search and its tables on

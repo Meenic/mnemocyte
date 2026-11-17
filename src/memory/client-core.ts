@@ -19,6 +19,8 @@ import type {
 	AddInput,
 	AddManyInput,
 	ConsolidateResult,
+	ContextWithMemoriesInput,
+	ContextWithMemoriesResult,
 	DuplicatePage,
 	DuplicatePair,
 	EmbeddingPurpose,
@@ -497,6 +499,18 @@ export function createMemoryClient(
 	}
 
 	function search(input: SearchInput): Promise<MemoryWithScore[]> {
+		return runSearch(input);
+	}
+
+	/**
+	 * Search with `deferAccess`: when tracking is on, the access write is not
+	 * started here; the search's visibility goes to `deferAccess`, and the
+	 * caller marks only the results it used (see {@link buildTrackedContext}).
+	 */
+	function runSearch(
+		input: SearchInput,
+		deferAccess?: (visibility: StoreVisibility) => void,
+	): Promise<MemoryWithScore[]> {
 		return observe(
 			config,
 			store.backend,
@@ -580,15 +594,44 @@ export function createMemoryClient(
 					.sort(compareScoredMemories)
 					.slice(0, limit);
 				if (input.trackAccess ?? config.retrieval?.trackAccess ?? false) {
-					trackAccess(
-						visibility,
-						scored.map((memory) => memory.id),
-					);
+					if (deferAccess) {
+						deferAccess(visibility);
+					} else {
+						trackAccess(
+							visibility,
+							scored.map((memory) => memory.id),
+						);
+					}
 				}
 				return scored;
 			},
 			(result) => ({ count: result.length }),
 		);
+	}
+
+	/**
+	 * Build a context and, with tracking on, mark only the memories that made
+	 * it into the text, not the ones the token budget left out. The write
+	 * starts before the call resolves, as a tracked search's does.
+	 */
+	async function buildTrackedContext(
+		input: ContextWithMemoriesInput,
+	): Promise<ContextWithMemoriesResult> {
+		let accessVisibility: StoreVisibility | undefined;
+		const built = await buildContext({
+			input,
+			search: () =>
+				runSearch(contextInputToSearchInput(input), (visibility) => {
+					accessVisibility = visibility;
+				}),
+		});
+		if (accessVisibility) {
+			trackAccess(
+				accessVisibility,
+				built.memories.map((memory) => memory.id),
+			);
+		}
+		return built;
 	}
 
 	const client: Omit<CoreMemoryClient, "experimental"> = {
@@ -797,11 +840,7 @@ export function createMemoryClient(
 				scopeMetadata(input),
 				async () => {
 					validateContextInput(input);
-					const built = await buildContext({
-						input,
-						search: (contextInput) =>
-							search(contextInputToSearchInput(contextInput)),
-					});
+					const built = await buildTrackedContext(input);
 					return built.context;
 				},
 			);
@@ -1033,10 +1072,7 @@ export function createMemoryClient(
 					scopeMetadata(input),
 					async () => {
 						validateContextInput(input, "contextWithMemories");
-						return buildContext({
-							input,
-							search: () => search(contextInputToSearchInput(input)),
-						});
+						return buildTrackedContext(input);
 					},
 					(result) => ({ count: result.memories.length }),
 				);

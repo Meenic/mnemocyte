@@ -314,7 +314,8 @@ not wait for it, so the returned records show the values from before this
 search. If it fails, search still succeeds and `onEvent` receives a
 `"trackAccess"` error event. Memories deleted in the meantime are skipped.
 `updatedAt` never changes on search, and access counts do not affect
-ranking. With tracking off, `accessCount` stays 0 and `lastAccessedAt`
+ranking. `context` marks only the memories that fit in its text, not the
+ones `maxTokens` left out. With tracking off, `accessCount` stays 0 and `lastAccessedAt`
 stays null.
 
 ## `get`
@@ -394,7 +395,8 @@ Runs a search and renders the results as a string to put in a prompt, or
 returns `""` when no memory matches. It accepts search's `limit`,
 `minScore`, `kinds`, `tags`, `createdBefore`, `createdAfter`,
 `includeSuperseded`, `includeExpired`, `exactAgent`, `exactSession` and
-`trackAccess`, with the same defaults. The filters apply in the search,
+`trackAccess`, with the same defaults; with `trackAccess` on, only the
+memories in the text are marked as accessed. The filters apply in the search,
 so `limit` and `maxTokens` are spent only on memories that match. It also
 takes:
 
@@ -429,7 +431,8 @@ or see why one was left out. It returns:
 - `context`: the same string `context` returns for that input.
 - `memories`: the memories in the text, in the order they appear.
 - `omitted`: memories that matched but did not fit `maxTokens`, best
-  first. These are the ones the "omitted" line counts.
+  first. These are the ones the "omitted" line counts. With `trackAccess`
+  on, they are not marked as accessed; `memories` are.
 
 Each memory carries its `score` and `scores`, as in `search`. Together,
 `memories` and `omitted` are the search results, in ranking order: the

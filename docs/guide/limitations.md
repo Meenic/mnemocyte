@@ -92,8 +92,8 @@ them.
   `kinds` filter. Recall varies between index builds, so the same data can
   score a few points higher or lower after a rebuild. Entities of a few
   hundred memories are searched exactly.
-- **Access writes can be lost.** With `trackAccess` on, search does not wait
-  for the access write. On platforms that freeze the process once the
+- **Access writes can be lost.** With `trackAccess` on, search and context
+  do not wait for the access write. On platforms that freeze the process once the
   response is sent (serverless functions), some writes may never run, so
   `accessCount` can undercount.
 

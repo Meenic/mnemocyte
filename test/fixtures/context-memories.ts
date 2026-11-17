@@ -2,9 +2,11 @@ import type {
 	ContextWithMemoriesResult,
 	MemoryClient,
 	MemoryScope,
+	MnemocyteObservation,
 } from "mnemocyte";
 import { expect } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { trackAccessEvents } from "./access-tracking.js";
 
 const WORDS = ["alpha", "bravo", "charlie", "delta", "echo"];
 
@@ -187,4 +189,118 @@ export async function verifyContextMemories(input: {
 	await expect(
 		memory.context({ scope, query, explain: true } as never),
 	).rejects.toThrow('context does not accept "explain".');
+}
+
+/**
+ * With access tracking on, `context` and `contextWithMemories` mark only the
+ * memories in the text; the ones the token budget left out keep their
+ * counts. `search` still marks every result. `createTracked` returns a
+ * client with `retrieval.trackAccess: true` that sends events to `onEvent`.
+ */
+export async function verifyContextTracksRenderedMemories(input: {
+	createTracked(onEvent: (event: MnemocyteObservation) => void): MemoryClient;
+	namespace: string;
+}): Promise<void> {
+	const events = trackAccessEvents();
+	const memory = input.createTracked(events.onEvent);
+	const scope: MemoryScope = {
+		namespace: input.namespace,
+		entityId: "tracked",
+	};
+	const created = await memory.addMany({
+		scope,
+		memories: WORDS.map((word) => ({
+			content: `tracked probe about kites, ${word}`,
+		})),
+	});
+	const query = "kites";
+	const full = await memory.experimental.contextWithMemories({
+		scope,
+		query,
+		maxTokens: 10_000,
+		trackAccess: false,
+	});
+	expect(full.memories).toHaveLength(WORDS.length);
+	const maxTokens = Math.ceil(full.context.length / 4) - 1;
+
+	async function counts(): Promise<Map<string, number>> {
+		const read = await Promise.all(
+			created.map((item) => memory.get({ scope, id: item.id })),
+		);
+		return new Map(
+			read.map((item) => {
+				const found = expectDefined(item);
+				return [found.id, found.accessCount];
+			}),
+		);
+	}
+	async function expectCounts(
+		used: readonly string[],
+		left: readonly string[],
+		usedCount: number,
+		leftCount: number,
+	): Promise<void> {
+		const stored = await counts();
+		for (const id of used) {
+			expect(stored.get(id)).toBe(usedCount);
+		}
+		for (const id of left) {
+			expect(stored.get(id)).toBe(leftCount);
+		}
+	}
+
+	// A tight budget: only the memories in the text are marked.
+	const tight = await memory.experimental.contextWithMemories({
+		scope,
+		query,
+		maxTokens,
+	});
+	expect(tight.memories.length).toBeGreaterThan(0);
+	expect(tight.omitted.length).toBeGreaterThan(0);
+	expect(await events.nextSettled()).toMatchObject({
+		operation: "trackAccess",
+		phase: "success",
+		count: tight.memories.length,
+	});
+	const used = ids(tight.memories);
+	const left = ids(tight.omitted);
+	await expectCounts(used, left, 1, 0);
+
+	// context() renders the same memories and marks the same ones.
+	const text = await memory.context({ scope, query, maxTokens });
+	expect(text).toBe(tight.context);
+	expect(await events.nextSettled()).toMatchObject({
+		phase: "success",
+		count: used.length,
+	});
+	await expectCounts(used, left, 2, 0);
+
+	// Nothing fits: no write starts, before or after the call resolves.
+	const startsBefore = events.all.length;
+	await memory.context({ scope, query, maxTokens: 1 });
+	const none = await memory.experimental.contextWithMemories({
+		scope,
+		query,
+		maxTokens: 1,
+	});
+	expect(none.memories).toEqual([]);
+	expect(events.all).toHaveLength(startsBefore);
+	await expectCounts(used, left, 2, 0);
+
+	// search still marks every result it returns.
+	const results = await memory.search({ scope, query });
+	expect(results).toHaveLength(WORDS.length);
+	expect(await events.nextSettled()).toMatchObject({
+		phase: "success",
+		count: WORDS.length,
+	});
+	await expectCounts(used, left, 3, 1);
+	expect(events.all.map((event) => event.phase)).toEqual([
+		"start",
+		"success",
+		"start",
+		"success",
+		"start",
+		"success",
+	]);
 }

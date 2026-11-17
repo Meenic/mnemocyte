@@ -206,7 +206,7 @@ The items, in order:
   Mnemocyte export they use. Nine examples gained an import line for that.
   The generated `jsdoc.ts` and `tsconfig.jsdoc.json` sit in the gitignored
   `test/package/.readme/`.
-- [ ] `docs/ai-tools-guide`: `guide/ai-tools.md`, with a block users paste
+- [x] `docs/ai-tools-guide`: `guide/ai-tools.md`, with a block users paste
   into their own `AGENTS.md` or `CLAUDE.md`, and the mistakes coding agents
   make with Mnemocyte, each checked against the code: expecting
   `createMemory` to create tables, passing a `pg.Client`, calls without a

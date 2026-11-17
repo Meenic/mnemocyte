@@ -270,6 +270,43 @@ release notes tell drizzle-kit users to run `generate` again (see
 were removed with `0003`; their inferred types blocked
 `isolatedDeclarations`, so the Drizzle schema is generated text instead.
 
+### Adding a migration
+
+Every 1.x migration keeps a client one version older and one version newer
+working on both the old and the new schema, in either deploy order. The
+client does not check the schema version at run time, so a new client that
+writes a new column would fail every write for an app that upgrades the
+package before running `mnemocyte migrate`: a break in a minor.
+
+- Prefer columns Postgres computes (generated columns, defaults) over ones
+  the client writes, and never name a new column in the `SELECT` lists or
+  writes that older schemas also run. Only the feature that needs the
+  migration may fail on an old schema, with the usual `"MIGRATION"` error
+  (42703). Run-time detection of the column was rejected: it goes stale
+  when `migrate` runs while the app is up (decision 49).
+- The runner applies each migration in one transaction, so `CREATE INDEX
+  CONCURRENTLY` is impossible. Document the `ACCESS EXCLUSIVE` time with
+  bench numbers instead.
+
+Each new migration touches:
+
+- its level in `installedVersion` / `readCatalogState`;
+- the schema template, so fresh and upgraded catalogs match, then
+  `pnpm migration:bundle`;
+- `renderDrizzleSchema` (`src/cli/drizzle.ts`), or `renderDrizzleSetupSql`
+  when drizzle-orm cannot express the change;
+  `test/contract/drizzle-schema.test.ts` fails until the catalogs match,
+  and the CHANGELOG tells drizzle-kit users to run `generate` again
+  (decision 52);
+- every integration test's migration list (`test/integration/*.ts`,
+  `schema-v2.ts`), whose first statement must fail with `42701` on a rerun;
+- the "N of N applied" CLI expectations in `test/contract/cli.test.ts`,
+  `test/package/cli.test.ts` and `test/integration/cli.test.ts`;
+- the docs that list migrations: this file (the table above, install
+  paths, adoption and a detail section), `guide/postgres.md` (upgrade
+  table), `guide/upgrading.md`, and the example outputs in `guide/cli.md`
+  and `guide/getting-started.md`.
+
 ### The `migrate()` runner
 
 `migrate(input)` is exported from the root `mnemocyte` import and calls the

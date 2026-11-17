@@ -533,7 +533,11 @@ Vitest has three projects (`vitest.config.ts`):
   (ignored by git); Vitest hides a passing test's console output. At the
   full scale (`MNEMOCYTE_BENCH_SCALE=1`) the run fails when a plan stops
   using the index the docs name. It takes about an hour and is not part of
-  CI. The numbers are in [features/postgres.md](./features/postgres.md#indexes-measured)
+  CI. Before a full run, run new or changed bench code once at a reduced
+  `MNEMOCYTE_BENCH_SCALE` so every new code path executes: a typo in a new
+  case once failed a full run after 46 minutes. The plan checks run only
+  at scale 1, so assert that the index is used, not the exact plan shape,
+  which the planner may change (a BitmapAnd plus a sort, say). The numbers are in [features/postgres.md](./features/postgres.md#indexes-measured)
   and [features/maintenance.md](./features/maintenance.md).
 - Benchmarking `dist/` avoids most of the export getters Vite's module runner
   adds to `src/` cross-module calls. One call between tsdown's shared chunks
@@ -544,6 +548,19 @@ Vitest has three projects (`vitest.config.ts`):
 
 The maintainer cuts a release; `.github/workflows/release.yml` publishes it
 when a `v*` tag is pushed.
+
+When to release (agreed 2026-11-15), with no fixed schedule:
+
+- **Patch (1.x.y):** right away, for a bug that hurts users, when
+  `[Unreleased]` holds fixes only.
+- **Minor (1.x.0):** after a group of features lands, such as a finished
+  ROADMAP section. Any `Added` or `Deprecated` entry in `[Unreleased]`
+  makes the next version a minor.
+- **Major (2.0):** only for changes that break the documented API. The
+  ROADMAP is a work queue, not a version plan; its items ship across 1.x
+  minors.
+- A question about releasing is not a request for one. Open a release PR
+  only when the maintainer asks for it.
 
 1. On a `chore/release-vX.Y.Z` branch, move the `CHANGELOG.md`
    `[Unreleased]` entries under the new version and run

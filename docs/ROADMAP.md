@@ -117,6 +117,12 @@ and 18.
   `guide/postgres.md` "Change it later" names the bare
   `mnemocyte_memories`, which misses an installation in a `schemaName`;
   show the qualified name.
+- [ ] `fix/context-track-access`: with `trackAccess` on, `context` and
+  `experimental.contextWithMemories` mark every search result as accessed,
+  the ones the token budget left out of the prompt included, because
+  tracking runs inside `search` (decision 46, "Left open";
+  `features/retrieval.md`). Mark only the memories that made it into the
+  context, on both backends, and test a tight budget.
 
 ## Discoverability
 
@@ -226,6 +232,9 @@ Not queued. Each one comes back as an item when its condition holds.
   today).
 - Recency that follows content updates rather than `createdAt`, if users
   find the note in `guide/api.md` ("Keys") is not enough.
+- The memories `memoryMiddleware` / `withMemory` put in the prompt, given
+  to the app (for citations), perhaps through an `onContext`-style
+  callback, once `experimental.contextWithMemories` leaves `experimental`.
 - OpenTelemetry on the observability hooks, when users ask for it. `onEvent`
   covers it in app code today; a subpath would add `@opentelemetry/api` as
   an optional peer.

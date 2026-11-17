@@ -216,13 +216,15 @@ The items, in order:
   `deleteScope` erasing across agents and sessions, `instanceof` instead
   of `isMnemocyteError`, relying on `experimental.*`, and `migrate` over
   Neon's HTTP driver.
-- [ ] `docs/faq-recipes`: `guide/faq.md` (do I need Postgres, which
+- [x] `docs/faq-recipes`: `guide/faq.md` (do I need Postgres, which
   drivers, CommonJS, does it call an LLM, switching embedding models,
   multi-tenant apps) and `guide/recipes.md` (an AI SDK chat route with
   `withMemory`, a preference saved under a `key`, erasing a user, nightly
   maintenance with prune, duplicates, consolidate and audit retention,
   tests on the in-memory store, a local setup with Ollama). Answers link
-  to the guide sections that hold the details.
+  to the guide sections that hold the details. Both are linked from the
+  README's documentation line. Like other guide snippets, the recipe code
+  is not type-checked.
 - [ ] `docs/examples`: `examples/` with `in-memory.ts`, `pglite.ts`
   (Postgres in process, no Docker), `postgres.ts` and `ai-sdk-chat.ts`,
   run with `node file.ts` (check Node's type stripping docs first),

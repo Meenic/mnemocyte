@@ -14,6 +14,10 @@ const CONFIGURABLE_DIMENSION_MODELS = new Set([
 	"text-embedding-3-large",
 ]);
 
+/**
+ * Options for {@link openaiEmbedder}. Only `model` is required; the API key
+ * defaults to `OPENAI_API_KEY`.
+ */
 export interface OpenAIEmbedderOptions {
 	/**
 	 * OpenAI API key. Defaults to `process.env.OPENAI_API_KEY`.
@@ -106,6 +110,19 @@ function resolveDimensions(options: OpenAIEmbedderOptions): {
  * directly so provider SDKs never become part of Mnemocyte's dependency graph.
  * It is `openaiCompatibleEmbedder` with OpenAI's base URL, `OPENAI_API_KEY`
  * and known model sizes.
+ *
+ * @throws {MnemocyteError} `"CONFIG"` with reason `"INVALID_OPTION"` for an
+ * unknown option, no API key, a model it does not know without
+ * `dimensions`, or `dimensions` that are not a positive integer or that
+ * the model cannot change.
+ *
+ * @example
+ * ```ts
+ * import { openaiEmbedder } from "mnemocyte/embedders";
+ *
+ * // Reads OPENAI_API_KEY.
+ * const embedder = openaiEmbedder({ model: "text-embedding-3-small" });
+ * ```
  */
 export function openaiEmbedder(options: OpenAIEmbedderOptions): Embedder {
 	assertKnownKeys(

@@ -52,6 +52,10 @@ const PREFIXES: Record<EmbeddingPurpose, string> = {
 	document: "title: none | text: ",
 };
 
+/**
+ * Options for {@link googleEmbedder}. Only `model` is required; a model it
+ * does not know also needs `dimensions`.
+ */
 export interface GoogleEmbedderOptions {
 	/** Gemini API key. Defaults to `process.env.GEMINI_API_KEY`. */
 	readonly apiKey?: string | undefined;

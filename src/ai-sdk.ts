@@ -30,6 +30,11 @@ export interface AiSdkPurposeHints {
  */
 export type AiSdkPurposeOptions = AiSdkPurposeHints;
 
+/**
+ * Options for {@link aiSdkEmbedder}: an AI SDK embedding model or a
+ * `"provider/model"` string. A model it does not know also needs
+ * `dimensions`.
+ */
 export interface AiSdkEmbedderOptions {
 	/**
 	 * An AI SDK embedding model, such as `openai.embedding("…")`, or a

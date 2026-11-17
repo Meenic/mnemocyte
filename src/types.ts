@@ -1582,41 +1582,111 @@ export interface MemoryStats {
  * behind a store stays yours to end.
  *
  * Every method may throw {@link MnemocyteError}; use {@link isMnemocyteError}
- * to narrow caught values.
+ * to narrow caught values. These codes can come from any method that does
+ * the work named; a method's own `@throws` lists the codes particular to
+ * it:
+ *
+ * - `"VALIDATION"`: malformed input, including an unknown key.
+ * - `"ABORTED"`: the input's `signal` aborted.
+ * - `"DB"`: a driver or Postgres failure. `"MIGRATION"`: the tables are
+ *   missing, out of date or not usable; `migrate` creates or upgrades them.
+ * - `"EMBEDDING"` and `"TIMEOUT"`: the embedder failed or timed out. Only
+ *   `add`, `addMany`, `search`, `context`, and `update` with new `content`
+ *   embed text.
+ * - `"CONFIG"` with reason `"MODEL_MISMATCH"` or `"DIMENSIONS_MISMATCH"`:
+ *   on Postgres, the embedder differs from the one the installation
+ *   recorded. Checked by the methods that embed and by `findDuplicates`.
  *
  * `DefaultNamespace` is `true` for a client created with
  * {@link MemoryConfig.namespace}: its scopes may then omit `namespace`.
+ *
+ * @example
+ * ```ts
+ * const memory = createMemory({ namespace: "my-app", embedder });
+ * const user = memory.for({ entityId: "user_123" });
+ * await user.add({ content: "Prefers short, direct answers." });
+ * ```
  */
 export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	/**
 	 * Store one memory and return it. With a `key` that already exists in the
 	 * scope, the existing memory is updated in place instead.
 	 *
-	 * @throws {MnemocyteError} `"VALIDATION"` for invalid input, `"EMBEDDING"`
-	 * if the embedder fails, `"DB"` for storage failures.
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * await user.add({ content: "Prefers short, direct answers." });
+	 * // With a key, a second add updates the same memory.
+	 * await user.add({ key: "reply-style", content: "Prefers bullet points." });
+	 * ```
 	 */
 	add(input: AddInput<DefaultNamespace>): Promise<Memory>;
 	/**
 	 * Store several memories of one scope: embed them in batches of the
 	 * embedder's `maxBatch`, then write them all or none. Returns them in
 	 * input order.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * await user.addMany({
+	 *   memories: [
+	 *     { content: "Lives in Lisbon." },
+	 *     { content: "Is vegetarian.", kind: "preference" },
+	 *   ],
+	 * });
+	 * ```
 	 */
 	addMany(input: AddManyInput<DefaultNamespace>): Promise<Memory[]>;
 	/**
 	 * Rank the memories visible at the scope against `query` with hybrid
 	 * vector and keyword search.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * const results = await user.search({ query: "food", limit: 5 });
+	 * for (const { content, score } of results) console.log(score, content);
+	 * ```
 	 */
 	search(input: SearchInput<DefaultNamespace>): Promise<MemoryWithScore[]>;
-	/** Return one memory by id or key, or `null` when there is none. */
+	/**
+	 * Return one memory by id or key, or `null` when there is none.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * const style = await user.get({ key: "reply-style" });
+	 * ```
+	 */
 	get(input: GetInput<DefaultNamespace>): Promise<Memory | null>;
-	/** Page through the memories visible at the scope, newest first. */
+	/**
+	 * Page through the memories visible at the scope, newest first.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * let cursor: string | undefined;
+	 * do {
+	 *   const page = await user.list({ cursor });
+	 *   console.log(page.memories.length);
+	 *   cursor = page.nextCursor ?? undefined;
+	 * } while (cursor);
+	 * ```
+	 */
 	list(input: ListInput<DefaultNamespace>): Promise<ListResult>;
 	/**
 	 * Change fields of one memory and return it. Content changes re-embed it.
 	 *
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
-	 * visible at the scope; `"CONFLICT"` if the new key is already used in
-	 * the memory's scope.
+	 * visible at the scope; `"CONFLICT"` with reason `"KEY_IN_USE"` if the
+	 * new key is already used in the memory's scope.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * await user.update({ id, content: "Lives in Porto.", tags: ["home"] });
+	 * ```
 	 */
 	update(input: UpdateInput<DefaultNamespace>): Promise<Memory>;
 	/**
@@ -1625,9 +1695,18 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * the ids it deleted and restored.
 	 *
 	 * @throws {MnemocyteError} `"NOT_FOUND"` if no memory with that id is
-	 * visible at the scope; `"CONFLICT"` when it is a consolidation survivor
-	 * and `dependents` is `"reject"` (the default), or a dependent is not
+	 * visible at the scope; `"CONFLICT"` with reason `"HAS_DEPENDENTS"` when
+	 * it is a consolidation survivor and `dependents` is `"reject"` (the
+	 * default), or with reason `"HIDDEN_DEPENDENTS"` when a dependent is not
 	 * visible at the scope. Nothing is deleted on any error.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * await user.delete({ id });
+	 * // A survivor of consolidate: make its duplicates active again.
+	 * await user.delete({ id: survivorId, dependents: "restore" });
+	 * ```
 	 */
 	delete(input: DeleteInput<DefaultNamespace>): Promise<DeleteResult>;
 	/**
@@ -1635,8 +1714,17 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * statement. `{ namespace, entityId }` erases the entity across all agents
 	 * and sessions.
 	 *
-	 * @throws {MnemocyteError} `"CONFLICT"` when a memory outside the scope
-	 * still references a memory inside it as its consolidation survivor.
+	 * @throws {MnemocyteError} `"CONFLICT"` with reason `"HAS_DEPENDENTS"`
+	 * when a memory outside the scope still references a memory inside it as
+	 * its consolidation survivor.
+	 *
+	 * @example
+	 * ```ts
+	 * // Erase one user across all agents and sessions.
+	 * const { deletedCount } = await memory
+	 *   .for({ entityId: "user_123" })
+	 *   .deleteScope();
+	 * ```
 	 */
 	deleteScope(
 		input: DeleteScopeInput<DefaultNamespace>,
@@ -1644,6 +1732,16 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	/**
 	 * Search and render the results as a prompt-ready string within a token
 	 * budget. Returns `""` when no memory matches.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * const context = await user.context({
+	 *   query: "How should I reply?",
+	 *   maxTokens: 800,
+	 * });
+	 * const system = `You are a helpful assistant.\n\n${context}`;
+	 * ```
 	 */
 	context(input: ContextInput<DefaultNamespace>): Promise<string>;
 	/**
@@ -1651,15 +1749,35 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * selector. Pass `dryRun: true` to count without deleting.
 	 *
 	 * @throws {MnemocyteError} `"VALIDATION"` without a scope (or
-	 * `allNamespaces: true`) or without a selector; `"CONFLICT"` when a
-	 * non-dry-run prune selects a memory that still has consolidation
-	 * dependents. The prune deletes nothing in that case.
+	 * `allNamespaces: true`) or without a selector; `"CONFLICT"` with reason
+	 * `"HAS_DEPENDENTS"` when a non-dry-run prune selects a memory that still
+	 * has consolidation dependents. The prune deletes nothing in that case.
+	 *
+	 * @example
+	 * ```ts
+	 * // Nightly: drop expired memories across the whole installation.
+	 * await memory.prune({ allNamespaces: true, expired: true });
+	 * // One user's low-importance memories untouched for 90 days.
+	 * await memory.for({ entityId: "user_123" }).prune({
+	 *   notAccessedSince: new Date(Date.now() - 90 * 86_400_000),
+	 *   maxImportance: "low",
+	 * });
+	 * ```
 	 */
 	prune(input: PruneInput<DefaultNamespace>): Promise<PruneResult>;
 	/**
 	 * Return pairs of near-identical memories visible at the scope, most
 	 * similar first. Each memory is compared with its nearest neighbors.
 	 * Read-only.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * const pairs = await user.findDuplicates({ threshold: 0.97 });
+	 * for (const { a, b, similarity } of pairs) {
+	 *   console.log(similarity, a.content, b.content);
+	 * }
+	 * ```
 	 */
 	findDuplicates(
 		input: FindDuplicatesInput<DefaultNamespace>,
@@ -1676,6 +1794,14 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * with reason `"CONSOLIDATION_CHANGED"` if the survivor is itself
 	 * superseded (before or during the call) or a memory points to a
 	 * different survivor. Nothing is written on any error.
+	 *
+	 * @example
+	 * ```ts
+	 * const user = memory.for({ entityId: "user_123" });
+	 * for (const { a, b } of await user.findDuplicates()) {
+	 *   await user.consolidate({ survivorId: a.id, supersededIds: [b.id] });
+	 * }
+	 * ```
 	 */
 	consolidate(
 		input: ConsolidateInput<DefaultNamespace>,
@@ -1687,6 +1813,15 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * @throws {MnemocyteError} `"VALIDATION"` without a selector (or
 	 * `allNamespaces: true`), or for a `cursor` that is not a `nextCursor`
 	 * of this method.
+	 *
+	 * @example
+	 * ```ts
+	 * // One memory's history.
+	 * const { events } = await memory
+	 *   .for({ entityId: "user_123" })
+	 *   .listAuditLog({ memoryId: id });
+	 * for (const { type, timestamp } of events) console.log(timestamp, type);
+	 * ```
 	 */
 	listAuditLog(
 		input: ListAuditLogInput<DefaultNamespace>,
@@ -1701,6 +1836,15 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 * `allNamespaces: true`), without a valid `before`, or with a
 	 * `batchSize` outside 1–10,000; `"ABORTED"` when the signal aborts
 	 * between batches, after the earlier batches committed.
+	 *
+	 * @example
+	 * ```ts
+	 * // Keep 30 days of audit events.
+	 * await memory.pruneAuditLog({
+	 *   allNamespaces: true,
+	 *   before: new Date(Date.now() - 30 * 86_400_000),
+	 * });
+	 * ```
 	 */
 	pruneAuditLog(
 		input: PruneAuditLogInput<DefaultNamespace>,
@@ -1710,6 +1854,14 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 *
 	 * @throws {MnemocyteError} `"VALIDATION"` without a scope (or
 	 * `allNamespaces: true`); `"ABORTED"` when the signal aborts.
+	 *
+	 * @example
+	 * ```ts
+	 * const { memoryCount } = await memory
+	 *   .for({ entityId: "user_123" })
+	 *   .stats();
+	 * const total = await memory.stats({ allNamespaces: true });
+	 * ```
 	 */
 	stats(input: StatsInput<DefaultNamespace>): Promise<MemoryStats>;
 	/**

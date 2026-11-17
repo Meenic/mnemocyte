@@ -87,6 +87,37 @@ Each item ships as a numbered migration. Index changes need
   writes the tables as a Drizzle schema, so `drizzle-kit` manages them
   (ARCHITECTURE.md "Setup").
 
+## Fixes after 1.2
+
+Found by reading and running the 1.1 and 1.2 items against Postgres 16
+and 18.
+
+- [ ] `fix/mixed-version-text-search-docs`: 1.1 clients search with
+  `websearch_to_tsquery('english', …)` whatever the installation uses, so
+  on a `simple` installation their keyword matches are silently lost
+  (`lexicalRank: null` for "running" where 1.2 finds it), and they ignore
+  `schemaName`. `CHANGELOG.md` 1.2.0, `guide/upgrading.md` "1.1 → 1.2" and
+  ARCHITECTURE.md decision 50 say 1.1 and 1.2 share an installation in
+  either deploy order without that condition. Say that every process must
+  run 1.2 before a non-`english` configuration or a `schemaName` is
+  adopted, and have `mnemocyte text-search` say so too ("Restart other app
+  processes" does not help a 1.1 process).
+- [ ] `fix/drizzle-generate-keep-config`: `generate --adapter drizzle`
+  without `--text-search-config` writes `english` over a file generated
+  with another configuration, and `drizzle-kit generate` then drops and
+  re-adds `content_tsv`, rewriting the table. The guide's upgrade step
+  ("run `generate` again") does not say to repeat the flag. Read the
+  configuration from the existing file, as `readDrizzleSchemaShape`
+  already does for dimensions and schema, and change it only when the flag
+  is passed; test a re-run without the flag.
+- [ ] `fix/text-search-drizzle-schema-notes`: `mnemocyte text-search` on
+  a drizzle-kit installation (untracked migrations) changes the column
+  without a word, leaving drizzle-kit's schema file behind; point it at
+  `generate --text-search-config` instead. The `psql` recipe in
+  `guide/postgres.md` "Change it later" names the bare
+  `mnemocyte_memories`, which misses an installation in a `schemaName`;
+  show the qualified name.
+
 ## Backends and packages
 
 - [ ] `refactor/store-contract`: the internal `MemoryStore` contract shrinks

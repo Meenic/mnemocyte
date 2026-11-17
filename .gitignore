@@ -33,6 +33,7 @@ Thumbs.db
 
 # Testing
 coverage
+test/package/.readme
 bench-results
 
 # Runtime

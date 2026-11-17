@@ -169,12 +169,16 @@ The items, in order:
   check and does not render on GitHub. Links to the new guide pages are
   added as they land. The README rule in AGENTS.md "Documentation" allows
   badges.
-- [ ] `chore/doc-examples-check`: README `ts` blocks are not compiled
-  today; only a few `guide/api.md` loops are copied by hand into
-  `test/package/exports-types.test-d.ts`. Add a script that joins the
-  README blocks in order (they build on each other), type-checks them
-  against the built `dist/`, and runs in `test:ci`. Guide snippets stay out
-  of scope: they use variables they never declare.
+- [x] `chore/doc-examples-check`: `pnpm test:readme`
+  (`scripts/check-readme.mjs`) joins the README `ts` blocks in order,
+  type-checks them against the built `dist/` through the package's own
+  `exports`, and runs in `test:ci`. Errors name the README line. Decided:
+  the generated file lives in the gitignored `test/package/.readme/` (it
+  must sit inside the package for the self-reference), no block can opt
+  out, and the script is separate from `test:types`. Guide snippets stay
+  out of scope: they use variables they never declare; only a few
+  `guide/api.md` loops are copied by hand into
+  `test/package/exports-types.test-d.ts`.
 - [ ] `docs/jsdoc-examples`: a top-level doc comment on the options
   interfaces that lack one (`MemoryMiddlewareOptions`, `WithMemoryOptions`,
   `MemoryToolsOptions`, `AiSdkEmbedderOptions` and the five HTTP embedder

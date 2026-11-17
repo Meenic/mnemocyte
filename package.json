@@ -86,13 +86,16 @@
 		"url": "git+https://github.com/Meenic/mnemocyte.git"
 	},
 	"keywords": [
-		"ai",
-		"memory",
+		"ai-memory",
+		"agent-memory",
 		"llm",
-		"agents",
-		"typescript",
+		"rag",
+		"embeddings",
+		"vector-search",
+		"semantic-search",
 		"postgres",
-		"pgvector"
+		"pgvector",
+		"ai-sdk"
 	],
 	"author": "Meenic",
 	"license": "MIT",

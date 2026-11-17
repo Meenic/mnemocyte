@@ -107,6 +107,8 @@ export interface GoogleEmbedderOptions {
  *
  * @example
  * ```ts
+ * import { googleEmbedder } from "mnemocyte/embedders";
+ *
  * const embedder = googleEmbedder({
  *   model: "gemini-embedding-001",
  *   dimensions: 768,

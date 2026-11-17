@@ -63,6 +63,8 @@ export interface OpenAICompatibleEmbedderOptions {
  *
  * @example
  * ```ts
+ * import { openaiCompatibleEmbedder } from "mnemocyte/embedders";
+ *
  * const embedder = openaiCompatibleEmbedder({
  *   baseURL: "http://localhost:11434/v1",
  *   model: "nomic-embed-text",

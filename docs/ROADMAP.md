@@ -193,14 +193,19 @@ The items, in order:
   method can throw (`VALIDATION`, `ABORTED`, `DB`, `MIGRATION`,
   `EMBEDDING`, `TIMEOUT`, the `CONFIG` mismatches) are listed once on the
   `MemoryClient` interface; a method's `@throws` lists only its own.
-- [ ] `chore/jsdoc-examples-check`: type-check the ```` ```ts ```` blocks
-  in `@example` comments under `src/` in CI, the way `pnpm test:readme`
-  checks the README. Examples use names they never declare (`memory`,
-  `embedder`, `id`, `openai`, `scope`, …), so each block goes in its own
-  function behind one shared preamble of `declare` lines, and the import
-  lines of all blocks are merged at the top. The generated file sits in
-  the gitignored `test/package/.readme/` for the self-reference. A
-  one-off run of this shape passed on all 36 examples on 2026-11-17.
+- [x] `chore/jsdoc-examples-check`: `pnpm test:jsdoc`
+  (`scripts/check-jsdoc.mjs`) type-checks the `ts` blocks in `@example`
+  comments under `src/` against the built `dist/`, and runs in `test:ci`.
+  Each block is its own function behind one shared preamble of `declare`
+  lines, and the import lines of all blocks are merged per module at the
+  top. Errors name the source file and line. Decided: a separate script
+  from `check-readme.mjs` (the README check keeps its line-for-line
+  layout; this one needs a line map), and examples may use the
+  application-side names in the preamble (`memory`, `user`, `embedder`,
+  `store`, `scope`, `id`, `userId`, `openai`, ...) but must import every
+  Mnemocyte export they use. Nine examples gained an import line for that.
+  The generated `jsdoc.ts` and `tsconfig.jsdoc.json` sit in the gitignored
+  `test/package/.readme/`.
 - [ ] `docs/ai-tools-guide`: `guide/ai-tools.md`, with a block users paste
   into their own `AGENTS.md` or `CLAUDE.md`, and the mistakes coding agents
   make with Mnemocyte, each checked against the code: expecting

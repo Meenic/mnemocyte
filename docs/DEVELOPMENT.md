@@ -334,10 +334,10 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, runs `pnpm test:types` and `pnpm test:readme`, then
-  runs `unit`, `contract` and `package`. This is what CI runs on every
-  push. `pnpm test:exports` does the same for `package` alone, without
-  `test:readme`.
+- `pnpm test` builds, runs `pnpm test:types`, `pnpm test:readme` and
+  `pnpm test:jsdoc`, then runs `unit`, `contract` and `package`. This is
+  what CI runs on every push. `pnpm test:exports` does the same for `package` alone, without
+  `test:readme` and `test:jsdoc`.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -359,6 +359,20 @@ Vitest has three projects (`vitest.config.ts`):
   picked up; a block that should not compile needs another fence language.
   No `ts` blocks or an unclosed fence fails the check. `docs/guide/`
   snippets are not checked.
+- `pnpm test:jsdoc` (`scripts/check-jsdoc.mjs`) type-checks the `ts` blocks
+  in `@example` doc comments under `src/` the same way, and needs a build
+  first. Each block becomes an `async function` in
+  `test/package/.readme/jsdoc.ts` (gitignored, own `tsconfig.jsdoc.json`),
+  so two examples can declare the same name. A shared preamble declares the
+  application-side names examples use without defining them (`memory`,
+  `user`, `embedder`, `store`, `scope`, `id`, `userId`, `openai`, ...); add
+  to it in the script when a new example needs another. Mnemocyte exports
+  are not in the preamble: the example imports them. Import lines are merged
+  per module at the top, relative imports are skipped, and only single-line
+  default or named imports are read. The generated file does not keep line
+  numbers, so the script maps errors back and prints
+  `src/<file>:<line>:<col>` (the column is relative to the text after the
+  ` * ` prefix). Types only, nothing runs.
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.

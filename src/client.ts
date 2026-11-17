@@ -35,6 +35,7 @@ import type { MemoryClient, MemoryConfig } from "./types.js";
  *
  * @example Postgres-backed client bound to a user
  * ```ts
+ * import { createMemory } from "mnemocyte";
  * import postgres from "postgres";
  *
  * const sql = postgres(process.env.DATABASE_URL!);
@@ -43,7 +44,7 @@ import type { MemoryClient, MemoryConfig } from "./types.js";
  *   store: sql,
  *   embedder, // embedder.dimensions must match the installation
  * });
- * const userMemory = memory.for({ entityId: user.id });
+ * const userMemory = memory.for({ entityId: userId });
  * await userMemory.add({ content: "Prefers short, direct answers." });
  * ```
  */

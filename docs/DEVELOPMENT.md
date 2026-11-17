@@ -334,15 +334,31 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, runs `pnpm test:types`, then runs `unit`, `contract`
-  and `package`. This is what CI runs on every push. `pnpm test:exports` does the
-  same for `package` alone.
+- `pnpm test` builds, runs `pnpm test:types` and `pnpm test:readme`, then
+  runs `unit`, `contract` and `package`. This is what CI runs on every
+  push. `pnpm test:exports` does the same for `package` alone, without
+  `test:readme`.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
   no `test()` blocks, and Vitest's `--typecheck` drops type errors outside
   test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
   negative cases fail with TS2578 if they stop being errors.
+- `pnpm test:readme` (`scripts/check-readme.mjs`) type-checks the
+  `README.md` code blocks fenced as `ts` or `typescript`, so it also needs
+  a build first. The blocks build on each other, so they are joined in
+  order into `test/package/.readme/readme.ts`, and every line outside a
+  block becomes a blank line: line N of that file is line N of the README,
+  and errors print as `README.md:<line>:<col>`. The folder is gitignored
+  and rewritten on each run. It has to sit inside the package because
+  `mnemocyte` resolves to `dist/` through the package's own `exports` only
+  from files in the package (a `paths` alias would skip `exports`). Its
+  `tsconfig.json` extends `test/package/tsconfig.json`. Limits: types
+  only, nothing runs; all blocks share one top-level scope, so two blocks
+  cannot declare the same name; indented fences (inside lists) are not
+  picked up; a block that should not compile needs another fence language.
+  No `ts` blocks or an unclosed fence fails the check. `docs/guide/`
+  snippets are not checked.
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.

@@ -81,6 +81,7 @@ moves them to Postgres in a few steps.
 [CLI](docs/guide/cli.md) ·
 [Embedders](docs/guide/embedders.md) ·
 [AI SDK](docs/guide/ai-sdk.md) ·
+[AI coding tools](docs/guide/ai-tools.md) ·
 [Limitations](docs/guide/limitations.md) ·
 [Upgrading from 0.x](docs/guide/upgrading.md) ·
 [Changelog](CHANGELOG.md)

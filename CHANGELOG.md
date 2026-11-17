@@ -11,6 +11,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ### Fixed
 
+- **`text-search` on a drizzle-kit installation said nothing.** It changed
+  `content_tsv` and left drizzle-kit's schema file behind, so the next
+  `drizzle-kit generate` rewrote the column again. When the migrations are
+  not recorded, it now adds a note to the dry run, the question and the
+  result that points to `generate --adapter drizzle --text-search-config`.
+  The Postgres guide's `psql` recipes also say to put your `schemaName`
+  in front of the table name.
 - **`generate --adapter drizzle` kept the wrong language.** Run again
   without `--text-search-config`, it wrote `english` over a file made for
   another configuration, and `drizzle-kit generate` then dropped and

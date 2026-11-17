@@ -147,7 +147,7 @@ The items, in order:
   `typescript`, which the description covers. The rest of
   `package.json` and the packed file list checked out (2026-11-17) and
   need no change.
-- [ ] `chore/require-esm-test`: Mnemocyte is ESM-only, and only the CLI
+- [x] `chore/require-esm-test`: Mnemocyte is ESM-only, and only the CLI
   bin uses top-level await, so on every Node version `engines` allows,
   `require("mnemocyte")` should work through require(esm). Nothing tests
   or documents it. Add a package test that requires every export from a

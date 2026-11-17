@@ -22,7 +22,8 @@ run.
 pnpm add mnemocyte
 ```
 
-Needs Node.js 22.18 or newer.
+Needs Node.js 22.18 or newer. CommonJS code can load it with
+`require("mnemocyte")`.
 
 ## Usage
 

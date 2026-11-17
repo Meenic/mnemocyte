@@ -343,10 +343,13 @@ Vitest has three projects (`vitest.config.ts`):
   no `test()` blocks, and Vitest's `--typecheck` drops type errors outside
   test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
   negative cases fail with TS2578 if they stop being errors.
-- The package tests pack the tarball and install it into a temporary
-  consumer with `drizzle-orm`, `postgres`, `pg`, PGlite and `ai` absent.
-  They extract with the system `tar` using relative paths, so GNU tar,
-  bsdtar and Windows' `tar.exe` all work. The consumer runs an in-memory
+- The `package` project's global setup (`test/package/pack.global-setup.ts`)
+  packs the tarball once and extracts it with the system `tar` using
+  relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
+  Each test that needs it copies the package into a temporary consumer of
+  its own (`createPackedConsumer` in `packed-consumer.ts`) with
+  `drizzle-orm`, `postgres`, `pg`, PGlite and `ai` absent. In
+  `lazy-postgres.test.ts` the consumer runs an in-memory
   client from ESM and, through `require()`, a client with a `SqlExecutor`
   as `store`, which loads the Postgres chunk lazily; `require()` would throw
   if any module used top-level `await`. Then it links the dev `ai` into its
@@ -360,6 +363,13 @@ Vitest has three projects (`vitest.config.ts`):
   The manifest export (`mnemocyte/package.json`) is read from the
   tarball with `require()` and a JSON import, and from `dist/` through
   self-reference in `exports.test.ts`.
+- `require-esm.test.ts` requires every key of the packed `exports` from a
+  `.cjs` file (require(esm)) and checks each against `import()` of the
+  same entry, with nothing on stderr. Without `ai`, `mnemocyte/ai-sdk`
+  must fail with `ERR_MODULE_NOT_FOUND`; with `ai` linked it must load. It
+  runs on every CI Node version, so it backs the README's `require()`
+  sentence; the TypeScript `module` setting it needs is not tested
+  ([limitations](./guide/limitations.md#commonjs)).
 - The CLI is tested at four levels (see
   [features/cli.md](./features/cli.md#tests)): pure parts in `test/cli/`
   (`unit`); `migrate` and `check` against PGlite in process, with a

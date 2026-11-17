@@ -76,6 +76,8 @@ export default defineConfig({
 				test: {
 					name: "package",
 					include: ["test/package/*.test.ts"],
+					// Packs the tarball once for the files that install it.
+					globalSetup: ["test/package/pack.global-setup.ts"],
 				},
 			},
 		],

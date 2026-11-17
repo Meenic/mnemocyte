@@ -1602,6 +1602,8 @@ export interface MemoryStats {
  *
  * @example
  * ```ts
+ * import { createMemory } from "mnemocyte";
+ *
  * const memory = createMemory({ namespace: "my-app", embedder });
  * const user = memory.for({ entityId: "user_123" });
  * await user.add({ content: "Prefers short, direct answers." });
@@ -1876,8 +1878,10 @@ export interface MemoryClient<DefaultNamespace extends boolean = false> {
 	 *
 	 * @example
 	 * ```ts
+	 * import { createMemory } from "mnemocyte";
+	 *
 	 * const memory = createMemory({ namespace: "my-app", store, embedder });
-	 * const userMemory = memory.for({ entityId: user.id });
+	 * const userMemory = memory.for({ entityId: userId });
 	 * await userMemory.add({ content: "Prefers short, direct answers." });
 	 * const context = await userMemory.context({ query: message });
 	 * ```

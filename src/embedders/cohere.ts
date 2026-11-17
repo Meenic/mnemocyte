@@ -88,6 +88,8 @@ export interface CohereEmbedderOptions {
  *
  * @example
  * ```ts
+ * import { cohereEmbedder } from "mnemocyte/embedders";
+ *
  * const embedder = cohereEmbedder({ model: "embed-v4.0" });
  * ```
  */

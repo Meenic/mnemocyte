@@ -84,6 +84,8 @@ export interface VoyageEmbedderOptions {
  *
  * @example
  * ```ts
+ * import { voyageEmbedder } from "mnemocyte/embedders";
+ *
  * const embedder = voyageEmbedder({ model: "voyage-4" });
  * ```
  */

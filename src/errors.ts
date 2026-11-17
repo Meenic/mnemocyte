@@ -148,6 +148,8 @@ const MNEMOCYTE_ERROR_BRAND: unique symbol = Symbol.for("mnemocyte.error");
  *
  * @example
  * ```ts
+ * import { isMnemocyteError } from "mnemocyte";
+ *
  * try {
  *   await memory.update({ scope, id, key: "favorite-color" });
  * } catch (error) {
@@ -272,6 +274,8 @@ export function isMnemocyteError(error: unknown): error is MnemocyteError {
  *
  * @example
  * ```ts
+ * import { isProviderError } from "mnemocyte";
+ *
  * try {
  *   await memory.add({ scope, content });
  * } catch (error) {

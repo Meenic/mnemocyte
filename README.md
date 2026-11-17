@@ -2,6 +2,13 @@
 
 Memory for TypeScript AI apps.
 
+[![npm version](https://img.shields.io/npm/v/mnemocyte)](https://www.npmjs.com/package/mnemocyte)
+[![npm downloads](https://img.shields.io/npm/dm/mnemocyte)](https://www.npmjs.com/package/mnemocyte)
+[![install size](https://img.shields.io/npm/unpacked-size/mnemocyte?label=install%20size)](https://packagephobia.com/result?p=mnemocyte)
+[![types](https://img.shields.io/npm/types/mnemocyte)](https://www.npmjs.com/package/mnemocyte)
+[![license](https://img.shields.io/npm/l/mnemocyte)](LICENSE)
+[![CI](https://github.com/Meenic/mnemocyte/actions/workflows/ci.yml/badge.svg)](https://github.com/Meenic/mnemocyte/actions/workflows/ci.yml)
+
 Mnemocyte (*nee-mo-site*, "memory cell") helps your AI app remember. Save
 what it learns about users, agents and sessions, then pull back what matters
 when you build a prompt.

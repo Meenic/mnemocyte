@@ -38,10 +38,10 @@ a Postgres + pgvector `DATABASE_URL` (see the safety rules above).
 
 ## Documentation
 
-- `README.md` is the front page, not a guide: what Mnemocyte is, install,
-  one short example, what it works with and links. Setup steps, API lists
-  and other reference live in `docs/guide/*.md`. Links from `README.md` are
-  relative (`docs/guide/api.md`); npm turns them into GitHub links through
+- `README.md` is the front page, not a guide: what Mnemocyte is, badges,
+  install, one short example, what it works with and links. Setup steps,
+  API lists and other reference live in `docs/guide/*.md`. Links from
+  `README.md` are relative (`docs/guide/api.md`); npm turns them into GitHub links through
   the `repository` field, so `docs/` does not need to ship.
   `docs/DEVELOPMENT.md` and `docs/features/*.md` describe what is built, for
   contributors. `docs/ARCHITECTURE.md` holds

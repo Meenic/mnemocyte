@@ -138,7 +138,8 @@ coding agents to use, without a docs site. Decided on 2026-11-17:
 
 The items, in order:
 
-- [ ] `chore/package-keywords`: at most 10 `keywords`, spent on what
+- [x] `chore/package-keywords` (done in the `docs/readme-front-page` PR,
+  not a PR of its own): at most 10 `keywords`, spent on what
   people search for that the description ("Memory for TypeScript AI
   apps.") does not already say: `ai-memory`, `agent-memory`, `llm`, `rag`,
   `embeddings`, `vector-search`, `semantic-search`, `postgres`,
@@ -152,16 +153,16 @@ The items, in order:
   or documents it. Add a package test that requires every export from a
   `.cjs` file against the packed tarball, and say it next to the Node
   version in `README.md`. Read Node's require(esm) docs first.
-- [ ] `docs/readme-front-page`: keep the tagline and the current example.
-  Add badges (npm version, monthly downloads, install size from
-  packagephobia rather than bundlephobia, types, license, CI), an install
-  block for npm, pnpm, yarn and bun with Node.js 22.18+ as the runtime
-  (Bun and Deno as runtimes are untested), a short "When to use it"
-  section that also says when not to (no Postgres, a hosted memory
-  service wanted, several embedding models in one installation), and
-  links to the new guide pages as they land. Leave out a comparison table
-  of other libraries. Update the README rule in AGENTS.md
-  "Documentation" to allow badges and that section.
+- [x] `docs/readme-front-page`: keep the tagline and the current example.
+  Added badges (npm version, monthly downloads, install size, types,
+  license, CI) and the pnpm install line with Node.js 22.18+ as the
+  runtime. No "when to use it" section
+  and no comparison table of other libraries. The install size badge is
+  shields.io's unpacked size, which equals the install size while there are
+  no required dependencies: packagephobia's own badge sits behind a bot
+  check and does not render on GitHub. Links to the new guide pages are
+  added as they land. The README rule in AGENTS.md "Documentation" allows
+  badges.
 - [ ] `chore/doc-examples-check`: README `ts` blocks are not compiled
   today; only a few `guide/api.md` loops are copied by hand into
   `test/package/exports-types.test-d.ts`. Add a script that joins the

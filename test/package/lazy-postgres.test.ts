@@ -1,54 +1,10 @@
-import { exec, execFile } from "node:child_process";
-import {
-	access,
-	mkdir,
-	mkdtemp,
-	readdir,
-	readFile,
-	realpath,
-	rename,
-	rm,
-	symlink,
-	writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
-
-const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
+import { createPackedConsumer } from "./packed-consumer.js";
 
 async function expectPathMissing(path: string): Promise<void> {
 	await expect(access(path)).rejects.toThrow();
-}
-
-async function packPackage(tarball: string): Promise<void> {
-	const options = {
-		cwd: resolve("."),
-		windowsHide: true,
-	};
-	if (process.platform === "win32") {
-		const pnpmCli = join(
-			dirname(process.execPath),
-			"node_modules",
-			"corepack",
-			"dist",
-			"pnpm.js",
-		);
-		try {
-			await access(pnpmCli);
-			await execFileAsync(
-				process.execPath,
-				[pnpmCli, "pack", "--out", tarball],
-				options,
-			);
-		} catch {
-			await execAsync(`pnpm pack --out "${tarball}"`, options);
-		}
-		return;
-	}
-	await execFileAsync("pnpm", ["pack", "--out", tarball], options);
 }
 
 /** Every file reached from `entry` through relative static imports. */
@@ -152,28 +108,10 @@ describe("lazy Postgres package loading", () => {
 	});
 
 	test("runs an in-memory client from the packed package with database packages absent", async () => {
-		const temporaryRoot = await mkdtemp(
-			join(tmpdir(), "mnemocyte-packed-consumer-"),
-		);
+		const packed = await createPackedConsumer();
 		try {
-			const tarball = join(temporaryRoot, "mnemocyte.tgz");
-			const extracted = join(temporaryRoot, "extracted");
-			const consumer = join(temporaryRoot, "consumer");
-			const nodeModules = join(consumer, "node_modules");
-			await Promise.all([
-				mkdir(extracted, { recursive: true }),
-				mkdir(nodeModules, { recursive: true }),
-			]);
-
-			await packPackage(tarball);
-			// Relative paths: GNU tar reads "C:\..." as a remote host, while
-			// bsdtar and Windows' tar.exe reject GNU's --force-local.
-			await execFileAsync(
-				"tar",
-				["-xzf", basename(tarball), "-C", basename(extracted)],
-				{ cwd: temporaryRoot, windowsHide: true },
-			);
-			await rename(join(extracted, "package"), join(nodeModules, "mnemocyte"));
+			const consumer = packed.dir;
+			const nodeModules = packed.nodeModules;
 			const [packedFreshInstall, sourceFreshInstall] = await Promise.all([
 				readFile(
 					join(nodeModules, "mnemocyte", "migrations", "fresh-install.sql"),
@@ -183,7 +121,7 @@ describe("lazy Postgres package loading", () => {
 			expect(packedFreshInstall).toEqual(sourceFreshInstall);
 			// Only the SQL ships from migrations/; the template, the journal
 			// and the old renderer stay in the repository.
-			const packedRoot = join(nodeModules, "mnemocyte");
+			const packedRoot = packed.packageDir;
 			expect((await readdir(join(packedRoot, "migrations"))).sort()).toEqual(
 				(await readdir(resolve("migrations")))
 					.filter((name) => name.endsWith(".sql"))
@@ -236,11 +174,7 @@ describe("lazy Postgres package loading", () => {
 				"utf8",
 			);
 
-			const { stdout } = await execFileAsync(process.execPath, [script], {
-				cwd: consumer,
-				env: { ...process.env, NODE_PATH: "" },
-				windowsHide: true,
-			});
+			const { stdout } = await packed.run(script);
 			expect(stdout).toBe("packed-in-memory-ok");
 
 			// CommonJS: require(esm) fails with ERR_REQUIRE_ASYNC_MODULE if any
@@ -290,11 +224,7 @@ describe("lazy Postgres package loading", () => {
 					`,
 				"utf8",
 			);
-			const cjs = await execFileAsync(process.execPath, [cjsScript], {
-				cwd: consumer,
-				env: { ...process.env, NODE_PATH: "" },
-				windowsHide: true,
-			});
+			const cjs = await packed.run(cjsScript);
 			expect(cjs.stdout).toBe("packed-client-store-ok");
 
 			// The manifest is exported, so tools can read the installed version
@@ -317,23 +247,13 @@ process.stdout.write(manifest.name + "@" + manifest.version);`,
 				"utf8",
 			);
 			for (const script of [manifestCjs, manifestMjs]) {
-				const manifest = await execFileAsync(process.execPath, [script], {
-					cwd: consumer,
-					env: { ...process.env, NODE_PATH: "" },
-					windowsHide: true,
-				});
+				const manifest = await packed.run(script);
 				expect(manifest.stdout).toBe(`${name}@${version}`);
 			}
 
 			// With the ai peer installed, the subpath embeds through an AI SDK
-			// model and throws the root entry's error classes. A junction needs
-			// no symlink rights on Windows; ai resolves its own dependencies
-			// from its real path.
-			await symlink(
-				await realpath(resolve("node_modules", "ai")),
-				join(nodeModules, "ai"),
-				"junction",
-			);
+			// model and throws the root entry's error classes.
+			await packed.linkAi();
 			const aiSdkScript = join(consumer, "ai-sdk.mjs");
 			await writeFile(
 				aiSdkScript,
@@ -448,14 +368,10 @@ process.stdout.write(manifest.name + "@" + manifest.version);`,
 					`,
 				"utf8",
 			);
-			const aiSdk = await execFileAsync(process.execPath, [aiSdkScript], {
-				cwd: consumer,
-				env: { ...process.env, NODE_PATH: "" },
-				windowsHide: true,
-			});
+			const aiSdk = await packed.run(aiSdkScript);
 			expect(aiSdk.stdout).toBe("packed-ai-sdk-ok");
 		} finally {
-			await rm(temporaryRoot, { recursive: true, force: true });
+			await packed.remove();
 		}
 	}, 30_000);
 });

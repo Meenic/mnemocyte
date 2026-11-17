@@ -208,3 +208,13 @@ them.
   work from consecutive events can overlap, and on serverless platforms it
   can be cut off when the function ends. Failures reach `onError` only if
   you set it.
+
+## CommonJS
+
+- **TypeScript needs `module: "node20"` or `"nodenext"`.** `require()`
+  loads every entry on Node 22.18+, but Mnemocyte ships ES module types
+  only. A CommonJS TypeScript project set to `node16` or `node18` fails
+  to compile its `import` of `mnemocyte` with TS1479; `node20` and
+  `nodenext` accept it.
+- **`mnemocyte/ai-sdk` needs `ai` installed.** Without it, `require()`
+  throws `ERR_MODULE_NOT_FOUND`, as `import` does.

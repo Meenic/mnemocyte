@@ -653,8 +653,17 @@ weaker (an `english` query stems "running" to "run", which a `simple`
 column does not contain). Restart them after the change. Restarting does
 not help a process still on 1.1; update it to 1.2 first.
 
-To make the change with `psql` instead, run it in one transaction. On
-Postgres 17 and later:
+If drizzle-kit manages the tables, don't change the column by hand or with
+this command. Its schema file would still name the old language, and the
+next `drizzle-kit generate` would rewrite the column again. Follow
+[Manage the tables with drizzle-kit](#manage-the-tables-with-drizzle-kit):
+`generate --adapter drizzle --text-search-config simple`, then
+`drizzle-kit generate`.
+
+To make the change with `psql` instead, run it in one transaction. The
+examples use the default table name; if you set `schemaName`, put it in
+front, as in `"my_schema"."mnemocyte_memories"` (the index name stays
+bare). On Postgres 17 and later:
 
 ```sql
 BEGIN;

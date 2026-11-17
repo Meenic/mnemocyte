@@ -281,6 +281,15 @@ message.
 4. The real run, which prints the old and new names and asks to restart
    other app processes, since their stores cached the old configuration.
 
+When `inspectInstallation()` reports the migrations as `untracked`
+(installed with `psql` or drizzle-kit), the dry run, the question and the
+result add a note: if drizzle-kit manages the tables, run
+`generate --adapter drizzle --text-search-config <name>` and
+`drizzle-kit generate` instead, since changing the column here leaves its
+schema file behind. The result's note says the file is behind and that the
+migration `drizzle-kit generate` then writes repeats the change. It never
+refuses, and `--json` does not carry it.
+
 Unless the new configuration is `english`, the dry run, the question and
 the real run's output also say that every app process must run 1.2 or
 later: a 1.1 client searches with `english` whatever the installation

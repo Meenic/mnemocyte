@@ -110,7 +110,7 @@ and 18.
   configuration from the existing file, as `readDrizzleSchemaShape`
   already does for dimensions and schema, and change it only when the flag
   is passed; test a re-run without the flag.
-- [ ] `fix/text-search-drizzle-schema-notes`: `mnemocyte text-search` on
+- [x] `fix/text-search-drizzle-schema-notes`: `mnemocyte text-search` on
   a drizzle-kit installation (untracked migrations) changes the column
   without a word, leaving drizzle-kit's schema file behind; point it at
   `generate --text-search-config` instead. The `psql` recipe in

@@ -1045,6 +1045,14 @@ Dated 2026-10-26 unless noted.
       (fresh install or `text-search`), and before a `schemaName`, which
       1.1 ignores. The guide and `mnemocyte text-search`'s output say so
       (`fix/mixed-version-text-search-docs`).
+    - `mnemocyte text-search` reads `inspectInstallation()` and, when the
+      migrations are not recorded (`psql` or drizzle-kit), adds a note to
+      the dry run, the question and the result: if drizzle-kit manages the
+      tables, change the language with `generate --adapter drizzle
+      --text-search-config` instead, because changing the column leaves
+      drizzle-kit's schema file behind. It does not refuse: a `psql`
+      installation is also untracked, and the command is its tested path
+      (`fix/text-search-drizzle-schema-notes`). `--json` is unchanged.
     - `migrate({ textSearchConfig })` and `--text-search-config` on
       `migrate`, `check` and `sql`. It sets a fresh install; on an existing
       one a different configuration is `"CONFIG"`

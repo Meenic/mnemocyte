@@ -319,6 +319,55 @@ describe("CLI commands (PGlite)", () => {
 		);
 	});
 
+	test("text-search points an untracked installation at generate, and a tracked one gets no note", async () => {
+		const note = "The migrations of this installation are not recorded.";
+		const generate =
+			"mnemocyte generate --adapter drizzle --text-search-config simple";
+		const textSearch = (overrides: Partial<CliArgs> = {}) =>
+			args({
+				command: "text-search",
+				textSearchConfig: "simple",
+				...overrides,
+			});
+
+		await migrateTarget(target(), args({ yes: true }), createTestIo("."));
+		const tracked = createTestIo(".", true);
+		await textSearchTarget(target(), textSearch({ dryRun: true }), tracked);
+		expect(tracked.stdout()).not.toContain(note);
+
+		await db.exec("DROP TABLE mnemocyte_migrations;");
+		const dry = createTestIo(".", true);
+		expect(
+			await textSearchTarget(target(), textSearch({ dryRun: true }), dry),
+		).toBe(0);
+		expect(dry.stdout()).toContain(note);
+		expect(dry.stdout()).toContain(
+			`run ${generate}, then drizzle-kit generate`,
+		);
+
+		const no = createTestIo(".", false);
+		expect(await textSearchTarget(target(), textSearch(), no)).toBe(1);
+		expect(no.questions[0]).toContain(note);
+		expect(no.stderr()).toBe("Nothing changed.\n");
+
+		const json = createTestIo(".", true);
+		await textSearchTarget(
+			target(),
+			textSearch({ dryRun: true, json: true }),
+			json,
+		);
+		expect(json.stdout()).not.toContain(note);
+
+		const yes = createTestIo(".", true);
+		expect(await textSearchTarget(target(), textSearch(), yes)).toBe(0);
+		expect(yes.stdout()).toContain(`Changed keyword search from "english"`);
+		expect(yes.stdout()).toContain(`run ${generate} to update it`);
+
+		const same = createTestIo(".", true);
+		await textSearchTarget(target(), textSearch({ yes: true }), same);
+		expect(same.stdout()).not.toContain(note);
+	});
+
 	test("asks before enabling pgvector, and a yes installs the schema", async () => {
 		const io = createTestIo(".", true);
 		expect(await migrateTarget(target(), args(), io)).toBe(0);

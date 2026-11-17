@@ -353,6 +353,11 @@ Changed keyword search from "english" to "simple". Restart other app processes s
 - When the installation already uses that configuration, it says so,
   changes nothing and exits 0.
 - Every migration must be applied first; run `migrate` before it.
+- When the migrations are not recorded, as with drizzle-kit, it adds a
+  note: change the language with
+  `generate --adapter drizzle --text-search-config <name>` and
+  `drizzle-kit generate` instead. Changing the column here leaves
+  drizzle-kit's schema file behind.
 
 ## JSON output
 

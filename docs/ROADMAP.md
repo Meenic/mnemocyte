@@ -118,6 +118,92 @@ and 18.
   `mnemocyte_memories`, which misses an installation in a `schemaName`;
   show the qualified name.
 
+## Discoverability
+
+Make Mnemocyte easier to find on npm and GitHub, and easier for people and
+coding agents to use, without a docs site. Decided on 2026-11-17:
+
+- The tagline, the `package.json` description and the GitHub About text
+  stay as they are.
+- `README.md` stays the front page (AGENTS.md "Documentation"). Recipes and
+  a FAQ go in new `docs/guide/` pages, and the API reference stays in
+  `guide/api.md`.
+- The existing `AGENTS.md` stays the guide for agents working on this
+  repository. Advice for agents that write code using Mnemocyte goes in
+  `guide/ai-tools.md`.
+- No `llms.txt` while there is no docs site. Agents read the README and the
+  JSDoc in the shipped `.d.mts` files, so the JSDoc carries the examples.
+- None of this needs a release of its own. The README and keywords reach
+  npm with the next release.
+
+The items, in order:
+
+- [ ] `chore/package-keywords`: at most 10 `keywords`, spent on what
+  people search for that the description ("Memory for TypeScript AI
+  apps.") does not already say: `ai-memory`, `agent-memory`, `llm`, `rag`,
+  `embeddings`, `vector-search`, `semantic-search`, `postgres`,
+  `pgvector`, `ai-sdk`. This replaces `ai`, `memory`, `agents` and
+  `typescript`, which the description covers. The rest of
+  `package.json` and the packed file list checked out (2026-11-17) and
+  need no change.
+- [ ] `chore/require-esm-test`: Mnemocyte is ESM-only, and only the CLI
+  bin uses top-level await, so on every Node version `engines` allows,
+  `require("mnemocyte")` should work through require(esm). Nothing tests
+  or documents it. Add a package test that requires every export from a
+  `.cjs` file against the packed tarball, and say it next to the Node
+  version in `README.md`. Read Node's require(esm) docs first.
+- [ ] `docs/readme-front-page`: keep the tagline and the current example.
+  Add badges (npm version, monthly downloads, install size from
+  packagephobia rather than bundlephobia, types, license, CI), an install
+  block for npm, pnpm, yarn and bun with Node.js 22.18+ as the runtime
+  (Bun and Deno as runtimes are untested), a short "When to use it"
+  section that also says when not to (no Postgres, a hosted memory
+  service wanted, several embedding models in one installation), and
+  links to the new guide pages as they land. Leave out a comparison table
+  of other libraries. Update the README rule in AGENTS.md
+  "Documentation" to allow badges and that section.
+- [ ] `chore/doc-examples-check`: README `ts` blocks are not compiled
+  today; only a few `guide/api.md` loops are copied by hand into
+  `test/package/exports-types.test-d.ts`. Add a script that joins the
+  README blocks in order (they build on each other), type-checks them
+  against the built `dist/`, and runs in `test:ci`. Guide snippets stay out
+  of scope: they use variables they never declare.
+- [ ] `docs/jsdoc-examples`: a top-level doc comment on the options
+  interfaces that lack one (`MemoryMiddlewareOptions`, `WithMemoryOptions`,
+  `MemoryToolsOptions`, `AiSdkEmbedderOptions` and the five HTTP embedder
+  options), an `@example` on every `MemoryClient` method and on
+  `openaiEmbedder`, and `@throws` with error codes where a method has
+  well-defined ones. Skip `@param` that repeats the input type's field
+  docs.
+- [ ] `docs/ai-tools-guide`: `guide/ai-tools.md`, with a block users paste
+  into their own `AGENTS.md` or `CLAUDE.md`, and the mistakes coding agents
+  make with Mnemocyte, each checked against the code: expecting
+  `createMemory` to create tables, passing a `pg.Client`, calls without a
+  scope instead of `for()`, a second embedding model on one installation,
+  options copied from other libraries (unknown keys throw), importing
+  embedders or `postgresStore` from the root, looking for `close()`,
+  `deleteScope` erasing across agents and sessions, `instanceof` instead
+  of `isMnemocyteError`, relying on `experimental.*`, and `migrate` over
+  Neon's HTTP driver.
+- [ ] `docs/faq-recipes`: `guide/faq.md` (do I need Postgres, which
+  drivers, CommonJS, does it call an LLM, switching embedding models,
+  multi-tenant apps) and `guide/recipes.md` (an AI SDK chat route with
+  `withMemory`, a preference saved under a `key`, erasing a user, nightly
+  maintenance with prune, duplicates, consolidate and audit retention,
+  tests on the in-memory store, a local setup with Ollama). Answers link
+  to the guide sections that hold the details.
+- [ ] `docs/examples`: `examples/` with `in-memory.ts`, `pglite.ts`
+  (Postgres in process, no Docker), `postgres.ts` and `ai-sdk-chat.ts`,
+  run with `node file.ts` (check Node's type stripping docs first),
+  importing `mnemocyte` by name. CI type-checks them through the
+  doc-examples check; it does not run them, since they need a key or a
+  database. Not in `files`. The getting-started guide links to them.
+- [ ] `docs/contributing-security`: `CONTRIBUTING.md` that points to
+  `DEVELOPMENT.md`, the roadmap, the commands and the branch and commit
+  format, and `SECURITY.md` with supported versions (the latest 1.x
+  minor) and how to report privately. How to report is the maintainer's
+  call, asked in that PR.
+
 ## Backends and packages
 
 - [ ] `refactor/store-contract`: the internal `MemoryStore` contract shrinks

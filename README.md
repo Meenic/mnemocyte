@@ -22,7 +22,7 @@ run.
 pnpm add mnemocyte
 ```
 
-Needs Node.js 22.18 or newer. Bun and Deno as runtimes are untested.
+Needs Node.js 22.18 or newer.
 
 ## Usage
 

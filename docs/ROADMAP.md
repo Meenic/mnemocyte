@@ -155,8 +155,8 @@ The items, in order:
   version in `README.md`. Read Node's require(esm) docs first.
 - [x] `docs/readme-front-page`: keep the tagline and the current example.
   Added badges (npm version, monthly downloads, install size, types,
-  license, CI), the pnpm install line with Node.js 22.18+ as the runtime
-  (Bun and Deno as runtimes are untested). No "when to use it" section
+  license, CI) and the pnpm install line with Node.js 22.18+ as the
+  runtime. No "when to use it" section
   and no comparison table of other libraries. The install size badge is
   shields.io's unpacked size, which equals the install size while there are
   no required dependencies: packagephobia's own badge sits behind a bot

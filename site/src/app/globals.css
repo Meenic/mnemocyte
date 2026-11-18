@@ -53,6 +53,8 @@
   /* UI text: nav links, buttons, footer links; the open mobile menu */
   --fs-ui: 15px;
   --fs-menu: 18px;
+  --fs-logo: 19px; /* the wordmark */
+  --fs-code: 13.5px; /* code blocks and their copy button */
 
   /* One spacing scale */
   --s-1: 8px;
@@ -166,6 +168,8 @@
   --text-2xl: var(--fs-2xl);
   --text-ui: var(--fs-ui);
   --text-menu: var(--fs-menu);
+  --text-logo: var(--fs-logo);
+  --text-code: var(--fs-code);
 
   /*
    * The brief's breakpoints: phone type (560), nav menu (720), one column
@@ -178,6 +182,13 @@
   --breakpoint-md: 721px;
   --breakpoint-lg: 961px;
   --breakpoint-xl: 1181px;
+}
+
+/* The heading face, weight and tracking, for anything set like a heading. */
+@utility heading-type {
+  font-family: var(--font-heading);
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-tracking);
 }
 
 /*

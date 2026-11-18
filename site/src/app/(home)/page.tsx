@@ -1,5 +1,5 @@
-import { Button } from "@/components/Button";
-import { InstallBox } from "@/components/InstallBox";
+import { Button } from "@/components/ui/button";
+import { InstallBox } from "@/components/ui/install-box";
 
 /* Placeholder until the home page is built. */
 export default function Home() {

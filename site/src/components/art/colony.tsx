@@ -7,8 +7,11 @@ import {
   type ColonyOptions,
 } from "@/lib/colony/engine";
 import { cssVar, toAbgr } from "@/lib/colony/pixel";
-import styles from "./colony.module.css";
 
+/* The canvas is placed by the engine and may extend past its box: off the
+   right edge on wide screens, edge to edge on narrow ones (body clips it). */
+const CANVAS =
+  "absolute max-w-none touch-manipulation [image-rendering:pixelated]";
 const NARROW = "(max-width: 960px)";
 const REDUCED = "(prefers-reduced-motion: reduce)";
 const NO_TEXTS: readonly string[] = [];
@@ -207,8 +210,12 @@ export function Colony({ variant, texts = NO_TEXTS }: ColonyProps) {
 
   if (!interactive) {
     return (
-      <div ref={boxRef} className={styles.card} aria-hidden="true">
-        <canvas ref={canvasRef} className={styles.canvas} />
+      <div
+        ref={boxRef}
+        className="relative h-70 w-full max-w-100 justify-self-end max-lg:h-45 max-lg:max-w-none max-lg:justify-self-stretch"
+        aria-hidden="true"
+      >
+        <canvas ref={canvasRef} className={CANVAS} />
       </div>
     );
   }
@@ -216,14 +223,14 @@ export function Colony({ variant, texts = NO_TEXTS }: ColonyProps) {
   return (
     <div
       ref={boxRef}
-      className={styles.hero}
+      className="relative min-h-70 self-stretch focus-visible:outline-offset-8 max-lg:h-45 max-lg:min-h-0"
       // biome-ignore lint/a11y/noNoninteractiveTabindex: the colony is keyboard-operable (arrow keys pick a memory, Enter recalls it)
       tabIndex={0}
       role="img"
       aria-label="A living colony of memories. Use the arrow keys to pick a memory and Enter to recall it."
     >
-      <canvas ref={canvasRef} className={styles.canvas} />
-      <p ref={liveRef} className={styles.live} aria-live="polite" />
+      <canvas ref={canvasRef} className={CANVAS} />
+      <p ref={liveRef} className="sr-only" aria-live="polite" />
     </div>
   );
 }

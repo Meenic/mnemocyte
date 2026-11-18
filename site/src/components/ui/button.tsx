@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
 
 const base =
   "group inline-flex items-center justify-center gap-2.5 border font-medium no-underline cursor-pointer [transition:background-color_.15s,color_.15s,border-color_.15s,translate_.08s] active:translate-y-px motion-reduce:transition-none [&_svg]:size-4";
@@ -28,9 +29,7 @@ export function buttonClasses({
   size = "md",
   className,
 }: ButtonStyle = {}) {
-  return [base, variants[variant], sizes[size], className]
-    .filter(Boolean)
-    .join(" ");
+  return cn(base, variants[variant], sizes[size], className);
 }
 
 interface ButtonProps extends ButtonStyle {

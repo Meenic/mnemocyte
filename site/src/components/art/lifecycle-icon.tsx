@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { drawGlyph, type GlyphKind, STILL_PHASE } from "@/lib/colony/glyph";
 import { cssVar, toAbgr } from "@/lib/colony/pixel";
-import styles from "./lifecycle-icon.module.css";
 
 interface LifecycleIconProps {
   kind: GlyphKind;
@@ -71,8 +70,13 @@ export function LifecycleIcon({ kind, offset = 0 }: LifecycleIconProps) {
   }, [kind, offset]);
 
   return (
-    <span className={styles.frame} aria-hidden="true">
-      <canvas ref={canvasRef} width={20} height={20} className={styles.icon} />
+    <span className="block" aria-hidden="true">
+      <canvas
+        ref={canvasRef}
+        width={20}
+        height={20}
+        className="block size-22 [image-rendering:pixelated] max-sm:size-16"
+      />
     </span>
   );
 }

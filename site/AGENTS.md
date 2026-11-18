@@ -12,9 +12,44 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 The website for the `mnemocyte` library, in `site/` of the library's
 repository. `CLAUDE.md` only imports this file. The spec is
-`design/BRIEF.md`. The visual source of truth is
-`design/reference/index.html`; open it in a browser, and copy exact values
-from its CSS instead of guessing.
+`design/BRIEF.md`. The visual reference is `design/reference/index.html`:
+take layout, values and behaviour from its CSS instead of guessing, but
+pixel-perfect parity is not the goal. A clean, conventional codebase
+comes first.
+
+## Architecture
+
+```text
+src/
+├─ app/               routes only; page files are thin and compose
+│  ├─ layout.tsx      fonts, header, <main>, footer
+│  ├─ globals.css     tokens, @theme, base styles
+│  ├─ (home)/         page.tsx + _sections/ (hero, code-example, …)
+│  ├─ docs/           layout.tsx, [[...slug]]/page.tsx, _components/
+│  ├─ changelog/      page.tsx, _components/
+│  └─ community/      page.tsx
+├─ components/        shared by more than one route
+│  ├─ ui/             button, install-box, copy-button
+│  ├─ layout/         site-header, nav-links, mobile-menu, site-footer
+│  ├─ brand/          logo, github-icon
+│  └─ art/            colony, lifecycle-icon (client canvases)
+└─ lib/               plain TypeScript, no JSX, unit-testable
+   ├─ site.ts         URLs and nav links
+   ├─ cn.ts           class merging
+   └─ colony/         the pixel colony engine
+```
+
+- `app/` holds routing. A component used by one route lives next to it in a
+  private folder (`_sections/`, `_components/`), which Next keeps out of
+  the URL. When a second route needs it, move it to `components/`.
+- `components/` is grouped by role: `ui/` building blocks, `layout/` page
+  chrome, `brand/` marks and icons, `art/` canvases.
+- `lib/` has no React. Parsers, link rewriting and the colony engine live
+  here, with colocated Vitest tests (`*.test.ts`). The docs and changelog
+  are read from the repository at build time; every route is static.
+- Server Components by default. `"use client"` only on interactive leaves
+  (`nav-links`, `mobile-menu`, `copy-button`, the canvases).
+- Imports: `@/…` across folders, `./…` within one.
 
 ## Rules
 
@@ -36,11 +71,14 @@ from its CSS instead of guessing.
   `text-primary`, `text-md`, `lg:`). No hard-coded colors, font sizes outside
   the scale, or spacing outside the scale. Pink (`--primary`) only next to
   `--ink`.
-- The starter components (`Colony`, `LifecycleIcon`, `Logo`, `CopyButton`)
-  keep their CSS modules. Move one to Tailwind only when you are changing it
-  anyway.
-- File names: kebab-case for non-component files (`colony.module.css`,
-  `parse-changelog.ts`), PascalCase for React components (`Colony.tsx`). No
+- Tailwind is the only styling system: no CSS modules. Variants are small
+  class maps (see `ui/button.tsx`), joined with `cn` from `@/lib/cn`.
+- `cn` is the shadcn `cn` package configured for our tokens. A new
+  `--text-*` size in `globals.css` must be added to `lib/cn.ts` too,
+  otherwise `cn` reads it as a color and drops it in a merge.
+- File names are kebab-case everywhere (`site-header.tsx` exports
+  `SiteHeader`). Components use named exports; Next's special files
+  (`page`, `layout`, `opengraph-image`, …) keep their default export. No
   redundant folder prefix (`lib/colony/engine.ts`, not
   `lib/colony/colony-engine.ts`).
 - Formatting and linting come from `site/biome.json`: Next's Biome defaults
@@ -63,9 +101,9 @@ pnpm lint            # root: must keep passing
 
 ## Workflow
 
-- One branch and one PR per task. Name the branch `<type>/site-<topic>`,
-  such as `feat/site-docs`, and write conventional commits, such as
+- The site is built on one branch, one commit per step, with one PR at the
+  end. Write conventional commits, such as
   `feat(site): render guides from docs/guide`.
-- Before you call a task done, run lint, typecheck and build. Then take
-  screenshots at 1440 × 900 and 390 × 844, compare them with the reference,
-  and fix what differs.
+- Before you call a step done, run lint, typecheck and build. Then check
+  the pages at 1440 × 900 and 390 × 844 against the reference and fix what
+  is clearly off.

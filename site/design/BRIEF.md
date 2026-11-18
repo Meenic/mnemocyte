@@ -58,8 +58,8 @@ the numbers here.
   `text-md`) and the base styles are all in `src/app/globals.css`.
   Tailwind's default colors, font sizes and breakpoints are removed, so
   there is no second palette. Components use tokens only, never a
-  hard-coded color. New components use Tailwind utilities; the starter
-  components keep their CSS modules.
+  hard-coded color. Every component uses Tailwind utilities; there are no CSS modules.
+  See `site/AGENTS.md` for the architecture.
 - **Fonts with `next/font`:** Geist and Geist Mono, from the `geist`
   package (`geist/font/sans`, `geist/font/mono`), exposing
   `--font-geist-sans` and `--font-geist-mono`.
@@ -80,10 +80,10 @@ reference's JavaScript.
 | `lib/colony/cell.ts`           | `drawCell`: one cell at any life stage.                                                                                                                                    |
 | `lib/colony/engine.ts`         | `Colony`: the growing, decaying, linking colony. Framework-free.                                                                                                           |
 | `lib/colony/glyph.ts`          | `drawGlyph`: the four 20 × 20 life-cycle icons.                                                                                                                            |
-| `components/Colony.tsx`        | Client component, `variant="hero"` or `"card"`. Handles layout, the bleed, resize, visibility, reduced motion, pointer and keyboard.                                       |
-| `components/LifecycleIcon.tsx` | Client component for one icon, animated at 10 fps when on screen.                                                                                                          |
-| `components/Logo.tsx`          | `Logo` (mark + wordmark link) and `LogoMark`.                                                                                                                              |
-| `components/CopyButton.tsx`    | Copy with "Copied" confirmation for 1.5 s, clipboard fallback and a status message for screen readers.                                                                     |
+| `components/art/colony.tsx`   | Client component, `variant="hero"` or `"card"`. Handles layout, the bleed, resize, visibility, reduced motion, pointer and keyboard.                                       |
+| `components/art/lifecycle-icon.tsx` | Client component for one icon, animated at 10 fps when on screen.                                                                                                          |
+| `components/brand/logo.tsx`   | `Logo` (mark + wordmark link) and `LogoMark`.                                                                                                                              |
+| `components/ui/copy-button.tsx` | Copy with "Copied" confirmation for 1.5 s, clipboard fallback and a status message for screen readers.                                                                     |
 
 The colony reads its colors from tokens at mount. Pass `texts` as a
 module-level constant: a new array on every render restarts the colony.
@@ -273,7 +273,7 @@ As in the reference:
   Enter recalls it, and a polite live region reads the memory.
 - Decorative canvases are `aria-hidden`.
 - With `prefers-reduced-motion`, all canvases draw one still frame and every
-  transition stops: each CSS module turns off its own transitions in a
+  transition stops: each component turns off its own transitions in a
   reduced-motion media query (no global `!important`). Hover recall still
   works, without the pulse.
 - Canvases only animate while on screen and while the tab is visible.

@@ -68,9 +68,10 @@ copy, layout and every CSS value.
 
 Branch: feat/site-home
 
-Build the home page from six section components (Hero, CodeExample,
-WorksWith, Lifecycle, Conversation, ClosingCard), styled with Tailwind
-utilities from the tokens. Use the starter Colony (variant hero, and card in the closing card)
+Build the home page from six section components in
+src/app/(home)/_sections/ (hero, code-example, works-with, life-cycle,
+conversation, closing-card), styled with Tailwind utilities from the
+tokens. Use the starter Colony (variant hero, and card in the closing card)
 and LifecycleIcon (kinds add, recall, merge, prune). Keep the texts array a
 module-level constant.
 

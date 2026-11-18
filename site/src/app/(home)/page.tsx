@@ -1,19 +1,19 @@
-import { Button } from "@/components/ui/button";
-import { InstallBox } from "@/components/ui/install-box";
+import { ClosingCard } from "./_sections/closing-card";
+import { CodeExample } from "./_sections/code-example";
+import { Conversation } from "./_sections/conversation";
+import { Hero } from "./_sections/hero";
+import { LifeCycle } from "./_sections/life-cycle";
+import { WorksWith } from "./_sections/works-with";
 
-/* Placeholder until the home page is built. */
-export default function Home() {
+export default function HomePage() {
   return (
-    <section className="wrap pt-(--page-top)">
-      <h1>
-        <span className="key hang">Memory</span> for TypeScript AI apps.
-      </h1>
-      <div className="mt-(--s-4) flex flex-wrap gap-3">
-        <InstallBox className="max-sm:w-full" />
-        <Button href="/docs" arrow className="max-sm:w-full">
-          Get started
-        </Button>
-      </div>
-    </section>
+    <>
+      <Hero />
+      <CodeExample />
+      <WorksWith />
+      <LifeCycle />
+      <Conversation />
+      <ClosingCard />
+    </>
   );
 }

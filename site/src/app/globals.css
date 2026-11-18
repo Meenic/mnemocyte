@@ -73,6 +73,11 @@
   /* Layout */
   --wrap: 1200px;
   --gutter: clamp(20px, 4vw, 40px);
+  --split: clamp(
+    40px,
+    7vw,
+    104px
+  ); /* gap between a heading column and its content */
   --nav-h: 64px;
 
   /* Stepped pixel corners */

@@ -29,13 +29,15 @@ src/
 │  ├─ changelog/      page.tsx, _components/
 │  └─ community/      page.tsx
 ├─ components/        shared by more than one route
-│  ├─ ui/             button, install-box, copy-button
+│  ├─ ui/             button, text-link, install-box, copy-button,
+│  │                  code-block, inline-code
 │  ├─ layout/         site-header, nav-links, mobile-menu, site-footer
 │  ├─ brand/          logo, github-icon
 │  └─ art/            colony, lifecycle-icon (client canvases)
 └─ lib/               plain TypeScript, no JSX, unit-testable
    ├─ site.ts         URLs and nav links
    ├─ cn.ts           class merging
+   ├─ highlight.ts    Shiki, themed from the --code-* tokens
    └─ colony/         the pixel colony engine
 ```
 
@@ -47,6 +49,11 @@ src/
 - `lib/` has no React. Parsers, link rewriting and the colony engine live
   here, with colocated Vitest tests (`*.test.ts`). The docs and changelog
   are read from the repository at build time; every route is static.
+- Cache Components is on, so async work during prerendering must be
+  cached: build-time work (highlighting, reading guides and the changelog)
+  goes in an async `lib/` function with `"use cache"` and
+  `cacheLife("max")`, as `lib/highlight.ts` does. Otherwise the build
+  fails with "uncached or runtime data during prerendering".
 - Server Components by default. `"use client"` only on interactive leaves
   (`nav-links`, `mobile-menu`, `copy-button`, the canvases).
 - Imports: `@/…` across folders, `./…` within one.

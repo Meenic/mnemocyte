@@ -1,0 +1,17 @@
+.frame {
+  display: block;
+}
+
+.icon {
+  display: block;
+  width: 88px;
+  height: 88px;
+  image-rendering: pixelated;
+}
+
+@media (max-width: 560px) {
+  .icon {
+    width: 64px;
+    height: 64px;
+  }
+}

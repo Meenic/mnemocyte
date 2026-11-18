@@ -1,0 +1,292 @@
+/*
+ * Mnemocyte design tokens, the Tailwind theme built from them, and the base
+ * styles. Every color, size and space on the site comes from the tokens;
+ * components never hard-code a color. See design/reference/index.html for
+ * every rule.
+ */
+@import "tailwindcss";
+
+/*
+ * Tokens. next/font defines --font-geist-sans and --font-geist-mono on
+ * <html>; the fallbacks keep the page readable before they load. These sit
+ * outside any layer so they win over Tailwind's own theme defaults.
+ */
+:root {
+  /* Palette */
+  --bg: #eceee8; /* page, slide-glass grey-green */
+  --surface: #f6f7f3; /* outlined cards, inline code */
+  --ink: #111311; /* text, dark blocks, cell membranes */
+  --ink-soft: #4a5049; /* secondary text (7:1 on --bg) */
+  --line: #c9cec4; /* hairlines */
+  --primary: #ff4f9a; /* the one loud color; only ever paired with --ink */
+  --on-primary: #111311;
+  --on-ink: #f2f4ee;
+  --on-ink-soft: #a6ada3;
+
+  /* Code blocks */
+  --slab-line: #2f342f;
+  --slab-hover: #1d211d;
+  --code-keyword: var(--primary);
+  --code-string: #c9d3c4;
+  --code-comment: #7d857b;
+
+  /* Pixel artwork */
+  --cell-grain: #8e948b;
+  --cell-link: #9aa096;
+  --cell-grain-on-primary: #9a3561;
+  --cell-link-on-primary: #a83a69;
+
+  /* Type */
+  --font-sans: var(--font-geist-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Menlo, Consolas, monospace;
+  --font-heading: var(--font-sans);
+  --heading-weight: 440;
+  --heading-tracking: -0.03em;
+
+  /* One type scale */
+  --fs-sm: 14px;
+  --fs-base: 16px;
+  --fs-md: 20px;
+  --fs-lg: 28px;
+  --fs-xl: clamp(32px, 3.4vw, 44px);
+  --fs-2xl: clamp(40px, 4.8vw, 64px);
+
+  /* One spacing scale */
+  --s-1: 8px;
+  --s-2: 16px;
+  --s-3: 24px;
+  --s-4: 40px;
+  --s-5: 64px;
+  --s-6: 104px;
+  --section: clamp(
+    88px,
+    9vw,
+    128px
+  ); /* gap between sections, and before the footer */
+  --page-top: clamp(56px, 8vw, 104px); /* header to first heading, every page */
+
+  /* Layout */
+  --wrap: 1200px;
+  --gutter: clamp(20px, 4vw, 40px);
+  --nav-h: 64px;
+
+  /* Stepped pixel corners */
+  --notch: polygon(
+    0 8px,
+    4px 8px,
+    4px 4px,
+    8px 4px,
+    8px 0,
+    calc(100% - 8px) 0,
+    calc(100% - 8px) 4px,
+    calc(100% - 4px) 4px,
+    calc(100% - 4px) 8px,
+    100% 8px,
+    100% calc(100% - 8px),
+    calc(100% - 4px) calc(100% - 8px),
+    calc(100% - 4px) calc(100% - 4px),
+    calc(100% - 8px) calc(100% - 4px),
+    calc(100% - 8px) 100%,
+    8px 100%,
+    8px calc(100% - 4px),
+    4px calc(100% - 4px),
+    4px calc(100% - 8px),
+    0 calc(100% - 8px)
+  );
+  --notch-sm: polygon(
+    0 4px,
+    2px 4px,
+    2px 2px,
+    4px 2px,
+    4px 0,
+    calc(100% - 4px) 0,
+    calc(100% - 4px) 2px,
+    calc(100% - 2px) 2px,
+    calc(100% - 2px) 4px,
+    100% 4px,
+    100% calc(100% - 4px),
+    calc(100% - 2px) calc(100% - 4px),
+    calc(100% - 2px) calc(100% - 2px),
+    calc(100% - 4px) calc(100% - 2px),
+    calc(100% - 4px) 100%,
+    4px 100%,
+    4px calc(100% - 2px),
+    2px calc(100% - 2px),
+    2px calc(100% - 4px),
+    0 calc(100% - 4px)
+  );
+
+  color-scheme: light;
+}
+
+@media (max-width: 560px) {
+  :root {
+    --fs-md: 18px;
+    --fs-lg: 24px;
+  }
+}
+
+/*
+ * The Tailwind theme, built only from the tokens above: Tailwind's default
+ * colors, font sizes and breakpoints are removed, so there is no second
+ * palette. Utilities keep the token names (bg-ink, text-primary, text-md,
+ * font-heading, lg:…). font-sans and font-mono read --font-sans and
+ * --font-mono above.
+ */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-on-ink: var(--on-ink);
+  --color-on-ink-soft: var(--on-ink-soft);
+  --color-slab-line: var(--slab-line);
+  --color-slab-hover: var(--slab-hover);
+
+  /*
+   * Gives the font-heading utility. Tailwind also writes this line into its
+   * theme layer, where it looks circular, but the unlayered :root token
+   * above wins the cascade, so it resolves to --font-sans.
+   */
+  --font-heading: var(--font-heading);
+
+  --text-*: initial;
+  --text-sm: var(--fs-sm);
+  --text-base: var(--fs-base);
+  --text-md: var(--fs-md);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  --text-2xl: var(--fs-2xl);
+
+  /* The brief's breakpoints: phone type, nav menu, one column, docs TOC. */
+  --breakpoint-*: initial;
+  --breakpoint-sm: 560px;
+  --breakpoint-md: 720px;
+  --breakpoint-lg: 960px;
+  --breakpoint-xl: 1180px;
+}
+
+/*
+ * Base styles, in Tailwind's base layer so utilities can override them.
+ * Tailwind's Preflight runs first.
+ */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 96px;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 var(--fs-base) / 1.6 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: clip; /* the hero colony bleeds off the right edge */
+  }
+
+  /* Preflight covers img; the artwork canvases and icons need it too. */
+  svg,
+  canvas {
+    max-width: 100%;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-heading);
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--heading-tracking);
+  }
+
+  h1 {
+    font-size: var(--fs-2xl);
+    line-height: 1.1;
+  }
+
+  h2 {
+    font-size: var(--fs-xl);
+    line-height: 1.14;
+  }
+
+  /* A heading with a highlighted word needs room above and below the block. */
+  h1:has(.key),
+  h2:has(.key) {
+    line-height: 1.28;
+  }
+
+  h3 {
+    font-size: var(--fs-md);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  code,
+  pre {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  ::selection {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+}
+
+/* The few shared primitives. */
+@layer components {
+  /* The one key word in a heading, in a notched ink block. */
+  .key {
+    background: var(--ink);
+    color: var(--on-ink);
+    padding: 0.01em 0.17em 0.07em;
+    margin: 0 0.04em;
+    clip-path: var(--notch-sm);
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  /* When the key word starts the heading, let the block hang so the letters align. */
+  .key.hang {
+    margin-left: -0.17em;
+  }
+
+  /* On the pink card the block keeps ink and the word turns pink. */
+  .on-primary .key {
+    color: var(--primary);
+  }
+
+  .wrap {
+    max-width: var(--wrap);
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+  }
+
+  .lead {
+    font-size: var(--fs-md);
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+}
+
+/*
+ * Reduced motion: each CSS module turns off its own transitions inside
+ * @media (prefers-reduced-motion: reduce), as logo.module.css and
+ * copy-button.module.css do. The canvases check the same query in script.
+ * Tailwind's sr-only utility replaces the starter's .sr-only class.
+ */

@@ -67,6 +67,35 @@ jobs:
       - name: Lint packed tarball
         run: pnpm run lint:package
 
+  site:
+    name: Site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter site lint
+
+      - name: Check types
+        run: pnpm --filter site typecheck
+
+      - name: Build
+        run: pnpm --filter site build
+
   postgres-integration:
     name: Postgres ${{ matrix.postgres }} integration (postgres.js ${{ matrix.postgres-js }})
     runs-on: ubuntu-latest

@@ -50,6 +50,9 @@
   --fs-lg: 28px;
   --fs-xl: clamp(32px, 3.4vw, 44px);
   --fs-2xl: clamp(40px, 4.8vw, 64px);
+  /* UI text: nav links, buttons, footer links; the open mobile menu */
+  --fs-ui: 15px;
+  --fs-menu: 18px;
 
   /* One spacing scale */
   --s-1: 8px;
@@ -161,13 +164,20 @@
   --text-lg: var(--fs-lg);
   --text-xl: var(--fs-xl);
   --text-2xl: var(--fs-2xl);
+  --text-ui: var(--fs-ui);
+  --text-menu: var(--fs-menu);
 
-  /* The brief's breakpoints: phone type, nav menu, one column, docs TOC. */
+  /*
+   * The brief's breakpoints: phone type (560), nav menu (720), one column
+   * (960), docs TOC (above 1180). The reference uses max-width: 560px and so
+   * on, so each min-width is one pixel more: max-sm: is exactly ≤ 560px and
+   * sm: is exactly > 560px.
+   */
   --breakpoint-*: initial;
-  --breakpoint-sm: 560px;
-  --breakpoint-md: 720px;
-  --breakpoint-lg: 960px;
-  --breakpoint-xl: 1180px;
+  --breakpoint-sm: 561px;
+  --breakpoint-md: 721px;
+  --breakpoint-lg: 961px;
+  --breakpoint-xl: 1181px;
 }
 
 /*

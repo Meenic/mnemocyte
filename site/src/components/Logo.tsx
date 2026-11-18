@@ -1,3 +1,4 @@
+import Link from "next/link";
 import styles from "./logo.module.css";
 
 const MARK =
@@ -21,9 +22,9 @@ export function LogoMark({ className }: { className?: string }) {
 /** Mark plus wordmark, linking home. */
 export function Logo({ href = "/" }: { href?: string }) {
   return (
-    <a className={styles.brand} href={href} aria-label="Mnemocyte home">
+    <Link className={styles.brand} href={href} aria-label="Mnemocyte home">
       <LogoMark className={styles.mark} />
       <span className={styles.word}>mnemocyte</span>
-    </a>
+    </Link>
   );
 }

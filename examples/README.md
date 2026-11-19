@@ -33,6 +33,8 @@ node examples/pglite.ts "Drinks tea, not coffee."
 node examples/pglite.ts
 ```
 
-Each file starts with what it needs and how to run it. `postgres.ts` has
-the `docker run` line for a local Postgres with pgvector. To set up your
-own project, follow the [getting started guide](../docs/guide/getting-started.md).
+Each file starts with what it needs and how to run it. For a local
+Postgres with pgvector to run `postgres.ts` against, see
+[Start Postgres](../docs/guide/getting-started.md#2-start-postgres). To set
+up your own project, follow the
+[getting started guide](../docs/guide/getting-started.md).

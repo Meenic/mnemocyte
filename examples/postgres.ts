@@ -1,12 +1,9 @@
 // Memories in your own Postgres with pgvector, through postgres.js.
 //
-// Needs OPENAI_API_KEY and DATABASE_URL. To start a local Postgres with
-// pgvector, the image Mnemocyte's CI uses:
-//
-//   docker run -d --name mnemocyte-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 pgvector/pgvector:0.8.7-pg18
-//   export DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
-//
-// Then, from the repository root, after `pnpm build`:
+// Needs OPENAI_API_KEY and DATABASE_URL, pointing at a Postgres with
+// pgvector 0.8.0 or later. To start one locally in Docker, see "Start
+// Postgres" in docs/guide/getting-started.md. Then, from the repository
+// root, after `pnpm build`:
 //
 //   node examples/postgres.ts
 import { createMemory, migrate } from "mnemocyte";

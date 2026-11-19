@@ -3,11 +3,15 @@ import { GeistSans } from "geist/font/sans";
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { DESCRIPTION, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mnemocyte",
-  description: "Memory for TypeScript AI apps.",
+  metadataBase: new URL(SITE_URL),
+  title: { default: "Mnemocyte", template: "%s · Mnemocyte" },
+  description: DESCRIPTION,
+  openGraph: { type: "website", siteName: "Mnemocyte", locale: "en" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

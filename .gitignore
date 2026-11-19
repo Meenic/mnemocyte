@@ -44,3 +44,6 @@ bench-results
 # Misc
 package-lock.json
 yarn.lock
+
+# Examples
+examples/memory-data

@@ -9,7 +9,8 @@ npm, install with `npm install` and run the `mnemocyte` command with
 `npx mnemocyte`. To use a local model, see
 [Use Ollama instead of OpenAI](#use-ollama-instead-of-openai). To try
 Mnemocyte without a database, see
-[Prototype without a database](#prototype-without-a-database).
+[Prototype without a database](#prototype-without-a-database). To run
+finished scripts first, see the [examples](../../examples/README.md).
 
 ## 1. Create the project
 
@@ -412,6 +413,8 @@ Moving to Postgres later means steps 2 to 5, with the same calls.
 
 ## Next
 
+- [Examples](../../examples/README.md): runnable scripts for process
+  memory, PGlite, Postgres and an AI SDK chat.
 - [API reference](./api.md): every method, scopes and errors.
 - [CLI](./cli.md): `mnemocyte init`, `migrate`, `check` and `sql`.
 - [Postgres](./postgres.md): drivers, poolers, `migrate`, upgrades and

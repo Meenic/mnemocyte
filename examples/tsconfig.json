@@ -1,0 +1,17 @@
+{
+	// The settings the getting-started guide recommends for running .ts
+	// files with Node. `pnpm test:examples` type-checks the examples with it
+	// against the built dist/, the way an app imports "mnemocyte".
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "nodenext",
+		"strict": true,
+		"types": ["node"],
+		"noEmit": true,
+		"rewriteRelativeImportExtensions": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true
+	},
+	"include": ["*.ts"]
+}

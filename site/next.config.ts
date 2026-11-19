@@ -7,12 +7,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     rules: {
       "*.css": {
-        // Tailwind runs on global CSS only. Without the module exclusion,
-        // `as: "*.css"` turns every .module.css into plain global CSS and
-        // its class names come back undefined.
-        condition: {
-          all: [{ not: "foreign" }, { not: { path: /\.module\.css$/ } }],
-        },
+        // Tailwind runs on the site's own CSS (globals.css), not on CSS
+        // from node_modules. The site has no CSS modules.
+        condition: { not: "foreign" },
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },

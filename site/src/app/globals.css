@@ -311,8 +311,7 @@
 }
 
 /*
- * Reduced motion: each CSS module turns off its own transitions inside
- * @media (prefers-reduced-motion: reduce), as logo.module.css and
- * copy-button.module.css do. The canvases check the same query in script.
- * Tailwind's sr-only utility replaces the starter's .sr-only class.
+ * Reduced motion: each component turns off its own transitions with
+ * Tailwind's motion-reduce: variant. The canvases check the same query in
+ * script.
  */

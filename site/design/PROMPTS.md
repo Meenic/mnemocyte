@@ -1,9 +1,24 @@
 # Prompts for Claude Code
 
-Paste these into Claude Code one at a time, from the repository root. Each
-one is a branch and a PR. Review and merge it before you start the next. If
-a step goes wrong, say what you see ("the hero headline wraps to three lines
+Paste these into Claude Code one at a time, from the repository root. If a
+step goes wrong, say what you see ("the hero headline wraps to three lines
 at 390px") instead of starting over.
+
+## Status
+
+The plan changed from one PR per step: every step is one commit on
+`chore/site-workspace`, and the whole site goes up as one PR at the end.
+Ignore the `Branch:` lines below.
+
+- Done: 0 workspace, 1 foundation, 2 home, 4 changelog, 5 community, 6
+  metadata and the launch checklist (Lighthouse: Accessibility 100, Best
+  Practices 96–100, CLS ≤ 0.005 on every page).
+- Next: 3 docs. Until it lands, /docs is a 404. When it does, add the docs
+  routes to `src/app/sitemap.ts` and run the docs link check from BRIEF.md
+  section 9.
+- Then: push, open the one PR (consider renaming the branch to
+  `feat/site`), and deploy on Vercel when the maintainer says so. Deploying
+  is on hold for now; set the domain in `src/lib/site.ts` then.
 
 ---
 
@@ -38,7 +53,7 @@ Branch: chore/site-workspace
 Commit: chore(site): add Next.js site as a pnpm workspace package
 ```
 
-## 1 · Foundation: layout, nav, footer
+## 1 · Foundation: layout, nav, footer (done)
 
 ```text
 Read site/CLAUDE.md and site/design/BRIEF.md. Open
@@ -60,7 +75,7 @@ Port the exact values from the reference CSS. Then screenshot / at
 Commit: feat(site): add layout, header and footer
 ```
 
-## 2 · Home page
+## 2 · Home page (done)
 
 ```text
 Read site/CLAUDE.md and BRIEF.md section 6 (Home). Use the reference for
@@ -108,7 +123,7 @@ an anchor, and fail the build if one doesn't.
 Commit: feat(site): render guides from docs/guide
 ```
 
-## 4 · Changelog
+## 4 · Changelog (done)
 
 ```text
 Read site/CLAUDE.md and BRIEF.md section 6 (/changelog).
@@ -126,7 +141,7 @@ from the real file.
 Commit: feat(site): add changelog page from CHANGELOG.md
 ```
 
-## 5 · Community
+## 5 · Community (done)
 
 ```text
 Read site/CLAUDE.md and BRIEF.md section 6 (/community). Copy the copy and
@@ -137,7 +152,7 @@ Branch: feat/site-community
 Commit: feat(site): add community page
 ```
 
-## 6 · Metadata, polish, deploy
+## 6 · Metadata, polish, deploy (done, not deployed)
 
 ```text
 Read site/CLAUDE.md and BRIEF.md sections 6 (Shared), 8 and 9.

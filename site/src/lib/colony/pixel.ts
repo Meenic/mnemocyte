@@ -60,16 +60,6 @@ export function toAbgr(color: string): number {
   return ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 }
 
-/** Mixes two CSS colors (0 = a, 1 = b) and returns packed ABGR. */
-export function mixAbgr(a: string, b: string, t: number): number {
-  const ca = toAbgr(a);
-  const cb = toAbgr(b);
-  const ch = (v: number, s: number) => (v >> s) & 255;
-  const mix = (s: number) =>
-    Math.round(ch(ca, s) + (ch(cb, s) - ch(ca, s)) * t);
-  return ((255 << 24) | (mix(16) << 16) | (mix(8) << 8) | mix(0)) >>> 0;
-}
-
 /** Reads a CSS custom property from :root. */
 export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement)

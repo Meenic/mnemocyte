@@ -6,9 +6,9 @@ at 390px") instead of starting over.
 
 ## Status
 
-The plan changed from one PR per step: every step is one commit on
-`chore/site-workspace`, and the whole site goes up as one PR at the end.
-Ignore the `Branch:` lines below.
+Steps 0–2 and 4–6 were built as one commit each on `chore/site-workspace`
+and merged as one PR. Step 3 is the one left; it gets its own branch from
+`main` (its `Branch:` line below) and its own PR.
 
 - Done: 0 workspace, 1 foundation, 2 home, 4 changelog, 5 community, 6
   metadata and the launch checklist (Lighthouse: Accessibility 100, Best
@@ -16,9 +16,8 @@ Ignore the `Branch:` lines below.
 - Next: 3 docs. Until it lands, /docs is a 404. When it does, add the docs
   routes to `src/app/sitemap.ts` and run the docs link check from BRIEF.md
   section 9.
-- Then: push, open the one PR (consider renaming the branch to
-  `feat/site`), and deploy on Vercel when the maintainer says so. Deploying
-  is on hold for now; set the domain in `src/lib/site.ts` then.
+- Not deployed: deploy on Vercel when the maintainer says so, and set the
+  domain in `src/lib/site.ts` then.
 
 ---
 

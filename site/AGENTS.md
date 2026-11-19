@@ -130,11 +130,10 @@ the browser preview, so run `build` before previewing a change.
 
 ## Workflow
 
-- The site is built on one branch, `chore/site-workspace`, one commit per
-  step, with one PR at the end. Ignore the `Branch:` lines in
-  `design/PROMPTS.md`; its status section says what is done and what is
-  next. Write conventional commits, such as
-  `feat(site): render guides from docs/guide`.
+- `design/PROMPTS.md` holds one prompt per step; its status section says
+  what is done and what is next. Each remaining step is a branch from
+  `main` and a PR, following the repository's git rules. Write
+  conventional commits, such as `feat(site): render guides from docs/guide`.
 - Before you call a step done, run lint, typecheck, test and build. Then check
   the pages at 1440 × 900 and 390 × 844 against the reference and fix what
   is clearly off.

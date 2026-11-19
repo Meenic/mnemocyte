@@ -93,6 +93,9 @@ jobs:
       - name: Check types
         run: pnpm --filter site typecheck
 
+      - name: Test
+        run: pnpm --filter site test
+
       - name: Build
         run: pnpm --filter site build
 

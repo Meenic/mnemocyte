@@ -225,12 +225,24 @@ The items, in order:
   to the guide sections that hold the details. Both are linked from the
   README's documentation line. Like other guide snippets, the recipe code
   is not type-checked.
-- [ ] `docs/examples`: `examples/` with `in-memory.ts`, `pglite.ts`
+- [x] `docs/examples`: `examples/` with `in-memory.ts`, `pglite.ts`
   (Postgres in process, no Docker), `postgres.ts` and `ai-sdk-chat.ts`,
-  run with `node file.ts` (check Node's type stripping docs first),
-  importing `mnemocyte` by name. CI type-checks them through the
-  doc-examples check; it does not run them, since they need a key or a
-  database. Not in `files`. The getting-started guide links to them.
+  run with `node examples/<file>.ts` after `pnpm build`, importing
+  `mnemocyte` by name through self-reference, plus a short
+  `examples/README.md`. `pnpm test:examples` (`tsc -p
+  examples/tsconfig.json`, the getting-started tsconfig without `paths`)
+  type-checks them against `dist/` in `test:ci`; nothing runs them, since
+  each needs a key and some a database. Not in `files`. The
+  getting-started guide links to them. Decided: a separate script rather
+  than part of `check-readme.mjs`, like `test:jsdoc`; the chat sends the
+  chat model, the extraction model and the embedder through the AI
+  Gateway (`gateway(...)` and `aiSdkEmbedder({ model: "openai/..." })`), so
+  it needs only `AI_GATEWAY_API_KEY` and no provider package; it keeps
+  memories in process memory, with `/new` to clear the history and show
+  they stay; its `save.waitUntil` collects the extraction promises and the
+  loop waits for them before the next turn, since the response does not.
+  The PGlite data folder is `examples/memory-data` (gitignored), found
+  through `import.meta.dirname`.
 - [ ] `docs/contributing-security`: `CONTRIBUTING.md` that points to
   `DEVELOPMENT.md`, the roadmap, the commands and the branch and commit
   format, and `SECURITY.md` with supported versions (the latest 1.x

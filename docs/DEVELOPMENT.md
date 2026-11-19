@@ -115,6 +115,7 @@ src/
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template
 scripts/                bundle-migrations.mjs, check-package.mjs
+examples/               runnable scripts that import `mnemocyte` by name; not shipped
 test/                   unit, package, integration, fixtures, benchmarks
 ```
 
@@ -148,6 +149,9 @@ Node 22.18 fully supports. There are two configs:
   project, where TypeScript 6 loads no `@types` and `node:` imports and
   `process` fail. `pnpm checktypes` runs both, so the editor does not flag
   a missing return type in `src/` but CI does.
+
+`examples/tsconfig.json` stands on its own: no `paths`, so the examples
+resolve `mnemocyte` to `dist/` (see `pnpm test:examples` under Testing).
  The `.mjs` files ship with source maps that embed
 their sources. The `.d.mts` files ship without maps, because a declaration
 map points at `src/`, which is not published. With `sourcemap` on, rolldown
@@ -334,10 +338,11 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, runs `pnpm test:types`, `pnpm test:readme` and
-  `pnpm test:jsdoc`, then runs `unit`, `contract` and `package`. This is
-  what CI runs on every push. `pnpm test:exports` does the same for `package` alone, without
-  `test:readme` and `test:jsdoc`.
+- `pnpm test` builds, runs `pnpm test:types`, `pnpm test:readme`,
+  `pnpm test:jsdoc` and `pnpm test:examples`, then runs `unit`, `contract`
+  and `package`. This is what CI runs on every push. `pnpm test:exports`
+  does the same for `package` alone, without `test:readme`, `test:jsdoc`
+  and `test:examples`.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -373,6 +378,13 @@ Vitest has three projects (`vitest.config.ts`):
   numbers, so the script maps errors back and prints
   `src/<file>:<line>:<col>` (the column is relative to the text after the
   ` * ` prefix). Types only, nothing runs.
+- `pnpm test:examples` runs `tsc --noEmit -p examples/tsconfig.json`, which
+  type-checks the scripts in `examples/` against the built `dist/`, so it
+  needs a build first. The examples import `mnemocyte` by name and resolve
+  it through self-reference, and the tsconfig is the one the
+  getting-started guide recommends for running `.ts` files with Node.
+  Types only: nothing runs, since every example needs an API key and some
+  need a database. `examples/` is not in `files`, so it does not ship.
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.

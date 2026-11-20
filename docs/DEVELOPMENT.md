@@ -616,10 +616,12 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 - A question about releasing is not a request for one. Open a release PR
   only when the maintainer asks for it.
 
-1. On a `chore/release-vX.Y.Z` branch, move the `CHANGELOG.md`
-   `[Unreleased]` entries under the new version and run
+1. On a `chore/release-vX.Y.Z` branch, run
    `pnpm version patch --no-git-tag-version` (or `minor`), which changes only
-   `package.json`. For the first release candidate, give the version
+   `package.json`, then move the `CHANGELOG.md` `[Unreleased]` entries under
+   the new version. Bump first: pnpm 12 stops with
+   `ERR_PNPM_UNCLEAN_WORKING_TREE` when the tree has changes (or add
+   `--no-git-checks`). For the first release candidate, give the version
    (`pnpm version 1.0.0-rc.1 --no-git-tag-version`), since `premajor` would
    produce `rc.0`.
 2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI

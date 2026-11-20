@@ -1,6 +1,6 @@
 {
 	"name": "mnemocyte",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "Memory for TypeScript AI apps.",
 	"type": "module",
 	"packageManager": "pnpm@12.15.0",

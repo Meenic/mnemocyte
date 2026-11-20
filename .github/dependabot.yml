@@ -1,0 +1,19 @@
+# Updates the full-length commit SHAs the workflows pin actions to, and the
+# version comment after each. Only github-actions: npm dependencies stay
+# with pnpm and its minimum release age. See docs/DEVELOPMENT.md
+# ("What CI runs").
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # github-actions supports default-days only, not the semver-*-days keys.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: chore(ci)

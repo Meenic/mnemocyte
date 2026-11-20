@@ -6,6 +6,11 @@ on:
     branches:
       - main
   workflow_call:
+    inputs:
+      release:
+        description: Set by release.yml to skip the Site job
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,8 +25,9 @@ concurrency:
 
 jobs:
   # On a pull request, decide which jobs its files need. Any other event (a
-  # push to main, the release's workflow_call) runs everything. The path
-  # lists are in docs/DEVELOPMENT.md ("What CI runs"); keep both in sync.
+  # push to main, the release's workflow_call) runs everything, except that
+  # the release skips Site (inputs.release). The path lists are in
+  # docs/DEVELOPMENT.md ("What CI runs"); keep both in sync.
   changes:
     name: Changes
     runs-on: ubuntu-latest
@@ -38,7 +44,7 @@ jobs:
       # fetches its two parents, the base branch and the PR head.
       - name: Checkout
         if: github.event_name == 'pull_request'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
           persist-credentials: false
@@ -48,6 +54,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE: ${{ inputs.release }}
         run: |
           everything='^(\.github/|\.gitignore$|\.gitattributes$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|biome\.json$)'
           node='^(src/|test/|migrations/|scripts/|examples/|README\.md$|docs/guide/getting-started\.md$|tsconfig[^/]*\.json$|tsdown\.config\.ts$|vitest\.config\.ts$)'
@@ -85,6 +92,11 @@ jobs:
             if [ "$run" = false ] && grep -qE "${!job}" <<< "$files"; then
               run=true
             fi
+            # The site is not in the npm tarball, and the release PR and the
+            # push to main already ran it.
+            if [ "$job" = site ] && [ "$RELEASE" = true ]; then
+              run=false
+            fi
             echo "$job=$run" >> "$GITHUB_OUTPUT"
             echo "$job: $run"
           done
@@ -105,15 +117,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
@@ -136,15 +148,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -170,15 +182,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -198,15 +210,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -240,15 +252,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -290,15 +302,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm

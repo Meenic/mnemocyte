@@ -685,7 +685,9 @@ when the release calls it (`workflow_call`). It has these jobs:
   two-parent merge with the PR head, the job warns and runs everything.
   The lists are `grep -E` patterns in that step: add a new top-level file
   or folder to the jobs that read it. A push or a release run (a called
-  workflow sees its caller's event) skips the diff and runs everything.
+  workflow sees its caller's event) skips the diff and runs everything,
+  except that the release passes `release: true` and skips `Site`
+  (decision 59).
 - The last job, `CI ok`, needs all the others and runs unless the run was
   cancelled. It fails when any of them failed or was cancelled. A job
   skipped by its `if` reports success. If `main` ever gets a ruleset,
@@ -716,6 +718,18 @@ when the release calls it (`workflow_call`). It has these jobs:
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
   Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
   later, has 10, and `Links` 5.
+- Both workflows pin each action to a full-length commit SHA with its
+  release after it (`actions/checkout@<sha> # v7.0.1`), since the release
+  runs `ci.yml` and its publish job holds the npm OIDC token (decision
+  58). Take a new SHA from the action's own repository, not a fork
+  (`gh api repos/OWNER/REPO/commits/TAG --jq .sha`), and keep the comment
+  on the same line. `.github/dependabot.yml` updates the `github-actions`
+  ecosystem only, weekly, in one `actions` group, with a 7-day
+  `cooldown` (`default-days`; the `semver-*-days` keys do not apply to
+  actions) and the `chore(ci)` commit prefix. It does not manage npm
+  dependencies, which follow pnpm's minimum release age. Dependabot
+  alerts do not cover SHA-pinned actions. Edit a Dependabot PR's title to
+  the repository's commit rules before the squash merge if it is too long.
 
 ## Releasing
 
@@ -756,36 +770,56 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 4. Once npm has the version, create the GitHub release. For a version with
    a prerelease part, mark it as a prerelease and say it installs with
    `mnemocyte@next`.
-5. After a final release, check `npm view mnemocyte dist-tags`. The
-   workflow moves `latest` but never clears `next`, so after release
-   candidates `next` keeps pointing at an older prerelease and
-   `mnemocyte@next` installs it. Remove it with
-   `npm dist-tag rm mnemocyte next` from your own npm login; the next
-   prerelease sets it again. The workflow does not do this. npm trusted
-   publishing can run dist-tag commands, but only with "Allow npm
-   dist-tag" turned on for the trusted publisher (off by default) and
-   npm CLI 11.21.0+ or 12.2.0+.
+5. After a final release, the publish job removes a stale `next` (see
+   below). If its `Remove stale next dist-tag` step warns, check
+   `npm view mnemocyte dist-tags`, remove a stale `next` with
+   `npm dist-tag rm mnemocyte next` from your own npm login, and check
+   that "Allow npm dist-tag" is on for the trusted publisher.
 
 The release workflow runs three stages:
 
-- `verify` fails unless the tag equals `v` + the `package.json` version and
-  the tagged commit is on `main`.
-- `ci` runs `ci.yml` (through `workflow_call`) on the tagged commit. Path
-  filtering applies only to pull requests, so every job runs: the Node
-  matrix, the package lint, the site and the four Postgres integration
-  jobs. A job that calls a reusable workflow cannot set `timeout-minutes`;
-  each `ci.yml` job has its own, and `verify` and `publish` have theirs.
+- `verify` fails unless the tag equals `v` + the `package.json` version,
+  `CHANGELOG.md` has a `## [X.Y.Z] - YYYY-MM-DD` heading and an
+  `[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` compare link for that
+  version, and the tagged commit is on `main`. It runs before `ci`, so a
+  missing section fails in seconds. The heading takes a hyphen, not a
+  dash: entries before 0.1.3 use `—` (`## [0.1.2] — 2026-05-20`), some
+  with no date, and would fail it.
+- `ci` runs `ci.yml` (through `workflow_call`, with `release: true`) on the
+  tagged commit. Path filtering applies only to pull requests, so every
+  job runs except `Site`: the Node matrix, `Checks`, the package lint,
+  `Links` and the four Postgres integration jobs. The site is not in the
+  tarball, and the release PR and the push to `main` already ran it
+  (decision 59). A job that calls a reusable workflow cannot set
+  `timeout-minutes`; each `ci.yml` job has its own, and `verify` and
+  `publish` have theirs.
 - `publish` runs in the `npm` GitHub environment, the only job with
   `id-token: write`. It installs without a dependency cache and runs
   `pnpm publish --no-git-checks`; `prepublishOnly` builds `dist/`. A version
   with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
-  `latest`, and the other tag stays where it was (step 5). `--no-git-checks` is needed because a tag checkout is a detached
-  HEAD; `verify` does the branch check instead.
+  `latest`, and the other tag stays where it was. `--no-git-checks` is
+  needed because a tag checkout is a detached HEAD; `verify` does the
+  branch check instead.
   `--publish-wait-timeout 600000` keeps the job running until the version
   is installable: npm scans each upload before it shows up, which took about
   two minutes for 0.5.1. If it is not available after 10 minutes the job
   fails with `ERR_PNPM_PUBLISH_AVAILABILITY_TIMEOUT`, but the upload stays
   accepted and can still appear later, so check npm before retrying.
+- After a final release (no `-` in the tag), `publish` also runs
+  `Remove stale next dist-tag`, which reads `next` with `pnpm view`. When
+  `next` is older than or equal to the version just published once its
+  prerelease part is dropped (`1.3.0-rc.2` after `1.3.0`), it runs
+  `pnpm dist-tag rm mnemocyte next`; otherwise `mnemocyte@next` would
+  keep installing the old prerelease. A `next` ahead of the release
+  (`1.4.0-rc.1` after `1.3.1`) stays. pnpm 12.12.1 and newer does the
+  OIDC exchange for `dist-tag` itself, so the npm CLI version on the
+  runner does not matter (Node 24.22.3 bundles npm 11.19.1, below the
+  11.21.0 npm needs for dist-tags over OIDC). If the read or the removal
+  fails, the step prints a warning and the job still passes: the version
+  is already published, and a re-run would fail on the publish. pnpm
+  does not prompt: against a local registry stub that refused the
+  request with a 403, `pnpm dist-tag rm` exited at once with
+  `ERR_PNPM_FORBIDDEN`.
 
 Publishing uses npm trusted publishing: pnpm exchanges the job's GitHub OIDC
 (OpenID Connect) token for a short-lived npm token, so no npm token is
@@ -801,7 +835,9 @@ Repository and registry settings the workflow depends on:
   tags.
 - npm trusted publisher for `mnemocyte`: GitHub Actions, `Meenic` /
   `mnemocyte`, workflow `release.yml`, environment `npm`. npm does not check
-  it when saved; a mistake shows up as a failed publish.
+  it when saved; a mistake shows up as a failed publish. It needs "Allow
+  npm dist-tag" turned on (off by default; publish access does not
+  include it) for the publish job to remove a stale `next`.
 - After the first trusted publish, the package's publishing access is
   "Require two-factor authentication and disallow tokens". Trusted publishing
   keeps working under that setting.

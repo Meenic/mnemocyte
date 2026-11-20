@@ -1172,9 +1172,10 @@ Dated 2026-10-26 unless noted.
     - The root keeps only what is about the whole repository: `apps/`,
       `packages/`, `examples/`, `docs/`, `.github/`, `.vscode/`, the
       dotfiles (`.gitignore`, `.gitattributes`, `.editorconfig`),
-      `README.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, `CLAUDE.md`,
-      `biome.json`, the private workspace `package.json`,
-      `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
+      `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+      `LICENSE`, `AGENTS.md`, `CLAUDE.md`, `biome.json`, the private
+      workspace `package.json`, `pnpm-workspace.yaml` and
+      `pnpm-lock.yaml`.
     - The published package moves to `packages/mnemocyte/` with its
       `src/`, `test/`, `migrations/`, `scripts/` and build, test and
       TypeScript configs; the site moves to `apps/site/`. `@mnemocyte/mcp`

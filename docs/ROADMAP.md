@@ -243,11 +243,19 @@ The items, in order:
   loop waits for them before the next turn, since the response does not.
   The PGlite data folder is `examples/memory-data` (gitignored), found
   through `import.meta.dirname`.
-- [ ] `docs/contributing-security`: `CONTRIBUTING.md` that points to
+- [x] `docs/contributing-security`: `CONTRIBUTING.md` that points to
   `DEVELOPMENT.md`, the roadmap, the commands and the branch and commit
   format, and `SECURITY.md` with supported versions (the latest 1.x
-  minor) and how to report privately. How to report is the maintainer's
-  call, asked in that PR.
+  minor) and how to report privately. Decided: reports go through GitHub
+  private vulnerability reporting only, with no email address (the file
+  is public, and the form gives a private thread, a draft advisory and a
+  private fork); someone who cannot use it opens an issue asking for a
+  contact, without details, as GitHub's docs suggest. `SECURITY.md` names
+  the newest 1.x minor without a version number so it does not go stale,
+  and promises no reply time. The maintainer enables the feature in the
+  repository settings (Security and quality, Advanced Security). The
+  README's "Want to help?" line links both files, and the site's
+  community page links `CONTRIBUTING.md`.
 
 ## Backends and packages
 

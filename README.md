@@ -88,9 +88,9 @@ moves them to Postgres in a few steps.
 [Upgrading from 0.x](docs/guide/upgrading.md) ·
 [Changelog](CHANGELOG.md)
 
-Want to help? Start with
-[DEVELOPMENT.md](docs/DEVELOPMENT.md)
-and the [roadmap](docs/ROADMAP.md).
+Want to help? Start with [CONTRIBUTING.md](CONTRIBUTING.md). Found a
+security problem? Report it privately, as [SECURITY.md](SECURITY.md)
+explains.
 
 ## License
 

@@ -50,8 +50,9 @@ error
 
 ## Shipped embedders
 
-The HTTP embedders build on `createFetchEmbedder` in `src/http-embedder.ts`,
-which sits outside `src/embedders/` so it is not a build entry. It POSTs the
+The HTTP embedders build on `createFetchEmbedder` in
+`src/embedders/internal/http-embedder.ts`, which sits in a subfolder so the
+`src/embedders/*.ts` entry glob does not make it an export. It POSTs the
 JSON body each embedder builds to one URL with `fetch` (no SDK) and the
 call's signal, and hands a successful body to the embedder's parser. An
 `embed` call without a valid `purpose` (untyped code) is `"VALIDATION"`, a
@@ -92,7 +93,8 @@ their own (`createOpenAI({ fetch })`, `createGateway({ fetch })`).
 exactly one array embedding per input with unique, in-range indexes, sorted
 by index (`parseIndexedEmbeddings`, which `voyageEmbedder` uses too).
 `aiSdkEmbedder` (below) calls the AI SDK instead. All of them build their
-`ProviderError`s with `createProviderError` in `src/provider-error.ts`.
+`ProviderError`s with `createProviderError` in
+`src/embedders/internal/provider-error.ts`.
 
 ### `openaiCompatibleEmbedder`
 

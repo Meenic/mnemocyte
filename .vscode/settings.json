@@ -2,5 +2,15 @@
 	"editor.codeActionsOnSave": {
 		"source.organizeImports.biome": "explicit",
 		"source.fixAll.biome": "explicit"
+	},
+	"files.exclude": {
+		"**/node_modules": true,
+		"**/dist": true,
+		"**/.next": true,
+		"**/coverage": true,
+		"**/*.tsbuildinfo": true,
+		"**/next-env.d.ts": true,
+		"bench-results": true,
+		"examples/memory-data": true
 	}
 }

@@ -1,4 +1,6 @@
 import { MnemocyteError } from "../errors.js";
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
+import type { Embedder, EmbeddingPurpose } from "../types.js";
 import {
 	assertVectorList,
 	createFetchEmbedder,
@@ -12,9 +14,7 @@ import {
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
-} from "../http-embedder.js";
-import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
-import type { Embedder, EmbeddingPurpose } from "../types.js";
+} from "./internal/http-embedder.js";
 
 const NAME = "googleEmbedder";
 

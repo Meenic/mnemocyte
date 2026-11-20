@@ -1,9 +1,12 @@
 import { MnemocyteError } from "../errors.js";
-import { createHttpEmbedder, type PurposeHints } from "../http-embedder.js";
 import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
+import {
+	createHttpEmbedder,
+	type PurposeHints,
+} from "./internal/http-embedder.js";
 
-export type { PurposeHint, PurposeHints } from "../http-embedder.js";
+export type { PurposeHint, PurposeHints } from "./internal/http-embedder.js";
 
 /**
  * Options for {@link openaiCompatibleEmbedder}. `baseURL`, `model` and

@@ -1,14 +1,14 @@
 import { generateText, jsonSchema, type LanguageModel, Output } from "ai";
-import type { MemoryPrompt } from "./ai-sdk-middleware.js";
-import { isMnemocyteError, MnemocyteError } from "./errors.js";
-import { assertKnownKeys } from "./options.js";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
+import { assertKnownKeys } from "../options.js";
 import type {
 	BoundMemoryClient,
 	ImportanceLevel,
 	Memory,
 	MemoryKind,
 	MemoryWithScore,
-} from "./types.js";
+} from "../types.js";
+import type { MemoryPrompt } from "./middleware.js";
 
 /** Settings for {@link extractMemories} and the middleware's `save` option. */
 export interface ExtractMemoriesOptions {

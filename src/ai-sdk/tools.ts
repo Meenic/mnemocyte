@@ -1,12 +1,12 @@
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
-import { isMnemocyteError, MnemocyteError } from "./errors.js";
-import { assertKnownKeys } from "./options.js";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
+import { assertKnownKeys } from "../options.js";
 import type {
 	BoundMemoryClient,
 	ImportanceLevel,
 	MemoryKind,
 	MemoryWithScore,
-} from "./types.js";
+} from "../types.js";
 
 /**
  * Options for {@link memoryTools}: the bound client whose scope the tools

@@ -1,3 +1,5 @@
+import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
+import type { Embedder } from "../types.js";
 import {
 	createFetchEmbedder,
 	type KnownModelSize,
@@ -10,9 +12,7 @@ import {
 	resolveMaxBatch,
 	resolveModel,
 	resolveModelDimensions,
-} from "../http-embedder.js";
-import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
-import type { Embedder } from "../types.js";
+} from "./internal/http-embedder.js";
 
 const NAME = "voyageEmbedder";
 

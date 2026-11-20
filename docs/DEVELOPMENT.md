@@ -337,11 +337,13 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` builds, runs `pnpm test:types`, `pnpm test:readme`,
-  `pnpm test:jsdoc` and `pnpm test:examples`, then runs `unit`, `contract`
-  and `package`. CI runs it on each Node version ("What CI runs" below).
-  `pnpm test:exports` does the same for `package` alone, without
-  `test:readme`, `test:jsdoc` and `test:examples`.
+- `pnpm test` runs `pnpm test:checks`, then `pnpm test:ci`.
+  `test:checks` builds and runs the type-level checks: `pnpm test:types`,
+  `pnpm test:readme`, `pnpm test:jsdoc` and `pnpm test:examples`.
+  `test:ci` builds again (under a second) and runs `unit`, `contract` and
+  `package`. CI runs `test:checks` once, in the Checks job, and `test:ci`
+  on each Node version ("What CI runs" below). `pnpm test:exports` builds
+  and runs `test:types` and `package` alone.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -600,7 +602,8 @@ when the release calls it (`workflow_call`). It has these jobs:
 
 | Job | Runs | A PR runs it when it changes |
 |---|---|---|
-| `Node 22.18`, `Node 24`, `Node 26` | `checktypes`, `lint`, `test:ci` | `src/**`, `test/**`, `migrations/**`, `scripts/**`, `examples/**`, `README.md`, `docs/guide/getting-started.md`, the root `tsconfig*.json`, `tsdown.config.ts`, `vitest.config.ts` |
+| `Node 22.18`, `Node 24`, `Node 26` | `test:ci` (build, then `unit`, `contract` and `package`) | `src/**`, `test/**`, `migrations/**`, `scripts/**`, `examples/**`, `README.md`, `docs/guide/getting-started.md`, the root `tsconfig*.json`, `tsdown.config.ts`, `vitest.config.ts` |
+| `Checks` | `checktypes`, `lint`, `test:checks` (build, then `test:types`, `test:readme`, `test:jsdoc`, `test:examples`), on Node 24 | the same files as the Node jobs |
 | `Package` | `lint:package` (build, pack, publint, attw) | `src/**`, `migrations/**`, `scripts/**`, the root `tsconfig*.json`, `tsdown.config.ts` |
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `site/**`, `CHANGELOG.md` |
@@ -618,9 +621,23 @@ when the release calls it (`workflow_call`). It has these jobs:
   `test/cli/init.test.ts` compares its `memory.ts` blocks with the
   `mnemocyte init` templates. A test or script that starts reading another
   file needs that file on its job's list.
+- Lint and the type-level checks give the same result on every Node
+  version, so they run once, in `Checks`, and the Node jobs run only the
+  build and the Vitest projects. Most of a Node job's time is the
+  `contract` project on PGlite.
+- The Postgres jobs run all four combinations on every PR that changes
+  their files (decision 55). They enable pgvector with `docker exec` on
+  `job.services.postgres.id`, the service container's id, so `psql` runs
+  inside the container and the runner needs no PostgreSQL client.
+- Every job installs the whole workspace, site included.
+  `pnpm install --filter mnemocyte` skips the site's dependencies, but the
+  install step takes 1 to 4 seconds from the pnpm store cache, and the
+  cache (keyed on `pnpm-lock.yaml`) is restored whole either way. A
+  filtered job that saved the cache first would also leave the Site job a
+  partial store until the lockfile changes.
 - The Site job runs the root `pnpm lint`: it checks `site/` with
   `site/biome.json`, as the site's own `lint` does, but also fails on
-  warnings. A site-only PR skips the Node jobs, so a warning would
+  warnings. A site-only PR skips `Checks`, so a warning would
   otherwise first fail on `main`.
 - The first job, `Changes`, decides. On a pull request the checkout is the
   PR's test merge commit (`refs/pull/N/merge`); `fetch-depth: 2` also
@@ -635,8 +652,11 @@ when the release calls it (`workflow_call`). It has these jobs:
   cancelled. It fails when any of them failed or was cancelled. A job
   skipped by its `if` reports success. If `main` ever gets a ruleset,
   require `CI ok`, which runs on every PR, rather than the jobs it sums
-  up. (A workflow skipped by a path filter would leave its required checks
-  Pending, which blocks the merge.)
+  up. A skipped matrix job reports one check under its unexpanded name
+  (`Node ${{ matrix.node-version }}`, seen on PR #123), so a required
+  `Node 24` would never report on a docs-only PR. (A workflow skipped by
+  a path filter would leave its required checks Pending, which blocks the
+  merge.)
 - Built-in `on.pull_request.paths` was not used because it filters whole
   workflows, not jobs (decision 54).
 - The diff is the PR's net change against the current base, not its last
@@ -656,7 +676,8 @@ when the release calls it (`workflow_call`). It has these jobs:
 - Every job sets `timeout-minutes` (the default is 360), well above its
   usual time on the last `main` run before this change: Node 15 (1.5 to
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
-  Site 10 (under a minute), `Changes` and `CI ok` 5.
+  Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
+  later, has 10.
 
 ## Releasing
 

@@ -1213,3 +1213,12 @@ Dated 2026-10-26 unless noted.
     job reports success). The cost is a bash step that must learn new
     top-level paths, and one short job (a runner and a two-commit
     checkout) before the others start.
+55. **All four Postgres jobs on pull requests** (2026-11-21, landed): the
+    maintainer chose, with `chore/ci-matrix`, to keep Postgres 17 and 18
+    with postgres.js 3 and 4 on every PR that changes their files, over
+    running only Postgres 18 with postgres.js 4 on PRs and the full matrix
+    on `main`. The four jobs run in parallel in 1 to 1.5 minutes, shorter
+    than the slowest Node job, so the smaller set would not make a PR's CI
+    finish sooner. The repository is public, so standard runners cost no
+    Actions minutes. A bug that shows on one driver or server version
+    would first fail on `main`, after the merge.

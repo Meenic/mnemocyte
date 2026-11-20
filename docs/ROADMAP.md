@@ -296,22 +296,20 @@ The items, in order:
   `.gitattributes` run everything, and the Site job runs the root `pnpm
   lint`, which fails on warnings. The lists and the rules are in
   DEVELOPMENT.md ("What CI runs").
-- [ ] `chore/ci-matrix`: lint and the type-level checks (`checktypes`,
-  `test:types`, `test:readme`, `test:jsdoc`, `test:examples`) run once, in
-  a Checks job on Node 24, since their result does not depend on the Node
-  version. The 22.18, 24 and 26 jobs run the build and the `unit`,
-  `contract` and `package` projects only; `pnpm test` keeps running
-  everything locally. Postgres jobs create the extension with `docker
-  exec ${{ job.services.postgres.id }} psql …` instead of installing
-  `postgresql-client` with `apt-get` (the docs list the context, not this
-  use; try it). Measure whether library jobs can skip installing the
-  site's dependencies (`pnpm install --filter`); keep it only if it
-  saves time. Decision for the maintainer: keep all four Postgres jobs on
-  PRs (recommended: about 90 s in parallel, and driver-version bugs are
-  what they catch) or run only pg18 with postgres.js 4 on PRs and the full
-  matrix on `main`. A new job takes `needs: changes` and an `if` on a
-  `needs.changes.outputs` value (DEVELOPMENT.md "What CI runs"), and goes
-  into the `needs` of `ci-ok`.
+- [x] `chore/ci-matrix`: a `Checks` job on Node 24 runs `checktypes`,
+  `lint` and a new `test:checks` script (the type-level checks) once; the
+  Node 22.18, 24 and 26 jobs run `test:ci`, now the build and the `unit`,
+  `contract` and `package` projects only, and `pnpm test` runs both. The
+  Postgres jobs enable pgvector with `docker exec` on
+  `job.services.postgres.id` instead of installing `postgresql-client`.
+  Decided: all four Postgres jobs stay on PRs (decision 55). Measured and
+  dropped: `pnpm install --filter mnemocyte` skips the site's
+  dependencies, but the install step already takes 1 to 4 seconds from
+  the store cache. Found while building it: lint and the type-level
+  checks took about 15 seconds of a Node job, while the `contract`
+  project on PGlite takes about 70 of its 106 Vitest seconds
+  (`chore/contract-time`). The rules are in DEVELOPMENT.md ("What CI
+  runs").
 - [ ] `chore/docs-links`: `scripts/check-links.mjs` checks that relative
   links and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
   `SECURITY.md`, `AGENTS.md` and `docs/**` point at files and headings
@@ -338,6 +336,17 @@ The items, in order:
   Also ask whether the release's `ci` run still needs the `Site` job: the
   site is not in the tarball, but `ci.yml` runs every job outside pull
   requests.
+- [ ] `chore/contract-time`: the `contract` project is most of a Node
+  job's time. On the last `main` run before `chore/ci-matrix`,
+  `test/contract/pglite.test.ts` took 72 s and `cli.test.ts`,
+  `drizzle-schema.test.ts`, `text-search.test.ts` and
+  `schema-name.test.ts` 26 to 45 s each, inside a 106 s Vitest run on
+  Node 24, while `unit` files take milliseconds. Find where the time goes
+  (opening a PGlite per file or per test, migrating it each time) and cut
+  it without dropping coverage, for example one migrated PGlite per file
+  reset between tests, or running `contract` on one Node version only.
+  Decision for the maintainer if it comes to that: whether `contract`
+  needs every Node version.
 
 ## Backends and packages
 

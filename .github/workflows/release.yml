@@ -16,6 +16,7 @@ jobs:
   verify:
     name: Verify tag
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -39,6 +40,8 @@ jobs:
             exit 1
           fi
 
+  # A job that calls a reusable workflow cannot set timeout-minutes; each
+  # ci.yml job sets its own.
   ci:
     name: CI
     needs: verify
@@ -49,6 +52,8 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     environment: npm
+    # The publish step waits up to 10 minutes for npm.
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write

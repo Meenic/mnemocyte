@@ -7,10 +7,92 @@ on:
       - main
   workflow_call:
 
+permissions:
+  contents: read
+
+# head_ref is set only on pull_request events, so a new push to a PR
+# cancels its older run. Pushes to main and release runs (a called workflow
+# sees its caller's github context) get the unique run_id and are never
+# cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
+  # On a pull request, decide which jobs its files need. Any other event (a
+  # push to main, the release's workflow_call) runs everything. The path
+  # lists are in docs/DEVELOPMENT.md ("What CI runs"); keep both in sync.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      node: ${{ steps.filter.outputs.node }}
+      package: ${{ steps.filter.outputs.package }}
+      postgres: ${{ steps.filter.outputs.postgres }}
+      site: ${{ steps.filter.outputs.site }}
+
+    steps:
+      # A pull_request checkout is the PR's test merge commit; depth 2 also
+      # fetches its two parents, the base branch and the PR head.
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Filter changed files
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          everything='^(\.github/|\.gitignore$|\.gitattributes$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|biome\.json$)'
+          node='^(src/|test/|migrations/|scripts/|examples/|README\.md$|docs/guide/getting-started\.md$|tsconfig[^/]*\.json$|tsdown\.config\.ts$|vitest\.config\.ts$)'
+          package='^(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)'
+          postgres='^(src/|test/|migrations/|vitest\.config\.ts$)'
+          site='^(site/|CHANGELOG\.md$)'
+
+          files=''
+          all=true
+          if [ "$EVENT_NAME" = pull_request ]; then
+            # The base is the merge commit's parent that is not the PR head,
+            # whatever the parent order. Anything else runs every job.
+            read -r -a parents <<< "$(git rev-list --parents -n 1 HEAD)"
+            if [ "${#parents[@]}" -eq 3 ] && [ "${parents[2]}" = "$PR_HEAD_SHA" ]; then
+              base=${parents[1]}
+            elif [ "${#parents[@]}" -eq 3 ] && [ "${parents[1]}" = "$PR_HEAD_SHA" ]; then
+              base=${parents[2]}
+            else
+              base=''
+              echo "::warning::HEAD is not a merge of the PR head; running every job"
+            fi
+            if [ -n "$base" ]; then
+              files="$(git diff --name-only "$base" HEAD)"
+              all=false
+              echo "::group::Changed files"
+              printf '%s\n' "$files"
+              echo "::endgroup::"
+              if grep -qE "$everything" <<< "$files"; then all=true; fi
+            fi
+          fi
+
+          for job in node package postgres site; do
+            run=$all
+            if [ "$run" = false ] && grep -qE "${!job}" <<< "$files"; then
+              run=true
+            fi
+            echo "$job=$run" >> "$GITHUB_OUTPUT"
+            echo "$job: $run"
+          done
+
   validate:
     name: Node ${{ matrix.node-version }}
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +104,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -46,11 +130,16 @@ jobs:
 
   package:
     name: Package
+    needs: changes
+    if: needs.changes.outputs.package == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -69,11 +158,16 @@ jobs:
 
   site:
     name: Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -87,8 +181,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The root lint checks site/ with site/biome.json, like the site's own
+      # lint, but also fails on warnings. A site-only PR skips the Node jobs,
+      # so without it a warning would first fail on main.
       - name: Lint
-        run: pnpm --filter site lint
+        run: pnpm lint
 
       - name: Check types
         run: pnpm --filter site typecheck
@@ -101,7 +198,10 @@ jobs:
 
   postgres-integration:
     name: Postgres ${{ matrix.postgres }} integration (postgres.js ${{ matrix.postgres-js }})
+    needs: changes
+    if: needs.changes.outputs.postgres == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -128,6 +228,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -154,3 +256,30 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           POSTGRES_JS: ${{ matrix.postgres-js }}
         run: pnpm run test:integration
+
+  # One check that sums up the run: a job skipped by its if reports success,
+  # so this fails only when a job that ran failed or was cancelled.
+  ci-ok:
+    name: CI ok
+    needs:
+      - changes
+      - validate
+      - package
+      - site
+      - postgres-integration
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "* | *" cancelled "*)
+              echo "::error::A CI job failed or was cancelled"
+              exit 1
+              ;;
+          esac

@@ -1198,3 +1198,18 @@ Dated 2026-10-26 unless noted.
     - `.claude/` (local agent settings) is gitignored, and the committed
       `.vscode/settings.json` hides build output and local results such as
       `bench-results/` from the explorer.
+54. **CI runs the jobs a PR's files need** (2026-11-21, landed): the
+    maintainer chose, with `chore/ci-paths`, one `ci.yml` whose first job
+    diffs the PR and sets an output per job group, job-level `if`s, and a
+    final `CI ok` job, over a separate `site.yml` with built-in
+    `on.pull_request.paths`. Built-in path filters skip whole workflows,
+    so the split could only separate the site from the library: a
+    `README.md` or `test/**` change would still run the package lint and
+    the four Postgres jobs, and per-job lists would need four workflow
+    files, three `uses:` jobs in the release and a badge per file. One
+    workflow keeps the lists in one file, the README badge, the release's
+    `uses:` and the docs on `ci.yml`, and gives a single `CI ok` check for
+    a future ruleset (a skipped workflow's checks stay Pending; a skipped
+    job reports success). The cost is a bash step that must learn new
+    top-level paths, and one short job (a runner and a two-commit
+    checkout) before the others start.

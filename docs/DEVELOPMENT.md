@@ -339,9 +339,9 @@ Vitest has three projects (`vitest.config.ts`):
 
 - `pnpm test` builds, runs `pnpm test:types`, `pnpm test:readme`,
   `pnpm test:jsdoc` and `pnpm test:examples`, then runs `unit`, `contract`
-  and `package`. This is what CI runs on every push. `pnpm test:exports`
-  does the same for `package` alone, without `test:readme`, `test:jsdoc`
-  and `test:examples`.
+  and `package`. CI runs it on each Node version ("What CI runs" below).
+  `pnpm test:exports` does the same for `package` alone, without
+  `test:readme`, `test:jsdoc` and `test:examples`.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -593,6 +593,71 @@ Vitest has three projects (`vitest.config.ts`):
   still goes through a getter, so Vitest prints a getter warning; the
   overhead is small next to a search.
 
+## What CI runs
+
+`.github/workflows/ci.yml` runs on pull requests, on pushes to `main` and
+when the release calls it (`workflow_call`). It has these jobs:
+
+| Job | Runs | A PR runs it when it changes |
+|---|---|---|
+| `Node 22.18`, `Node 24`, `Node 26` | `checktypes`, `lint`, `test:ci` | `src/**`, `test/**`, `migrations/**`, `scripts/**`, `examples/**`, `README.md`, `docs/guide/getting-started.md`, the root `tsconfig*.json`, `tsdown.config.ts`, `vitest.config.ts` |
+| `Package` | `lint:package` (build, pack, publint, attw) | `src/**`, `migrations/**`, `scripts/**`, the root `tsconfig*.json`, `tsdown.config.ts` |
+| `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
+| `Site` | the root `lint`, then the site's typecheck, test and build | `site/**`, `CHANGELOG.md` |
+
+- A change to `.github/**`, `package.json`, `pnpm-lock.yaml`,
+  `pnpm-workspace.yaml`, `biome.json`, `.gitignore` or `.gitattributes`
+  runs every job. Biome skips what `.gitignore` ignores
+  (`vcs.useIgnoreFile` in both Biome configs), and `.gitattributes` sets
+  the line endings of every checked-out file.
+- Other files run no job yet: the rest of `docs/**`, `AGENTS.md`,
+  `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,
+  `.editorconfig` and `.vscode/`. Biome reads `.editorconfig` only with
+  `formatter.useEditorconfig`, which is off.
+- `docs/guide/getting-started.md` is on the Node list because
+  `test/cli/init.test.ts` compares its `memory.ts` blocks with the
+  `mnemocyte init` templates. A test or script that starts reading another
+  file needs that file on its job's list.
+- The Site job runs the root `pnpm lint`: it checks `site/` with
+  `site/biome.json`, as the site's own `lint` does, but also fails on
+  warnings. A site-only PR skips the Node jobs, so a warning would
+  otherwise first fail on `main`.
+- The first job, `Changes`, decides. On a pull request the checkout is the
+  PR's test merge commit (`refs/pull/N/merge`); `fetch-depth: 2` also
+  fetches its parents. The base is the parent that is not the PR head
+  (`github.event.pull_request.head.sha`), so the diff does not depend on
+  the parent order, which GitHub does not document. If `HEAD` is not a
+  two-parent merge with the PR head, the job warns and runs everything.
+  The lists are `grep -E` patterns in that step: add a new top-level file
+  or folder to the jobs that read it. A push or a release run (a called
+  workflow sees its caller's event) skips the diff and runs everything.
+- The last job, `CI ok`, needs all the others and runs unless the run was
+  cancelled. It fails when any of them failed or was cancelled. A job
+  skipped by its `if` reports success. If `main` ever gets a ruleset,
+  require `CI ok`, which runs on every PR, rather than the jobs it sums
+  up. (A workflow skipped by a path filter would leave its required checks
+  Pending, which blocks the merge.)
+- Built-in `on.pull_request.paths` was not used because it filters whole
+  workflows, not jobs (decision 54).
+- The diff is the PR's net change against the current base, not its last
+  push: a later commit that reverts a file takes it off the list, and
+  commits that reached `main` after the branch was cut are left out.
+- `concurrency` groups runs by `github.workflow` and `github.head_ref ||
+  github.run_id`. `head_ref` is set only for pull requests, so a new push
+  to a PR cancels its older run, while pushes to `main` and release runs
+  get their unique run id and are never cancelled. In a called workflow
+  `github.workflow` is the caller's name (`Release`), which differs from
+  the release's own `release-<tag>` group; GitHub warns that a caller and
+  callee sharing one group with `cancel-in-progress` cancels the caller.
+- The token is read-only (`permissions: contents: read`; a called workflow
+  can only keep or lower its caller's permissions), and every checkout
+  sets `persist-credentials: false`, so checkout does not store the token
+  for later steps, such as dependency install scripts, to read.
+- Every job sets `timeout-minutes` (the default is 360), well above its
+  usual time on the last `main` run before this change: Node 15 (1.5 to
+  2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
+  Site 10 (under a minute), `Changes` and `CI ok` 5.
+
 ## Releasing
 
 The maintainer cuts a release; `.github/workflows/release.yml` publishes it
@@ -646,8 +711,11 @@ The release workflow runs three stages:
 
 - `verify` fails unless the tag equals `v` + the `package.json` version and
   the tagged commit is on `main`.
-- `ci` runs `ci.yml` (through `workflow_call`) on the tagged commit: the Node
-  matrix, the package lint and both Postgres integration jobs.
+- `ci` runs `ci.yml` (through `workflow_call`) on the tagged commit. Path
+  filtering applies only to pull requests, so every job runs: the Node
+  matrix, the package lint, the site and the four Postgres integration
+  jobs. A job that calls a reusable workflow cannot set `timeout-minutes`;
+  each `ci.yml` job has its own, and `verify` and `publish` have theirs.
 - `publish` runs in the `npm` GitHub environment, the only job with
   `id-token: write`. It installs without a dependency cache and runs
   `pnpm publish --no-git-checks`; `prepublishOnly` builds `dist/`. A version

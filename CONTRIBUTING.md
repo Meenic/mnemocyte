@@ -25,7 +25,7 @@ pnpm install --frozen-lockfile
 ## Check your change
 
 Run these before you open a pull request. CI runs the same checks and a
-few more:
+few more, for the parts of the repository your pull request changes:
 
 ```bash
 pnpm checktypes

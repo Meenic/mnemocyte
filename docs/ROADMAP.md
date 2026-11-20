@@ -259,11 +259,11 @@ The items, in order:
 
 ## CI and checks
 
-Planned on 2026-11-21. Every PR runs all nine `ci.yml` jobs (Node 22.18,
-24 and 26, Package, Site, and Postgres 17 and 18 with postgres.js 3 and
-4): about 13 runner-minutes and 2 to 3 minutes of wall time, docs-only
-PRs included, and the push to `main` after the squash merge runs them
-again. `main` has no branch protection or rulesets.
+Planned on 2026-11-21, when every PR ran all nine `ci.yml` jobs (Node
+22.18, 24 and 26, Package, Site, and Postgres 17 and 18 with postgres.js
+3 and 4): about 13 runner-minutes and 2 to 3 minutes of wall time,
+docs-only PRs included, and the push to `main` after the squash merge
+ran them again. `main` has no branch protection or rulesets.
 
 Facts checked on 2026-11-21; re-read the official pages in each PR:
 
@@ -282,37 +282,20 @@ Facts checked on 2026-11-21; re-read the official pages in each PR:
 
 The items, in order:
 
-- [ ] `chore/ci-paths`: run on a PR only the jobs its files need; a push
-  to `main` and the release run everything.
-  - Node checks: `src/**`, `test/**`, `migrations/**`, `scripts/**`,
-    `examples/**`, `README.md`, the tsconfigs, `tsdown.config.ts`,
-    `vitest.config.ts`.
-  - Package (`lint:package`: build, publint, attw): `src/**`,
-    `migrations/**`, `scripts/**`, the tsconfigs, `tsdown.config.ts`.
-  - Postgres: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts`.
-  - Site: `site/**`, `CHANGELOG.md`.
-  - Everything: `.github/**`, `package.json`, `pnpm-lock.yaml`,
-    `pnpm-workspace.yaml`, `biome.json`.
-  - Nothing yet for other `docs/**`, `AGENTS.md`, `CONTRIBUTING.md`,
-    `SECURITY.md`, `LICENSE`, the dotfiles and `.vscode/`;
-    `chore/docs-links` adds a check for the Markdown.
-
-  Also: `permissions: contents: read`, `persist-credentials: false` on
-  checkout and `timeout-minutes` on every job (the default is 360), and
-  `concurrency` with `group: ${{ github.workflow }}-${{ github.head_ref ||
-  github.run_id }}` and `cancel-in-progress: true`. `head_ref` is set only
-  on PR events, so a new push to a PR cancels its old run while pushes to
-  `main` and release runs get a unique group and are never cancelled.
-  The README's CI badge, the release's `uses:` and DEVELOPMENT.md
-  ("Releasing") name `ci.yml`, so keep that name for the library
-  workflow or update all three.
-  Decision for the maintainer: split the site into its own `site.yml`
-  and filter both with the built-in `on.pull_request.paths`
-  (recommended: declarative, no script or third-party action, and it
-  maps onto `apps/site/` later), or keep one workflow with a `git diff`
-  step that sets job outputs, job-level `if`s and a final "CI ok" job.
-  The split leaves skipped checks Pending, which matters only if a
-  ruleset ever requires them; the single workflow is ready for that.
+- [x] `chore/ci-paths`: on a pull request, a `changes` job diffs the
+  test merge commit against its base parent and runs only the jobs the
+  changed files need; a push to `main` and the release run everything. A
+  final `CI ok` job fails when a job that ran failed or was cancelled.
+  Every job has `timeout-minutes`, `ci.yml` has `permissions: contents:
+  read`, `persist-credentials: false` on each checkout and a `head_ref ||
+  run_id` concurrency group, and the release's `verify` and `publish`
+  jobs have timeouts too. Decided: one workflow with a diff step instead
+  of a separate `site.yml` (decision 54). Found while building it, so the
+  lists differ from the plan: `docs/guide/getting-started.md` runs the
+  Node jobs (`test/cli/init.test.ts` reads it), `.gitignore` and
+  `.gitattributes` run everything, and the Site job runs the root `pnpm
+  lint`, which fails on warnings. The lists and the rules are in
+  DEVELOPMENT.md ("What CI runs").
 - [ ] `chore/ci-matrix`: lint and the type-level checks (`checktypes`,
   `test:types`, `test:readme`, `test:jsdoc`, `test:examples`) run once, in
   a Checks job on Node 24, since their result does not depend on the Node
@@ -326,7 +309,9 @@ The items, in order:
   saves time. Decision for the maintainer: keep all four Postgres jobs on
   PRs (recommended: about 90 s in parallel, and driver-version bugs are
   what they catch) or run only pg18 with postgres.js 4 on PRs and the full
-  matrix on `main`.
+  matrix on `main`. A new job takes `needs: changes` and an `if` on a
+  `needs.changes.outputs` value (DEVELOPMENT.md "What CI runs"), and goes
+  into the `needs` of `ci-ok`.
 - [ ] `chore/docs-links`: `scripts/check-links.mjs` checks that relative
   links and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
   `SECURITY.md`, `AGENTS.md` and `docs/**` point at files and headings
@@ -350,6 +335,9 @@ The items, in order:
   Dependabot for the `github-actions` ecosystem only, with a `cooldown`,
   so it does not fight pnpm's minimum release age. Decisions for the
   maintainer: turning on "Allow npm dist-tag", and lockfile or SHA pins.
+  Also ask whether the release's `ci` run still needs the `Site` job: the
+  site is not in the tarball, but `ci.yml` runs every job outside pull
+  requests.
 
 ## Backends and packages
 
@@ -364,7 +352,8 @@ The items, in order:
   `mnemocyte/store/test`, so third-party backends can prove they conform.
 - [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
   the site to `apps/site/`, and `examples/` becomes a workspace package on
-  `"mnemocyte": "workspace:*"` (decision 53). CI, the release workflow,
+  `"mnemocyte": "workspace:*"` (decision 53). CI (with the path lists
+  in the `changes` job of `ci.yml`), the release workflow,
   `scripts/`, the package tests, the paths in `AGENTS.md` and `docs/` and
   the `[site/**]` section of `.editorconfig` follow, and so does the
   local, gitignored `.claude/launch.json`. npm shows the README from the

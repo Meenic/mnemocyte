@@ -257,10 +257,105 @@ The items, in order:
   README's "Want to help?" line links both files, and the site's
   community page links `CONTRIBUTING.md`.
 
+## CI and checks
+
+Planned on 2026-11-21. Every PR runs all nine `ci.yml` jobs (Node 22.18,
+24 and 26, Package, Site, and Postgres 17 and 18 with postgres.js 3 and
+4): about 13 runner-minutes and 2 to 3 minutes of wall time, docs-only
+PRs included, and the push to `main` after the squash merge runs them
+again. `main` has no branch protection or rulesets.
+
+Facts checked on 2026-11-21; re-read the official pages in each PR:
+
+- GitHub "Troubleshooting required status checks": a workflow skipped by
+  `paths` leaves its checks Pending, which blocks a PR that requires them;
+  a job skipped by an `if` condition reports Success.
+- `paths` filters apply to `push` and `pull_request` only, so the
+  release workflow's `workflow_call` of CI always runs everything.
+- The site does not import `mnemocyte`. The only file it reads from
+  outside `site/` is `CHANGELOG.md` (`site/src/lib/changelog.ts`), and
+  `CHANGELOG.md` is not in the npm tarball (`pnpm pack --dry-run`).
+- The root `biome.json` includes `**`, so the root `pnpm lint` also checks
+  `site/` with the site's nested config.
+- `README.md` is not only docs: `test:readme` type-checks its `ts` blocks,
+  and `test:jsdoc` the `@example` blocks in `src/`.
+
+The items, in order:
+
+- [ ] `chore/ci-paths`: run on a PR only the jobs its files need; a push
+  to `main` and the release run everything.
+  - Node checks: `src/**`, `test/**`, `migrations/**`, `scripts/**`,
+    `examples/**`, `README.md`, the tsconfigs, `tsdown.config.ts`,
+    `vitest.config.ts`.
+  - Package (`lint:package`: build, publint, attw): `src/**`,
+    `migrations/**`, `scripts/**`, the tsconfigs, `tsdown.config.ts`.
+  - Postgres: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts`.
+  - Site: `site/**`, `CHANGELOG.md`.
+  - Everything: `.github/**`, `package.json`, `pnpm-lock.yaml`,
+    `pnpm-workspace.yaml`, `biome.json`.
+  - Nothing yet for other `docs/**`, `AGENTS.md`, `CONTRIBUTING.md`,
+    `SECURITY.md`, `LICENSE`, the dotfiles and `.vscode/`;
+    `chore/docs-links` adds a check for the Markdown.
+
+  Also: `permissions: contents: read`, `persist-credentials: false` on
+  checkout and `timeout-minutes` on every job (the default is 360), and
+  `concurrency` with `group: ${{ github.workflow }}-${{ github.head_ref ||
+  github.run_id }}` and `cancel-in-progress: true`. `head_ref` is set only
+  on PR events, so a new push to a PR cancels its old run while pushes to
+  `main` and release runs get a unique group and are never cancelled.
+  The README's CI badge, the release's `uses:` and DEVELOPMENT.md
+  ("Releasing") name `ci.yml`, so keep that name for the library
+  workflow or update all three.
+  Decision for the maintainer: split the site into its own `site.yml`
+  and filter both with the built-in `on.pull_request.paths`
+  (recommended: declarative, no script or third-party action, and it
+  maps onto `apps/site/` later), or keep one workflow with a `git diff`
+  step that sets job outputs, job-level `if`s and a final "CI ok" job.
+  The split leaves skipped checks Pending, which matters only if a
+  ruleset ever requires them; the single workflow is ready for that.
+- [ ] `chore/ci-matrix`: lint and the type-level checks (`checktypes`,
+  `test:types`, `test:readme`, `test:jsdoc`, `test:examples`) run once, in
+  a Checks job on Node 24, since their result does not depend on the Node
+  version. The 22.18, 24 and 26 jobs run the build and the `unit`,
+  `contract` and `package` projects only; `pnpm test` keeps running
+  everything locally. Postgres jobs create the extension with `docker
+  exec ${{ job.services.postgres.id }} psql …` instead of installing
+  `postgresql-client` with `apt-get` (the docs list the context, not this
+  use; try it). Measure whether library jobs can skip installing the
+  site's dependencies (`pnpm install --filter`); keep it only if it
+  saves time. Decision for the maintainer: keep all four Postgres jobs on
+  PRs (recommended: about 90 s in parallel, and driver-version bugs are
+  what they catch) or run only pg18 with postgres.js 4 on PRs and the full
+  matrix on `main`.
+- [ ] `chore/docs-links`: `scripts/check-links.mjs` checks that relative
+  links and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `AGENTS.md` and `docs/**` point at files and headings
+  that exist, as a `test:links` script and a CI job on Markdown changes.
+  Anchors need GitHub's heading-slug rules ("1.0 → 1.1" is `#10--11`).
+  Decision for the maintainer: `github-slugger` as a dev dependency
+  (recommended: it is the reference implementation; check
+  `pnpm-workspace.yaml` after `pnpm add`, see AGENTS.md), the slug rules
+  written by hand, or the third-party lychee binary.
+- [ ] `chore/release-checks`: `verify` also fails when `CHANGELOG.md` has
+  no `## [X.Y.Z] - date` section for the tag. After a final release,
+  `next` should not stay on an older prerelease (DEVELOPMENT.md
+  "Releasing", step 5): npm trusted publishing can run dist-tag commands
+  when "Allow npm dist-tag" is on for the trusted publisher (off by
+  default; npm CLI 11.21.0+ or 12.2.0+, so check what the job runs and
+  whether pnpm passes `dist-tag` to npm). With it on, the publish job
+  removes a stale `next`; without it, it prints a warning. Pin the
+  actions `release.yml` uses, since its publish job holds the npm OIDC
+  token: GitHub's "Secure use reference" now ranks a workflow lockfile
+  above full-length commit SHA pins, so read it first. With SHA pins, add
+  Dependabot for the `github-actions` ecosystem only, with a `cooldown`,
+  so it does not fight pnpm's minimum release age. Decisions for the
+  maintainer: turning on "Allow npm dist-tag", and lockfile or SHA pins.
+
 ## Backends and packages
 
 - [ ] `refactor/store-contract`: the internal `MemoryStore` contract shrinks
-  from 21 methods to the ten or so in ARCHITECTURE.md "Layers" and gains
+  from 22 methods (plus the `backend` and `schemaName` properties, counted
+  on 2026-11-21) to the ten or so in ARCHITECTURE.md "Layers" and gains
   `capabilities`, before a second backend depends on it.
 - [ ] `feat/libsql-store`: a libSQL / Turso backend at `mnemocyte/libsql`,
   on the user's own libSQL client as an optional peer.
@@ -295,3 +390,8 @@ Not queued. Each one comes back as an item when its condition holds.
 - OpenTelemetry on the observability hooks, when users ask for it. `onEvent`
   covers it in app code today; a subpath would add `@opentelemetry/api` as
   an optional peer.
+- A weekly scheduled CI run on `main`, if a new Node 24 or 26 patch ever
+  breaks a build between PRs.
+- A Windows CI job for the package and CLI tests (`tar.exe`, directory
+  junctions), if a Windows-only bug ships; the maintainer develops on
+  Windows, and Windows runners are slower.

@@ -38,15 +38,6 @@ const WAYS_TO_HELP = [
  */
 const NEXT: { title: string; text: ReactNode }[] = [
   {
-    title: "Runnable examples",
-    text: (
-      <>
-        In-memory, PGlite, Postgres and an AI SDK chat, each run with{" "}
-        <InlineCode>node file.ts</InlineCode>.
-      </>
-    ),
-  },
-  {
     title: "libSQL and Turso",
     text: (
       <>

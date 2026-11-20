@@ -1,13 +1,12 @@
 # AI SDK integration
 
 `mnemocyte/ai-sdk` (`src/ai-sdk.ts`) is the only entry that imports `ai`,
-an optional peer at `^7.0.135`; `src/ai-sdk.ts`, `src/ai-sdk-tools.ts`,
-`src/ai-sdk-middleware.ts` and `src/ai-sdk-extraction.ts` are the only
-source files that do. It exports `aiSdkEmbedder` (see
-[embedders.md](./embedders.md#aisdkembedder)), `memoryTools`
-(`src/ai-sdk-tools.ts`), `memoryMiddleware` and `withMemory`
-(`src/ai-sdk-middleware.ts`), and `extractMemories`
-(`src/ai-sdk-extraction.ts`). The user guide is
+an optional peer at `^7.0.135`; `src/ai-sdk.ts` and the files in
+`src/ai-sdk/` are the only source files that do. It exports
+`aiSdkEmbedder` (see [embedders.md](./embedders.md#aisdkembedder)),
+`memoryTools` (`src/ai-sdk/tools.ts`), `memoryMiddleware` and `withMemory`
+(`src/ai-sdk/middleware.ts`), and `extractMemories`
+(`src/ai-sdk/extraction.ts`). The user guide is
 [guide/ai-sdk.md](../guide/ai-sdk.md); decisions 24, 26, 27 and 28 in
 [ARCHITECTURE.md](../ARCHITECTURE.md#decisions) record the choices below.
 
@@ -160,7 +159,7 @@ rejected promise both go to `onError({ phase: "save", error })`.
 
 `extractMemories({ model, memory, prompt, text })` and
 `save: { model, ...options }` on the middleware share `runExtraction`
-(`src/ai-sdk-extraction.ts`). The middleware checks the options when it is
+(`src/ai-sdk/extraction.ts`). The middleware checks the options when it is
 created (`resolveExtractionOptions`, `"CONFIG"` with the
 `memoryMiddleware save` or `withMemory save` prefix) and turns them into a
 hook; `extractMemories` checks them on each call and rejects with

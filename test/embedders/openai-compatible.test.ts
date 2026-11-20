@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	MAX_ERROR_BODY_LENGTH,
 	parseRetryAfterMs,
-} from "../../src/provider-error.js";
+} from "../../src/embedders/internal/provider-error.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 import { jsonFetch, NOT_FETCH_FUNCTIONS } from "./fetch-mock.js";
 

@@ -1,12 +1,12 @@
-import { MnemocyteError, type ProviderError } from "./errors.js";
-import { assertKnownKeys } from "./options.js";
-import { createProviderError, parseErrorBody } from "./provider-error.js";
+import { MnemocyteError, type ProviderError } from "../../errors.js";
+import { assertKnownKeys } from "../../options.js";
 import type {
 	Embedder,
 	EmbeddingPurpose,
 	EmbedOptions,
 	JsonObject,
-} from "./types.js";
+} from "../../types.js";
+import { createProviderError, parseErrorBody } from "./provider-error.js";
 
 /** Request fields an embedder owns; a purpose `body` may not set them. */
 const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([

@@ -28,6 +28,9 @@ Thumbs.db
 !.vscode/extensions.json
 .idea
 
+# Local AI agent settings
+.claude/
+
 # TypeScript
 *.tsbuildinfo
 

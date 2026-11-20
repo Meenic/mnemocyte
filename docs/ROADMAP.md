@@ -259,8 +259,18 @@ The items, in order:
 - [ ] `feat/public-store-contract`: `MemoryStoreV1` exported from
   `mnemocyte/store`, with the contract test suite at
   `mnemocyte/store/test`, so third-party backends can prove they conform.
+- [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
+  the site to `apps/site/`, and `examples/` becomes a workspace package on
+  `"mnemocyte": "workspace:*"` (decision 53). CI, the release workflow,
+  `scripts/`, the package tests, `.claude/launch.json` and the paths in
+  `AGENTS.md` and `docs/` follow. npm shows the README from the package
+  folder while GitHub shows the root one, and relative links such as
+  `docs/guide/api.md` would break there: how to keep one README for both
+  (`repository.directory` plus absolute links, or a copy at build) is the
+  maintainer's call, asked in that PR. `pnpm pack --dry-run` must list the
+  same files as before.
 - [ ] `feat/mcp-server`: `@mnemocyte/mcp`, an MCP server with its own `bin`,
-  in a pnpm workspace in this repository.
+  at `packages/mcp/` in the pnpm workspace.
 
 ## Later
 

@@ -1,7 +1,10 @@
 import { APICallError, type EmbeddingModel, embedMany } from "ai";
+import {
+	createProviderError,
+	parseErrorBody,
+} from "./embedders/internal/provider-error.js";
 import { MnemocyteError, type ProviderError } from "./errors.js";
 import { assertKnownKeys } from "./options.js";
-import { createProviderError, parseErrorBody } from "./provider-error.js";
 import type { Embedder, EmbeddingPurpose, EmbedOptions } from "./types.js";
 
 /**
@@ -508,7 +511,7 @@ export {
 	type ExtractMemoriesInput,
 	type ExtractMemoriesOptions,
 	extractMemories,
-} from "./ai-sdk-extraction.js";
+} from "./ai-sdk/extraction.js";
 export {
 	type MemoryFinishReason,
 	type MemoryLanguageModel,
@@ -523,7 +526,7 @@ export {
 	memoryMiddleware,
 	type WithMemoryOptions,
 	withMemory,
-} from "./ai-sdk-middleware.js";
+} from "./ai-sdk/middleware.js";
 export {
 	type ForgetMemoryInput,
 	type ForgetMemoryOutput,
@@ -535,4 +538,4 @@ export {
 	type SaveMemoryOutput,
 	type SearchMemoriesInput,
 	type SearchMemoriesOutput,
-} from "./ai-sdk-tools.js";
+} from "./ai-sdk/tools.js";

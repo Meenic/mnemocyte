@@ -1,7 +1,7 @@
 import { MnemocyteError } from "../errors.js";
-import { createHttpEmbedder, resolveApiKey } from "../http-embedder.js";
 import { assertKnownKeys, RENAMED_BASE_URL } from "../options.js";
 import type { Embedder } from "../types.js";
+import { createHttpEmbedder, resolveApiKey } from "./internal/http-embedder.js";
 
 const KNOWN_MODEL_DIMENSIONS: Record<string, number> = {
 	"text-embedding-3-small": 1536,

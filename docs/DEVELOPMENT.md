@@ -63,15 +63,14 @@ src/
   migrate.ts            migrate() and setTextSearchConfig(): validate input, resolve { memory } or { store } (resolveStore), call the store
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, client types
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
-  ai-sdk-tools.ts       memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
-  ai-sdk-middleware.ts  memoryMiddleware and withMemory: context in the prompt, save hook or extraction
-  ai-sdk-extraction.ts  extractMemories: the user's model extracts keyed memories from a turn
+  ai-sdk/
+    tools.ts            memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
+    middleware.ts       memoryMiddleware and withMemory: context in the prompt, save hook or extraction
+    extraction.ts       extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
   cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql, generate, drizzle, text-search
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
-  http-embedder.ts      createFetchEmbedder (fetch core of every HTTP embedder), createHttpEmbedder (OpenAI-shaped), option checks
-  provider-error.ts     createProviderError, error body parsing, Retry-After parsing
   observability.ts      onEvent lifecycle (start / success / error)
   resilience.ts         provider timeout, retry rule, jittered backoff, abort
   memory/
@@ -112,7 +111,8 @@ src/
     pgvector.ts         assertPgvectorVersion
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
-  embedders/            openai, openai-compatible, voyage, cohere, google (fetch only)
+  embedders/            openai, openai-compatible, voyage, cohere, google (fetch only); each file is an export
+    internal/           http-embedder.ts (createFetchEmbedder, the fetch core of every HTTP embedder; createHttpEmbedder, OpenAI-shaped; option checks) and provider-error.ts (createProviderError, error body and Retry-After parsing)
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template
 scripts/                bundle-migrations.mjs, check-package.mjs
 examples/               runnable scripts that import `mnemocyte` by name; not shipped
@@ -129,8 +129,7 @@ at the versions the tests run; source files import at most their types
 package test checks this). They are also dev dependencies, with `@types/pg`
 and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
 (`^7.0.135`) and a dev dependency (it brings `zod`, its peer, into the
-lockfile); `src/ai-sdk.ts`, `src/ai-sdk-tools.ts`,
-`src/ai-sdk-middleware.ts` and `src/ai-sdk-extraction.ts` import it at
+lockfile); `src/ai-sdk.ts` and the files in `src/ai-sdk/` import it at
 runtime, the only source files that do, and a package test follows
 the static imports of every other entry to check that none reaches it.
 

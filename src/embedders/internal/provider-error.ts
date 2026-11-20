@@ -1,4 +1,4 @@
-import { ProviderError } from "./errors.js";
+import { ProviderError } from "../../errors.js";
 
 /**
  * Longest error body kept as a {@link ProviderError} `cause`, in UTF-16

@@ -1,15 +1,15 @@
 import { type LanguageModelMiddleware, wrapLanguageModel } from "ai";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
+import { MAX_CONTENT_LENGTH } from "../memory/limits.js";
+import { assertKnownKeys } from "../options.js";
+import type { BoundContextInput, BoundMemoryClient } from "../types.js";
 import {
 	type ExtractMemoriesOptions,
 	isExtractionCall,
 	type ResolvedExtractionOptions,
 	resolveExtractionOptions,
 	runExtraction,
-} from "./ai-sdk-extraction.js";
-import { isMnemocyteError, MnemocyteError } from "./errors.js";
-import { MAX_CONTENT_LENGTH } from "./memory/limits.js";
-import { assertKnownKeys } from "./options.js";
-import type { BoundContextInput, BoundMemoryClient } from "./types.js";
+} from "./extraction.js";
 
 type TransformParams = NonNullable<LanguageModelMiddleware["transformParams"]>;
 type CallParams = Parameters<TransformParams>[0]["params"];

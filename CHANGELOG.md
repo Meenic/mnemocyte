@@ -9,6 +9,13 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-20
+
+A patch release: `context` marks only the memories it puts in the text,
+the CLI keeps keyword search settings that drizzle-kit manages, and the
+1.2 note on mixed 1.1 and 1.2 deploys is corrected. No API change and no
+migration.
+
 ### Fixed
 
 - **`context` counted memories it left out.** With `trackAccess` on,
@@ -1634,7 +1641,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Meenic/mnemocyte/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Meenic/mnemocyte/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Meenic/mnemocyte/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/Meenic/mnemocyte/compare/v1.0.0...v1.0.1

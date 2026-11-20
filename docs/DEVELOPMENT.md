@@ -496,7 +496,15 @@ Vitest has three projects (`vitest.config.ts`):
   the tables and the extension the same way and leaves the same schema, and
   so does `schema-name.test.ts`, which also creates and drops its own
   schemas. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
-  explicitly.
+  explicitly. A throwaway container, as CI uses (create the extension once
+  the server is up, then remove the container when done):
+
+  ```bash
+  docker run -d --name mnemocyte-test -e POSTGRES_PASSWORD=postgres -p 5434:5432 pgvector/pgvector:0.8.7-pg18
+  docker exec mnemocyte-test psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector"
+  DATABASE_URL=postgres://postgres:postgres@localhost:5434/postgres pnpm test:integration
+  docker rm -f mnemocyte-test
+  ```
 - postgres.js is a dev dependency on 4.x, and `postgres-3`
   (`npm:postgres@3.4.9`) installs 3.x next to it, so both are in the
   lockfile. With `POSTGRES_JS=3` the `integration` project aliases
@@ -594,6 +602,11 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 
 - **Patch (1.x.y):** right away, for a bug that hurts users, when
   `[Unreleased]` holds fixes only.
+- **Security fix:** a patch of the newest 1.x minor, the only line that
+  gets them (`SECURITY.md`). Reports arrive through GitHub private
+  vulnerability reporting as a draft advisory; fix it there or in its
+  temporary private fork, release, and publish the advisory once npm has
+  the version.
 - **Minor (1.x.0):** after a group of features lands, such as a finished
   ROADMAP section. Any `Added` or `Deprecated` entry in `[Unreleased]`
   makes the next version a minor.

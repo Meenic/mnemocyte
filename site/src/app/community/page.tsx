@@ -26,9 +26,9 @@ const WAYS_TO_HELP = [
   },
   {
     title: "Pick a roadmap item",
-    text: "Each item is one branch and one pull request. Start with the development guide.",
-    href: `${REPO_URL}/blob/main/docs/DEVELOPMENT.md`,
-    link: "Read DEVELOPMENT.md",
+    text: "Each item is one branch and one pull request. Start with the contributing guide.",
+    href: `${REPO_URL}/blob/main/CONTRIBUTING.md`,
+    link: "Read CONTRIBUTING.md",
   },
 ] as const;
 

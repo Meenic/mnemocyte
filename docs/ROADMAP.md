@@ -270,9 +270,10 @@ The items, in order:
 - [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
   the site to `apps/site/`, and `examples/` becomes a workspace package on
   `"mnemocyte": "workspace:*"` (decision 53). CI, the release workflow,
-  `scripts/`, the package tests and the paths in `AGENTS.md` and `docs/`
-  follow, and so does the local, gitignored `.claude/launch.json`. npm shows the README from the package
-  folder while GitHub shows the root one, and relative links such as
+  `scripts/`, the package tests, the paths in `AGENTS.md` and `docs/` and
+  the `[site/**]` section of `.editorconfig` follow, and so does the
+  local, gitignored `.claude/launch.json`. npm shows the README from the
+  package folder while GitHub shows the root one, and relative links such as
   `docs/guide/api.md` would break there: how to keep one README for both
   (`repository.directory` plus absolute links, or a copy at build) is the
   maintainer's call, asked in that PR. `pnpm pack --dry-run` must list the

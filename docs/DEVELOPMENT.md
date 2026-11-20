@@ -632,6 +632,12 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 4. Once npm has the version, create the GitHub release. For a version with
    a prerelease part, mark it as a prerelease and say it installs with
    `mnemocyte@next`.
+5. After a final release, check `npm view mnemocyte dist-tags`. The
+   workflow moves `latest` but never clears `next`, so after release
+   candidates `next` keeps pointing at an older prerelease and
+   `mnemocyte@next` installs it. Remove it with
+   `npm dist-tag rm mnemocyte next` (your npm login and 2FA; the workflow
+   cannot); the next prerelease sets it again.
 
 The release workflow runs three stages:
 
@@ -643,7 +649,7 @@ The release workflow runs three stages:
   `id-token: write`. It installs without a dependency cache and runs
   `pnpm publish --no-git-checks`; `prepublishOnly` builds `dist/`. A version
   with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
-  `latest`. `--no-git-checks` is needed because a tag checkout is a detached
+  `latest`, and the other tag stays where it was (step 5). `--no-git-checks` is needed because a tag checkout is a detached
   HEAD; `verify` does the branch check instead.
   `--publish-wait-timeout 600000` keeps the job running until the version
   is installable: npm scans each upload before it shows up, which took about

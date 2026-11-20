@@ -636,8 +636,11 @@ When to release (agreed 2026-11-15), with no fixed schedule:
    workflow moves `latest` but never clears `next`, so after release
    candidates `next` keeps pointing at an older prerelease and
    `mnemocyte@next` installs it. Remove it with
-   `npm dist-tag rm mnemocyte next` (your npm login and 2FA; the workflow
-   cannot); the next prerelease sets it again.
+   `npm dist-tag rm mnemocyte next` from your own npm login; the next
+   prerelease sets it again. The workflow does not do this. npm trusted
+   publishing can run dist-tag commands, but only with "Allow npm
+   dist-tag" turned on for the trusted publisher (off by default) and
+   npm CLI 11.21.0+ or 12.2.0+.
 
 The release workflow runs three stages:
 

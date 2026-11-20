@@ -1222,3 +1222,16 @@ Dated 2026-10-26 unless noted.
     finish sooner. The repository is public, so standard runners cost no
     Actions minutes. A bug that shows on one driver or server version
     would first fail on `main`, after the merge.
+56. **github-slugger for Markdown anchors** (2026-11-21, landed): the
+    maintainer chose, with `chore/docs-links`, `github-slugger` 2 as a
+    dev dependency for the anchors `scripts/check-links.mjs` checks, over
+    slug rules written by hand and the lychee binary. GitHub documents
+    only basic rules, and `github-slugger` aims to match GitHub's anchors
+    and is what rehype-slug uses; it is ESM with no dependencies, and it
+    never reaches the npm tarball. Hand-written rules would let the Links
+    job skip `pnpm install`, but the Unicode edge cases (symbols such as
+    `→`, emoji) would be ours to keep right. lychee checks Markdown
+    anchors with `--include-fragments`, but its docs call its slugs
+    "similar to" GitHub's, not the same, and it is a downloaded Rust
+    binary in CI. The cost is an install step in the Links job (1 to 4
+    seconds from the store cache).

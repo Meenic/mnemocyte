@@ -31,6 +31,7 @@ jobs:
       package: ${{ steps.filter.outputs.package }}
       postgres: ${{ steps.filter.outputs.postgres }}
       site: ${{ steps.filter.outputs.site }}
+      links: ${{ steps.filter.outputs.links }}
 
     steps:
       # A pull_request checkout is the PR's test merge commit; depth 2 also
@@ -53,6 +54,7 @@ jobs:
           package='^(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)'
           postgres='^(src/|test/|migrations/|vitest\.config\.ts$)'
           site='^(site/|CHANGELOG\.md$)'
+          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|scripts/check-links\.mjs$)'
 
           files=''
           all=true
@@ -78,7 +80,7 @@ jobs:
             fi
           fi
 
-          for job in node package postgres site; do
+          for job in node package postgres site links; do
             run=$all
             if [ "$run" = false ] && grep -qE "${!job}" <<< "$files"; then
               run=true
@@ -227,6 +229,36 @@ jobs:
       - name: Build
         run: pnpm --filter site build
 
+  # Relative links and #anchors in the Markdown. It needs only the checkout
+  # (the script lists files with git ls-files) and github-slugger.
+  links:
+    name: Links
+    needs: changes
+    if: needs.changes.outputs.links == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check links
+        run: pnpm run test:links
+
   postgres-integration:
     name: Postgres ${{ matrix.postgres }} integration (postgres.js ${{ matrix.postgres-js }})
     needs: changes
@@ -297,6 +329,7 @@ jobs:
       - checks
       - package
       - site
+      - links
       - postgres-integration
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest

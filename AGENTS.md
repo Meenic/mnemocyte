@@ -116,7 +116,8 @@ get there is `docs/ROADMAP.md`.
 pnpm install --frozen-lockfile
 pnpm checktypes        # tsc for src and tests
 pnpm lint              # read-only Biome check
-pnpm test              # build, export type check, unit and package tests
+pnpm test              # links, build, export type check, unit and package tests
+pnpm test:links        # relative links and #anchors in the Markdown
 pnpm test:types        # tsc on the export type tests (needs pnpm build)
 pnpm build             # tsdown to dist/
 pnpm run pack:check    # pnpm pack --dry-run

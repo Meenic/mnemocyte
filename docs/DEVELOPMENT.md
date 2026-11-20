@@ -114,7 +114,7 @@ src/
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only); each file is an export
     internal/           http-embedder.ts (createFetchEmbedder, the fetch core of every HTTP embedder; createHttpEmbedder, OpenAI-shaped; option checks) and provider-error.ts (createProviderError, error body and Retry-After parsing)
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template
-scripts/                bundle-migrations.mjs, check-package.mjs
+scripts/                bundle-migrations.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, check-links.mjs
 examples/               runnable scripts that import `mnemocyte` by name; not shipped
 test/                   unit, package, integration, fixtures, benchmarks
 ```
@@ -337,13 +337,14 @@ Vitest has three projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` runs `pnpm test:checks`, then `pnpm test:ci`.
-  `test:checks` builds and runs the type-level checks: `pnpm test:types`,
-  `pnpm test:readme`, `pnpm test:jsdoc` and `pnpm test:examples`.
-  `test:ci` builds again (under a second) and runs `unit`, `contract` and
-  `package`. CI runs `test:checks` once, in the Checks job, and `test:ci`
-  on each Node version ("What CI runs" below). `pnpm test:exports` builds
-  and runs `test:types` and `package` alone.
+- `pnpm test` runs `pnpm test:links`, `pnpm test:checks`, then
+  `pnpm test:ci`. `test:checks` builds and runs the type-level checks:
+  `pnpm test:types`, `pnpm test:readme`, `pnpm test:jsdoc` and
+  `pnpm test:examples`. `test:ci` builds again (under a second) and runs
+  `unit`, `contract` and `package`. CI runs `test:links` in the Links
+  job, `test:checks` once, in the Checks job, and `test:ci` on each Node
+  version ("What CI runs" below). `pnpm test:exports` builds and runs
+  `test:types` and `package` alone.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -386,6 +387,37 @@ Vitest has three projects (`vitest.config.ts`):
   getting-started guide recommends for running `.ts` files with Node.
   Types only: nothing runs, since every example needs an API key and some
   need a database. `examples/` is not in `files`, so it does not ship.
+- `pnpm test:links` (`scripts/check-links.mjs`) checks that relative links
+  and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `AGENTS.md`, `examples/README.md` and `docs/**/*.md`
+  point at files and headings that exist. It needs no build and prints
+  `<file>:<line>: <problem>` per broken link.
+  - Files come from `git ls-files --cached --others --exclude-standard`
+    that still exist on disk, so a link to a gitignored file (`dist/`,
+    `.env`) fails, and paths compare case-sensitively on Windows too, as
+    on GitHub. A link may point at a folder.
+  - Heading anchors are slugged with `github-slugger` (a dev dependency,
+    decision 56), which follows GitHub's rules: lowercase, spaces become
+    `-`, other punctuation is dropped, and a repeated heading gets `-1`,
+    `-2`. `## 1.0 → 1.1` is `#10--11`, and `## [1.2.1] - 2026-11-20` in
+    the changelog is `#121---2026-11-20`. Before slugging, the script
+    keeps the text of code spans and links and drops emphasis markers and
+    HTML tags. ATX and setext headings count.
+  - `<a id="…">` and `<a name="…">` add custom anchors, which do not take
+    part in the `-1` numbering (GitHub's docs say the same).
+  - Links with a scheme (`https:`, `mailto:`) are skipped, so external
+    URLs are not checked. So are links inside fenced code blocks and code
+    spans. An anchor is checked only when the target is a `.md` file, so
+    `#L12` on a source file passes.
+  - It reads inline links and images (`[text](href)`, `<href>` and a
+    title allowed) and reference definitions (`[label]: href`) a block at
+    a time (adjacent non-blank lines; a list item, table row or heading
+    starts a new one), so code spans and links may wrap. GitHub's docs
+    ("Relative links and image paths in markdown files") say a relative
+    link's text must stay on one line, so a wrapped one fails; a wrapped
+    external link passes. A malformed `%` escape fails too.
+  - HTML links (`<a href>`) are not read, and a link in an indented code
+    block (four spaces, no fence) is checked like prose.
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
@@ -607,16 +639,22 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `Package` | `lint:package` (build, pack, publint, attw) | `src/**`, `migrations/**`, `scripts/**`, the root `tsconfig*.json`, `tsdown.config.ts` |
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `site/**`, `CHANGELOG.md` |
+| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `scripts/check-links.mjs` |
 
 - A change to `.github/**`, `package.json`, `pnpm-lock.yaml`,
   `pnpm-workspace.yaml`, `biome.json`, `.gitignore` or `.gitattributes`
   runs every job. Biome skips what `.gitignore` ignores
   (`vcs.useIgnoreFile` in both Biome configs), and `.gitattributes` sets
   the line endings of every checked-out file.
-- Other files run no job yet: the rest of `docs/**`, `AGENTS.md`,
-  `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,
-  `.editorconfig` and `.vscode/`. Biome reads `.editorconfig` only with
-  `formatter.useEditorconfig`, which is off.
+- Other files run no job: `CLAUDE.md`, `.editorconfig` and `.vscode/`.
+  Biome reads `.editorconfig` only with `formatter.useEditorconfig`,
+  which is off.
+- The Links list holds the Markdown files the check reads and the
+  non-Markdown files they link to (only `LICENSE` today), so renaming or
+  deleting a link target also runs it. A doc that starts linking to
+  another kind of file (a migration, a source file) needs that path on
+  the Links list. The job installs dependencies for `github-slugger` and
+  does not build.
 - `docs/guide/getting-started.md` is on the Node list because
   `test/cli/init.test.ts` compares its `memory.ts` blocks with the
   `mnemocyte init` templates. A test or script that starts reading another
@@ -677,7 +715,7 @@ when the release calls it (`workflow_call`). It has these jobs:
   usual time on the last `main` run before this change: Node 15 (1.5 to
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
   Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
-  later, has 10.
+  later, has 10, and `Links` 5.
 
 ## Releasing
 

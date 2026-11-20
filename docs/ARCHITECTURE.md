@@ -1227,10 +1227,11 @@ Dated 2026-10-26 unless noted.
     dev dependency for the anchors `scripts/check-links.mjs` checks, over
     slug rules written by hand and the lychee binary. GitHub documents
     only basic rules, and `github-slugger` aims to match GitHub's anchors
-    and is what rehype-slug uses; it is ESM with no
-    dependencies, and it never reaches the npm tarball. Hand-written rules
-    would let the Links job skip `pnpm install`, but the Unicode edge
-    cases (symbols such as `→`, emoji) would be ours to keep right.
-    lychee is a downloaded Rust binary whose README does not say it
-    follows GitHub's slug rules. The cost is an install step in the Links
-    job (1 to 4 seconds from the store cache).
+    and is what rehype-slug uses; it is ESM with no dependencies, and it
+    never reaches the npm tarball. Hand-written rules would let the Links
+    job skip `pnpm install`, but the Unicode edge cases (symbols such as
+    `→`, emoji) would be ours to keep right. lychee checks Markdown
+    anchors with `--include-fragments`, but its docs call its slugs
+    "similar to" GitHub's, not the same, and it is a downloaded Rust
+    binary in CI. The cost is an install step in the Links job (1 to 4
+    seconds from the store cache).

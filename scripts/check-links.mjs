@@ -9,6 +9,10 @@
 // spaces to hyphens, other punctuation dropped, and "-1", "-2" for repeated
 // headings ("## 1.0 → 1.1" is #10--11). `<a id>` and `<a name>` tags add
 // custom anchors, which GitHub leaves out of that numbering.
+//
+// Links are read per paragraph, so a code span or link may wrap. GitHub's
+// docs say the text of a relative link must stay on one line, so a wrapped
+// one fails.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
@@ -44,6 +48,10 @@ for (const file of files) {
 
 const fence = /^\s*(`{3,}|~{3,})/;
 const codeSpan = /(`+)(.+?)\1/g;
+const wrappedCodeSpan = /(`+)([\s\S]+?)\1/g;
+// A list item, table row or heading starts a new block, so a code span
+// cannot run into it.
+const blockStart = /^\s*(?:[-*+]\s|\d+[.)]\s|\||#{1,6}(?:\s|$))/;
 
 // Yields each line outside fenced code blocks with its 1-based number.
 function* proseLines(text) {
@@ -62,6 +70,41 @@ function* proseLines(text) {
 			open = "";
 		}
 	}
+}
+
+// Yields [first line number, text] for each run of adjacent non-blank
+// prose lines, joined with "\n".
+function* blocks(text) {
+	let start = 0;
+	let lines = [];
+	for (const [number, line] of proseLines(text)) {
+		const blank = line.trim() === "";
+		if (
+			lines.length > 0 &&
+			(blank || number !== start + lines.length || blockStart.test(line))
+		) {
+			yield [start, lines.join("\n")];
+			lines = [];
+		}
+		if (!blank) {
+			if (lines.length === 0) start = number;
+			lines.push(line);
+		}
+	}
+	if (lines.length > 0) yield [start, lines.join("\n")];
+}
+
+// The index of the "[" that opens the link text ending at `end`, or -1.
+function textStart(block, end) {
+	let depth = 0;
+	for (let i = end - 1; i >= 0; i -= 1) {
+		if (block[i] === "]") depth += 1;
+		else if (block[i] === "[") {
+			if (depth === 0) return i;
+			depth -= 1;
+		}
+	}
+	return -1;
 }
 
 // The text GitHub slugs for a heading: markup removed, code spans kept.
@@ -89,12 +132,14 @@ function anchorsOf(file) {
 	anchors = new Set();
 	const slugger = new GithubSlugger();
 	const lines = [...proseLines(readFileSync(join(root, file), "utf8"))];
-	for (const [index, [, line]] of lines.entries()) {
+	for (const [index, [number, line]] of lines.entries()) {
 		const atx = line.match(/^ {0,3}#{1,6}(?:\s+(.*))?$/);
+		const next = lines[index + 1];
 		const setext =
 			!atx &&
 			line.trim() !== "" &&
-			/^ {0,3}(=+|-+)\s*$/.test(lines[index + 1]?.[1] ?? "");
+			next?.[0] === number + 1 &&
+			/^ {0,3}(=+|-+)\s*$/.test(next[1]);
 		if (atx) anchors.add(slugger.slug(headingText(atx[1] ?? "")));
 		else if (setext) anchors.add(slugger.slug(headingText(line)));
 		for (const custom of line.matchAll(/<a\s[^>]*\b(?:id|name)="([^"]+)"/g)) {
@@ -105,17 +150,27 @@ function anchorsOf(file) {
 	return anchors;
 }
 
-const inlineLink = /\]\(\s*(?:<([^>]*)>|([^)\s]+))/g;
+const inlineLink = /\]\(\s*(?:<([^>\n]*)>|([^)\s]+))/g;
 const definition = /^ {0,3}\[[^\]^][^\]]*\]:\s*(?:<([^>]*)>|(\S+))/;
+const external = /^[a-z][a-z0-9+.-]*:|^\/\//i;
+
+function decode(text) {
+	try {
+		return decodeURIComponent(text);
+	} catch {
+		return null;
+	}
+}
 
 function check(file, href) {
-	if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) return null;
 	const hash = href.indexOf("#");
 	const path = (hash === -1 ? href : href.slice(0, hash)).replace(/\?.*$/, "");
-	const fragment = hash === -1 ? "" : href.slice(hash + 1);
+	const fragment = hash === -1 ? "" : decode(href.slice(hash + 1));
+	if (fragment === null) return `${href}: invalid percent-encoding`;
 	let target = file;
 	if (path !== "") {
-		const decoded = decodeURIComponent(path);
+		const decoded = decode(path);
+		if (decoded === null) return `${href}: invalid percent-encoding`;
 		target = decoded.startsWith("/")
 			? posix.normalize(decoded.slice(1))
 			: posix.join(posix.dirname(file), decoded);
@@ -128,7 +183,7 @@ function check(file, href) {
 	if (fragment === "" || !files.has(target) || !target.endsWith(".md")) {
 		return null;
 	}
-	if (!anchorsOf(target).has(decodeURIComponent(fragment))) {
+	if (!anchorsOf(target).has(fragment)) {
 		return `${href}: ${target} has no heading or anchor #${fragment}`;
 	}
 	return null;
@@ -142,17 +197,36 @@ let broken = 0;
 
 for (const file of markdown) {
 	const text = readFileSync(join(root, file), "utf8");
-	for (const [line, content] of proseLines(text)) {
-		const prose = content.replace(codeSpan, (span) => " ".repeat(span.length));
-		const hrefs = [...prose.matchAll(inlineLink)].map((m) => m[1] ?? m[2]);
-		const def = prose.match(definition);
-		if (def) hrefs.push(def[1] ?? def[2]);
-		for (const href of hrefs) {
-			if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) continue;
+	for (const [start, block] of blocks(text)) {
+		// Blank code spans but keep their line breaks, so offsets and line
+		// numbers stay put.
+		const prose = block.replace(wrappedCodeSpan, (span) =>
+			span.replace(/[^\n]/g, " "),
+		);
+		const found = [];
+		for (const match of prose.matchAll(inlineLink)) {
+			const open = textStart(prose, match.index);
+			found.push({
+				href: match[1] ?? match[2],
+				index: match.index,
+				wrapped: open !== -1 && prose.slice(open, match.index).includes("\n"),
+			});
+		}
+		let offset = 0;
+		for (const line of prose.split("\n")) {
+			const def = line.match(definition);
+			if (def) found.push({ href: def[1] ?? def[2], index: offset });
+			offset += line.length + 1;
+		}
+		for (const { href, index, wrapped } of found) {
+			if (external.test(href)) continue;
 			links += 1;
-			const problem = check(file, href);
+			const problem = wrapped
+				? `${href}: the link text spans lines; GitHub needs it on one line`
+				: check(file, href);
 			if (problem) {
 				broken += 1;
+				const line = start + prose.slice(0, index).split("\n").length - 1;
 				console.error(`${file}:${line}: ${problem}`);
 			}
 		}

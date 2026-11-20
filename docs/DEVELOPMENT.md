@@ -410,9 +410,14 @@ Vitest has three projects (`vitest.config.ts`):
     spans. An anchor is checked only when the target is a `.md` file, so
     `#L12` on a source file passes.
   - It reads inline links and images (`[text](href)`, `<href>` and a
-    title allowed) and reference definitions (`[label]: href`) one line
-    at a time: a link whose `](` and target sit on different lines is not
-    read.
+    title allowed) and reference definitions (`[label]: href`) a block at
+    a time (adjacent non-blank lines; a list item, table row or heading
+    starts a new one), so code spans and links may wrap. GitHub's docs
+    ("Relative links and image paths in markdown files") say a relative
+    link's text must stay on one line, so a wrapped one fails; a wrapped
+    external link passes. A malformed `%` escape fails too.
+  - HTML links (`<a href>`) are not read, and a link in an indented code
+    block (four spaces, no fence) is checked like prose.
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
@@ -648,8 +653,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   non-Markdown files they link to (only `LICENSE` today), so renaming or
   deleting a link target also runs it. A doc that starts linking to
   another kind of file (a migration, a source file) needs that path on
-  the Links list. The job installs dependencies only for
-  `github-slugger`; it does not build.
+  the Links list. The job installs dependencies for `github-slugger` and
+  does not build.
 - `docs/guide/getting-started.md` is on the Node list because
   `test/cli/init.test.ts` compares its `memory.ts` blocks with the
   `mnemocyte init` templates. A test or script that starts reading another

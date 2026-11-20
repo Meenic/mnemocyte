@@ -317,7 +317,9 @@ The items, in order:
   `pnpm test` runs first and a `Links` CI job. Decided: `github-slugger`
   as a dev dependency (decision 56). Found while building it: the docs
   already use `<a id>` custom anchors, which the check counts, and none
-  of the 336 relative links was broken. External URLs are not checked.
+  of the 336 relative links was broken. GitHub's docs say a relative
+  link's text must stay on one line, so the check fails a wrapped one
+  (none today). External URLs are not checked.
   The rules are in DEVELOPMENT.md ("Testing" and "What CI runs").
 - [ ] `chore/release-checks`: `verify` also fails when `CHANGELOG.md` has
   no `## [X.Y.Z] - date` section for the tag. After a final release,

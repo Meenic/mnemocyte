@@ -46,7 +46,8 @@ Kysely: it is two methods, adds no dependency, and a query builder does not
 help with vector or full-text SQL, which is where dialects differ.
 
 **Backend (`MemoryStore`).** Owns its dialect's SQL, its migrations and a
-capability declaration. The contract shrinks from 18 methods to about ten:
+capability declaration. The contract shrinks from 22 methods (counted
+2026-11-21) to about ten:
 `insert`, `searchCandidates` (vector + lexical in one call), `get`, `list`,
 `update`, `delete` (by scope and filter, atomic with the survivor policy),
 `consolidate`, `appendAudit`, `listAudit`, `stats`, plus `migrate` and

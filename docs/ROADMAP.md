@@ -310,15 +310,15 @@ The items, in order:
   project on PGlite takes about 70 of its 106 Vitest seconds
   (`chore/contract-time`). The rules are in DEVELOPMENT.md ("What CI
   runs").
-- [ ] `chore/docs-links`: `scripts/check-links.mjs` checks that relative
+- [x] `chore/docs-links`: `scripts/check-links.mjs` checks that relative
   links and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
-  `SECURITY.md`, `AGENTS.md` and `docs/**` point at files and headings
-  that exist, as a `test:links` script and a CI job on Markdown changes.
-  Anchors need GitHub's heading-slug rules ("1.0 → 1.1" is `#10--11`).
-  Decision for the maintainer: `github-slugger` as a dev dependency
-  (recommended: it is the reference implementation; check
-  `pnpm-workspace.yaml` after `pnpm add`, see AGENTS.md), the slug rules
-  written by hand, or the third-party lychee binary.
+  `SECURITY.md`, `AGENTS.md`, `examples/README.md` and `docs/**` point at
+  files and headings that exist, as a `test:links` script that
+  `pnpm test` runs first and a `Links` CI job. Decided: `github-slugger`
+  as a dev dependency (decision 56). Found while building it: the docs
+  already use `<a id>` custom anchors, which the check counts, and none
+  of the 336 relative links was broken. External URLs are not checked.
+  The rules are in DEVELOPMENT.md ("Testing" and "What CI runs").
 - [ ] `chore/release-checks`: `verify` also fails when `CHANGELOG.md` has
   no `## [X.Y.Z] - date` section for the tag. After a final release,
   `next` should not stay on an older prerelease (DEVELOPMENT.md

@@ -1166,11 +1166,15 @@ Dated 2026-10-26 unless noted.
       `CREATE INDEX` and `ANALYZE` to append to that migration; a test
       applies both and compares the catalog with a fresh install.
 53. **Repository layout** (2026-11-20): the maintainer chose, with
-    `chore/repo-tidy`:
-    - The root keeps only files about the whole repository: `.github/`,
-      `docs/`, `examples/`, `README.md`, `CHANGELOG.md`, `LICENSE`,
-      `AGENTS.md`, `CLAUDE.md`, `biome.json`, the private workspace
-      `package.json`, `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
+    `chore/repo-tidy`. The last two points landed there; the rest is the
+    target for `chore/workspace-layout`, and until then the root is both
+    the package and the workspace.
+    - The root keeps only what is about the whole repository: `apps/`,
+      `packages/`, `examples/`, `docs/`, `.github/`, `.vscode/`, the
+      dotfiles (`.gitignore`, `.gitattributes`, `.editorconfig`),
+      `README.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, `CLAUDE.md`,
+      `biome.json`, the private workspace `package.json`,
+      `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
     - The published package moves to `packages/mnemocyte/` with its
       `src/`, `test/`, `migrations/`, `scripts/` and build, test and
       TypeScript configs; the site moves to `apps/site/`. `@mnemocyte/mcp`
@@ -1179,10 +1183,10 @@ Dated 2026-10-26 unless noted.
     - `examples/` stays at the root, where GitHub readers look for it, and
       becomes a workspace package that depends on `"mnemocyte":
       "workspace:*"`, the way an app installs it.
-    - `CHANGELOG.md` stays at the root until a second package publishes.
+    - `CHANGELOG.md` stays at the root; whether `@mnemocyte/mcp` gets a
+      changelog of its own is asked in `feat/mcp-server`.
     - The move is its own PR, `chore/workspace-layout`, right before
-      `feat/mcp-server`, so the MCP PR changes only MCP. Until then the root
-      is both the package and the workspace.
+      `feat/mcp-server`, so the MCP PR changes only MCP.
     - Inside `src/`, the entry files stay at the root (tsdown names the
       output after them) and their private modules sit in a folder:
       `src/ai-sdk/` for the AI SDK entry, `src/embedders/internal/` for

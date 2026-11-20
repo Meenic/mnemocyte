@@ -119,14 +119,45 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Lint and the type-level checks run once, in the Checks job.
+      - name: Test
+        run: pnpm run test:ci
+
+  # Lint and type checks do not depend on the Node version, so they run
+  # once here instead of in each Node job.
+  checks:
+    name: Checks
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Check types
         run: pnpm checktypes
 
       - name: Lint
         run: pnpm lint
 
-      - name: Test
-        run: pnpm run test:ci
+      - name: Type-check exports, README and examples
+        run: pnpm run test:checks
 
   package:
     name: Package
@@ -243,13 +274,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
+      # psql runs inside the service container, so the runner needs no
+      # PostgreSQL client. job.services.<id>.id is the container's id.
       - name: Enable pgvector
         env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Test integration
         env:
@@ -264,6 +294,7 @@ jobs:
     needs:
       - changes
       - validate
+      - checks
       - package
       - site
       - postgres-integration

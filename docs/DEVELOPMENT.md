@@ -678,10 +678,12 @@ when the release calls it (`workflow_call`). It has these jobs:
 - Lint and the type-level checks give the same result on every Node
   version, so they run once, in `Checks`, and the Node jobs run only the
   build and the Vitest projects. The `contract` project on PGlite still
-  takes the most Vitest time summed over its files. Since
-  `chore/contract-time` the slowest single file locally is
-  `test/package/cli.test.ts`, which runs the built CLI in child processes
-  (32 s on the last `main` run before that change).
+  takes the most Vitest time summed over its files, but since it starts
+  each database from a saved data folder ("Testing" above) none of its
+  files took over 15 s on PR #127, where the Vitest runs took 41 to 69 s
+  (103 to 111 s before). The slowest single file is now
+  `test/package/cli.test.ts` (17 to 29 s there), which runs the built CLI
+  in child processes.
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs

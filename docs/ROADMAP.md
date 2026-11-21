@@ -351,13 +351,16 @@ The items, in order:
   `pglite.test.ts` was query work instead, 5 to 11 s per run (the 260-row
   `addMany` and the audit rollback the slowest), but its five runs shared
   one worker. Same 215 tests; locally on Node 24 the project went from 47
-  to 51 s to 23 to 26 s. On the last `main` run, the Node jobs' Vitest
-  runs took 103 to 111 s, with `pglite.test.ts` at 70 to 74 s. Decided: a
-  saved data folder loaded per test over a reset between tests or
-  `clone()` (decision 60). `contract` stays on every Node version, since
-  the cut made that question moot. Found while building it:
-  `test/package/cli.test.ts` (32 s on that run) is now the slowest single
-  file locally. The rules are in DEVELOPMENT.md ("Testing" and "What CI runs").
+  to 51 s to 23 to 26 s. In CI, the Node jobs' Vitest runs went from 103
+  to 111 s (last `main` run, `pglite.test.ts` at 70 to 74 s) to 41 to
+  69 s on PR #127, with no `contract` file over 15 s, and the Node jobs
+  from about 2 minutes 10 seconds to 1 to 1.5 minutes. Decided: a saved
+  data folder loaded per test over a reset between tests or `clone()`
+  (decision 60). `contract` stays on every Node version, since the cut
+  made that question moot. Found while building it:
+  `test/package/cli.test.ts` (17 to 29 s on PR #127) is now the slowest
+  single file. The rules are in DEVELOPMENT.md ("Testing" and "What CI
+  runs").
 
 ## Backends and packages
 

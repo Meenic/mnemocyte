@@ -273,10 +273,11 @@ Facts checked on 2026-11-21; re-read the official pages in each PR:
 - `paths` filters apply to `push` and `pull_request` only, so the
   release workflow's `workflow_call` of CI always runs everything.
 - The site does not import `mnemocyte`. The only file it reads from
-  outside `site/` is `CHANGELOG.md` (`site/src/lib/changelog.ts`), and
-  `CHANGELOG.md` is not in the npm tarball (`pnpm pack --dry-run`).
+  outside `apps/site/` is `CHANGELOG.md`
+  (`apps/site/src/lib/changelog.ts`), and `CHANGELOG.md` is not in the
+  npm tarball (`pnpm pack --dry-run`).
 - The root `biome.json` includes `**`, so the root `pnpm lint` also checks
-  `site/` with the site's nested config.
+  `apps/site/` with the site's nested config.
 - `README.md` is not only docs: `test:readme` type-checks its `ts` blocks,
   and `test:jsdoc` the `@example` blocks in `src/`.
 
@@ -408,18 +409,16 @@ The items, in order:
   `"custom"` backend, and the suite on `vitest` as an optional peer. The
   contract is in DEVELOPMENT.md ("Store contract"); the guide is
   [guide/custom-stores.md](./guide/custom-stores.md).
-- [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
-  the site to `apps/site/`, and `examples/` becomes a workspace package on
-  `"mnemocyte": "workspace:*"` (decision 53). CI (with the path lists
-  in the `changes` job of `ci.yml`), the release workflow,
-  `scripts/`, the package tests, the paths in `AGENTS.md` and `docs/` and
-  the `[site/**]` section of `.editorconfig` follow, and so does the
-  local, gitignored `.claude/launch.json`. npm shows the README from the
-  package folder while GitHub shows the root one, and relative links such as
-  `docs/guide/api.md` would break there: how to keep one README for both
-  (`repository.directory` plus absolute links, or a copy at build) is the
-  maintainer's call, asked in that PR. `pnpm pack --dry-run` must list the
-  same files as before.
+- [x] `chore/workspace-layout`: the package moved to `packages/mnemocyte/`,
+  the site to `apps/site/`, and `examples/` became a workspace package on
+  `"mnemocyte": "workspace:*"` (decision 53), with CI's path lists, the
+  release workflow, the scripts, the package tests and the docs following.
+  Decided (decisions 74 and 75): the root `README.md` stays the only
+  source and `prepack` copies it into the package with absolute links,
+  `LICENSE` too; `docs/`, `CHANGELOG.md` and a root `scripts/check-links.mjs`
+  stay at the root; root scripts pass through with `--filter mnemocyte`.
+  `pnpm pack --dry-run` lists the same 79 files as before. The layout is in
+  DEVELOPMENT.md ("Structure").
 - [ ] `feat/mcp-server`: `@mnemocyte/mcp`, an MCP server with its own `bin`,
   at `packages/mcp/` in the pnpm workspace.
 

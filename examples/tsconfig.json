@@ -1,7 +1,8 @@
 {
 	// The settings the getting-started guide recommends for running .ts
 	// files with Node. `pnpm test:examples` type-checks the examples with it
-	// against the built dist/, the way an app imports "mnemocyte".
+	// against the built packages/mnemocyte/dist/, through the workspace:*
+	// link, the way an app imports "mnemocyte".
 	"compilerOptions": {
 		"target": "esnext",
 		"module": "nodenext",

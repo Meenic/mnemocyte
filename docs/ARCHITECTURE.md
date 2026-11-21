@@ -1161,10 +1161,13 @@ Dated 2026-10-26 unless noted.
       lists it. `generate` notices the changed expression and prints the
       `CREATE INDEX` and `ANALYZE` to append to that migration; a test
       applies both and compares the catalog with a fresh install.
-53. **Repository layout** (2026-11-20): the maintainer chose, with
-    `chore/repo-tidy`. The last two points landed there; the rest is the
-    target for `chore/workspace-layout`, and until then the root is both
-    the package and the workspace.
+53. **Repository layout** (2026-11-20, landed): the maintainer chose, with
+    `chore/repo-tidy`. The last two points landed there, the rest with
+    `chore/workspace-layout` (2026-11-21), which kept `docs/`,
+    `CHANGELOG.md` and `migrations/` where this list puts them; see
+    DEVELOPMENT.md, "Structure". The one change: `scripts/check-links.mjs`
+    stays in a root `scripts/` folder, since it checks the whole
+    repository's Markdown, not the package (decision 75).
     - The root keeps only what is about the whole repository: `apps/`,
       `packages/`, `examples/`, `docs/`, `.github/`, `.vscode/`, the
       dotfiles (`.gitignore`, `.gitattributes`, `.editorconfig`),
@@ -1173,7 +1176,8 @@ Dated 2026-10-26 unless noted.
       workspace `package.json`, `pnpm-workspace.yaml` and
       `pnpm-lock.yaml`.
     - The published package moves to `packages/mnemocyte/` with its
-      `src/`, `test/`, `migrations/`, `scripts/` and build, test and
+      `src/`, `test/`, `migrations/`, `scripts/` (but `check-links.mjs`)
+      and build, test and
       TypeScript configs; the site moves to `apps/site/`. `@mnemocyte/mcp`
       then lands as `packages/mcp/`. Libraries go under `packages/`, things
       that are run or deployed under `apps/`.
@@ -1495,3 +1499,39 @@ Dated 2026-10-26 unless noted.
     runs are outside semver, so a minor may add some; its options and
     exports are covered. `require()` of the entry works once `vitest` is
     installed, since require(esm) reaches Vitest's ES entry.
+74. **One README, copied into the package at pack time** (2026-11-21,
+    landed): the maintainer chose, with `chore/workspace-layout`, the root
+    `README.md` as the only source, with relative links, and a `prepack`
+    script (`scripts/copy-readme.mjs`) that writes a gitignored copy into
+    `packages/mnemocyte/` with every relative link turned into a
+    `https://github.com/Meenic/mnemocyte/blob/main/…` URL, over
+    `repository.directory` plus absolute links written by hand. GitHub
+    shows a README only from `.github/`, the root or `docs/`, and resolves
+    its relative links from that file; npm shows the tarball's README, and
+    npm's docs say only that it renders it as GitHub Flavored Markdown,
+    not how relative links resolve. Hand-written absolute links would also
+    leave `test:links`, which skips URLs. Links point at `main`, like the
+    URLs in `src/`, so a docs fix reaches npm readers without a release;
+    the cost is that npm can show docs ahead of an older installed
+    version. `repository.directory` is set anyway, as npm documents for
+    monorepos. `LICENSE` is copied the same way: pnpm's `publish` page
+    says it packs the workspace root's `LICENSE` when a package has none,
+    but its `pack` page does not, and the `package` tests run `pnpm pack`.
+    `pnpm pack --dry-run` lists the same 79 files as before the move. The
+    copies stay after a pack, because `--dry-run` runs `prepack` but not
+    `postpack`.
+75. **Root scripts pass through to the package** (2026-11-21, landed): the
+    maintainer chose, with `chore/workspace-layout`, a private root
+    `package.json` whose scripts call `pnpm --filter mnemocyte <script>`
+    for the commands in `AGENTS.md`, `CONTRIBUTING.md` and CI (`build`,
+    `checktypes`, `test:ci`, `test:checks`, `test:integration`,
+    `lint:package`, `pack:check`, the benches and a few more), over moving
+    every caller behind `--filter`. The commands keep their names, so CI
+    steps, docs and habits do not change, and `pnpm test` at the root runs
+    `test:links`, the package's `test` and `test:examples`. Scripts about
+    one file (`test:prune`, `test:exports`) stay in the package only.
+    `lint`, `lint:fix` and `format` run Biome over the whole repository
+    from the root, as before, and `test:links` runs the root
+    `scripts/check-links.mjs`, with `github-slugger` and Biome as the
+    root's only dev dependencies. `@mnemocyte/mcp` adds pass-throughs
+    under its own names when it lands.

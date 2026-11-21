@@ -4,7 +4,9 @@ Small scripts that use Mnemocyte the way an app does, importing
 `mnemocyte` by name. Node.js 22.18 and later run `.ts` files directly, so
 there is no build step for the examples themselves.
 
-From the repository root, install and build the package once:
+`examples/` is a workspace package that installs `mnemocyte` from
+`packages/mnemocyte/`, the way an app installs it from npm. From the
+repository root, install and build the package once:
 
 ```bash
 pnpm install

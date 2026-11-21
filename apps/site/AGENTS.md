@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Mnemocyte site
 
-The website for the `mnemocyte` library, in `site/` of the library's
+The website for the `mnemocyte` library, in `apps/site/` of the library's
 repository. `CLAUDE.md` only imports this file. The spec is
 `design/BRIEF.md`. The visual reference is `design/reference/index.html`:
 take layout, values and behaviour from its CSS instead of guessing, but
@@ -40,7 +40,7 @@ src/
    ├─ site.ts         URLs, nav links, tagline, description, SITE_URL
    ├─ cn.ts           class merging
    ├─ highlight.ts    Shiki, themed from the --code-* tokens
-   ├─ changelog.ts    parses ../CHANGELOG.md (fixture in fixtures/)
+   ├─ changelog.ts    parses ../../CHANGELOG.md (fixture in fixtures/)
    ├─ markdown.ts     Markdown → hast, relative links → GitHub
    ├─ tokens.ts       color tokens read from globals.css
    ├─ png.ts          RGBA → PNG, for the Open Graph image
@@ -71,16 +71,17 @@ src/
 - `SITE_URL` (`lib/site.ts`) is `VERCEL_PROJECT_PRODUCTION_URL` on Vercel
   and `http://localhost:3000` elsewhere. Metadata, the sitemap and
   robots.txt build absolute URLs from it; set the domain there once there
-  is one.
+  is one. The Vercel project's Root Directory must be `apps/site`.
 - The Open Graph image can't read CSS variables, so `lib/og.ts` reads the
   color tokens from `globals.css` and draws a colony frame with the same
   engine as the hero.
 
 ## Rules
 
-- Only touch `site/` (and, when the brief says so, `pnpm-workspace.yaml`,
-  `.gitignore` and the CI workflow). Never change the library: `src/`,
-  `test/`, `migrations/`, `scripts/`, `docs/`.
+- Only touch `apps/site/` (and, when the brief says so,
+  `pnpm-workspace.yaml`, `.gitignore` and the CI workflow). Never change
+  the library (`packages/mnemocyte/`), `examples/`, `scripts/` or
+  `docs/`.
 - Content comes from the repository (`README.md`, `docs/guide/*`,
   `CHANGELOG.md`, `docs/ROADMAP.md`). Never describe an API the library does
   not have. Keep the tagline "Memory for TypeScript AI apps." word for word.
@@ -106,8 +107,8 @@ src/
   (`page`, `layout`, `opengraph-image`, …) keep their default export. No
   redundant folder prefix (`lib/colony/engine.ts`, not
   `lib/colony/colony-engine.ts`).
-- Formatting and linting come from `site/biome.json`: Next's Biome defaults
-  (2-space indent, the Next and React rule domains), separate from the
+- Formatting and linting come from `apps/site/biome.json`: Next's Biome
+  defaults (2-space indent, the Next and React rule domains), separate from the
   library's config. The Biome binary is the repository root's. Fix lint
   errors properly; don't suppress them unless there is a real reason, and
   then write the reason in the suppression comment.

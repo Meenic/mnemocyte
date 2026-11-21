@@ -10,7 +10,7 @@
 		"**/coverage": true,
 		"**/*.tsbuildinfo": true,
 		"**/next-env.d.ts": true,
-		"bench-results": true,
+		"**/bench-results": true,
 		"examples/memory-data": true
 	}
 }

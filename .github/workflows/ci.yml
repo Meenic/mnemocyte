@@ -57,13 +57,13 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RELEASE: ${{ inputs.release }}
         run: |
-          everything='^(\.github/|\.gitignore$|\.gitattributes$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|biome\.json$)'
-          node='^(src/|test/|migrations/|scripts/|examples/|README\.md$|docs/guide/getting-started\.md$|tsconfig[^/]*\.json$|tsdown\.config\.ts$|vitest\.config\.ts$)'
-          package='^(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)'
-          postgres='^(src/|test/|migrations/|vitest\.config\.ts$)'
-          libsql='^(src/|test/|migrations/|vitest\.config\.ts$)'
-          site='^(site/|CHANGELOG\.md$)'
-          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|scripts/check-links\.mjs$)'
+          everything='^(\.github/|\.gitignore$|\.gitattributes$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|biome\.json$|packages/mnemocyte/package\.json$|examples/package\.json$)'
+          node='^(packages/mnemocyte/|examples/|README\.md$|LICENSE$|docs/guide/getting-started\.md$)'
+          package='^(packages/mnemocyte/(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)|README\.md$|LICENSE$)'
+          postgres='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
+          libsql='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
+          site='^(apps/site/|CHANGELOG\.md$)'
+          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/check-links\.mjs$)'
 
           files=''
           all=true
@@ -228,9 +228,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The root lint checks site/ with site/biome.json, like the site's own
-      # lint, but also fails on warnings. A site-only PR skips the Node jobs,
-      # so without it a warning would first fail on main.
+      # The root lint checks apps/site/ with apps/site/biome.json, like the
+      # site's own lint, but also fails on warnings. A site-only PR skips the
+      # Node jobs, so without it a warning would first fail on main.
       - name: Lint
         run: pnpm lint
 

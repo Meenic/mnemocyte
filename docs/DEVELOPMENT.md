@@ -9,7 +9,8 @@ started, the API reference, the CLI, Postgres setup, embedders, the AI SDK,
 limitations and upgrading. A change users can see
 updates the matching guide page in the same PR.
 
-Feature areas:
+Feature areas (their source and test paths are relative to
+`packages/mnemocyte/`):
 
 - [features/postgres.md](./features/postgres.md): schema, migrations and
   the `migrate()` runner, installation metadata, connections (`SqlExecutor`,
@@ -38,23 +39,65 @@ Feature areas:
 ## Setup
 
 - Node.js 22.18 or newer. CI runs 22.18, 24 and 26.
-- pnpm 12.15.0, matching `packageManager` in `package.json`. CI reads the
-  version from that field.
+- pnpm 12.15.0, matching `packageManager` in the root `package.json`. CI
+  reads the version from that field.
 - Postgres with pgvector only for the integration suite.
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev     # tsdown in watch mode
-pnpm build   # writes dist/
+pnpm build   # writes packages/mnemocyte/dist/
 ```
+
+Run commands from the repository root. The root scripts pass through to
+the package (`pnpm build` runs `pnpm --filter mnemocyte build`); the ones
+without a root script run from `packages/mnemocyte/`, or from the root as
+`pnpm --filter mnemocyte test:prune`.
 
 Mnemocyte is a library with a small CLI; there is no app to run. Try changes
 through the tests or from a consuming project. After `pnpm build`,
-`node dist/cli.mjs sql --dimensions 768` runs the bin without a database;
+`node packages/mnemocyte/dist/cli.mjs sql --dimensions 768` runs the bin
+without a database;
 `migrate` and `check` read `.env` in the current folder, so run them from
 a scratch project, never from this repository's root.
 
 ## Structure
+
+The repository is a pnpm workspace (`pnpm-workspace.yaml`: `packages/*`,
+`apps/*`, `examples`):
+
+```txt
+packages/mnemocyte/     the published `mnemocyte` package: src/, test/, migrations/, scripts/, its configs and package.json
+apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
+examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
+docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
+scripts/                check-links.mjs: relative links in the repository's Markdown
+package.json            the private workspace root: packageManager, Biome, github-slugger, pass-through scripts
+README.md, CHANGELOG.md, LICENSE, CONTRIBUTING.md, SECURITY.md, AGENTS.md, CLAUDE.md, biome.json, .github/, .vscode/
+```
+
+Libraries go under `packages/`, things that are run or deployed under
+`apps/` (decision 53). `@mnemocyte/mcp` lands as `packages/mcp/`.
+`examples/` stays at the root, where GitHub readers look for it, and
+installs `mnemocyte` from the workspace the way an app installs it from
+npm. Only the root `package.json` sets `packageManager`; `engines` is in
+both.
+
+`README.md` and `LICENSE` live at the root, where GitHub shows them. The
+package's `prepack` script (`scripts/copy-readme.mjs`) copies both into
+`packages/mnemocyte/` before `pnpm pack` and `pnpm publish`, so the
+tarball holds the same files as before the move. The copies are
+gitignored and stay after a pack (`pnpm pack --dry-run` runs `prepack`
+but not `postpack`). In the README copy, every relative link becomes a
+`https://github.com/Meenic/mnemocyte/blob/main/…` URL, the form the
+links in `src/` use: npmjs.com renders the tarball's README, and its
+handling of relative links is not documented. `repository.directory`
+(`packages/mnemocyte`) tells npm where the package sits in the
+repository. pnpm also packs the workspace root's `LICENSE` on publish
+when a package has none, but its `pack` page does not say so, hence the
+copy (decision 74).
+
+The package, relative to `packages/mnemocyte/`:
 
 ```txt
 src/
@@ -125,8 +168,7 @@ src/
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only); each file is an export
     internal/           http-embedder.ts (createFetchEmbedder, the fetch core of every HTTP embedder; createHttpEmbedder, OpenAI-shaped; option checks) and provider-error.ts (createProviderError, error body and Retry-After parsing)
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template; libsql/ holds the libSQL template (not shipped)
-scripts/                bundle-migrations.mjs, bundle-libsql-migrations.mjs, bench-libsql.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, check-links.mjs
-examples/               runnable scripts that import `mnemocyte` by name; not shipped
+scripts/                bundle-migrations.mjs, bundle-libsql-migrations.mjs, bench-libsql.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, copy-readme.mjs
 test/                   unit, package, integration, fixtures (the ones that do not ship), benchmarks
 ```
 
@@ -174,7 +216,8 @@ Node 22.18 fully supports. There are two configs:
   a missing return type in `src/` but CI does.
 
 `examples/tsconfig.json` stands on its own: no `paths`, so the examples
-resolve `mnemocyte` to `dist/` (see `pnpm test:examples` under Testing).
+resolve `mnemocyte` to `packages/mnemocyte/dist/` through the
+`workspace:*` link (see `pnpm test:examples` under Testing).
  The `.mjs` files ship with source maps that embed
 their sources. The `.d.mts` files ship without maps, because a declaration
 map points at `src/`, which is not published. With `sourcemap` on, rolldown
@@ -465,7 +508,10 @@ Design rules for the public surface:
 
 ## Testing
 
-Vitest has four projects (`vitest.config.ts`):
+Vitest has four projects (`packages/mnemocyte/vitest.config.ts`). Test
+and script paths in this section are relative to `packages/mnemocyte/`,
+where pnpm runs the package's scripts; `docs/`, `examples/` and the root
+`scripts/` are the repository's.
 
 | Project | Files | Imports | Command |
 |---|---|---|---|
@@ -480,9 +526,10 @@ Vitest has four projects (`vitest.config.ts`):
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` runs `pnpm test:links`, `pnpm test:checks`, then
-  `pnpm test:ci`. `test:checks` builds and runs the type-level checks:
-  `pnpm test:types`, `pnpm test:readme`, `pnpm test:jsdoc` and
+- `pnpm test` at the root runs `pnpm test:links`, the package's `test`
+  (`test:checks`, then `test:ci`), then `pnpm test:examples`. The root
+  `test:checks` is the package's `test:checks`, which builds and runs the
+  type-level checks `test:types`, `test:readme` and `test:jsdoc`, then
   `pnpm test:examples`. `test:ci` builds again (under a second) and runs
   `unit`, `contract` and `package`. CI runs `test:links` in the Links
   job, `test:checks` once, in the Checks job, and `test:ci` on each Node
@@ -494,7 +541,7 @@ Vitest has four projects (`vitest.config.ts`):
   no `test()` blocks, and Vitest's `--typecheck` drops type errors outside
   test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
   negative cases fail with TS2578 if they stop being errors.
-- `pnpm test:readme` (`scripts/check-readme.mjs`) type-checks the
+- `pnpm test:readme` (`scripts/check-readme.mjs`) type-checks the root
   `README.md` code blocks fenced as `ts` or `typescript`, so it also needs
   a build first. The blocks build on each other, so they are joined in
   order into `test/package/.readme/readme.ts`, and every line outside a
@@ -523,17 +570,21 @@ Vitest has four projects (`vitest.config.ts`):
   numbers, so the script maps errors back and prints
   `src/<file>:<line>:<col>` (the column is relative to the text after the
   ` * ` prefix). Types only, nothing runs.
-- `pnpm test:examples` runs `tsc --noEmit -p examples/tsconfig.json`, which
-  type-checks the scripts in `examples/` against the built `dist/`, so it
-  needs a build first. The examples import `mnemocyte` by name and resolve
-  it through self-reference, and the tsconfig is the one the
+- `pnpm test:examples` runs the `typecheck` script of
+  `@mnemocyte/examples` (`tsc --noEmit` with `examples/tsconfig.json`),
+  which type-checks the scripts in `examples/` against the built `dist/`,
+  so it needs a build first. The examples import `mnemocyte` by name and
+  resolve it through `examples/node_modules/mnemocyte`, the `workspace:*`
+  link to `packages/mnemocyte/`, and the tsconfig is the one the
   getting-started guide recommends for running `.ts` files with Node.
-  Types only: nothing runs, since every example needs an API key and some
-  need a database. `examples/` is not in `files`, so it does not ship.
-- `pnpm test:links` (`scripts/check-links.mjs`) checks that relative links
-  and `#anchors` in `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`,
-  `SECURITY.md`, `AGENTS.md`, `examples/README.md` and `docs/**/*.md`
-  point at files and headings that exist. It needs no build and prints
+  `examples/package.json` lists the drivers and `ai` they import, which are
+  optional peers of `mnemocyte`. Types only: nothing runs, since every
+  example needs an API key and some need a database. `examples/` is
+  outside the package, so it does not ship.
+- `pnpm test:links` (the root `scripts/check-links.mjs`) checks that
+  relative links and `#anchors` in `README.md`, `CHANGELOG.md`,
+  `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `examples/README.md` and
+  `docs/**/*.md` point at files and headings that exist. It needs no build and prints
   `<file>:<line>: <problem>` per broken link.
   - Files come from `git ls-files --cached --others --exclude-standard`
     that still exist on disk, so a link to a gitignored file (`dist/`,
@@ -738,9 +789,11 @@ Vitest has four projects (`vitest.config.ts`):
   superuser, as it is on the Docker image and in CI. `cli.test.ts` drops
   the tables and the extension the same way and leaves the same schema, and
   so does `schema-name.test.ts`, which also creates and drops its own
-  schemas. Files run serially with a 60 s timeout. When `DATABASE_URL` is unset the tests load `.env`, so set it
-  explicitly. A throwaway container, as CI uses (create the extension once
-  the server is up, then remove the container when done):
+  schemas. Files run serially with a 60 s timeout. When `DATABASE_URL` is
+  unset the tests load `.env` from the folder they run in,
+  `packages/mnemocyte/` (not the root), so set it explicitly. A throwaway
+  container, as CI uses (create the extension once the server is up, then
+  remove the container when done):
 
   ```bash
   docker run -d --name mnemocyte-test -e POSTGRES_PASSWORD=postgres -p 5434:5432 pgvector/pgvector:0.8.7-pg18
@@ -843,17 +896,18 @@ when the release calls it (`workflow_call`). It has these jobs:
 
 | Job | Runs | A PR runs it when it changes |
 |---|---|---|
-| `Node 22.18`, `Node 24`, `Node 26` | `test:ci` (build, then `unit`, `contract` and `package`) | `src/**`, `test/**`, `migrations/**`, `scripts/**`, `examples/**`, `README.md`, `docs/guide/getting-started.md`, the root `tsconfig*.json`, `tsdown.config.ts`, `vitest.config.ts` |
+| `Node 22.18`, `Node 24`, `Node 26` | `test:ci` (build, then `unit`, `contract` and `package`) | `packages/mnemocyte/**`, `examples/**`, `README.md`, `LICENSE`, `docs/guide/getting-started.md` |
 | `Checks` | `checktypes`, `lint`, `test:checks` (build, then `test:types`, `test:readme`, `test:jsdoc`, `test:examples`), on Node 24 | the same files as the Node jobs |
-| `Package` | `lint:package` (build, pack, publint, attw) | `src/**`, `migrations/**`, `scripts/**`, the root `tsconfig*.json`, `tsdown.config.ts` |
-| `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
+| `Package` | `lint:package` (build, pack, publint, attw) | in `packages/mnemocyte/`: `src/**`, `migrations/**`, `scripts/**`, `tsconfig*.json`, `tsdown.config.ts`; and `README.md`, `LICENSE` |
+| `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | in `packages/mnemocyte/`: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
-| `Site` | the root `lint`, then the site's typecheck, test and build | `site/**`, `CHANGELOG.md` |
-| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `scripts/check-links.mjs` |
+| `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
+| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/check-links.mjs` |
 
-- A change to `.github/**`, `package.json`, `pnpm-lock.yaml`,
-  `pnpm-workspace.yaml`, `biome.json`, `.gitignore` or `.gitattributes`
-  runs every job. Biome skips what `.gitignore` ignores
+- A change to `.github/**`, the root `package.json`,
+  `packages/mnemocyte/package.json`, `examples/package.json`,
+  `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `biome.json`, `.gitignore` or
+  `.gitattributes` runs every job. Biome skips what `.gitignore` ignores
   (`vcs.useIgnoreFile` in both Biome configs), and `.gitattributes` sets
   the line endings of every checked-out file.
 - Other files run no job: `CLAUDE.md`, `.editorconfig` and `.vscode/`.
@@ -865,6 +919,10 @@ when the release calls it (`workflow_call`). It has these jobs:
   another kind of file (a migration, a source file) needs that path on
   the Links list. The job installs dependencies for `github-slugger` and
   does not build.
+- `README.md` and `LICENSE` are on the Node and Package lists because the
+  package's `prepack` copies them into the tarball, which the `package`
+  project and `lint:package` pack. `apps/site/AGENTS.md` is on the Links
+  list because `CONTRIBUTING.md` links to it.
 - `docs/guide/getting-started.md` is on the Node list because
   `test/cli/init.test.ts` compares its `memory.ts` blocks with the
   `mnemocyte init` templates. A test or script that starts reading another
@@ -919,8 +977,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   cache (keyed on `pnpm-lock.yaml`) is restored whole either way. A
   filtered job that saved the cache first would also leave the Site job a
   partial store until the lockfile changes.
-- The Site job runs the root `pnpm lint`: it checks `site/` with
-  `site/biome.json`, as the site's own `lint` does, but also fails on
+- The Site job runs the root `pnpm lint`: it checks `apps/site/` with
+  `apps/site/biome.json`, as the site's own `lint` does, but also fails on
   warnings. A site-only PR skips `Checks`, so a warning would
   otherwise first fail on `main`.
 - The first job, `Changes`, decides. On a pull request the checkout is the
@@ -1001,9 +1059,9 @@ When to release (agreed 2026-11-15), with no fixed schedule:
   only when the maintainer asks for it.
 
 1. On a `chore/release-vX.Y.Z` branch, run
-   `pnpm version patch --no-git-tag-version` (or `minor`), which changes only
-   `package.json`, then move the `CHANGELOG.md` `[Unreleased]` entries under
-   the new version. Bump first: pnpm 12 stops with
+   `pnpm version patch --no-git-tag-version` (or `minor`) in
+   `packages/mnemocyte/`, which changes only its `package.json`, then move
+   the `CHANGELOG.md` `[Unreleased]` entries under the new version. Bump first: pnpm 12 stops with
    `ERR_PNPM_UNCLEAN_WORKING_TREE` when the tree has changes (or add
    `--no-git-checks`). For the first release candidate, give the version
    (`pnpm version 1.0.0-rc.1 --no-git-tag-version`), since `premajor` would
@@ -1024,7 +1082,8 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 
 The release workflow runs three stages:
 
-- `verify` fails unless the tag equals `v` + the `package.json` version,
+- `verify` fails unless the tag equals `v` + the
+  `packages/mnemocyte/package.json` version,
   `CHANGELOG.md` has a `## [X.Y.Z] - YYYY-MM-DD` heading and an
   `[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` compare link for that
   version, and the tagged commit is on `main`. It runs before `ci`, so a
@@ -1041,7 +1100,9 @@ The release workflow runs three stages:
   `publish` have theirs.
 - `publish` runs in the `npm` GitHub environment, the only job with
   `id-token: write`. It installs without a dependency cache and runs
-  `pnpm publish --no-git-checks`; `prepublishOnly` builds `dist/`. A version
+  `pnpm publish --no-git-checks` in `packages/mnemocyte/`;
+  `prepublishOnly` builds `dist/` and `prepack` copies the root
+  `README.md` and `LICENSE` in ("Structure"). A version
   with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
   `latest`, and the other tag stays where it was. `--no-git-checks` is
   needed because a tag checkout is a detached HEAD; `verify` does the

@@ -36,7 +36,11 @@ Thumbs.db
 
 # Testing
 coverage
-test/package/.readme
+packages/mnemocyte/test/package/.readme
+
+# The README and LICENSE copies `pnpm pack` makes (scripts/copy-readme.mjs)
+packages/mnemocyte/README.md
+packages/mnemocyte/LICENSE
 bench-results
 
 # Runtime

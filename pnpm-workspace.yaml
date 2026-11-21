@@ -1,5 +1,7 @@
 packages:
-  - site
+  - packages/*
+  - apps/*
+  - examples
 
 allowBuilds:
   esbuild: true

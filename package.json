@@ -1,189 +1,38 @@
 {
-	"name": "mnemocyte",
-	"version": "1.2.1",
-	"description": "Memory for TypeScript AI apps.",
+	"private": true,
 	"type": "module",
 	"packageManager": "pnpm@12.15.0",
-	"sideEffects": false,
-	"files": [
-		"dist",
-		"migrations/*.sql"
-	],
-	"exports": {
-		".": {
-			"types": "./dist/index.d.mts",
-			"default": "./dist/index.mjs"
-		},
-		"./ai-sdk": {
-			"types": "./dist/ai-sdk.d.mts",
-			"default": "./dist/ai-sdk.mjs"
-		},
-		"./embedders": {
-			"types": "./dist/embedders/index.d.mts",
-			"default": "./dist/embedders/index.mjs"
-		},
-		"./embedders/cohere": {
-			"types": "./dist/embedders/cohere.d.mts",
-			"default": "./dist/embedders/cohere.mjs"
-		},
-		"./embedders/google": {
-			"types": "./dist/embedders/google.d.mts",
-			"default": "./dist/embedders/google.mjs"
-		},
-		"./embedders/openai": {
-			"types": "./dist/embedders/openai.d.mts",
-			"default": "./dist/embedders/openai.mjs"
-		},
-		"./embedders/openai-compatible": {
-			"types": "./dist/embedders/openai-compatible.d.mts",
-			"default": "./dist/embedders/openai-compatible.mjs"
-		},
-		"./embedders/voyage": {
-			"types": "./dist/embedders/voyage.d.mts",
-			"default": "./dist/embedders/voyage.mjs"
-		},
-		"./libsql": {
-			"types": "./dist/libsql.d.mts",
-			"default": "./dist/libsql.mjs"
-		},
-		"./postgres": {
-			"types": "./dist/postgres.d.mts",
-			"default": "./dist/postgres.mjs"
-		},
-		"./store": {
-			"types": "./dist/store.d.mts",
-			"default": "./dist/store.mjs"
-		},
-		"./store/test": {
-			"types": "./dist/store-test.d.mts",
-			"default": "./dist/store-test.mjs"
-		},
-		"./package.json": "./package.json"
-	},
-	"types": "./dist/index.d.mts",
-	"bin": {
-		"mnemocyte": "./dist/cli.mjs"
-	},
 	"scripts": {
-		"build": "tsdown",
-		"dev": "tsdown --watch",
-		"checktypes": "tsc --noEmit --project tsconfig.build.json && tsc --noEmit",
-		"test": "pnpm run test:links && pnpm run test:checks && pnpm run test:ci",
-		"test:checks": "pnpm build && pnpm test:types && pnpm test:readme && pnpm test:jsdoc && pnpm test:examples",
-		"test:ci": "pnpm build && vitest run --project unit --project contract --project package",
-		"test:unit": "vitest run --project unit",
-		"test:contract": "vitest run --project contract",
-		"test:exports": "pnpm build && pnpm test:types && vitest run --project package",
-		"test:types": "tsc --noEmit -p test/package/tsconfig.json",
-		"test:readme": "node scripts/check-readme.mjs",
+		"build": "pnpm --filter mnemocyte build",
+		"dev": "pnpm --filter mnemocyte dev",
+		"checktypes": "pnpm --filter mnemocyte checktypes",
+		"test": "pnpm run test:links && pnpm --filter mnemocyte test && pnpm run test:examples",
+		"test:checks": "pnpm --filter mnemocyte test:checks && pnpm run test:examples",
+		"test:ci": "pnpm --filter mnemocyte test:ci",
+		"test:unit": "pnpm --filter mnemocyte test:unit",
+		"test:contract": "pnpm --filter mnemocyte test:contract",
+		"test:types": "pnpm --filter mnemocyte test:types",
+		"test:readme": "pnpm --filter mnemocyte test:readme",
+		"test:jsdoc": "pnpm --filter mnemocyte test:jsdoc",
 		"test:links": "node scripts/check-links.mjs",
-		"test:jsdoc": "node scripts/check-jsdoc.mjs",
-		"test:examples": "tsc --noEmit -p examples/tsconfig.json",
-		"test:observability": "vitest run --project unit test/observability/hooks.test.ts",
-		"test:resilience": "vitest run --project unit test/resilience/resilience.test.ts",
-		"test:prune": "vitest run --project unit test/prune/prune.test.ts",
-		"test:dedup": "vitest run --project unit test/dedup/find-duplicates.test.ts",
-		"test:audit": "vitest run --project unit test/audit/audit-log.test.ts",
-		"test:consolidate": "vitest run --project unit test/consolidate/consolidate.test.ts",
-		"test:retrieval": "vitest run --project unit test/retrieval/quality.test.ts",
-		"test:context": "vitest run --project unit test/context/builder.test.ts",
-		"test:integration": "vitest run --project integration",
-		"test:integration:libsql": "vitest run --project integration test/integration/libsql-remote.test.ts",
-		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
-		"bench:postgres": "vitest bench --project \"integration (bench)\" test/benchmarks/postgres-plans.bench.ts",
-		"bench:libsql": "pnpm build && node scripts/bench-libsql.mjs",
+		"test:examples": "pnpm --filter @mnemocyte/examples typecheck",
+		"test:integration": "pnpm --filter mnemocyte test:integration",
+		"test:integration:libsql": "pnpm --filter mnemocyte test:integration:libsql",
+		"bench:retrieval": "pnpm --filter mnemocyte bench:retrieval",
+		"bench:postgres": "pnpm --filter mnemocyte bench:postgres",
+		"bench:libsql": "pnpm --filter mnemocyte bench:libsql",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
-		"lint:package": "pnpm build && node scripts/check-package.mjs",
+		"lint:package": "pnpm --filter mnemocyte lint:package",
 		"format": "biome format --write",
-		"migration:bundle": "node scripts/bundle-migrations.mjs && node scripts/bundle-libsql-migrations.mjs",
-		"pack:check": "pnpm pack --dry-run",
-		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/Meenic/mnemocyte.git"
-	},
-	"keywords": [
-		"ai-memory",
-		"agent-memory",
-		"llm",
-		"rag",
-		"embeddings",
-		"vector-search",
-		"semantic-search",
-		"postgres",
-		"pgvector",
-		"libsql",
-		"turso",
-		"sqlite",
-		"ai-sdk"
-	],
-	"author": "Meenic",
-	"license": "MIT",
-	"funding": "https://github.com/sponsors/Meenic",
-	"bugs": {
-		"url": "https://github.com/Meenic/mnemocyte/issues"
-	},
-	"homepage": "https://github.com/Meenic/mnemocyte#readme",
-	"publishConfig": {
-		"access": "public",
-		"provenance": true
+		"migration:bundle": "pnpm --filter mnemocyte migration:bundle",
+		"pack:check": "pnpm --filter mnemocyte pack:check"
 	},
 	"engines": {
 		"node": ">=22.18"
 	},
-	"peerDependencies": {
-		"@electric-sql/pglite": "^0.5.16",
-		"@libsql/client": "^0.18.0",
-		"ai": "^7.0.135",
-		"drizzle-orm": "^0.45.4",
-		"pg": "^8.23.1",
-		"postgres": "^3.4.9 || ^4",
-		"vitest": "^5.0.0"
-	},
-	"peerDependenciesMeta": {
-		"@electric-sql/pglite": {
-			"optional": true
-		},
-		"@libsql/client": {
-			"optional": true
-		},
-		"ai": {
-			"optional": true
-		},
-		"drizzle-orm": {
-			"optional": true
-		},
-		"pg": {
-			"optional": true
-		},
-		"postgres": {
-			"optional": true
-		},
-		"vitest": {
-			"optional": true
-		}
-	},
 	"devDependencies": {
-		"@arethetypeswrong/cli": "0.18.5",
 		"@biomejs/biome": "2.6.3",
-		"@electric-sql/pglite": "^0.5.16",
-		"@electric-sql/pglite-pgvector": "^0.0.17",
-		"@libsql/client": "^0.18.0",
-		"@types/node": "^22.20.5",
-		"@types/pg": "^8.23.1",
-		"ai": "^7.0.170",
-		"drizzle-kit": "0.31.11",
-		"drizzle-orm": "^0.45.4",
-		"github-slugger": "^2.0.0",
-		"pg": "^8.23.1",
-		"postgres": "^4.1.1",
-		"postgres-3": "npm:postgres@3.4.9",
-		"publint": "0.3.25",
-		"tsdown": "0.23.1",
-		"typescript": "^6.0.3",
-		"vite": "^8.3.5",
-		"vitest": "5.0.5"
+		"github-slugger": "^2.0.0"
 	}
 }

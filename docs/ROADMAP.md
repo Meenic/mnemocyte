@@ -361,14 +361,17 @@ The items, in order:
   `test/package/cli.test.ts` (17 to 29 s on PR #127) is now the slowest
   single file. The rules are in DEVELOPMENT.md ("Testing" and "What CI
   runs").
-- [ ] `chore/libsql-package-timeout`: `test/package/libsql.test.ts` has no
-  timeout of its own, so it runs under Vitest's 5 s default while it
-  copies the packed package into a temporary consumer and runs ESM and
-  `require()` scripts there. It
-  took 4.2 to 5.2 s alone on Windows (Node 24) and timed out once in a
-  full `pnpm test` on 2026-11-21 (found in `chore/libsql-remote-ci`).
-  Give it the 30 s the other packed-consumer tests use
-  (`require-esm.test.ts`, `lazy-postgres.test.ts`).
+- [x] `chore/libsql-package-timeout`: `test/package/libsql.test.ts` ran
+  under Vitest's 5 s default while it copied the packed package into a
+  temporary consumer and ran ESM and `require()` scripts there. It took
+  4.2 to 5.2 s alone on Windows (Node 24) and timed out once in a full
+  `pnpm test` on 2026-11-21 (found in `chore/libsql-remote-ci`). It now
+  has the 30 s the other packed-consumer tests use (`require-esm.test.ts`,
+  `lazy-postgres.test.ts`), as a per-test argument rather than a
+  `testTimeout` for the whole `package` project, so the in-process
+  package tests keep the 5 s default. No other `test/package` test runs
+  scripts in a consumer under the default; the rule is in DEVELOPMENT.md
+  ("Testing").
 
 ## Backends and packages
 

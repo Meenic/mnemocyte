@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -30,6 +30,21 @@ jobs:
           version="$(node -p 'require("./package.json").version')"
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      # The GitHub release is written from this section and the site shows
+      # it, so the version needs its heading and its compare link.
+      - name: Check CHANGELOG.md has the version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          escaped="${version//./\\.}"
+          if ! grep -qE "^## \[$escaped\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\$" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no \"## [$version] - YYYY-MM-DD\" heading"
+            exit 1
+          fi
+          if ! grep -qE "^\[$escaped\]: https://github\.com/Meenic/mnemocyte/" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no \"[$version]: https://github.com/Meenic/mnemocyte/...\" link"
             exit 1
           fi
 
@@ -46,6 +61,10 @@ jobs:
     name: CI
     needs: verify
     uses: ./.github/workflows/ci.yml
+    # Skips the Site job: the site is not in the npm tarball, and the
+    # release PR and the push to main already ran it.
+    with:
+      release: true
 
   publish:
     name: Publish to npm
@@ -60,16 +79,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       # No dependency cache in the job that publishes.
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           package-manager-cache: false
@@ -89,3 +108,32 @@ jobs:
             *-*) dist_tag=next ;;
           esac
           pnpm publish --no-git-checks --tag "$dist_tag" --publish-wait-timeout 600000
+
+      # After a final release, `next` must not stay on an older version, or
+      # `mnemocyte@next` installs it. A `next` ahead of this release (a
+      # prerelease of a later version) stays. pnpm removes the tag over OIDC
+      # only when "Allow npm dist-tag" is on for the trusted publisher. The
+      # version is already published, so a failure here only warns.
+      - name: Remove stale next dist-tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          name="$(node -p 'require("./package.json").name')"
+          version="${GITHUB_REF_NAME#v}"
+          if ! next="$(pnpm view "$name" dist-tags.next)"; then
+            echo "::warning::Could not read the next dist-tag; check it with: npm view $name dist-tags"
+            exit 0
+          fi
+          if [ -z "$next" ]; then
+            echo "No next dist-tag"
+            exit 0
+          fi
+          base="${next%%[-+]*}"
+          if [ "$(printf '%s\n%s\n' "$base" "$version" | sort -V | head -n 1)" != "$base" ]; then
+            echo "next ($next) is ahead of $version; keeping it"
+            exit 0
+          fi
+          if pnpm dist-tag rm "$name" next; then
+            echo "Removed next ($next)"
+          else
+            echo "::warning::next still points at $next. Turn on \"Allow npm dist-tag\" for the trusted publisher, or run: npm dist-tag rm $name next"
+          fi

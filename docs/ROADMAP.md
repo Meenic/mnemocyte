@@ -321,23 +321,25 @@ The items, in order:
   link's text must stay on one line, so the check fails a wrapped one
   (none today). External URLs are not checked.
   The rules are in DEVELOPMENT.md ("Testing" and "What CI runs").
-- [ ] `chore/release-checks`: `verify` also fails when `CHANGELOG.md` has
-  no `## [X.Y.Z] - date` section for the tag. After a final release,
-  `next` should not stay on an older prerelease (DEVELOPMENT.md
-  "Releasing", step 5): npm trusted publishing can run dist-tag commands
-  when "Allow npm dist-tag" is on for the trusted publisher (off by
-  default; npm CLI 11.21.0+ or 12.2.0+, so check what the job runs and
-  whether pnpm passes `dist-tag` to npm). With it on, the publish job
-  removes a stale `next`; without it, it prints a warning. Pin the
-  actions `release.yml` uses, since its publish job holds the npm OIDC
-  token: GitHub's "Secure use reference" now ranks a workflow lockfile
-  above full-length commit SHA pins, so read it first. With SHA pins, add
-  Dependabot for the `github-actions` ecosystem only, with a `cooldown`,
-  so it does not fight pnpm's minimum release age. Decisions for the
-  maintainer: turning on "Allow npm dist-tag", and lockfile or SHA pins.
-  Also ask whether the release's `ci` run still needs the `Site` job: the
-  site is not in the tarball, but `ci.yml` runs every job outside pull
-  requests.
+- [x] `chore/release-checks`: `verify` also fails when `CHANGELOG.md`
+  has no `## [X.Y.Z] - date` heading or no `[X.Y.Z]:` compare link for
+  the tag (every tag from v0.1.3 on has both). After a final release, the
+  publish job removes `next` when it is not ahead of the release, and
+  only warns when that fails. Both workflows pin `actions/checkout`,
+  `pnpm/action-setup` and `actions/setup-node` to full-length SHAs, and
+  `.github/dependabot.yml` updates them (`github-actions` only, weekly,
+  one group, 7-day cooldown). The release's `ci` run passes
+  `release: true` and skips `Site`. Decided: "Allow npm dist-tag" on
+  (decision 57), SHA pins over a workflow lockfile (decision 58) and no
+  `Site` in the release run (decision 59). Found while building it: pnpm
+  12.12.1 and newer runs `dist-tag` over OIDC itself, so the npm CLI
+  version did not matter (Node 24.22.3 bundles npm 11.19.1, below the
+  11.21.0 npm needs), and `pnpm dist-tag rm` does not prompt (a local
+  registry stub's 403 failed it at once with `ERR_PNPM_FORBIDDEN`);
+  `cooldown` supports only `default-days` for actions; each action's
+  major tag pointed at the same commit as its newest release, so pinning
+  changed nothing at run time. The rules are in DEVELOPMENT.md
+  ("Releasing" and "What CI runs").
 - [ ] `chore/contract-time`: the `contract` project is most of a Node
   job's time. On the last `main` run before `chore/ci-matrix`,
   `test/contract/pglite.test.ts` took 72 s and `cli.test.ts`,
@@ -392,6 +394,10 @@ Not queued. Each one comes back as an item when its condition holds.
   an optional peer.
 - A weekly scheduled CI run on `main`, if a new Node 24 or 26 patch ever
   breaks a build between PRs.
+- A workflow lockfile (`.github/workflows/actions.lock`, made with
+  `gh actions-lock`) instead of SHA pins, once GitHub's docs say it is
+  generally available or an action the workflows use becomes a composite
+  action that uses other actions (decision 58).
 - A Windows CI job for the package and CLI tests (`tar.exe`, directory
   junctions), if a Windows-only bug ships; the maintainer develops on
   Windows, and Windows runners are slower.

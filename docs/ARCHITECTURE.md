@@ -1235,3 +1235,42 @@ Dated 2026-10-26 unless noted.
     "similar to" GitHub's, not the same, and it is a downloaded Rust
     binary in CI. The cost is an install step in the Links job (1 to 4
     seconds from the store cache).
+57. **The release removes a stale `next`** (2026-11-21, landed): the
+    maintainer chose, with `chore/release-checks`, to turn on "Allow npm
+    dist-tag" for the trusted publisher so the publish job can run
+    `pnpm dist-tag rm mnemocyte next` after a final release, over keeping
+    it a manual step. The option is off by default and separate from
+    publish access; it lets `release.yml` in the `npm` environment add,
+    move or remove this package's tags. pnpm 12.12.1 and newer does the
+    OIDC exchange for `dist-tag` itself, so the runner's npm (11.19.1 on
+    Node 24.22.3, below the 11.21.0 npm needs) is not involved. The step removes
+    `next` only when it is not ahead of the release, and only warns on
+    failure, because the version is already published and a re-run would
+    fail on the publish. The cost is a wider token: a compromised publish
+    job could also move or remove tags, though it could already publish a
+    new version under `latest`.
+58. **Actions pinned to commit SHAs, updated by Dependabot** (2026-11-21,
+    landed): the maintainer chose, with `chore/release-checks`,
+    full-length SHA pins with the release in a comment in `ci.yml` and
+    `release.yml`, and Dependabot for `github-actions` only with a 7-day
+    cooldown, over a workflow lockfile (`.github/workflows/actions.lock`).
+    GitHub's "Secure use reference" ranks the lockfile first, but its
+    main gain over SHA pins is pinning transitive actions, and
+    `actions/checkout`, `pnpm/action-setup` and `actions/setup-node` are
+    JavaScript actions that use none. The lockfile needs the
+    `gh actions-lock` extension for every `uses:` change and a `--verify`
+    check in CI, and its docs do not say it is generally available. SHA
+    pins are readable in the YAML and meet GitHub's "Require actions to
+    be pinned to a full-length commit SHA" policy. The costs: Dependabot
+    alerts skip SHA-pinned actions, a Dependabot PR every week or so, and
+    SHA diffs that need the comment to read. Revisit when the lockfile is
+    generally available or an action becomes a composite action that
+    uses other actions.
+59. **The release's CI run skips the Site job** (2026-11-21, landed): the
+    maintainer chose, with `chore/release-checks`, a `release` input on
+    `ci.yml`'s `workflow_call` that `release.yml` sets and the `Changes`
+    job reads, over running every job on the tagged commit. The site is
+    not in the npm tarball, and its only input from outside `site/`,
+    `CHANGELOG.md`, was checked on the release PR and on the push to
+    `main`, so a site failure should not block a publish. `Links` stays,
+    since `README.md` ships in the tarball.

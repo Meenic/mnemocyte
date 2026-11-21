@@ -1274,3 +1274,18 @@ Dated 2026-10-26 unless noted.
     `CHANGELOG.md`, was checked on the release PR and on the push to
     `main`, so a site failure should not block a publish. `Links` stays,
     since `README.md` ships in the tarball.
+60. **Contract tests start PGlite from a saved data folder** (2026-11-21,
+    landed): with `chore/contract-time`, the `contract` project's global
+    setup saves one initialized PGlite data folder and every contract
+    database starts from it with `loadDataDir`, over resetting one
+    migrated PGlite per file between tests or `clone()`. Without
+    `loadDataDir` PGlite runs initdb on every start (about 0.75 s, against
+    0.2 s for a load and 30 ms for `CREATE EXTENSION` plus `migrate`), and
+    the files that open a database per test need different starting
+    points (no extension, an older schema, another schema name, a text
+    search configuration), which a reset would have to undo table by
+    table. In PGlite 0.5.16 `clone()` is `dumpDataDir("none")` plus a
+    `loadDataDir` start, so it costs the same and needs a running source,
+    one more initdb per test file. The five PGlite runs of the store
+    contract also moved to a file each, since one file runs on one
+    worker.

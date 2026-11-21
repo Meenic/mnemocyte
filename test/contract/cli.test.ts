@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+import type { PGlite } from "@electric-sql/pglite";
 import { createMemory, type Embedder } from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -12,6 +11,7 @@ import { assertSchemaFlag, type MemoryTarget } from "../../src/cli/target.js";
 import { textSearchTarget } from "../../src/cli/text-search.js";
 import { readMemoryClientInternals } from "../../src/memory/client-internals.js";
 import { createTestIo } from "../cli/io.js";
+import { openPGlite } from "./pglite.js";
 
 const ALL_MIGRATIONS =
 	"0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id";
@@ -49,7 +49,7 @@ describe("CLI commands (PGlite)", () => {
 	let db: PGlite;
 
 	beforeEach(async () => {
-		db = await PGlite.create({ extensions: { vector } });
+		db = await openPGlite({ pgvector: false });
 	});
 
 	afterEach(async () => {

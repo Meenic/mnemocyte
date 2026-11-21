@@ -1,8 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+import type { PGlite } from "@electric-sql/pglite";
 import {
 	generateDrizzleJson,
 	generateMigration,
@@ -25,6 +24,7 @@ import {
 import { splitStatements } from "../../src/db/migrations/runner.js";
 import { postgresTables } from "../../src/db/tables.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
+import { openPGlite } from "./pglite.js";
 
 /**
  * The generated files import drizzle-orm, so they are written under the
@@ -51,7 +51,7 @@ afterEach(async () => {
 
 /** An in-process Postgres 18 without pgvector or tables. */
 async function createDb(): Promise<PGlite> {
-	const db = await PGlite.create({ extensions: { vector } });
+	const db = await openPGlite({ pgvector: false });
 	open.push(db);
 	return db;
 }

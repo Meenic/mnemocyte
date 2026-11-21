@@ -495,18 +495,17 @@ Vitest has three projects (`vitest.config.ts`):
   checks that `pruneAuditLog` batches resume along the events' scope
   index. The `contract` project
   runs the suite on PGlite, direct and through Drizzle: an in-process Postgres 18 with
-  pgvector 0.8.7, so no service is needed and every Node job in CI runs it
-  (about 20 s). Opening a PGlite takes several seconds under load, so the
-  project raises both `testTimeout` and `hookTimeout` to 60 s; the files
-  open it in `beforeAll` or `beforeEach`, and at Vitest's 10 s hook default
-  the first hook failed on busy Windows machines. Those runs go through
-  `postgresStore`; another passes the
-  PGlite instance itself as `store` (`directClient`), which covers
-  detection and the lazily imported backend end to end. One more
-  PGlite run wraps the executor and fails on any parameter that is not a
-  string, finite number or null, the values postgres.js 3.x and 4.x write
-  the same. A last PGlite run (`schemaName`) keeps the tables in a schema
-  that is not on `search_path`, so a query that names a table bare fails.
+  pgvector 0.8.7, so no service is needed and every Node job in CI runs it.
+  Each run is a file of its own, so Vitest spreads them over its workers.
+  `pglite-direct.test.ts` passes the PGlite instance itself as `store`
+  (`directClient`), which covers detection and the lazily imported
+  backend end to end; the other runs go through `postgresStore`
+  (`pglite-drizzle.test.ts` with a Drizzle client).
+  `pglite-params.test.ts` wraps the executor and fails on any parameter
+  that is not a string, finite number or null, the values postgres.js 3.x
+  and 4.x write the same.
+  `pglite-schema.test.ts` (`schemaName`) keeps the tables in a schema that
+  is not on `search_path`, so a query that names a table bare fails.
   `test/integration/drivers.test.ts` runs it on real Postgres through
   postgres.js, a node-postgres `Pool`, and Drizzle over each, and once on
   postgres.js with the tables in a schema, installed from the rendered
@@ -515,6 +514,23 @@ Vitest has three projects (`vitest.config.ts`):
   migrates (adopting an existing schema), works in its own namespaces,
   deletes them afterwards, and uses the integration files' embedding model
   name so it can share their database.
+- Contract files open PGlite with `openPGlite({ pgvector })`
+  (`test/contract/pglite.ts`), not `PGlite.create`. Without `loadDataDir`,
+  PGlite runs initdb on every start: on Node 24 with 8 cores an idle
+  `PGlite.create` took about 0.75 s, a start from a saved data folder about
+  0.2 s, and `CREATE EXTENSION vector` plus `migrate` about 30 ms. So the
+  project's global setup (`test/contract/pglite.global-setup.ts`) starts
+  one PGlite, saves its data folder with `dumpDataDir("none")` to a
+  temporary file (about 40 MB; the 5 MB gzip took 0.1 s longer to load)
+  and passes the path through `provide`. `openPGlite` reads the file once
+  per test file, starts each database from it with `loadDataDir` and the
+  pgvector extension's files, then runs `CREATE EXTENSION vector` unless
+  `pgvector` is false. The saved folder has no extension created and no
+  tables, so each test still gets a database of its own in the state it
+  needs (decision 60). On the same machine the project took 47 to 51 s
+  before this and 23 to 26 s after. It keeps `testTimeout` and
+  `hookTimeout` at 60 s: at Vitest's 10 s hook default, opening a PGlite
+  in the first hook failed on busy Windows machines before this change.
 - The integration suite needs a **disposable** Postgres database with
   pgvector available and a role that can create tables in `public` and
   create schemas. Each file
@@ -661,8 +677,13 @@ when the release calls it (`workflow_call`). It has these jobs:
   file needs that file on its job's list.
 - Lint and the type-level checks give the same result on every Node
   version, so they run once, in `Checks`, and the Node jobs run only the
-  build and the Vitest projects. Most of a Node job's time is the
-  `contract` project on PGlite.
+  build and the Vitest projects. The `contract` project on PGlite still
+  takes the most Vitest time summed over its files, but since it starts
+  each database from a saved data folder ("Testing" above) none of its
+  files took over 15 s on PR #127, where the Vitest runs took 41 to 69 s
+  (103 to 111 s before). The slowest single file is now
+  `test/package/cli.test.ts` (17 to 29 s there), which runs the built CLI
+  in child processes.
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs

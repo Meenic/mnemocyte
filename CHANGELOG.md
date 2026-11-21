@@ -28,8 +28,9 @@ see [upgrading](docs/guide/upgrading.md#12--13).
   file; see [docs/guide/libsql.md](docs/guide/libsql.md).
   - Vector search is an exact scan of the scope, with filters applied
     first, so it never returns fewer results than exist. Its time grows
-    with the scope: a search took about 0.7 s at 10,000 memories of 1,536
-    dimensions on a local file.
+    with the scope: at 10,000 memories of 1,536 dimensions on a local
+    file, a search took about 0.5 s, or 0.7 s when keyword search also
+    matched every memory.
   - Keyword search uses FTS5 and `bm25`, with English stemming by default
     (`textSearchConfig: "porter"`) or `"unicode61"`. Any word of the query
     matches, and query syntax is matched as words.
@@ -48,8 +49,8 @@ see [upgrading](docs/guide/upgrading.md#12--13).
   `mnemocyte/store/test` entry runs the tests every built-in backend passes
   against your store, under Vitest. `vitest` 5 is a new optional peer,
   needed only for this entry.
-- `MnemocyteBackend` has new members, `"libsql"` and `"custom"` (a store
-  from `defineMemoryStore`).
+- **New backend values.** `MnemocyteBackend` has new members, `"libsql"`
+  and `"custom"` (a store from `defineMemoryStore`).
 
 ### Changed
 

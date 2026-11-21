@@ -644,7 +644,9 @@ Vitest has four projects (`vitest.config.ts`):
   on a test file that points the suite at `libsqlStore` on a database
   file, with a trigger as `failAuditWrites`. The child gets the parent's
   environment minus `VITEST*` and `NODE_OPTIONS`, so it does not think it
-  runs inside the parent's worker, and a 180 s timeout.
+  runs inside the parent's worker, and a 180 s timeout. The test reads the
+  child's `--reporter json` file, not its console: CI forces colored
+  output, which puts escape codes inside the summary lines.
   `test/store/define-memory-store.test.ts` covers the checks and the
   fallbacks, and `test/cli/custom-store.test.ts` the CLI's messages.
 - The shared contract runs the scoped-API, bound-scope, context,

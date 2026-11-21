@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -69,7 +69,10 @@ describe("mnemocyte/store/test from the packed package", () => {
 				([key]) => !key.startsWith("VITEST") && key !== "NODE_OPTIONS",
 			),
 		);
-		const { stdout } = await execFileAsync(
+		// The JSON report, not the console: CI forces colored output, which
+		// puts escape codes inside the summary lines.
+		const report = join(packed.dir, "report.json");
+		await execFileAsync(
 			process.execPath,
 			[
 				join(packed.nodeModules, "vitest", "vitest.mjs"),
@@ -78,10 +81,29 @@ describe("mnemocyte/store/test from the packed package", () => {
 				packed.dir,
 				"--testTimeout",
 				"60000",
+				"--reporter",
+				"json",
+				"--outputFile",
+				report,
 			],
 			{ cwd: packed.dir, env: { ...env, NODE_PATH: "" }, windowsHide: true },
 		);
-		expect(stdout).toMatch(/Tests\s+\d+ passed/);
-		expect(stdout).not.toMatch(/skipped|failed/);
+		const results = JSON.parse(await readFile(report, "utf8")) as {
+			success: boolean;
+			numTotalTests: number;
+			numPassedTests: number;
+			numFailedTests: number;
+			numPendingTests: number;
+			numTodoTests: number;
+		};
+		expect(results).toMatchObject({
+			success: true,
+			numFailedTests: 0,
+			// The audit rollback test runs: failAuditWrites is given.
+			numPendingTests: 0,
+			numTodoTests: 0,
+		});
+		expect(results.numPassedTests).toBeGreaterThan(20);
+		expect(results.numPassedTests).toBe(results.numTotalTests);
 	}, 180_000);
 });

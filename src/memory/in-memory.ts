@@ -10,6 +10,7 @@ import type {
 	Memory,
 	MemoryConfig,
 	MemoryStats,
+	PruneResult,
 } from "../types.js";
 import {
 	deletedEvents,
@@ -18,6 +19,7 @@ import {
 	updatedEvent,
 	writtenEvent,
 } from "./audit.js";
+import { IN_MEMORY_CAPABILITIES } from "./capabilities.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { auditTimestampText } from "./cursor.js";
 import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
@@ -35,17 +37,22 @@ import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
 	type StoreAuditPosition,
-	type StoreConsolidateInput,
 	type StoreConsolidateResult,
-	type StoreDeleteInput,
+	type StoreDeletedMemory,
+	type StoreDeleteFilterInput,
+	type StoreDeleteMemoryInput,
 	type StoreDeleteResult,
-	type StoreDuplicateInput,
+	type StoreDeleteScopeInput,
+	type StoreDuplicateFilter,
+	type StoreDuplicatePage,
+	type StoreDuplicatePageInput,
 	type StoreDuplicatePair,
+	type StoreDuplicateTop,
+	type StoreDuplicateTopInput,
 	type StoreLexicalCandidate,
-	type StoreLexicalSearchInput,
 	type StoreListPosition,
+	type StoreSearchInput,
 	type StoreVectorCandidate,
-	type StoreVectorSearchInput,
 } from "./store.js";
 
 function comparePositions(
@@ -188,7 +195,7 @@ export function createInMemoryStore(): MemoryStore {
 
 	/** The memories a duplicate search compares. */
 	function duplicateCandidates(
-		input: Omit<StoreDuplicateInput, "limit">,
+		input: StoreDuplicateFilter,
 		signal: AbortSignal | undefined,
 	): StoredMemory[] {
 		throwIfAborted(signal);
@@ -207,8 +214,8 @@ export function createInMemoryStore(): MemoryStore {
 	}
 
 	function deleteAuditEvents(
-		input: StoreDeleteInput,
-		result: StoreDeleteResult,
+		input: StoreDeleteMemoryInput,
+		result: { deletedIds: readonly string[]; restoredIds: readonly string[] },
 	): AuditEvent[] {
 		return deletedEvents({
 			scope: input.visibility.scope,
@@ -238,8 +245,239 @@ export function createInMemoryStore(): MemoryStore {
 		}
 	}
 
+	function vectorCandidates(
+		input: StoreSearchInput,
+		query: NonNullable<StoreSearchInput["vector"]>,
+		now: Date,
+	): StoreVectorCandidate[] {
+		const minScore = query.minScore ?? 0;
+		return Array.from(memories.values())
+			.filter((memory) => matchesMemoryFilter(memory, input, now))
+			.map((memory) => ({
+				memory: cloneMemory(memory),
+				vectorScore: toVectorScore(
+					cosineSimilarity(memory.embedding, query.embedding),
+				),
+			}))
+			.filter((candidate) => candidate.vectorScore >= minScore)
+			.sort((a, b) => b.vectorScore - a.vectorScore)
+			.slice(0, query.limit);
+	}
+
+	function lexicalCandidates(
+		input: StoreSearchInput,
+		query: NonNullable<StoreSearchInput["lexical"]>,
+		now: Date,
+	): StoreLexicalCandidate[] {
+		const scoreLexical = createLexicalScorer(query.query);
+		return Array.from(memories.values())
+			.filter((memory) => matchesMemoryFilter(memory, input, now))
+			.map((memory) => ({
+				memory: cloneMemory(memory),
+				lexicalScore: scoreLexical(memory.content),
+			}))
+			.filter((candidate) => candidate.lexicalScore > 0)
+			.sort((a, b) => b.lexicalScore - a.lexicalScore)
+			.slice(0, query.limit);
+	}
+
+	function deleteMemory(
+		input: StoreDeleteMemoryInput,
+	): StoreDeletedMemory | null {
+		throwIfAborted(input.signal);
+		const { memoryId, visibility } = input;
+		const memory = memories.get(memoryId);
+		if (!memory || !isVisible(memory.scope, visibility)) {
+			return null;
+		}
+		const direct = dependentsOf(memoryId);
+		if (direct.length > 0 && input.dependents === "reject") {
+			throw memoryHasDependentsError();
+		}
+		if (input.dependents === "restore") {
+			if (direct.some((dependent) => !isVisible(dependent.scope, visibility))) {
+				throw hiddenDependentsError();
+			}
+			const result = {
+				deletedIds: [memoryId],
+				restoredIds: direct.map((dependent) => dependent.id),
+			};
+			const events = input.audit ? deleteAuditEvents(input, result) : [];
+			for (const dependent of direct) {
+				dependent.supersededBy = null;
+				dependent.supersededAt = null;
+				dependent.updatedAt = input.now;
+			}
+			memories.delete(memoryId);
+			auditLog.push(...events);
+			return { target: "memory", found: true, ...result };
+		}
+		// "delete", or "reject" without dependents: the memory and every
+		// memory consolidated into it, directly or through another.
+		const tree: StoredMemory[] = [];
+		const pending = [...direct];
+		for (let next = pending.pop(); next; next = pending.pop()) {
+			tree.push(next);
+			pending.push(...dependentsOf(next.id));
+		}
+		if (tree.some((dependent) => !isVisible(dependent.scope, visibility))) {
+			throw hiddenDependentsError();
+		}
+		const result = {
+			deletedIds: [
+				memoryId,
+				...tree.map((dependent) => dependent.id).sort(compareIds),
+			],
+			restoredIds: [],
+		};
+		const events = input.audit ? deleteAuditEvents(input, result) : [];
+		for (const id of result.deletedIds) {
+			memories.delete(id);
+		}
+		auditLog.push(...events);
+		return { target: "memory", found: true, ...result };
+	}
+
+	function deleteScope({ selector, signal }: StoreDeleteScopeInput): number {
+		throwIfAborted(signal);
+		const targetIds = new Set(
+			Array.from(memories.values())
+				.filter((memory) => isSelected(memory.scope, selector))
+				.map((memory) => memory.id),
+		);
+		assertNoDependents(targetIds, true);
+		for (const id of targetIds) {
+			memories.delete(id);
+		}
+		for (let index = auditLog.length - 1; index >= 0; index -= 1) {
+			const event = auditLog[index];
+			if (event && isSelected(event.scope, selector)) {
+				auditLog.splice(index, 1);
+			}
+		}
+		return targetIds.size;
+	}
+
+	function prune(input: StoreDeleteFilterInput): PruneResult {
+		throwIfAborted(input.signal);
+		assertPruneFilterHasSelector(input);
+		const matched: StoredMemory[] = [];
+		for (const memory of memories.values()) {
+			throwIfAborted(input.signal);
+			if (matchesPruneFilter(memory, input, input.now)) {
+				matched.push(memory);
+			}
+		}
+		const dryRun = input.dryRun === true;
+		if (!dryRun) {
+			throwIfAborted(input.signal);
+			assertNoDependents(new Set(matched.map((memory) => memory.id)), true);
+			const counts = new Map<
+				string,
+				{ namespace: string; entityId: string; count: number }
+			>();
+			for (const memory of matched) {
+				const entityKey = JSON.stringify([
+					memory.scope.namespace,
+					memory.scope.entityId,
+				]);
+				const entity = counts.get(entityKey) ?? {
+					namespace: memory.scope.namespace,
+					entityId: memory.scope.entityId,
+					count: 0,
+				};
+				entity.count += 1;
+				counts.set(entityKey, entity);
+			}
+			const events = input.audit
+				? [...counts.values()].map((entity) =>
+						prunedEvent({
+							selector: input.selector,
+							...entity,
+							now: input.now,
+						}),
+					)
+				: [];
+			for (const memory of matched) {
+				memories.delete(memory.id);
+			}
+			auditLog.push(...events);
+		}
+		return {
+			matchedCount: matched.length,
+			deletedCount: dryRun ? 0 : matched.length,
+			dryRun,
+		};
+	}
+
+	function findDuplicatePairs(
+		input: StoreDuplicateTopInput,
+	): StoreDuplicateTop {
+		const candidates = duplicateCandidates(input, input.signal);
+		// Exact k nearest neighbors per memory; the Postgres store gets them
+		// from its HNSW index. Pairs are keyed by their ordered ids.
+		const pairs = new Map<string, FoundPair>();
+		for (const memory of candidates) {
+			throwIfAborted(input.signal);
+			for (const { other, similarity } of nearestNeighbors(
+				memory,
+				candidates,
+				input.neighbors,
+			)) {
+				if (similarity >= input.threshold) {
+					addPair(pairs, memory, other, similarity);
+				}
+			}
+		}
+		return {
+			mode: "top",
+			pairs: sortPairs(pairs).slice(0, input.limit).map(toStorePair),
+		};
+	}
+
+	function findDuplicatePage(
+		input: StoreDuplicatePageInput,
+	): StoreDuplicatePage {
+		const candidates = duplicateCandidates(input, input.signal);
+		const compared = candidates
+			.filter(({ id }) => input.afterId === undefined || id > input.afterId)
+			.sort((x, y) => compareIds(x.id, y.id))
+			.slice(0, input.batchSize);
+		const pairs = new Map<string, FoundPair>();
+		for (const memory of compared) {
+			throwIfAborted(input.signal);
+			for (const { other, similarity } of nearestNeighbors(
+				memory,
+				candidates,
+				input.neighbors,
+			)) {
+				if (similarity < input.threshold) {
+					continue;
+				}
+				// A smaller id was compared on an earlier page (or this one) and
+				// owns the pair when it found this memory itself.
+				if (
+					other.id < memory.id &&
+					nearestNeighbors(other, candidates, input.neighbors).some(
+						(neighbor) => neighbor.other.id === memory.id,
+					)
+				) {
+					continue;
+				}
+				addPair(pairs, memory, other, similarity);
+			}
+		}
+		return {
+			mode: "page",
+			pairs: sortPairs(pairs).map(toStorePair),
+			compared: compared.length,
+			lastId: compared.at(-1)?.id ?? null,
+		};
+	}
+
 	return {
 		backend: "in-memory",
+		capabilities: IN_MEMORY_CAPABILITIES,
 		async migrate() {
 			return {
 				applied: [],
@@ -256,8 +494,8 @@ export function createInMemoryStore(): MemoryStore {
 			return null;
 		},
 		async ensureEmbeddingCompatibility() {},
-		async insertMemories(rows, options) {
-			throwIfAborted(options?.signal);
+		async insert({ memories: rows, audit, signal }) {
+			throwIfAborted(signal);
 			// Keys are distinct within a call, so every row's target can be
 			// found, and its audit event built, before anything changes.
 			const planned = rows.map((row) => ({
@@ -265,7 +503,7 @@ export function createInMemoryStore(): MemoryStore {
 				existing: row.key === null ? undefined : findByKey(row.scope, row.key),
 			}));
 			const events =
-				options?.audit === true
+				audit === true
 					? planned.map(({ row, existing }) =>
 							writtenEvent(
 								existing
@@ -299,36 +537,21 @@ export function createInMemoryStore(): MemoryStore {
 			auditLog.push(...events);
 			return results;
 		},
-		async vectorSearch(input: StoreVectorSearchInput) {
+		async searchCandidates(input) {
 			const now = new Date();
-			const minVectorScore = input.minVectorScore ?? 0;
-			return Array.from(memories.values())
-				.filter((memory) => matchesMemoryFilter(memory, input, now))
-				.map((memory) => ({
-					memory: cloneMemory(memory),
-					vectorScore: toVectorScore(
-						cosineSimilarity(memory.embedding, input.embedding),
-					),
-				}))
-				.filter((candidate) => candidate.vectorScore >= minVectorScore)
-				.sort((a, b) => b.vectorScore - a.vectorScore)
-				.slice(0, input.limit) satisfies StoreVectorCandidate[];
+			return {
+				vector:
+					input.vector === undefined
+						? []
+						: vectorCandidates(input, input.vector, now),
+				lexical:
+					input.lexical === undefined
+						? []
+						: lexicalCandidates(input, input.lexical, now),
+			};
 		},
-		async lexicalSearch(input: StoreLexicalSearchInput) {
-			const now = new Date();
-			const scoreLexical = createLexicalScorer(input.query);
-			return Array.from(memories.values())
-				.filter((memory) => matchesMemoryFilter(memory, input, now))
-				.map((memory) => ({
-					memory: cloneMemory(memory),
-					lexicalScore: scoreLexical(memory.content),
-				}))
-				.filter((candidate) => candidate.lexicalScore > 0)
-				.sort((a, b) => b.lexicalScore - a.lexicalScore)
-				.slice(0, input.limit) satisfies StoreLexicalCandidate[];
-		},
-		async listMemories(input, options) {
-			throwIfAborted(options?.signal);
+		async list(input) {
+			throwIfAborted(input.signal);
 			const now = new Date();
 			const after =
 				input.position === undefined
@@ -345,9 +568,9 @@ export function createInMemoryStore(): MemoryStore {
 				.slice(0, input.limit)
 				.map(cloneMemory);
 		},
-		async markMemoriesAccessed(visibility, memoryIds) {
+		async markAccessed({ visibility, ids }) {
 			const now = new Date();
-			for (const id of memoryIds) {
+			for (const id of ids) {
 				const memory = memories.get(id);
 				if (memory && isVisible(memory.scope, visibility)) {
 					memory.lastAccessedAt = now;
@@ -355,19 +578,21 @@ export function createInMemoryStore(): MemoryStore {
 				}
 			}
 		},
-		async getMemory(visibility, memoryId, options) {
-			throwIfAborted(options?.signal);
-			const memory = memories.get(memoryId);
-			return memory && isVisible(memory.scope, visibility)
-				? cloneMemory(memory)
-				: null;
+		async get(input) {
+			throwIfAborted(input.signal);
+			if ("key" in input) {
+				const memory = findByKey(input.scope, input.key);
+				return memory ? [cloneMemory(memory)] : [];
+			}
+			return input.ids.flatMap((id) => {
+				throwIfAborted(input.signal);
+				const memory = memories.get(id);
+				return memory && isVisible(memory.scope, input.visibility)
+					? [cloneMemory(memory)]
+					: [];
+			});
 		},
-		async getMemoryByKey(scope, key, options) {
-			throwIfAborted(options?.signal);
-			const memory = findByKey(scope, key);
-			return memory ? cloneMemory(memory) : null;
-		},
-		async updateMemory(input) {
+		async update(input) {
 			const memory = memories.get(input.id);
 			if (!memory || !isVisible(memory.scope, input.visibility)) {
 				return null;
@@ -428,193 +653,27 @@ export function createInMemoryStore(): MemoryStore {
 			}
 			return cloneMemory(memory);
 		},
-		async deleteMemory(input, options) {
-			throwIfAborted(options?.signal);
-			const { memoryId, visibility } = input;
-			const memory = memories.get(memoryId);
-			if (!memory || !isVisible(memory.scope, visibility)) {
-				return null;
+		async delete(input): Promise<StoreDeleteResult> {
+			switch (input.target) {
+				case "memory":
+					return deleteMemory(input) ?? { target: "memory", found: false };
+				case "scope":
+					return { target: "scope", deletedCount: deleteScope(input) };
+				case "filter":
+					return { target: "filter", ...prune(input) };
 			}
-			const direct = dependentsOf(memoryId);
-			if (direct.length > 0 && input.dependents === "reject") {
-				throw memoryHasDependentsError();
-			}
-			if (input.dependents === "restore") {
-				if (
-					direct.some((dependent) => !isVisible(dependent.scope, visibility))
-				) {
-					throw hiddenDependentsError();
-				}
-				const result = {
-					deletedIds: [memoryId],
-					restoredIds: direct.map((dependent) => dependent.id),
-				};
-				const events = input.audit ? deleteAuditEvents(input, result) : [];
-				for (const dependent of direct) {
-					dependent.supersededBy = null;
-					dependent.supersededAt = null;
-					dependent.updatedAt = input.now;
-				}
-				memories.delete(memoryId);
-				auditLog.push(...events);
-				return result;
-			}
-			// "delete", or "reject" without dependents: the memory and every
-			// memory consolidated into it, directly or through another.
-			const tree: StoredMemory[] = [];
-			const pending = [...direct];
-			for (let next = pending.pop(); next; next = pending.pop()) {
-				tree.push(next);
-				pending.push(...dependentsOf(next.id));
-			}
-			if (tree.some((dependent) => !isVisible(dependent.scope, visibility))) {
-				throw hiddenDependentsError();
-			}
-			const result = {
-				deletedIds: [
-					memoryId,
-					...tree.map((dependent) => dependent.id).sort(compareIds),
-				],
-				restoredIds: [],
-			};
-			const events = input.audit ? deleteAuditEvents(input, result) : [];
-			for (const id of result.deletedIds) {
-				memories.delete(id);
-			}
-			auditLog.push(...events);
-			return result;
 		},
-		async deleteScope(selector, options) {
-			throwIfAborted(options?.signal);
-			const targetIds = new Set(
-				Array.from(memories.values())
-					.filter((memory) => isSelected(memory.scope, selector))
-					.map((memory) => memory.id),
-			);
-			assertNoDependents(targetIds, true);
-			for (const id of targetIds) {
-				memories.delete(id);
-			}
-			for (let index = auditLog.length - 1; index >= 0; index -= 1) {
-				const event = auditLog[index];
-				if (event && isSelected(event.scope, selector)) {
-					auditLog.splice(index, 1);
-				}
-			}
-			return targetIds.size;
+		async findDuplicates(input) {
+			return input.mode === "top"
+				? findDuplicatePairs(input)
+				: findDuplicatePage(input);
 		},
-		async prune(input, options) {
-			throwIfAborted(options?.signal);
-			assertPruneFilterHasSelector(input);
-			const matched: StoredMemory[] = [];
-			for (const memory of memories.values()) {
-				throwIfAborted(options?.signal);
-				if (matchesPruneFilter(memory, input, input.now)) {
-					matched.push(memory);
-				}
-			}
-			const dryRun = input.dryRun === true;
-			if (!dryRun) {
-				throwIfAborted(options?.signal);
-				assertNoDependents(new Set(matched.map((memory) => memory.id)), true);
-				const counts = new Map<
-					string,
-					{ namespace: string; entityId: string; count: number }
-				>();
-				for (const memory of matched) {
-					const entityKey = JSON.stringify([
-						memory.scope.namespace,
-						memory.scope.entityId,
-					]);
-					const entity = counts.get(entityKey) ?? {
-						namespace: memory.scope.namespace,
-						entityId: memory.scope.entityId,
-						count: 0,
-					};
-					entity.count += 1;
-					counts.set(entityKey, entity);
-				}
-				const events = input.audit
-					? [...counts.values()].map((entity) =>
-							prunedEvent({
-								selector: input.selector,
-								...entity,
-								now: input.now,
-							}),
-						)
-					: [];
-				for (const memory of matched) {
-					memories.delete(memory.id);
-				}
-				auditLog.push(...events);
-			}
-			return {
-				matchedCount: matched.length,
-				deletedCount: dryRun ? 0 : matched.length,
-				dryRun,
-			};
-		},
-		async findDuplicatePairs(input, options) {
-			const candidates = duplicateCandidates(input, options?.signal);
-			// Exact k nearest neighbors per memory; the Postgres store gets them
-			// from its HNSW index. Pairs are keyed by their ordered ids.
-			const pairs = new Map<string, FoundPair>();
-			for (const memory of candidates) {
-				throwIfAborted(options?.signal);
-				for (const { other, similarity } of nearestNeighbors(
-					memory,
-					candidates,
-					input.neighbors,
-				)) {
-					if (similarity >= input.threshold) {
-						addPair(pairs, memory, other, similarity);
-					}
-				}
-			}
-			return sortPairs(pairs).slice(0, input.limit).map(toStorePair);
-		},
-		async findDuplicatePage(input, options) {
-			const candidates = duplicateCandidates(input, options?.signal);
-			const compared = candidates
-				.filter(({ id }) => input.afterId === undefined || id > input.afterId)
-				.sort((x, y) => compareIds(x.id, y.id))
-				.slice(0, input.batchSize);
-			const pairs = new Map<string, FoundPair>();
-			for (const memory of compared) {
-				throwIfAborted(options?.signal);
-				for (const { other, similarity } of nearestNeighbors(
-					memory,
-					candidates,
-					input.neighbors,
-				)) {
-					if (similarity < input.threshold) {
-						continue;
-					}
-					// A smaller id was compared on an earlier page (or this one) and
-					// owns the pair when it found this memory itself.
-					if (
-						other.id < memory.id &&
-						nearestNeighbors(other, candidates, input.neighbors).some(
-							(neighbor) => neighbor.other.id === memory.id,
-						)
-					) {
-						continue;
-					}
-					addPair(pairs, memory, other, similarity);
-				}
-			}
-			return {
-				pairs: sortPairs(pairs).map(toStorePair),
-				compared: compared.length,
-				lastId: compared.at(-1)?.id ?? null,
-			};
-		},
-		async listAuditLog(input, options) {
-			throwIfAborted(options?.signal);
+		async listAudit(input) {
+			throwIfAborted(input.signal);
 			const position = input.position;
 			return auditLog
 				.filter((event) => {
-					throwIfAborted(options?.signal);
+					throwIfAborted(input.signal);
 					if (!isSelected(event.scope, input.selector)) {
 						return false;
 					}
@@ -648,8 +707,8 @@ export function createInMemoryStore(): MemoryStore {
 					position: auditPosition(event),
 				}));
 		},
-		async pruneAuditLog(input, options) {
-			throwIfAborted(options?.signal);
+		async pruneAudit(input) {
+			throwIfAborted(input.signal);
 			// One synchronous pass: with nothing awaited in between, batches
 			// would change nothing, so `batchSize` only matters on Postgres.
 			const before = input.before.getTime();
@@ -672,27 +731,8 @@ export function createInMemoryStore(): MemoryStore {
 			auditLog.length = kept;
 			return { matchedCount: deletedCount, deletedCount, dryRun: false };
 		},
-		async loadConsolidationTargets(visibility, ids, options) {
-			return ids.flatMap((id) => {
-				throwIfAborted(options?.signal);
-				const memory = memories.get(id);
-				if (!memory || !isVisible(memory.scope, visibility)) {
-					return [];
-				}
-				return [
-					{
-						id: memory.id,
-						tags: [...memory.tags],
-						supersededBy: memory.supersededBy,
-					},
-				];
-			});
-		},
-		async consolidate(
-			input: StoreConsolidateInput,
-			options,
-		): Promise<StoreConsolidateResult> {
-			throwIfAborted(options?.signal);
+		async consolidate(input): Promise<StoreConsolidateResult> {
+			throwIfAborted(input.signal);
 			const survivor = memories.get(input.survivorId);
 			if (
 				!survivor ||
@@ -708,7 +748,7 @@ export function createInMemoryStore(): MemoryStore {
 			const newlySuperseded: StoredMemory[] = [];
 			const targets: StoredMemory[] = [];
 			for (const id of input.supersededIds) {
-				throwIfAborted(options?.signal);
+				throwIfAborted(input.signal);
 				const memory = memories.get(id);
 				if (!memory || !isVisible(memory.scope, input.visibility)) {
 					continue;
@@ -737,7 +777,7 @@ export function createInMemoryStore(): MemoryStore {
 			if (input.mergeTags && newlySuperseded.length > 0) {
 				const mergedTags = new Set(survivor.tags);
 				for (const memory of newlySuperseded) {
-					throwIfAborted(options?.signal);
+					throwIfAborted(input.signal);
 					for (const tag of memory.tags) {
 						mergedTags.add(tag);
 					}
@@ -756,7 +796,7 @@ export function createInMemoryStore(): MemoryStore {
 						}),
 					)
 				: [];
-			throwIfAborted(options?.signal);
+			throwIfAborted(input.signal);
 			for (const memory of newlySuperseded) {
 				memory.supersededBy = input.survivorId;
 				memory.supersededAt = input.now;
@@ -769,10 +809,10 @@ export function createInMemoryStore(): MemoryStore {
 			auditLog.push(...auditEvents);
 			return { supersededIds: newlySuperseded.map((memory) => memory.id) };
 		},
-		async stats(selector, now, options) {
-			throwIfAborted(options?.signal);
+		async stats({ selector, now, signal }) {
+			throwIfAborted(signal);
 			const selected = Array.from(memories.values()).filter((memory) => {
-				throwIfAborted(options?.signal);
+				throwIfAborted(signal);
 				return isSelected(memory.scope, selector);
 			});
 			return {

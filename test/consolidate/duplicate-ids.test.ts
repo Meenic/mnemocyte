@@ -18,17 +18,19 @@ describe("consolidation duplicate loser IDs", () => {
 			audit: { enabled: true },
 		};
 		const baseStore = createInMemoryStore();
-		let targetLoadCount = 0;
+		let readCount = 0;
 		let mutationCount = 0;
 		const store: MemoryStore = {
 			...baseStore,
-			async loadConsolidationTargets(entityId, ids, options) {
-				targetLoadCount += 1;
-				return baseStore.loadConsolidationTargets(entityId, ids, options);
+			async get(input) {
+				// Each call that passes validation reads its survivor, then its
+				// targets; nothing else in the fixture reads by id.
+				readCount += 1;
+				return baseStore.get(input);
 			},
-			async consolidate(input, options) {
+			async consolidate(input) {
 				mutationCount += 1;
-				return baseStore.consolidate(input, options);
+				return baseStore.consolidate(input);
 			},
 		};
 		const client = createMemoryClient(config, store);
@@ -37,11 +39,11 @@ describe("consolidation duplicate loser IDs", () => {
 			client,
 			entityPrefix: `memory_${Date.now()}_${Math.random().toString(36).slice(2)}`,
 			afterDuplicateRejection() {
-				expect(targetLoadCount).toBe(0);
+				expect(readCount).toBe(0);
 				expect(mutationCount).toBe(0);
 			},
 		});
-		expect(targetLoadCount).toBe(2);
+		expect(readCount).toBe(4);
 		expect(mutationCount).toBe(1);
 	});
 });

@@ -1,7 +1,7 @@
 import { createMemoryClient } from "./memory/client-core.js";
 import { createInMemoryStore } from "./memory/in-memory.js";
 import { createScopedClient } from "./memory/scope-binding.js";
-import { resolveStore } from "./memory/store-input.js";
+import { assertStoreContract, resolveStore } from "./memory/store-input.js";
 import {
 	assertEmbedder,
 	assertKnownConfigKeys,
@@ -31,7 +31,8 @@ import type { MemoryClient, MemoryConfig } from "./types.js";
  * `namespace`.
  * @throws {MnemocyteError} With code `"CONFIG"` if `embedder`, `namespace`,
  * retrieval tuning, provider resilience, or `store` is malformed, including a
- * client that matches no supported driver.
+ * client that matches no supported driver or a store from another installed
+ * copy of the package with a different store contract.
  *
  * @example Postgres-backed client bound to a user
  * ```ts
@@ -62,6 +63,7 @@ export function createMemory(config: MemoryConfig): MemoryClient<boolean> {
 		config.store === undefined
 			? createInMemoryStore()
 			: resolveStore(config.store);
+	assertStoreContract(store);
 	return createScopedClient(createMemoryClient(config, store), {
 		config,
 		backend: store.backend,

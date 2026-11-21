@@ -25,8 +25,8 @@ function createClientWithInsertTransform(
 	const baseStore = createInMemoryStore();
 	const store: MemoryStore = {
 		...baseStore,
-		async insertMemories(rows) {
-			return transform(await baseStore.insertMemories(rows));
+		async insert(input) {
+			return transform(await baseStore.insert({ memories: input.memories }));
 		},
 	};
 	return createMemoryClient(config, store);

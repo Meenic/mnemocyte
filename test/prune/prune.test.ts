@@ -24,9 +24,11 @@ describe("prune", () => {
 			},
 			{
 				...baseStore,
-				async prune(filter, options) {
-					pruneCalls += 1;
-					return baseStore.prune(filter, options);
+				async delete(input) {
+					if (input.target === "filter") {
+						pruneCalls += 1;
+					}
+					return baseStore.delete(input);
 				},
 			},
 		);

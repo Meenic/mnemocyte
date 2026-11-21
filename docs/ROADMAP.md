@@ -364,15 +364,26 @@ The items, in order:
 
 ## Backends and packages
 
-- [ ] `refactor/store-contract`: the internal `MemoryStore` contract shrinks
+- [x] `refactor/store-contract`: the internal `MemoryStore` contract went
   from 22 methods (plus the `backend` and `schemaName` properties, counted
-  on 2026-11-21) to the ten or so in ARCHITECTURE.md "Layers" and gains
-  `capabilities`, before a second backend depends on it.
+  on 2026-11-21) to 16 and gained `capabilities`, before a second backend
+  depends on it. Decided: which methods merge and which stay, the
+  in-memory capability values (with a new `"overlap"` for its keyword
+  score), and no store method of its own for `experimental.*`
+  (decision 61). The contract is in DEVELOPMENT.md ("Store contract").
 - [ ] `feat/libsql-store`: a libSQL / Turso backend at `mnemocyte/libsql`,
-  on the user's own libSQL client as an optional peer.
+  on the user's own libSQL client as an optional peer. It is the first
+  backend whose capabilities differ in ways that matter
+  (`filteredVectorSearch: "postfilter"`, which can return fewer than the
+  limit; `lexicalSearch: "bm25"`), so it decides whether the core warns on
+  one and how the shared fixtures set expectations from them (decision
+  61).
 - [ ] `feat/public-store-contract`: `MemoryStoreV1` exported from
   `mnemocyte/store`, with the contract test suite at
   `mnemocyte/store/test`, so third-party backends can prove they conform.
+  Open there: whether `inspectInstallation`, `setTextSearchConfig` and
+  `ensureEmbeddingCompatibility` become optional, with the core supplying
+  what a store without schema returns today (decision 61).
 - [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
   the site to `apps/site/`, and `examples/` becomes a workspace package on
   `"mnemocyte": "workspace:*"` (decision 53). CI (with the path lists

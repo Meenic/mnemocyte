@@ -879,7 +879,8 @@ as a type. A `pg.Client` still type-checks, because its `query` fits
 
 A client passed as `store` gets a lazy store (`createLazyStore`,
 `src/memory/lazy-store.ts`): a `MemoryStore` whose `backend` is
-`"postgres"` from the start and whose every method first awaits one shared
+`"postgres"` and whose `capabilities` are the Postgres ones from the start,
+and whose every method first awaits one shared
 `import("./postgres-backend.js")`, which builds the real store with
 `executorFor` and `createPostgresStore`. Every `MemoryStore` method is
 async, so `createMemory` stays synchronous and detection errors stay
@@ -949,7 +950,7 @@ go through `runAtomically` (`src/db/atomic.ts`):
 
 ### Chunked inserts
 
-`insertMemories` splits rows into `INSERT … ON CONFLICT` statements of
+The store's `insert` splits rows into `INSERT … ON CONFLICT` statements of
 `INSERT_CHUNK_ROWS` (250) rows and runs them through `runAtomically`, so an
 `addMany` commits all its rows or none. Placeholders restart at `$1` in each
 statement.

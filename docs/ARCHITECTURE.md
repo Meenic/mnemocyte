@@ -45,29 +45,11 @@ later gets its own store. We write our own interface instead of using
 Kysely: it is two methods, adds no dependency, and a query builder does not
 help with vector or full-text SQL, which is where dialects differ.
 
-**Backend (`MemoryStore`).** Owns its dialect's SQL, its migrations and a
-capability declaration. The contract shrinks from 22 methods (counted
-2026-11-21) to about ten:
-`insert`, `searchCandidates` (vector + lexical in one call), `get`, `list`,
-`update`, `delete` (by scope and filter, atomic with the survivor policy),
-`consolidate`, `appendAudit`, `listAudit`, `stats`, plus `migrate` and
-`capabilities`. It stays internal until after 1.0.
-
-**Capabilities.** Declared data, not feature flags:
-
-```ts
-interface StoreCapabilities {
-  vectorSearch: "exact" | "approximate";
-  filteredVectorSearch: "prefilter" | "postfilter" | "iterative";
-  lexicalSearch: "bm25" | "ts_rank" | "none";
-  locking: "row" | "database";
-  maxDimensions: number;
-}
-```
-
-The core uses them to choose fusion inputs (no lexical list when `none`) and
-to warn; the shared contract tests use them to set expectations. Core logic
-does not branch on them otherwise.
+**Backend (`MemoryStore`).** This has landed (decision 61): the contract
+went from 22 methods to 16 and declares its `capabilities` as data; see
+[DEVELOPMENT.md](./DEVELOPMENT.md#store-contract). Warnings that read
+capabilities, and contract test expectations that differ by them, come
+with the first backend whose values call for them (libSQL, in ROADMAP.md).
 
 ## Data model
 
@@ -1289,3 +1271,36 @@ Dated 2026-10-26 unless noted.
     one more initdb per test file. The five PGlite runs of the store
     contract also moved to a file each, since one file runs on one
     worker.
+61. **The store contract shrinks to 16 methods** (2026-11-21, landed): the
+    maintainer chose, with `refactor/store-contract`, 16 required methods
+    over the "Layers" sketch of about ten. `vectorSearch` and
+    `lexicalSearch` became `searchCandidates`; `getMemory`,
+    `getMemoryByKey` and `loadConsolidationTargets` became `get`;
+    `deleteMemory`, `deleteScope` and `prune` became `delete` with a
+    `target`; `findDuplicatePairs` and `findDuplicatePage` became
+    `findDuplicates` with a `mode`, so `experimental.findDuplicatesPage`
+    keeps no store method of its own. `markAccessed` and `pruneAudit` stay
+    apart rather than folding into `update` and `delete`: an access bump
+    never sets `updatedAt` and touches many ids, and audit retention
+    commits in batches, so either would blur the contract it joined.
+    Duplicates stay in the store, since the core could find them only with
+    one search per memory. The sketch's `appendAudit` is dropped: audit
+    events are written by the statement they record. `inspectInstallation`,
+    `setTextSearchConfig` and `ensureEmbeddingCompatibility` stay required
+    for now; making them optional for third-party backends is left to
+    `feat/public-store-contract`, where such backends appear, rather than
+    putting fallbacks in the lazy store and four callers today. Every
+    method takes one input object, so the contract follows the
+    single-object rule before it becomes public. The in-memory backend
+    declares `lexicalSearch: "overlap"`, a value added to the sketch's
+    union: its keyword score is query-term overlap, and `"none"` would
+    switch its lexical list off and change results. It declares
+    `locking: "database"` because each call runs to completion without
+    interleaving, and `maxDimensions: Number.POSITIVE_INFINITY`. Postgres
+    declares `"approximate"`, `"iterative"`, `"ts_rank"`, `"row"` and 4,000.
+    No warning reads capabilities yet: neither backend would trigger one,
+    and a warning channel would be new public API. Renaming methods breaks
+    a store from an older installed copy of the package passed to this
+    copy's `createMemory`; it now fails at once with `"CONFIG"`
+    (`assertStoreContract`), while `migrate()` and the CLI, which use only
+    methods that kept their shape, still accept it.

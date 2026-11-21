@@ -1,5 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import { detectClient, SUPPORTED_CLIENTS } from "../sql/detect.js";
+import { POSTGRES_CAPABILITIES } from "./capabilities.js";
 import { createLazyStore } from "./lazy-store.js";
 import type { PostgresStoreSettings } from "./postgres.js";
 import type { MemoryStore } from "./store.js";
@@ -39,6 +40,7 @@ export function resolveStore(
 	}
 	return createLazyStore({
 		backend: "postgres",
+		capabilities: POSTGRES_CAPABILITIES,
 		...(settings.schemaName === undefined
 			? {}
 			: { schemaName: settings.schemaName }),
@@ -48,4 +50,25 @@ export function resolveStore(
 				settings,
 			),
 	});
+}
+
+/**
+ * Throws `"CONFIG"` for a store whose methods are not this package's
+ * {@link MemoryStore}: one from another installed copy of the package,
+ * built before the contract last changed. `migrate` and the CLI use only
+ * methods that kept their shape, so they skip this check.
+ */
+export function assertStoreContract(store: MemoryStore): void {
+	const candidate: Partial<MemoryStore> = store;
+	if (
+		typeof candidate.capabilities !== "object" ||
+		typeof candidate.searchCandidates !== "function"
+	) {
+		throw new MnemocyteError({
+			message:
+				"store comes from another copy of mnemocyte with a different store contract. Install a single version of mnemocyte (npm ls mnemocyte lists them).",
+			code: "CONFIG",
+			reason: "INVALID_OPTION",
+		});
+	}
 }

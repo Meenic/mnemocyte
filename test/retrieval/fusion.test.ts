@@ -250,8 +250,7 @@ describe("recall fusion", () => {
 
 	test("skips the search of a list whose weight is zero", async () => {
 		const store = createInMemoryStore();
-		const vectorSearch = vi.spyOn(store, "vectorSearch");
-		const lexicalSearch = vi.spyOn(store, "lexicalSearch");
+		const searchCandidates = vi.spyOn(store, "searchCandidates");
 		const client = createMemoryClient(
 			{ embedder, retrieval: { fusion: { vector: 0 } } },
 			store,
@@ -264,8 +263,11 @@ describe("recall fusion", () => {
 			scope: testScope("alice"),
 			query: "dog",
 		});
-		expect(vectorSearch).not.toHaveBeenCalled();
-		expect(lexicalSearch).toHaveBeenCalledTimes(1);
+		// One call, with the lexical list only: the vector list is not searched.
+		expect(searchCandidates).toHaveBeenCalledTimes(1);
+		const [searched] = expectDefined(searchCandidates.mock.calls[0]);
+		expect(searched.vector).toBeUndefined();
+		expect(searched.lexical).toMatchObject({ query: "dog" });
 		expect(results.map((result) => result.content)).toEqual(["dog facts"]);
 		expect(results[0]?.scores).toMatchObject({
 			vectorRank: null,

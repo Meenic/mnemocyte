@@ -189,18 +189,19 @@ export async function verifyAccessTrackingSkipsDeletedRows(
 	const { store } = harness;
 	const racingStore: MemoryStore = {
 		...store,
-		async markMemoriesAccessed(visibility, memoryIds) {
-			const [gone] = memoryIds;
+		async markAccessed(input) {
+			const [gone] = input.ids;
 			if (gone !== undefined) {
-				await store.deleteMemory({
-					visibility,
+				await store.delete({
+					target: "memory",
+					visibility: input.visibility,
 					memoryId: gone,
 					dependents: "reject",
 					now: new Date(),
 					audit: false,
 				});
 			}
-			return store.markMemoriesAccessed(visibility, memoryIds);
+			return store.markAccessed(input);
 		},
 	};
 	const client = createClient(harness, {

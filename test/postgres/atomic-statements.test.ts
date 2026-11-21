@@ -46,17 +46,15 @@ describe("Postgres single-statement writes", () => {
 		const store = createPostgresStore(executor);
 		const controller = new AbortController();
 
-		const result = await store.consolidate(
-			{
-				visibility: testVisibility("alice"),
-				survivorId,
-				supersededIds: [loserId],
-				mergeTags: true,
-				now: new Date(),
-				auditEnabled: true,
-			},
-			{ signal: controller.signal },
-		);
+		const result = await store.consolidate({
+			visibility: testVisibility("alice"),
+			survivorId,
+			supersededIds: [loserId],
+			mergeTags: true,
+			now: new Date(),
+			auditEnabled: true,
+			signal: controller.signal,
+		});
 
 		expect(result.supersededIds).toEqual([loserId]);
 		expect(queries).toHaveLength(1);
@@ -95,19 +93,20 @@ describe("Postgres single-statement writes", () => {
 		const store = createPostgresStore(executor);
 		const id = createUuidV7();
 
-		await store.markMemoriesAccessed(testVisibility("alice"), [
-			id,
-			"mem_legacy",
-		]);
+		await store.markAccessed({
+			visibility: testVisibility("alice"),
+			ids: [id, "mem_legacy"],
+		});
 		expect(
-			await store.deleteMemory({
+			await store.delete({
+				target: "memory",
 				visibility: testVisibility("alice"),
 				memoryId: "mem_legacy",
 				dependents: "reject",
 				now: new Date(),
 				audit: false,
 			}),
-		).toBeNull();
+		).toEqual({ target: "memory", found: false });
 
 		expect(queries).toHaveLength(1);
 		for (const query of queries) {
@@ -121,6 +120,7 @@ describe("Postgres single-statement writes", () => {
 		const memoryId = createUuidV7();
 		const dependentId = createUuidV7();
 		const input = {
+			target: "memory" as const,
 			visibility: testVisibility("alice"),
 			memoryId: memoryId.toUpperCase(),
 			now: new Date(),
@@ -135,11 +135,13 @@ describe("Postgres single-statement writes", () => {
 			},
 		]);
 		await expect(
-			createPostgresStore(cascade.executor).deleteMemory({
+			createPostgresStore(cascade.executor).delete({
 				...input,
 				dependents: "delete",
 			}),
 		).resolves.toEqual({
+			target: "memory",
+			found: true,
 			deletedIds: [memoryId, dependentId],
 			restoredIds: [],
 		});
@@ -147,21 +149,26 @@ describe("Postgres single-statement writes", () => {
 			{ matchedCount: 1, deletedCount: 1, hasDependents: false },
 		]);
 		await expect(
-			createPostgresStore(guarded.executor).deleteMemory({
+			createPostgresStore(guarded.executor).delete({
 				...input,
 				dependents: "reject",
 			}),
-		).resolves.toEqual({ deletedIds: [memoryId], restoredIds: [] });
+		).resolves.toEqual({
+			target: "memory",
+			found: true,
+			deletedIds: [memoryId],
+			restoredIds: [],
+		});
 	});
 
 	test("locks access rows in id order and leaves updated_at alone", async () => {
 		const { executor, queries } = createRecordingExecutor([]);
 		const store = createPostgresStore(executor);
 
-		await store.markMemoriesAccessed(testVisibility("alice"), [
-			createUuidV7(),
-			createUuidV7(),
-		]);
+		await store.markAccessed({
+			visibility: testVisibility("alice"),
+			ids: [createUuidV7(), createUuidV7()],
+		});
 
 		expect(queries).toHaveLength(1);
 		const sql = expectDefined(queries[0]).sql;

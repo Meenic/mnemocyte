@@ -7,6 +7,7 @@ const sourceAlias = [
 		replacement: resolve("src/stores/$1.ts"),
 	},
 	{ find: "mnemocyte/postgres", replacement: resolve("src/postgres.ts") },
+	{ find: "mnemocyte/libsql", replacement: resolve("src/libsql.ts") },
 	{ find: "mnemocyte/ai-sdk", replacement: resolve("src/ai-sdk.ts") },
 	{
 		find: /^mnemocyte\/embedders\/(.+)$/,
@@ -62,7 +63,12 @@ export default defineConfig({
 					hookTimeout: 60_000,
 					// Saves one initialized PGlite data folder that `openPGlite`
 					// (test/contract/pglite.ts) loads instead of running initdb.
-					globalSetup: ["test/contract/pglite.global-setup.ts"],
+					// libsql.global-setup.ts: one temporary folder for the libSQL
+					// databases, removed after the workers exit.
+					globalSetup: [
+						"test/contract/pglite.global-setup.ts",
+						"test/contract/libsql.global-setup.ts",
+					],
 				},
 			},
 			{

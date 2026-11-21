@@ -1,4 +1,4 @@
-import type { PostgresClient } from "./sql/detect.js";
+import type { LibsqlClient, PostgresClient } from "./sql/detect.js";
 
 /**
  * What kind of memory a {@link Memory} is.
@@ -163,7 +163,7 @@ export type ScopeSelectorInput<DefaultNamespace extends boolean = false> =
  * A minor release may add backends, so a `switch` over them needs a
  * `default`.
  */
-export type MnemocyteBackend = "in-memory" | "postgres";
+export type MnemocyteBackend = "in-memory" | "postgres" | "libsql";
 
 /**
  * The {@link MemoryClient} methods that emit {@link MnemocyteObservation}
@@ -394,7 +394,7 @@ export type MigrateInput =
 			 * node-postgres `Pool`, PGlite, Drizzle over one of them, or a
 			 * `SqlExecutor`), or a store from `postgresStore()`.
 			 */
-			store: MnemocyteStoreConfig | PostgresClient;
+			store: MnemocyteStoreConfig | PostgresClient | LibsqlClient;
 			/**
 			 * Embedding dimensions of the installation. Required on a database
 			 * with no Mnemocyte tables, where it fixes the vector column for good:
@@ -469,7 +469,7 @@ export type SetTextSearchConfigInput =
 			 * The database: the app's database client or a store from
 			 * `postgresStore()`, as {@link migrate} takes it.
 			 */
-			store: MnemocyteStoreConfig | PostgresClient;
+			store: MnemocyteStoreConfig | PostgresClient | LibsqlClient;
 	  });
 
 /**
@@ -506,7 +506,7 @@ export interface MemoryConfig {
 	 * closes the client. The Postgres backend is imported on the first call
 	 * that uses it. When omitted, an in-memory backend is used.
 	 */
-	store?: MnemocyteStoreConfig | PostgresClient | undefined;
+	store?: MnemocyteStoreConfig | PostgresClient | LibsqlClient | undefined;
 	/** Required embedder used to vectorise content for storage and retrieval. */
 	embedder: Embedder;
 	/**

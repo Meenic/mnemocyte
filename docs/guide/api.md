@@ -40,7 +40,7 @@ const memory = createMemory({
 |---|---|---|
 | `embedder` | required | See [embedders.md](./embedders.md). |
 | `namespace` | none | The namespace for scopes that leave it out; see [default namespace](#default-namespace). |
-| `store` | in-memory | Your database client; see [connect](./postgres.md#connect). |
+| `store` | in-memory | Your database client; see [connect](./postgres.md#connect) for Postgres and [libsql.md](./libsql.md#connect) for libSQL. |
 | `defaults` | `{ limit: 10, minScore: 0 }` | Defaults for `search` and `context`. |
 | `retrieval` | see [retrieval tuning](#retrieval-tuning) | Ranking and access tracking. |
 | `provider` | see [timeouts and retries](./embedders.md#timeouts-and-retries) | Embedder timeouts and retries. |
@@ -53,8 +53,9 @@ config or in a nested object such as `retrieval.fusion`, so a misspelled
 option fails at startup. A key set to `undefined` counts as absent.
 
 `store` takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a
-Drizzle instance over one of them, a `SqlExecutor`, or a store from
-`postgresStore()`; anything else throws `"CONFIG"` right away. Without
+Drizzle instance over one of them, a `SqlExecutor`, an `@libsql/client`
+client or a Drizzle instance over one, or a store from `postgresStore()`
+or `libsqlStore()`; anything else throws `"CONFIG"` right away. Without
 `store`, memories live in process memory, which suits tests and
 prototypes.
 
@@ -811,8 +812,9 @@ const { applied, adopted, extensionCreated, schemaCreated } = await migrate({
 await migrate({ store: sql, dimensions: 1536 });
 ```
 
-Creates or upgrades the Postgres schema; `pnpm exec mnemocyte migrate` calls
-it.
+Creates or upgrades the schema, on Postgres or libSQL
+([libsql.md](./libsql.md#install-the-schema)); `pnpm exec mnemocyte migrate`
+calls it.
 `applied` lists the migrations this call ran, `adopted` those it found
 already applied in a schema installed with `psql` or drizzle-kit and
 recorded without running, `extensionCreated` says whether it ran
@@ -826,16 +828,20 @@ and what enabling pgvector needs, is in
   With `memory`, the client's store is migrated and `embedder.dimensions`
   is the dimensions; a `dimensions` that differs from it throws
   `"CONFIG"`. An in-memory client has nothing to migrate.
-- `dimensions` is an integer from 1 to 4,000. It is required when the
-  database has no Mnemocyte tables (`"VALIDATION"` otherwise) and fixes
-  the embedding column: `vector` up to 2,000, `halfvec` above. On an
+- `dimensions` is an integer from 1 to 4,000 on Postgres and to 65,536 on
+  libSQL. It is required when the database has no Mnemocyte tables
+  (`"VALIDATION"` otherwise) and fixes the embedding column: on Postgres
+  `vector` up to 2,000, `halfvec` above; on libSQL `F32_BLOB`. On an
   existing installation a different value throws `"CONFIG"` before
   anything runs.
 - Without `createExtension`, a missing pgvector throws `"MIGRATION"`. With
   it, a role that may not create the extension, or a server without
   pgvector, throws `"MIGRATION"` and nothing is created.
-- `textSearchConfig` names the Postgres text search configuration keyword
-  search uses: `english` (the default), `simple`, `german` and so on (see
+- `textSearchConfig` names the keyword search language. On libSQL it is
+  `porter` (the default) or `unicode61`
+  ([libsql.md](./libsql.md#keyword-search-language)). On Postgres it is the
+  text search configuration keyword search uses: `english` (the default),
+  `simple`, `german` and so on (see
   [keyword search language](./postgres.md#keyword-search-language)). A
   fresh install builds the keyword column with it. On an existing
   installation it is optional, and a different configuration throws
@@ -884,6 +890,8 @@ moment. [postgres.md](./postgres.md#change-it-later) has the timings.
   first search until they restart; the client that made the change uses
   the new one at once. A process still on 1.1 searches with `english`
   whatever you pick, so update every process to 1.2 first.
+- On libSQL it rebuilds the FTS5 keyword index in one write transaction,
+  without rewriting memory rows; names are `porter` and `unicode61`.
 - An in-memory client has no configuration and returns `null` names with
   `changed: false`.
 
@@ -1002,8 +1010,9 @@ Mnemocyte follows semantic versioning from 1.0: a breaking change to the
 API documented in these guides waits for a major release. That covers the
 client and its methods, the in-memory and Postgres backends with the four
 built-in drivers, `postgresStore` and the documented `SqlExecutor`
-interface, `migrate`, every embedder, `mnemocyte/ai-sdk`, and the CLI's
-commands, flags and exit codes, and the fields and codes of its
+interface, the libSQL backend and `libsqlStore`, `migrate`, every
+embedder, `mnemocyte/ai-sdk`, and the CLI's commands, flags and exit
+codes, and the fields and codes of its
 [`--json` output](./cli.md#json-output). It does not cover:
 
 - anything under `experimental` (`experimental.findDuplicatesPage` and

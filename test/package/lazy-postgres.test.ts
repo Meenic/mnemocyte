@@ -35,6 +35,7 @@ describe("lazy Postgres package loading", () => {
 		expect(manifest.dependencies).toBeUndefined();
 		const peers = [
 			"@electric-sql/pglite",
+			"@libsql/client",
 			"ai",
 			"drizzle-orm",
 			"pg",
@@ -46,20 +47,22 @@ describe("lazy Postgres package loading", () => {
 		}
 	});
 
-	test.each(["dist/index.mjs", "dist/postgres.mjs"])(
-		"keeps database packages out of the static imports of %s",
+	test.each(["dist/index.mjs", "dist/postgres.mjs", "dist/libsql.mjs"])(
+		"keeps database packages out of the static import graph of %s",
 		async (entry) => {
-			const source = await readFile(resolve(entry), "utf8");
-
-			expect(source).not.toMatch(
-				/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?)["'];?\s*$/m,
-			);
+			for (const file of await staticImportGraph(resolve(entry))) {
+				const source = await readFile(file, "utf8");
+				expect(source, file).not.toMatch(
+					/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?|@libsql\/[^"']*|libsql)["'];?\s*$/m,
+				);
+			}
 		},
 	);
 
 	test.each([
 		"dist/index.mjs",
 		"dist/postgres.mjs",
+		"dist/libsql.mjs",
 		"dist/embedders/index.mjs",
 		"dist/embedders/voyage.mjs",
 		"dist/embedders/cohere.mjs",
@@ -99,10 +102,21 @@ describe("lazy Postgres package loading", () => {
 				basename(file).startsWith("postgres-backend-"),
 			),
 		).toEqual([]);
+		// The libSQL backend loads the same way.
+		expect(
+			sources.filter((source) =>
+				/\bimport\(["']\.\/libsql-backend-[^"']+\.mjs["']\)/.test(source),
+			),
+		).toHaveLength(1);
+		expect(
+			[...reached].filter((file) =>
+				basename(file).startsWith("libsql-backend-"),
+			),
+		).toEqual([]);
 		for (const file of reached) {
 			const source = await readFile(file, "utf8");
 			expect(source, file).not.toMatch(
-				/\bCREATE TABLE\b|\bfunction createPostgresStore\b/,
+				/\bCREATE TABLE\b|\bfunction createPostgresStore\b|\bfunction createLibsqlStore\b/,
 			);
 		}
 	});
@@ -132,7 +146,15 @@ describe("lazy Postgres package loading", () => {
 				expectPathMissing(join(packedRoot, "dist", "stores")),
 			]);
 
-			const drivers = ["drizzle-orm", "postgres", "pg", "@electric-sql", "ai"];
+			const drivers = [
+				"drizzle-orm",
+				"postgres",
+				"pg",
+				"@electric-sql",
+				"@libsql",
+				"libsql",
+				"ai",
+			];
 			await Promise.all(
 				drivers.flatMap((driver) => [
 					expectPathMissing(join(nodeModules, driver)),

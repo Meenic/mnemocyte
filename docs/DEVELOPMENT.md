@@ -62,6 +62,7 @@ src/
   client.ts             createMemory: config checks, store (resolveStore | in-memory), overloads for namespace
   migrate.ts            migrate() and setTextSearchConfig(): validate input, resolve { memory } or { store } (resolveStore), call the store
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, client types
+  libsql.ts             `mnemocyte/libsql` entry: libsqlStore, client types
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
   ai-sdk/
     tools.ts            memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
@@ -81,10 +82,13 @@ src/
     capabilities.ts     each backend's StoreCapabilities
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
-    store-input.ts      resolveStore: a store config, or a client detected by shape → lazy store
+    libsql.ts           libSQL MemoryStore (runs on the user's @libsql/client)
+    duplicates.ts       exact duplicate search over loaded memories (in-memory and libSQL)
+    store-input.ts      resolveStore: a store config, or a libSQL or Postgres client detected by shape → lazy store
     store-config.ts     the opaque store config envelope from postgresStore()
     lazy-store.ts       MemoryStore that loads the real one on its first call
     postgres-backend.ts dynamic import() target: client → Postgres MemoryStore
+    libsql-backend.ts   dynamic import() target: client → libSQL MemoryStore
     validation.ts       runtime input and config validation
     limits.ts           input size caps (content, tags, metadata, key, limit)
     json.ts             JSON metadata validation and deep clone
@@ -94,7 +98,7 @@ src/
     records.ts          ids, tag normalization, cloning
   sql/
     executor.ts         SqlExecutor: query, optional transaction and batch
-    detect.ts           detectClient: shape checks, PostgresClient types (no adapters, in the root entry)
+    detect.ts           detectClient, detectLibsqlClient: shape checks, PostgresClient and LibsqlClient types (no adapters, in the root entry)
     clients.ts          executorFor / toSqlExecutor: detected client → its adapter
     postgres-js.ts      the postgres.js adapter (internal)
     node-postgres.ts    the node-postgres Pool adapter
@@ -110,25 +114,28 @@ src/
     text-search.ts      content_tsv's text search configuration: read, resolve, change statements
     tables.ts           table names for a schemaName (or search_path), schema name validation
     pgvector.ts         assertPgvectorVersion
+    libsql/             the libSQL backend's SQL: executor.ts (adapter over the client), sql.ts (?NNN params, rows, blob vectors), queries.ts, migrations.ts (runner, report, tokenizer change), bundled.ts (generated); see features/libsql.md
   retrieval/scorer.ts   cosine, lexical overlap, rank fusion, boosts
   context/              context(): formatters, token budget
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only); each file is an export
     internal/           http-embedder.ts (createFetchEmbedder, the fetch core of every HTTP embedder; createHttpEmbedder, OpenAI-shaped; option checks) and provider-error.ts (createProviderError, error body and Retry-After parsing)
-migrations/             numbered SQL migrations, fresh-install.sql, the schema template
-scripts/                bundle-migrations.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, check-links.mjs
+migrations/             numbered SQL migrations, fresh-install.sql, the schema template; libsql/ holds the libSQL template (not shipped)
+scripts/                bundle-migrations.mjs, bundle-libsql-migrations.mjs, bench-libsql.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, check-links.mjs
 examples/               runnable scripts that import `mnemocyte` by name; not shipped
 test/                   unit, package, integration, fixtures, benchmarks
 ```
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
-`src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts` and
-`src/embedders/*.ts`. `dist/cli.mjs` is the
-`mnemocyte` bin (`bin` in `package.json`), not an export. The package has no runtime dependencies. `postgres`,
-`pg`, `@electric-sql/pglite` and `drizzle-orm` are optional peer dependencies
-at the versions the tests run; source files import at most their types
-(`postgres` and `drizzle-orm` only), so no built entry imports a driver (a
-package test checks this). They are also dev dependencies, with `@types/pg`
-and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
+`src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts`,
+`src/libsql.ts` and `src/embedders/*.ts`. `dist/cli.mjs` is the
+`mnemocyte` bin (`bin` in `package.json`), not an export. The package has
+no runtime dependencies. `postgres`, `pg`, `@electric-sql/pglite`,
+`@libsql/client` and `drizzle-orm` are optional peer dependencies at the
+versions the tests run; source files import at most their types
+(`postgres` and `drizzle-orm` only; the libSQL client types are
+structural), so no built entry imports a driver (a package test follows
+each entry's static imports to check this). They are also dev
+dependencies, with `@types/pg` and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
 (`^7.0.135`) and a dev dependency (it brings `zod`, its peer, into the
 lockfile); `src/ai-sdk.ts` and the files in `src/ai-sdk/` import it at
 runtime, the only source files that do, and a package test follows
@@ -211,27 +218,30 @@ Plus `backend`, `capabilities` and, on Postgres, `schemaName`.
 `capabilities` is declared data, the same object for every store of a
 backend (`src/memory/capabilities.ts`):
 
-| Field | In-memory | Postgres |
-|---|---|---|
-| `vectorSearch` | `"exact"` | `"approximate"` (HNSW) |
-| `filteredVectorSearch` | `"prefilter"` | `"iterative"` (pgvector 0.8 iterative scans) |
-| `lexicalSearch` | `"overlap"` | `"ts_rank"` |
-| `locking` | `"database"` (calls never interleave) | `"row"` (`SELECT … FOR UPDATE`) |
-| `maxDimensions` | `Number.POSITIVE_INFINITY` | 4,000 (`halfvec` in an HNSW index) |
+| Field | In-memory | Postgres | libSQL |
+|---|---|---|---|
+| `vectorSearch` | `"exact"` | `"approximate"` (HNSW) | `"exact"` (a scan of the scope) |
+| `filteredVectorSearch` | `"prefilter"` | `"iterative"` (pgvector 0.8 iterative scans) | `"prefilter"` |
+| `lexicalSearch` | `"overlap"` | `"ts_rank"` | `"bm25"` (FTS5) |
+| `locking` | `"database"` (calls never interleave) | `"row"` (`SELECT … FOR UPDATE`) | `"database"` (`BEGIN IMMEDIATE`) |
+| `maxDimensions` | `Number.POSITIVE_INFINITY` | 4,000 (`halfvec` in an HNSW index) | 65,536 (libSQL's vector limit) |
 
-The other values the types allow are `"postfilter"` and `"bm25"` for
-libSQL, and `lexicalSearch: "none"`. The core reads capabilities in one
-place: `search` asks for no lexical list when `lexicalSearch` is `"none"`,
-as it skips a list whose fusion weight is 0. Nothing warns on them yet,
-since neither backend would trigger a warning. The Postgres constant lives
-apart from the backend, so the lazy store for `store: client` declares it
-before the backend loads. `test/memory/capabilities.test.ts` pins both
-declarations.
+The other values the types allow are `"postfilter"` and
+`lexicalSearch: "none"`; no backend declares them. The core reads
+capabilities in two places: `search` asks for no lexical list when
+`lexicalSearch` is `"none"`, as it skips a list whose fusion weight is 0,
+and `migrate()` checks `dimensions` against `maxDimensions` (an infinite
+one, the in-memory store's, keeps the Postgres limit). Nothing warns on
+them (decision 63). The shared contract reads them to set expectations
+(decision 65). The Postgres and libSQL constants live apart from the
+backends, so the lazy store for `store: client` declares them before the
+backend loads. `test/memory/capabilities.test.ts` and
+`test/contract/libsql-behavior.test.ts` pin the declarations.
 
 ## Conventions
 
 - Shared behavior goes in `memory/client-core.ts`; backend mechanics stay in
-  the `MemoryStore` implementations. Both backends must pass the same shared
+  the `MemoryStore` implementations. Every backend must pass the same shared
   fixtures in `test/fixtures/`.
 - Validation runs before any embedder or storage call. Invalid input throws
   `MnemocyteError` with code `"VALIDATION"`; invalid configuration throws
@@ -306,6 +316,9 @@ Exports:
   `MemorySaveOptions` types; `extractMemories` and its
   `ExtractMemoriesInput` and `ExtractMemoriesOptions` types; needs the `ai`
   peer.
+- `mnemocyte/libsql`: `libsqlStore({ client })`, its `LibsqlStoreOptions`,
+  and the `LibsqlClient` and `LibsqlDriverClient` types (also exported
+  from the root). See [features/libsql.md](./features/libsql.md).
 - `mnemocyte/postgres`: `postgresStore({ client })`, its
   `PostgresStoreOptions`, and the `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
@@ -544,11 +557,34 @@ Vitest has three projects (`vitest.config.ts`):
   and ignores `cjs-resolves-to-esm`, because attw does not model `require()`
   of ES modules (Node 22.12+). CI runs it once, on Node 24.
 - Shared behavior is written once as a fixture in `test/fixtures/` and run
-  against the in-memory backend in `unit` and against Postgres in
-  `integration`.
+  against the in-memory backend in `unit`, and against Postgres and
+  libSQL: through the shared contract (`test/contract/shared.ts`,
+  `registerSharedContract`), or, for the fixtures the Postgres side runs
+  in `integration` (`test/integration/*.test.ts`), in
+  `test/contract/libsql-fixtures.test.ts` on libSQL.
+- The shared contract runs the scoped-API, bound-scope, context,
+  survivor-delete, duplicate and audit fixtures, plus value round trips,
+  chunked `addMany`, search, filtered search and cross-scope isolation,
+  through the public client. A harness gives it the store value, a client
+  factory and `failAuditWrites` (a trigger in the backend's own SQL). Expectations
+  that depend on a backend read its `capabilities`
+  (`readMemoryClientInternals(memory).store.capabilities`): a selective
+  `kinds` filter must keep the vector list full unless
+  `filteredVectorSearch` is `"postfilter"`. Search results are checked by
+  membership (sorted id sets, `toContain`, the top result in a scope with
+  one match), never by a full order, since lexical scores differ by
+  backend (ARCHITECTURE decision 65).
+- The libSQL contract (`test/contract/libsql.ts`,
+  `describeLibsqlContract`) runs the shared contract through
+  `libsqlStore`, the client itself and Drizzle on a database file under
+  the folder `test/contract/libsql.global-setup.ts` creates, plus the
+  libSQL-only tests; `test/integration/libsql-remote.test.ts` runs it on
+  a libSQL server at `LIBSQL_URL` (see
+  [features/libsql.md](./features/libsql.md#tests)).
 - The Postgres contract (`test/contract/suite.ts`,
-  `describeStoreContract`) runs the same checks through every driver:
-  migrate, transactions and savepoints, value round trips, chunked
+  `describeStoreContract`) runs the shared contract and the Postgres-only
+  checks through every driver: migrate, transactions and savepoints, value
+  round trips, chunked
   `addMany`, search and context, context with its memories, the
   scoped-API and bound-scope fixtures,
   survivor-aware deletes, nearest-neighbor duplicates, audit payloads,
@@ -754,6 +790,11 @@ when the release calls it (`workflow_call`). It has these jobs:
   (103 to 111 s before). The slowest single file is now
   `test/package/cli.test.ts` (17 to 29 s there), which runs the built CLI
   in child processes.
+- The Node jobs' `contract` project includes the libSQL contract on
+  database files, through `@libsql/client`'s native `libsql` binding for
+  the runner's platform; no service is needed. The libSQL server run
+  (`test/integration/libsql-remote.test.ts`) skips in the Postgres jobs,
+  which set no `LIBSQL_URL` (`chore/libsql-remote-ci` in ROADMAP.md).
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs

@@ -65,6 +65,32 @@ them.
   applies (64 MB on Neon). At 1,536 dimensions 1,000 memories take about
   20 MB of vector text plus their content.
 
+## libSQL
+
+- **Vector search scans the scope.** There is no vector index yet: every
+  search compares the query with each memory of its scope, so its time
+  grows with the scope ([libsql.md](./libsql.md#how-search-works) has
+  the numbers). A libSQL vector index (DiskANN) would rank the whole table
+  before the scope filter and return nothing for most users of a shared
+  table; it is on the roadmap's later list.
+- **`findDuplicates` compares every pair.** Its time grows with the square
+  of the scope; use `experimental.findDuplicatesPage` on large scopes.
+- **libSQL engines only.** `@libsql/client` on a `file:` URL, Turso Cloud
+  or a libSQL server. Plain SQLite, `@tursodatabase/database` and
+  `@tursodatabase/serverless` are not supported.
+- **The CLI needs a memory file.** Without one it connects to
+  `DATABASE_URL` with postgres.js. `sql`, `generate --adapter drizzle` and
+  `init` are Postgres only, and `--dimensions` stops at 4,000.
+- **Concurrent writers on one file.** Writes run one at a time; a write
+  that meets another process's lock fails with `"DB"` (`SQLITE_BUSY`)
+  instead of waiting.
+- **Two keyword languages.** `textSearchConfig` takes `porter` (English
+  stemming, the default) or `unicode61`. Query syntax such as quoted
+  phrases or `-word` is matched as plain words, and only the first 64
+  distinct words count.
+- **No cancellation.** An aborted `signal` stops the next statement; one
+  already sent runs to the end.
+
 ## Retrieval
 
 - **Keyword search uses one language per installation on Postgres.** It
@@ -77,9 +103,11 @@ them.
   while the app waits, and app processes that are already running keep the
   old configuration for their queries until they restart.
 - **Keyword search differs by backend.** Postgres uses full-text search
-  (stemming and stop words, unless the configuration is `simple`); the
-  in-memory store matches query words as substrings. Both fuse ranks the same way, but they can find different
-  keyword matches, so results for the same data can differ.
+  (stemming and stop words, unless the configuration is `simple`), and
+  requires every word of the query; libSQL uses FTS5 with `bm25`, matches
+  any word and has no stop words; the in-memory store matches query words
+  as substrings. All of them fuse ranks the same way, but they can find
+  different keyword matches, so results for the same data can differ.
 - **Very selective filters cost more on Postgres.** The vector search keeps
   scanning the HNSW index until it has enough memories that pass the filters,
   up to pgvector's `hnsw.max_scan_tuples` (20,000 by default). A filter that

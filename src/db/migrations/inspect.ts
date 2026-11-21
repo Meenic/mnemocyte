@@ -47,8 +47,16 @@ export interface InstallationReport {
 	 * through `search_path`.
 	 */
 	readonly schema: string | null;
-	/** `pg_extension.extversion` of `vector`, or null when it is not enabled. */
+	/**
+	 * `pg_extension.extversion` of `vector`, or null when it is not enabled.
+	 * Always null on libSQL, which has vectors built in.
+	 */
 	readonly pgvectorVersion: string | null;
+	/**
+	 * libSQL only: `sqlite_version()`, the SQLite release libSQL is built
+	 * on. Its presence marks a libSQL report.
+	 */
+	readonly sqliteVersion?: string;
 	readonly migrations: InstalledMigrations;
 	/** The embedding column, or null without a memories table. */
 	readonly column: {

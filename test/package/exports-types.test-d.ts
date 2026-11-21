@@ -1,4 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { Client as LibsqlDriver } from "@libsql/client";
+import type { Client as LibsqlWebDriver } from "@libsql/client/web";
 import {
 	type InferToolInput,
 	type InferToolOutput,
@@ -8,6 +10,7 @@ import {
 	wrapLanguageModel,
 } from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
+import type { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
 import type { drizzle as drizzlePostgresJs } from "drizzle-orm/postgres-js";
@@ -74,6 +77,7 @@ import type {
 	RetrievalExplanation,
 	RetrievalFusionConfig,
 	RetrievalScores,
+	LibsqlClient as RootLibsqlClient,
 	PostgresClient as RootPostgresClient,
 	ScopeInput,
 	ScopeSelector,
@@ -151,6 +155,12 @@ import {
 	type PurposeHint,
 } from "mnemocyte/embedders/openai-compatible";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
+import {
+	type LibsqlClient,
+	type LibsqlDriverClient,
+	type LibsqlStoreOptions,
+	libsqlStore,
+} from "mnemocyte/libsql";
 import {
 	type DrizzleClient,
 	type NodePostgresPool,
@@ -1252,3 +1262,33 @@ void nullAgent;
 void numericSchema;
 void schemaCreated;
 void installationElsewhere;
+
+// libSQL: the driver's own Client, from either entry point, and a Drizzle
+// instance over it fit libsqlStore, createMemory and migrate unwrapped.
+declare const libsqlDriver: LibsqlDriver;
+declare const libsqlWebDriver: LibsqlWebDriver;
+declare const drizzleOverLibsql: ReturnType<
+	typeof drizzleLibsql<Record<string, never>>
+>;
+const libsqlDriverClient: LibsqlDriverClient = libsqlDriver;
+const libsqlClients: LibsqlClient[] = [
+	libsqlDriver,
+	libsqlWebDriver,
+	drizzleOverLibsql,
+];
+for (const libsqlClient of libsqlClients) {
+	const libsqlOptions: LibsqlStoreOptions = { client: libsqlClient };
+	const store: MnemocyteStoreConfig = libsqlStore(libsqlOptions);
+	createMemory({ store, embedder });
+	createMemory({ store: libsqlClient, embedder });
+	void migrate({ store: libsqlClient, dimensions: 1536 });
+}
+const rootLibsqlClients: RootLibsqlClient[] = libsqlClients;
+const libsqlBackend: MnemocyteObservation["backend"] = "libsql";
+// @ts-expect-error A Postgres pool is not a libSQL client.
+libsqlStore({ client: nodePostgresPool });
+// @ts-expect-error libsqlStore takes no schemaName: one schema per database.
+libsqlStore({ client: libsqlDriver, schemaName: "memory" });
+void libsqlDriverClient;
+void rootLibsqlClients;
+void libsqlBackend;

@@ -371,13 +371,22 @@ The items, in order:
   in-memory capability values (with a new `"overlap"` for its keyword
   score), and no store method of its own for `experimental.*`
   (decision 61). The contract is in DEVELOPMENT.md ("Store contract").
-- [ ] `feat/libsql-store`: a libSQL / Turso backend at `mnemocyte/libsql`,
-  on the user's own libSQL client as an optional peer. It is the first
-  backend whose capabilities differ in ways that matter
-  (`filteredVectorSearch: "postfilter"`, which can return fewer than the
-  limit; `lexicalSearch: "bm25"`), so it decides whether the core warns on
-  one and how the shared fixtures set expectations from them (decision
-  61).
+- [x] `feat/libsql-store`: a libSQL / Turso backend at `mnemocyte/libsql`,
+  on the user's own `@libsql/client` as an optional peer, with its own
+  numbered migrations. Decided (decisions 62 to 70): the entry and the
+  clients it takes, an exact prefiltered vector search instead of DiskANN
+  (so no postfilter warning), FTS5 with `porter` and quoted `OR` terms,
+  `F32_BLOB` up to 65,536 dimensions, single write batches, CI on database
+  files, the CLI through a memory file, and duplicates in JavaScript. The
+  backend is in [features/libsql.md](./features/libsql.md).
+- [ ] `chore/libsql-remote-ci`: a CI job that runs
+  `test/integration/libsql-remote.test.ts` against a libSQL server
+  container (`ghcr.io/tursodatabase/libsql-server`, pinned by its SHA tag,
+  as the manual run on 2026-11-21 was), so the Hrana protocol path (HTTP
+  batches and the server's own SQL parser, which rejected aggregate
+  `ORDER BY`) is tested on every PR that touches `src/`. Open: which job
+  it joins, and whether a commit-SHA tag (its newest tags have no
+  version numbers) is acceptable for a pin.
 - [ ] `feat/public-store-contract`: `MemoryStoreV1` exported from
   `mnemocyte/store`, with the contract test suite at
   `mnemocyte/store/test`, so third-party backends can prove they conform.
@@ -405,6 +414,15 @@ Not queued. Each one comes back as an item when its condition holds.
 
 - SQLite + sqlite-vec, once sqlite-vec has a stable release (npm has 0.1.9
   today).
+- A libSQL vector index (DiskANN, `libsql_vector_idx`), when a user has a
+  scope the exact scan is too slow for (it took about 0.5 s at 10,000
+  memories). `vector_top_k` ranks the whole table before the filters, so
+  it would need a per-scope partial index or a fallback to the scan when
+  too few rows survive, and `"postfilter"` would bring the warning
+  decision 63 describes.
+- The CLI for libSQL without a memory file (a `LIBSQL_URL` like
+  `DATABASE_URL`) and an `init` template for `@libsql/client`, when users
+  ask.
 - Recency that follows content updates rather than `createdAt`, if users
   find the note in `guide/api.md` ("Keys") is not enough.
 - The memories `memoryMiddleware` / `withMemory` put in the prompt, given

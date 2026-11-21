@@ -9,8 +9,31 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Added
+
+- **libSQL and Turso.** Memories can live in a libSQL database: a local
+  file, Turso Cloud or a libSQL server. Pass an `@libsql/client` client,
+  or a Drizzle instance over one, as `store`, or use `libsqlStore({ client })`
+  from the new `mnemocyte/libsql` entry. `@libsql/client` 0.18 or newer is
+  an optional peer. `migrate()` installs the schema, and
+  `mnemocyte migrate`, `check` and `text-search` work through your memory
+  file; see [docs/guide/libsql.md](docs/guide/libsql.md).
+  - Vector search is an exact scan of the scope, with filters applied
+    first, so it never returns fewer results than exist. Its time grows
+    with the scope: about 0.5 s at 10,000 memories of 1,536 dimensions.
+  - Keyword search uses FTS5 and `bm25`, with English stemming by default
+    (`textSearchConfig: "porter"`) or `"unicode61"`. Any word of the query
+    matches, and query syntax is matched as words.
+  - Embeddings up to 65,536 dimensions.
+  - Limits are in [limitations](docs/guide/limitations.md#libsql).
+- `MnemocyteBackend` has a new member, `"libsql"`.
+
 ### Changed
 
+- **`findDuplicates` on the in-memory store does less work.** It compares
+  each pair once instead of twice, from vectors prepared once, and keeps
+  each memory's nearest neighbors without sorting every other memory;
+  results are unchanged.
 - **A store from another installed copy fails early.** When an app has two
   copies of `mnemocyte` installed and passes a store from an older copy
   to `createMemory`, it now throws `"CONFIG"` with reason

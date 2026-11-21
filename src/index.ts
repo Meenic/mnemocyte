@@ -47,7 +47,11 @@ export {
 	ProviderError,
 } from "./errors.js";
 export { migrate, setTextSearchConfig } from "./migrate.js";
-export type { PostgresClient } from "./sql/detect.js";
+export type {
+	LibsqlClient,
+	LibsqlDriverClient,
+	PostgresClient,
+} from "./sql/detect.js";
 export type {
 	AddInput,
 	AddManyInput,

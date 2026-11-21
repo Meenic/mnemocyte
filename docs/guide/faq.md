@@ -6,7 +6,8 @@ Short answers, with a link to the guide that has the details.
 
 No. Leave out `store` and memories live in process memory until the process
 exits, which is enough for a prototype or a test. For memories that last,
-use Postgres with pgvector 0.8.0 or later. PGlite runs it inside your
+use Postgres with pgvector 0.8.0 or later, or a libSQL database: a local
+file or Turso ([libsql.md](./libsql.md)). PGlite runs it inside your
 process, so a local setup needs no Docker. See
 [prototype without a database](./getting-started.md#prototype-without-a-database)
 and [PGlite](./getting-started.md#pglite).
@@ -25,8 +26,10 @@ anything else you can write a `SqlExecutor` by hand. See
 
 ## Does it work with MySQL, SQLite or MongoDB?
 
-Not yet. Postgres and the in-memory store are the only backends. A libSQL
-backend is planned; see the [roadmap](../ROADMAP.md).
+SQLite through libSQL, yes: a local file, Turso Cloud or a libSQL server,
+with `@libsql/client` (see [libsql.md](./libsql.md)). Plain SQLite drivers
+such as `better-sqlite3` lack libSQL's vector functions. MySQL and MongoDB
+are not supported; see the [roadmap](../ROADMAP.md).
 
 ## Can I use it from CommonJS?
 

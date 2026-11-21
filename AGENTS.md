@@ -11,9 +11,9 @@ database, and Mnemocyte adds scoped storage, hybrid recall, prompt-ready
 context and maintenance (prune, dedup, consolidation, audit).
 
 Today it is one ESM package (`mnemocyte`, 1.x) with an in-memory backend, a
-Postgres + pgvector backend, embedders over `fetch` and an AI SDK
-integration. The target design is in `docs/ARCHITECTURE.md`; the plan to
-get there is `docs/ROADMAP.md`.
+Postgres + pgvector backend, a libSQL backend, embedders over `fetch` and
+an AI SDK integration. The target design is in `docs/ARCHITECTURE.md`; the
+plan to get there is `docs/ROADMAP.md`.
 
 ## Read before starting work
 

@@ -101,6 +101,11 @@ DATABASE_URL=postgres://… pnpm exec mnemocyte migrate --dimensions 1536
 installation and `check` work without it. Without the `postgres` package
 the command stops with an install hint.
 
+A libSQL database needs a memory file: the command has no libSQL
+connection of its own. `migrate`, `check` and `text-search` work with one
+([libsql.md](./libsql.md#install-the-schema)); `sql`, `generate` and
+`init` are Postgres only.
+
 If the tables live in [a schema of their own](./postgres.md#keep-the-tables-in-their-own-schema),
 add `--schema <name>` to `migrate`, `check`, `sql` and `text-search`. With
 a memory file, the schema comes from its `postgresStore({ schemaName })`,
@@ -528,6 +533,9 @@ deploy would run a migration, using `jq -e`, which exits 1 on `false`:
   stateless HTTP driver in the memory file, run `migrate` against a regular
   connection (`DATABASE_URL` and `--dimensions`, without `--config`, from a
   folder with no memory file).
+- **libSQL.** Only through a memory file, for `migrate`, `check` and
+  `text-search`. `--schema` exits 2 with a libSQL store, and
+  `--dimensions` stops at 4,000.
 - **`--env-file` and Node.** Node also reads `--env-file` from a script's
   arguments, so a file that does not exist is reported by Node itself
   (`node: nope.env: not found`, exit code 9) before the command starts.

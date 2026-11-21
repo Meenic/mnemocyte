@@ -9,6 +9,17 @@ import { type CliTarget, resolveTarget } from "./target.js";
 const REWRITE_WARNING =
 	"This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation.";
 
+/** libSQL keeps keyword search in an FTS5 table of its own. */
+const LIBSQL_REBUILD_WARNING =
+	"This rebuilds the keyword index from every memory's content in one write transaction; other writes wait until it finishes.";
+
+/** The warning for `target`'s backend. */
+function rebuildWarning(target: CliTarget): string {
+	return target.store.backend === "libsql"
+		? LIBSQL_REBUILD_WARNING
+		: REWRITE_WARNING;
+}
+
 /**
  * What a change to `name` means for app processes that still run 1.1, which
  * search with `english` whatever the installation uses: a restart does not
@@ -34,6 +45,11 @@ function untrackedNote(name: string, when: "before" | "after"): string {
 	return when === "before"
 		? ` The migrations of this installation are not recorded. If drizzle-kit manages these tables, change the language there instead: run ${generate}, then drizzle-kit generate. Changing it here leaves drizzle-kit's schema file behind.`
 		: ` The migrations of this installation are not recorded. If drizzle-kit manages these tables, its schema file still has the old configuration: run ${generate} to update it. The migration that drizzle-kit generate then writes for content_tsv repeats this change.`;
+}
+
+/** {@link olderClientWarning} on Postgres; libSQL has no 1.1 clients. */
+function olderWarning(target: CliTarget, name: string | null): string {
+	return target.store.backend === "libsql" ? "" : olderClientWarning(name);
 }
 
 function run(
@@ -110,13 +126,13 @@ export async function textSearchTarget(
 			: "";
 	if (args.dryRun) {
 		io.write(
-			`Would change keyword search from "${plan.previous}" to "${plan.current}". ${REWRITE_WARNING}${olderClientWarning(plan.current)}${before}\n`,
+			`Would change keyword search from "${plan.previous}" to "${plan.current}". ${rebuildWarning(target)}${olderWarning(target, plan.current)}${before}\n`,
 		);
 		return 0;
 	}
 	if (!args.yes) {
 		const answer = await io.confirm(
-			`Change keyword search from "${plan.previous}" to "${plan.current}"? ${REWRITE_WARNING}${olderClientWarning(plan.current)}${before} [y/N] `,
+			`Change keyword search from "${plan.previous}" to "${plan.current}"? ${rebuildWarning(target)}${olderWarning(target, plan.current)}${before} [y/N] `,
 		);
 		if (answer !== true) {
 			io.error(
@@ -130,7 +146,7 @@ export async function textSearchTarget(
 	const result = await run(target, name, false);
 	io.write(
 		result.changed
-			? `Changed keyword search from "${result.previous}" to "${result.current}". Restart other app processes so their keyword search uses it.${olderClientWarning(result.current)}${untracked && result.current !== null ? untrackedNote(result.current, "after") : ""}\n`
+			? `Changed keyword search from "${result.previous}" to "${result.current}". Restart other app processes so their keyword search uses it.${olderWarning(target, result.current)}${untracked && result.current !== null ? untrackedNote(result.current, "after") : ""}\n`
 			: `Keyword search already uses the "${result.current}" text search configuration.\n`,
 	);
 	return 0;

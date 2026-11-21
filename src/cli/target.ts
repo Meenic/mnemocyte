@@ -166,7 +166,8 @@ export async function resolveTarget(
 
 /**
  * `--schema` with a memory file: the file's `postgresStore()` already says
- * where the tables are, so the flag may only repeat it.
+ * where the tables are, so the flag may only repeat it. A libSQL store has
+ * no schema to name.
  *
  * @throws {CliError} With exit code 2 when the two differ.
  */
@@ -175,6 +176,12 @@ export function assertSchemaFlag(
 	store: MemoryStore,
 	label: string,
 ): void {
+	if (flag !== undefined && store.backend === "libsql") {
+		throw new CliError(
+			`--schema applies to Postgres, but the store in ${label} is libSQL, which keeps one schema per database. Drop --schema.`,
+			EXIT_USAGE,
+		);
+	}
 	if (flag === undefined || flag === store.schemaName) {
 		return;
 	}

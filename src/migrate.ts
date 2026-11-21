@@ -15,6 +15,15 @@ import type {
 } from "./types.js";
 
 /**
+ * The store's `capabilities.maxDimensions`. A store from an older copy of
+ * the package, which `migrate` still accepts, has none: Postgres's limit.
+ */
+function maxDimensionsOf(store: MemoryStore): number | undefined {
+	const capabilities: Partial<MemoryStore>["capabilities"] = store.capabilities;
+	return capabilities?.maxDimensions;
+}
+
+/**
  * Apply the store's pending schema migrations.
  *
  * Pass the app's client as `memory`: its store is migrated and its
@@ -72,11 +81,18 @@ export async function migrate(input: MigrateInput): Promise<MigrateResult> {
 				reason: "INVALID_OPTION",
 			});
 		}
-		assertMigrateDimensions(embedderDimensions, "embedder.dimensions");
 		store = internals.store;
+		assertMigrateDimensions(
+			embedderDimensions,
+			"embedder.dimensions",
+			maxDimensionsOf(store),
+		);
 		dimensions = embedderDimensions;
 	} else {
 		store = resolveStore(input.store);
+		if (dimensions !== undefined) {
+			assertMigrateDimensions(dimensions, "dimensions", maxDimensionsOf(store));
+		}
 	}
 	return await store.migrate({
 		...(dimensions === undefined ? {} : { dimensions }),

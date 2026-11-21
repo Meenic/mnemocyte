@@ -1463,7 +1463,7 @@ export function validateMigrateInput(input: MigrateInput): void {
 	assertOptionalBoolean(input.createExtension, "createExtension");
 	assertOptionalBoolean(input.dryRun, "dryRun");
 	if (input.dimensions !== undefined) {
-		assertMigrateDimensions(input.dimensions, "dimensions");
+		assertPositiveDimensions(input.dimensions, "dimensions");
 	}
 	if (input.textSearchConfig !== undefined) {
 		assertTextSearchConfigName(input.textSearchConfig, "textSearchConfig");
@@ -1520,19 +1520,41 @@ export function validateSetTextSearchConfigInput(
 
 /**
  * Throw `"VALIDATION"` unless `dimensions` fits a column a migration can
- * create. `field` names where the value came from.
+ * create. `field` names where the value came from. `maxDimensions` is the
+ * store's (`capabilities.maxDimensions`); left out, it is Postgres's 4,000,
+ * which the CLI's `--dimensions` and `sql` use. An infinite one (the
+ * in-memory store, which has no column) keeps the Postgres limit.
  */
 export function assertMigrateDimensions(
 	dimensions: number,
 	field: string,
+	maxDimensions: number = MAX_MIGRATE_DIMENSIONS,
 ): void {
-	if (
-		!Number.isInteger(dimensions) ||
-		dimensions < 1 ||
-		dimensions > MAX_MIGRATE_DIMENSIONS
-	) {
+	const max = Number.isFinite(maxDimensions)
+		? maxDimensions
+		: MAX_MIGRATE_DIMENSIONS;
+	if (!Number.isInteger(dimensions) || dimensions < 1 || dimensions > max) {
 		throw new MnemocyteError({
-			message: `${field} must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`,
+			message:
+				max === MAX_MIGRATE_DIMENSIONS
+					? `${field} must be an integer from 1 to ${MAX_MIGRATE_DIMENSIONS}, the largest halfvec an HNSW index holds.`
+					: `${field} must be an integer from 1 to ${max}, the largest vector this store holds.`,
+			code: "VALIDATION",
+		});
+	}
+}
+
+/**
+ * Throw `"VALIDATION"` unless `dimensions` is a positive integer; the
+ * store's own limit is checked once the store is known.
+ */
+export function assertPositiveDimensions(
+	dimensions: number,
+	field: string,
+): void {
+	if (!Number.isInteger(dimensions) || dimensions < 1) {
+		throw new MnemocyteError({
+			message: `${field} must be a positive integer.`,
 			code: "VALIDATION",
 		});
 	}

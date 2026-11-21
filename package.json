@@ -42,6 +42,10 @@
 			"types": "./dist/embedders/voyage.d.mts",
 			"default": "./dist/embedders/voyage.mjs"
 		},
+		"./libsql": {
+			"types": "./dist/libsql.d.mts",
+			"default": "./dist/libsql.mjs"
+		},
 		"./postgres": {
 			"types": "./dist/postgres.d.mts",
 			"default": "./dist/postgres.mjs"
@@ -78,11 +82,12 @@
 		"test:integration": "vitest run --project integration",
 		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
 		"bench:postgres": "vitest bench --project \"integration (bench)\" test/benchmarks/postgres-plans.bench.ts",
+		"bench:libsql": "pnpm build && node scripts/bench-libsql.mjs",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
 		"lint:package": "pnpm build && node scripts/check-package.mjs",
 		"format": "biome format --write",
-		"migration:bundle": "node scripts/bundle-migrations.mjs",
+		"migration:bundle": "node scripts/bundle-migrations.mjs && node scripts/bundle-libsql-migrations.mjs",
 		"pack:check": "pnpm pack --dry-run",
 		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"
 	},
@@ -100,6 +105,9 @@
 		"semantic-search",
 		"postgres",
 		"pgvector",
+		"libsql",
+		"turso",
+		"sqlite",
 		"ai-sdk"
 	],
 	"author": "Meenic",
@@ -118,6 +126,7 @@
 	},
 	"peerDependencies": {
 		"@electric-sql/pglite": "^0.5.16",
+		"@libsql/client": "^0.18.0",
 		"ai": "^7.0.135",
 		"drizzle-orm": "^0.45.4",
 		"pg": "^8.23.1",
@@ -125,6 +134,9 @@
 	},
 	"peerDependenciesMeta": {
 		"@electric-sql/pglite": {
+			"optional": true
+		},
+		"@libsql/client": {
 			"optional": true
 		},
 		"ai": {
@@ -145,6 +157,7 @@
 		"@biomejs/biome": "2.6.3",
 		"@electric-sql/pglite": "^0.5.16",
 		"@electric-sql/pglite-pgvector": "^0.0.17",
+		"@libsql/client": "^0.18.0",
 		"@types/node": "^22.20.5",
 		"@types/pg": "^8.23.1",
 		"ai": "^7.0.170",

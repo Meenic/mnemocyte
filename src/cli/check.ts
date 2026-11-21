@@ -12,8 +12,15 @@ import {
 } from "./json.js";
 import { type CliTarget, resolveTarget } from "./target.js";
 
-const INSTALLATION_GUIDE_URL =
+const POSTGRES_INSTALLATION_GUIDE_URL =
 	"https://github.com/Meenic/mnemocyte/blob/main/docs/guide/postgres.md#one-embedding-model-per-installation";
+const LIBSQL_INSTALLATION_GUIDE_URL =
+	"https://github.com/Meenic/mnemocyte/blob/main/docs/guide/libsql.md#one-embedding-model-per-database";
+
+/** A libSQL report carries `sqliteVersion`; a Postgres one does not. */
+function isLibsqlReport(report: InstallationReport): boolean {
+	return report.sqliteVersion !== undefined;
+}
 
 /** What the app is configured with, to compare with the installation. */
 export interface ExpectedInstallation {
@@ -66,8 +73,15 @@ export function evaluateInstallation(
 		notes.push({ code, message });
 	};
 	const { migrations, column, meta } = report;
+	const libsql = isLibsqlReport(report);
+	const installationGuide = libsql
+		? LIBSQL_INSTALLATION_GUIDE_URL
+		: POSTGRES_INSTALLATION_GUIDE_URL;
 
-	if (report.pgvectorVersion === null) {
+	// libSQL has vectors and FTS5 built in: there is no extension to check.
+	if (libsql) {
+		// Nothing to enable.
+	} else if (report.pgvectorVersion === null) {
 		problem(
 			"PGVECTOR_MISSING",
 			"pgvector is not enabled in this database. Run mnemocyte migrate, or have an admin run CREATE EXTENSION vector.",
@@ -122,7 +136,7 @@ export function evaluateInstallation(
 	if (meta === null) {
 		problem(
 			"INSTALLATION_ROW_MISSING",
-			`mnemocyte_meta has no "installation" row, so the embedder cannot be checked against this database. Insert it again as shown in ${INSTALLATION_GUIDE_URL}`,
+			`mnemocyte_meta has no "installation" row, so the embedder cannot be checked against this database. Insert it again as shown in ${installationGuide}`,
 		);
 	} else if (meta !== undefined) {
 		if (
@@ -139,7 +153,7 @@ export function evaluateInstallation(
 		if (meta.model === null && stored.length > 1) {
 			problem(
 				"MODEL_AMBIGUOUS",
-				`No embedding model is recorded and the stored memories use several. Repair them as shown in ${INSTALLATION_GUIDE_URL}`,
+				`No embedding model is recorded and the stored memories use several. Repair them as shown in ${installationGuide}`,
 			);
 		} else {
 			// With no model recorded, the client records the one the stored
@@ -167,7 +181,9 @@ export function evaluateInstallation(
 	) {
 		problem(
 			"TEXT_SEARCH_CONFIG_MISMATCH",
-			`Keyword search uses the "${report.textSearchConfig}" text search configuration, but --text-search-config is "${expected.textSearchConfig}". mnemocyte text-search ${expected.textSearchConfig} changes it and rewrites the memories table.`,
+			libsql
+				? `Keyword search uses the "${report.textSearchConfig}" tokenizer, but --text-search-config is "${expected.textSearchConfig}". mnemocyte text-search ${expected.textSearchConfig} changes it and rebuilds the keyword index.`
+				: `Keyword search uses the "${report.textSearchConfig}" text search configuration, but --text-search-config is "${expected.textSearchConfig}". mnemocyte text-search ${expected.textSearchConfig} changes it and rewrites the memories table.`,
 		);
 	}
 
@@ -197,6 +213,9 @@ export function installationJson(report: InstallationReport): InstallationJson {
 	return {
 		schema: report.schema,
 		pgvectorVersion: report.pgvectorVersion,
+		...(report.sqliteVersion === undefined
+			? {}
+			: { sqliteVersion: report.sqliteVersion }),
 		migrations:
 			migrations.state === "none" || migrations.state === "invalid"
 				? { state: migrations.state, applied: [], pending: [] }
@@ -239,7 +258,9 @@ export function describeInstallation(report: InstallationReport): string[] {
 	return [
 		// Only with a schemaName, so the default output stays as it was.
 		...(report.schema === null ? [] : [`schema      ${report.schema}`]),
-		`pgvector    ${report.pgvectorVersion ?? "not enabled"}`,
+		report.sqliteVersion === undefined
+			? `pgvector    ${report.pgvectorVersion ?? "not enabled"}`
+			: `libsql      SQLite ${report.sqliteVersion}`,
 		`migrations  ${installed}`,
 		`dimensions  ${column === null ? "-" : `${column.dimensions} (${column.vectorType})`}`,
 		`model       ${model}`,

@@ -125,7 +125,10 @@ and the "no driver import" package tests hold. The client is created with
 `max: 1` and no notice output, wrapped by `resolveStore` (with `--schema`
 as the store's `schemaName`), and ended by the command. `migrate` and
 `text-search` pass that store to the public functions as a store config
-(`DatabaseUrlTarget.storeConfig`), so they use the same schema.
+(`DatabaseUrlTarget.storeConfig`), so they use the same schema. There is
+no libSQL counterpart: a libSQL database is reached only through a memory
+file, whose store `migrate`, `check` and `text-search` call like any
+other.
 
 ## `--schema`
 
@@ -137,7 +140,8 @@ store already knows its schema: `MemoryStore.schemaName`, which
 `assertSchemaFlag` allows the flag only when it repeats that name, and
 exits 2 otherwise, so the file stays the one place the schema is set. A
 store from an older copy of the package has no `schemaName` and counts as
-none.
+none. With a libSQL store (`backend: "libsql"`) any `--schema` exits 2:
+libSQL has one schema per database.
 
 ## `init`
 
@@ -242,6 +246,16 @@ and needs no transaction, so it also works on a `batch`-only executor:
   `content_tsv`'s generated expression (a missing column or an expression
   of another shape makes the migrations `invalid`), the `installation`
   row, and the stored models when the row records none.
+
+The libSQL one, `inspectLibsqlInstallation`, reads `sqlite_version()`,
+`mnemocyte_migrations`, `mnemocyte_meta` and the FTS5 table's tokenizer,
+without a transaction. Its report has `pgvectorVersion: null` and
+`sqliteVersion`, whose presence `evaluateInstallation` takes as libSQL: it
+skips the pgvector problems and the untracked note (libSQL has no
+adoption), links the libSQL guide, and words the tokenizer mismatch for
+FTS5. `describeInstallation` prints `libsql      SQLite <version>` in place
+of the `pgvector` line, and `check --json` adds
+`installation.sqliteVersion`.
 
 The report carries the store's `schema` (null without one).
 `describeInstallation` prints a `schema` line only when it is set, so the
@@ -467,6 +481,10 @@ Windows and an immediate exit can cut output short.
 
 - The interactive prompt itself (a real terminal) is not tested; the code
   behind `io.confirm` is.
+- libSQL: only through a memory file; `sql`, `generate` and `init` are
+  Postgres only, and `--dimensions` (parsed before the store is known)
+  stops at Postgres's 4,000. `text-search` on libSQL asks before
+  rebuilding the keyword index and prints no 1.1 warning.
 - The hook is not consulted for imports made from inside `node_modules`.
 - `module.registerHooks` is "active development" on Node 22 and a release
   candidate from 24.13.1 and 25.4; type stripping is a release candidate on

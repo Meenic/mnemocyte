@@ -26,6 +26,7 @@ import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/goog
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
+import * as libsqlEntry from "mnemocyte/libsql";
 import manifest from "mnemocyte/package.json" with { type: "json" };
 import * as postgresEntry from "mnemocyte/postgres";
 import { postgresStore } from "mnemocyte/postgres";
@@ -45,6 +46,7 @@ describe("package exports", () => {
 		expect(typeof setTextSearchConfig).toBe("function");
 		expect(typeof postgresStore).toBe("function");
 		expect(Object.keys(postgresEntry)).toEqual(["postgresStore"]);
+		expect(Object.keys(libsqlEntry)).toEqual(["libsqlStore"]);
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 		expect(openaiCompatibleEmbedder).toBe(directOpenAICompatibleEmbedder);

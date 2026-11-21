@@ -9,22 +9,33 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
+The third minor release: memories can live in libSQL and Turso, and other
+packages can add storage backends through a public store contract and the
+test suite the built-in backends pass. Postgres has no migration, so 1.2
+and 1.3 clients work with the same installation in either deploy order;
+see [upgrading](docs/guide/upgrading.md#12--13).
+
 ### Added
 
 - **libSQL and Turso.** Memories can live in a libSQL database: a local
   file, Turso Cloud or a libSQL server. Pass an `@libsql/client` client,
   or a Drizzle instance over one, as `store`, or use `libsqlStore({ client })`
-  from the new `mnemocyte/libsql` entry. `@libsql/client` 0.18 or newer is
-  an optional peer. `migrate()` installs the schema, and
+  from the new `mnemocyte/libsql` entry. `@libsql/client` 0.18
+  (`^0.18.0`) is an optional peer. `migrate()` installs the schema, and
   `mnemocyte migrate`, `check` and `text-search` work through your memory
   file; see [docs/guide/libsql.md](docs/guide/libsql.md).
   - Vector search is an exact scan of the scope, with filters applied
     first, so it never returns fewer results than exist. Its time grows
-    with the scope: about 0.5 s at 10,000 memories of 1,536 dimensions.
+    with the scope: a search took about 0.7 s at 10,000 memories of 1,536
+    dimensions on a local file.
   - Keyword search uses FTS5 and `bm25`, with English stemming by default
     (`textSearchConfig: "porter"`) or `"unicode61"`. Any word of the query
     matches, and query syntax is matched as words.
-  - Embeddings up to 65,536 dimensions.
+  - Embeddings up to 65,536 dimensions. The CLI's `--dimensions` flag
+    still stops at 4,000; for a larger embedder, let the memory file set
+    it.
   - Limits are in [limitations](docs/guide/limitations.md#libsql).
 - **Custom stores.** The store contract is public as `MemoryStoreV1`, in
   the new `mnemocyte/store` entry, so a package can add a storage backend.
@@ -1686,7 +1697,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Meenic/mnemocyte/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/Meenic/mnemocyte/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Meenic/mnemocyte/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Meenic/mnemocyte/compare/v1.0.1...v1.1.0

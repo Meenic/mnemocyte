@@ -407,8 +407,9 @@ pnpm exec mnemocyte check --json
 
 - **`ok`** is true exactly when the exit code is 0.
 - **`target`** is the memory file the command loaded, or `DATABASE_URL`.
-  **`backend`** is `"postgres"` or `"in-memory"`; on the in-memory backend
-  `installation` is `null` and `ok` is true.
+  **`backend`** is `"postgres"`, `"libsql"`, `"in-memory"` or `"custom"`;
+  on the in-memory backend and a custom store `installation` is `null`
+  and `ok` is true.
 - **`installation`** holds the facts the text prints. Anything missing is
   `null`. `migrations.applied` and `migrations.pending` are always there,
   and empty when `state` is `"none"` (no tables) or `"invalid"` (a schema

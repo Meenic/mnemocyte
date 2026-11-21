@@ -290,3 +290,23 @@ Nothing in your code or database has to change.
   whatever the installation uses, so on a `simple` installation a search
   for "running" loses its keyword match without an error. It also ignores
   `schemaName` and looks for the tables on `search_path`.
+
+## 1.2 → 1.3
+
+Nothing in your database has to change, and code changes only for a
+`switch` over `backend` with no `default`.
+
+- **No migration.** 1.2 and 1.3 clients share a Postgres installation, so
+  deploy in either order.
+- **New entries, all opt-in.** `mnemocyte/libsql` stores memories in
+  libSQL or Turso (see the [libSQL guide](./libsql.md)), and
+  `mnemocyte/store` and `mnemocyte/store/test` let a package add and test
+  its own backend (see [custom stores](./custom-stores.md)).
+- **`backend` has two new values.** `MnemocyteBackend`, the `backend` of
+  `onEvent` events and of the CLI's `--json` output, adds `"libsql"` and
+  `"custom"`, so a `switch` over it needs a `default`, as its doc comment
+  says.
+- **Install one copy of `mnemocyte`.** A store made by another installed
+  copy, older than 1.3, now makes `createMemory` throw `"CONFIG"` at once
+  instead of failing on its first call. `npm ls mnemocyte` lists the
+  copies.

@@ -412,7 +412,7 @@ Vitest has three projects (`vitest.config.ts`):
 | `unit` | `test/**/*.test.ts` except integration, contract, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
 | `contract` | `test/contract/**/*.test.ts` | `src/` through aliases | `pnpm test:contract` |
 | `package` | `test/package/*.test.ts` | built `dist/` through self-reference | `pnpm test:exports` |
-| `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` |
+| `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` (`pnpm test:integration:libsql` for the libSQL server file alone) |
 
 - `unit` and `integration` map `mnemocyte` to `src/` with `resolve.alias`,
   and `tsconfig.json` does the same with `paths`. The `package` project
@@ -579,8 +579,8 @@ Vitest has three projects (`vitest.config.ts`):
   `libsqlStore`, the client itself and Drizzle on a database file under
   the folder `test/contract/libsql.global-setup.ts` creates, plus the
   libSQL-only tests; `test/integration/libsql-remote.test.ts` runs it on
-  a libSQL server at `LIBSQL_URL` (see
-  [features/libsql.md](./features/libsql.md#tests)).
+  a libSQL server at `LIBSQL_URL` (`pnpm test:integration:libsql`, in CI
+  and by hand; see [features/libsql.md](./features/libsql.md#tests)).
 - The Postgres contract (`test/contract/suite.ts`,
   `describeStoreContract`) runs the shared contract and the Postgres-only
   checks through every driver: migrate, transactions and savepoints, value
@@ -760,6 +760,7 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `Checks` | `checktypes`, `lint`, `test:checks` (build, then `test:types`, `test:readme`, `test:jsdoc`, `test:examples`), on Node 24 | the same files as the Node jobs |
 | `Package` | `lint:package` (build, pack, publint, attw) | `src/**`, `migrations/**`, `scripts/**`, the root `tsconfig*.json`, `tsdown.config.ts` |
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
+| `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `site/**`, `CHANGELOG.md` |
 | `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `scripts/check-links.mjs` |
 
@@ -794,7 +795,33 @@ when the release calls it (`workflow_call`). It has these jobs:
   database files, through `@libsql/client`'s native `libsql` binding for
   the runner's platform; no service is needed. The libSQL server run
   (`test/integration/libsql-remote.test.ts`) skips in the Postgres jobs,
-  which set no `LIBSQL_URL` (`chore/libsql-remote-ci` in ROADMAP.md).
+  which set no `LIBSQL_URL`, and runs in `libSQL server integration`
+  (decision 71). That job runs only this file
+  (`pnpm test:integration:libsql`), on Node 24 only: it tests the Hrana
+  protocol and the server's SQL parser, and the Node jobs already run
+  the libSQL contract on files. Its list is the Postgres list in an output
+  of its own: the suite reaches `test/fixtures/` and `test/helpers.ts`
+  through `test/contract/shared.ts`, and `migrations/libsql/` through the
+  bundle in `src/db/libsql/bundled.ts`, so a narrower list would miss the
+  next shared file.
+- The libSQL server service is
+  `ghcr.io/tursodatabase/libsql-server:d6c75af@sha256:6dd3eb27…` in
+  `ci.yml`: the image's newest tags are short commit SHAs, and the digest
+  keeps a re-pushed tag from changing the image. The image has no `curl`
+  or `wget` for a `--health-cmd`, so a step polls `GET /health` from the
+  runner before the tests, with `--retry-all-errors` (plain `--retry`
+  gives up on a connection reset or an empty reply, which Docker's port
+  proxy can return before the server listens). Dependabot's `github-actions` ecosystem
+  documents updates to `uses:` references only, not service images, so
+  the pin is bumped by hand: compare the digest of `latest` with the pin,
+  and when it differs, take the newest SHA tag with the same digest from
+  the [package page](https://github.com/tursodatabase/libsql/pkgs/container/libsql-server)
+  and update `ci.yml`, this bullet and the local command in
+  [features/libsql.md](./features/libsql.md#tests):
+
+  ```bash
+  docker buildx imagetools inspect ghcr.io/tursodatabase/libsql-server:latest --format '{{.Manifest.Digest}}'
+  ```
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs
@@ -849,7 +876,7 @@ when the release calls it (`workflow_call`). It has these jobs:
   usual time on the last `main` run before this change: Node 15 (1.5 to
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
   Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
-  later, has 10, and `Links` 5.
+  later, has 10, `Links` 5 and `libSQL server integration` 10.
 - Both workflows pin each action to a full-length commit SHA with its
   release after it (`actions/checkout@<sha> # v7.0.1`), since the release
   runs `ci.yml` and its publish job holds the npm OIDC token (decision

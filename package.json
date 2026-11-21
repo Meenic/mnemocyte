@@ -80,6 +80,7 @@
 		"test:retrieval": "vitest run --project unit test/retrieval/quality.test.ts",
 		"test:context": "vitest run --project unit test/context/builder.test.ts",
 		"test:integration": "vitest run --project integration",
+		"test:integration:libsql": "vitest run --project integration test/integration/libsql-remote.test.ts",
 		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
 		"bench:postgres": "vitest bench --project \"integration (bench)\" test/benchmarks/postgres-plans.bench.ts",
 		"bench:libsql": "pnpm build && node scripts/bench-libsql.mjs",

@@ -36,6 +36,7 @@ jobs:
       node: ${{ steps.filter.outputs.node }}
       package: ${{ steps.filter.outputs.package }}
       postgres: ${{ steps.filter.outputs.postgres }}
+      libsql: ${{ steps.filter.outputs.libsql }}
       site: ${{ steps.filter.outputs.site }}
       links: ${{ steps.filter.outputs.links }}
 
@@ -60,6 +61,7 @@ jobs:
           node='^(src/|test/|migrations/|scripts/|examples/|README\.md$|docs/guide/getting-started\.md$|tsconfig[^/]*\.json$|tsdown\.config\.ts$|vitest\.config\.ts$)'
           package='^(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)'
           postgres='^(src/|test/|migrations/|vitest\.config\.ts$)'
+          libsql='^(src/|test/|migrations/|vitest\.config\.ts$)'
           site='^(site/|CHANGELOG\.md$)'
           links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|scripts/check-links\.mjs$)'
 
@@ -87,7 +89,7 @@ jobs:
             fi
           fi
 
-          for job in node package postgres site links; do
+          for job in node package postgres libsql site links; do
             run=$all
             if [ "$run" = false ] && grep -qE "${!job}" <<< "$files"; then
               run=true
@@ -331,6 +333,56 @@ jobs:
           POSTGRES_JS: ${{ matrix.postgres-js }}
         run: pnpm run test:integration
 
+  # The shared contract on a libSQL server (sqld) over HTTP, the Hrana
+  # protocol Turso users connect with: batches travel as requests and the
+  # server parses the SQL itself. The image is pinned by its commit-SHA tag
+  # and digest, and bumped by hand: Dependabot's github-actions updates
+  # cover `uses:` references, not service images (decision 71).
+  libsql-remote:
+    name: libSQL server integration
+    needs: changes
+    if: needs.changes.outputs.libsql == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      sqld:
+        image: ghcr.io/tursodatabase/libsql-server:d6c75af@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+        env:
+          SQLD_NODE: primary
+        ports:
+          - 8080:8080
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The image has no curl or wget for a --health-cmd, so the runner
+      # polls the server's /health route instead. Without health options a
+      # service counts as started once its container runs. --retry-all-errors
+      # also retries the reset or empty reply Docker's port proxy can give
+      # before sqld listens, which plain --retry does not.
+      - name: Wait for sqld
+        run: curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 --output /dev/null http://127.0.0.1:8080/health
+
+      - name: Test libSQL server
+        env:
+          LIBSQL_URL: http://127.0.0.1:8080
+        run: pnpm run test:integration:libsql
+
   # One check that sums up the run: a job skipped by its if reports success,
   # so this fails only when a job that ran failed or was cancelled.
   ci-ok:
@@ -343,6 +395,7 @@ jobs:
       - site
       - links
       - postgres-integration
+      - libsql-remote
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

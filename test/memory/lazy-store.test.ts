@@ -1,15 +1,29 @@
 import { describe, expect, test, vi } from "vitest";
+import { POSTGRES_CAPABILITIES } from "../../src/memory/capabilities.js";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
-import { createLazyStore } from "../../src/memory/lazy-store.js";
+import {
+	createLazyStore,
+	type LazyStoreInput,
+} from "../../src/memory/lazy-store.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 const selector = { namespace: "lazy", entityId: "lazy" };
 
+/** A lazy Postgres store over `load`. */
+function lazyStore(load: LazyStoreInput["load"]) {
+	return createLazyStore({
+		backend: "postgres",
+		capabilities: POSTGRES_CAPABILITIES,
+		load,
+	});
+}
+
 describe("lazy store", () => {
-	test("knows its backend without loading", () => {
+	test("knows its backend and capabilities without loading", () => {
 		const load = vi.fn(async () => createInMemoryStore());
-		const store = createLazyStore({ backend: "postgres", load });
+		const store = lazyStore(load);
 		expect(store.backend).toBe("postgres");
+		expect(store.capabilities).toBe(POSTGRES_CAPABILITIES);
 		expect(load).not.toHaveBeenCalled();
 	});
 
@@ -17,21 +31,21 @@ describe("lazy store", () => {
 		const inner = createInMemoryStore();
 		const stats = vi.spyOn(inner, "stats");
 		const load = vi.fn(async () => inner);
-		const store = createLazyStore({ backend: "postgres", load });
+		const store = lazyStore(load);
 		const now = new Date();
 
 		await Promise.all([
-			store.stats(selector, now),
-			store.stats(selector, now),
-			store.deleteScope(selector),
+			store.stats({ selector, now }),
+			store.stats({ selector, now }),
+			store.delete({ target: "scope", selector }),
 		]);
-		const options = { signal: new AbortController().signal };
-		await store.stats(selector, now, options);
+		const signal = new AbortController().signal;
+		await store.stats({ selector, now, signal });
 
 		expect(load).toHaveBeenCalledTimes(1);
 		expect(stats).toHaveBeenCalledTimes(3);
-		expect(stats).toHaveBeenCalledWith(selector, now);
-		expect(stats).toHaveBeenLastCalledWith(selector, now, options);
+		expect(stats).toHaveBeenCalledWith({ selector, now });
+		expect(stats).toHaveBeenLastCalledWith({ selector, now, signal });
 	});
 
 	test("reports a failed load as CONFIG with the cause and retries on the next call", async () => {
@@ -40,16 +54,18 @@ describe("lazy store", () => {
 			.fn<() => Promise<ReturnType<typeof createInMemoryStore>>>()
 			.mockRejectedValueOnce(cause)
 			.mockResolvedValue(createInMemoryStore());
-		const store = createLazyStore({ backend: "postgres", load });
+		const store = lazyStore(load);
 
 		const error = await expectMnemocyteError(
-			store.stats(selector, new Date()),
+			store.stats({ selector, now: new Date() }),
 			"CONFIG",
 		);
 		expect(error.message).toMatch(/postgres backend/);
 		expect(error.cause).toBe(cause);
 
-		await expect(store.stats(selector, new Date())).resolves.toMatchObject({
+		await expect(
+			store.stats({ selector, now: new Date() }),
+		).resolves.toMatchObject({
 			memoryCount: 0,
 		});
 		expect(load).toHaveBeenCalledTimes(2);
@@ -58,11 +74,10 @@ describe("lazy store", () => {
 	test("passes store errors through unchanged", async () => {
 		const inner = createInMemoryStore();
 		const failure = new Error("query failed");
-		vi.spyOn(inner, "deleteScope").mockRejectedValue(failure);
-		const store = createLazyStore({
-			backend: "postgres",
-			load: async () => inner,
-		});
-		await expect(store.deleteScope(selector)).rejects.toBe(failure);
+		vi.spyOn(inner, "delete").mockRejectedValue(failure);
+		const store = lazyStore(async () => inner);
+		await expect(store.delete({ target: "scope", selector })).rejects.toBe(
+			failure,
+		);
 	});
 });

@@ -10,7 +10,7 @@ import {
 	verifyNotAccessedSinceUsesCreatedAt,
 } from "../fixtures/access-tracking.js";
 import { expectDefined, expectMnemocyteError, testScope } from "../helpers.js";
-import { testVisibility } from "../store-helpers.js";
+import { getStoredMemory, testVisibility } from "../store-helpers.js";
 
 const embedder: Embedder = {
 	model: "access-tracking-test",
@@ -29,12 +29,16 @@ function createHarness(): AccessTrackingHarness {
 		async readStoredState(ids) {
 			const rows = await Promise.all(
 				ids.map((id) =>
-					store.getMemory(testVisibility("access_in_memory"), id),
+					getStoredMemory(store, testVisibility("access_in_memory"), id),
 				),
 			);
 			const deleted = await Promise.all(
 				ids.map((id) =>
-					store.getMemory(testVisibility("access_in_memory_deleted"), id),
+					getStoredMemory(
+						store,
+						testVisibility("access_in_memory_deleted"),
+						id,
+					),
 				),
 			);
 			return [...rows, ...deleted].filter((row) => row !== null);
@@ -68,11 +72,11 @@ describe("recall access tracking (in-memory)", () => {
 			},
 			{
 				...store,
-				markMemoriesAccessed(visibility, memoryIds) {
+				markAccessed(input) {
 					started = true;
 					return new Promise<void>((resolve) => {
 						release = resolve;
-					}).then(() => store.markMemoriesAccessed(visibility, memoryIds));
+					}).then(() => store.markAccessed(input));
 				},
 			},
 		);
@@ -87,13 +91,15 @@ describe("recall access tracking (in-memory)", () => {
 		expect(results.map((result) => result.id)).toEqual([memory.id]);
 		expect(started).toBe(true);
 		expect(
-			(await store.getMemory(testVisibility("alice"), memory.id))?.accessCount,
+			(await getStoredMemory(store, testVisibility("alice"), memory.id))
+				?.accessCount,
 		).toBe(0);
 
 		expectDefined(release)();
 		expect(await events.nextSettled()).toMatchObject({ phase: "success" });
 		expect(
-			(await store.getMemory(testVisibility("alice"), memory.id))?.accessCount,
+			(await getStoredMemory(store, testVisibility("alice"), memory.id))
+				?.accessCount,
 		).toBe(1);
 	});
 
@@ -117,7 +123,7 @@ describe("recall access tracking (in-memory)", () => {
 			},
 			{
 				...store,
-				async markMemoriesAccessed() {
+				async markAccessed() {
 					throw failure;
 				},
 			},
@@ -148,9 +154,9 @@ describe("recall access tracking (in-memory)", () => {
 			{ embedder, retrieval: { trackAccess: true } },
 			{
 				...store,
-				async markMemoriesAccessed(visibility, memoryIds) {
+				async markAccessed(input) {
 					calls += 1;
-					return store.markMemoriesAccessed(visibility, memoryIds);
+					return store.markAccessed(input);
 				},
 			},
 		);

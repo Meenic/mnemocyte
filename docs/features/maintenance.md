@@ -20,8 +20,9 @@
   caller cannot see. That happens when a survivor shared by every agent has
   a loser that belongs to one agent.
 
-  It resolves with a `DeleteResult`, the store's `StoreDeleteResult`
-  copied: `deletedIds` is the memory, then the deleted dependents by id;
+  It resolves with a `DeleteResult`, the ids of the store's `"memory"`
+  delete result (`StoreDeletedMemory`) copied: `deletedIds` is the memory,
+  then the deleted dependents by id;
   `restoredIds` is the restored dependents by id. On Postgres the
   statement aggregates both from `RETURNING` with
   `jsonb_agg(id ORDER BY id)` and the store moves the memory to the front;

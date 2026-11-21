@@ -1,4 +1,6 @@
+import type { Memory } from "mnemocyte";
 import type {
+	MemoryStore,
 	StoreEntitySelector,
 	StoreScope,
 	StoreVisibility,
@@ -27,4 +29,14 @@ export function testVisibility(entityId: string): StoreVisibility {
 /** Every row of the entity, across agents and sessions. */
 export function testSelector(entityId: string): StoreEntitySelector {
 	return { namespace: TEST_NAMESPACE, entityId };
+}
+
+/** The memory with this id as `visibility` sees it, or `null`. */
+export async function getStoredMemory(
+	store: MemoryStore,
+	visibility: StoreVisibility,
+	id: string,
+): Promise<Memory | null> {
+	const [memory] = await store.get({ visibility, ids: [id] });
+	return memory ?? null;
 }

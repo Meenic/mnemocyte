@@ -975,7 +975,7 @@ try {
 
 | Code | Reason | Thrown when |
 |---|---|---|
-| `CONFIG` | `INVALID_OPTION` | An option is missing, malformed or unknown (including `namespace`), the client or executor is not supported, or `migrate`'s `dimensions` differs from the client's embedder. |
+| `CONFIG` | `INVALID_OPTION` | An option is missing, malformed or unknown (including `namespace`), the client or executor is not supported, `store` comes from another installed copy of mnemocyte with a different store contract, or `migrate`'s `dimensions` differs from the client's embedder. |
 | | `DIMENSIONS_MISMATCH` | The embedder's dimensions, or `migrate`'s `dimensions`, differ from the installation's. |
 | | `MODEL_MISMATCH` | The embedder's model differs from the one the installation recorded. |
 | | `TEXT_SEARCH_CONFIG_MISMATCH` | `migrate`'s `textSearchConfig` differs from the installation's. |

@@ -37,11 +37,11 @@ describe("Postgres stats", () => {
 		const store = createPostgresStore(executor);
 		const controller = new AbortController();
 
-		const stats = await store.stats(
-			{ namespace: "test", entityId: "alice" },
-			new Date(),
-			{ signal: controller.signal },
-		);
+		const stats = await store.stats({
+			selector: { namespace: "test", entityId: "alice" },
+			now: new Date(),
+			signal: controller.signal,
+		});
 
 		expect(stats.memoryCount).toBe(2);
 		expect(signals).toEqual([controller.signal]);
@@ -51,7 +51,7 @@ describe("Postgres stats", () => {
 		const { executor, signals } = createRecordingExecutor();
 		const store = createPostgresStore(executor);
 
-		await store.stats({ namespace: null }, new Date());
+		await store.stats({ selector: { namespace: null }, now: new Date() });
 
 		expect(signals).toEqual([undefined]);
 	});

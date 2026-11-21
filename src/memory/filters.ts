@@ -1,7 +1,7 @@
 import type { Memory, MemoryRecordScope } from "../types.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
 import type {
-	StoreDuplicateInput,
+	StoreDuplicateFilter,
 	StoreMemoryFilter,
 	StoreScope,
 	StoreSelector,
@@ -126,7 +126,7 @@ export function matchesPruneFilter(
  */
 export function matchesDuplicateFilter(
 	memory: Memory,
-	input: Omit<StoreDuplicateInput, "limit">,
+	input: StoreDuplicateFilter,
 	now: Date,
 ): boolean {
 	return matchesMemoryFilter(memory, input, now);

@@ -17,14 +17,13 @@ import {
 	deleteScope as deleteScopeQuery,
 	findDuplicatePage as findDuplicatePageQuery,
 	findDuplicatePairs as findDuplicatePairsQuery,
-	getMemoryById,
+	getMemoriesByIds,
 	getMemoryByKey as getMemoryByKeyQuery,
 	getMemoryStatsCounts,
 	insertMemories as insertMemoryRows,
 	isScopeKeyViolation,
 	lexicalSearch as lexicalSearchQuery,
 	listMemories as listMemoriesQuery,
-	loadConsolidationTargets,
 	markMemoriesAccessed,
 	type NewMemoryRow,
 	type PruneFilter,
@@ -39,7 +38,7 @@ import {
 	getStoredEmbeddingModels,
 	recordInstallationEmbeddingModel,
 } from "../db/queries/meta.js";
-import type { VectorType } from "../db/rows.js";
+import type { MemoryRow, VectorType } from "../db/rows.js";
 import { postgresTables } from "../db/tables.js";
 import {
 	readInstalledTextSearchConfig,
@@ -49,7 +48,13 @@ import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
 import type { SqlExecutor } from "../sql/executor.js";
-import type { Embedder, ImportanceLevel, MemoryConfig } from "../types.js";
+import type {
+	Embedder,
+	ImportanceLevel,
+	MemoryConfig,
+	PruneResult,
+} from "../types.js";
+import { POSTGRES_CAPABILITIES } from "./capabilities.js";
 import { type CoreMemoryClient, createMemoryClient } from "./client-core.js";
 import { IMPORTANCE_RANK } from "./defaults.js";
 import { hiddenDependentsError, memoryHasDependentsError } from "./deletion.js";
@@ -58,13 +63,22 @@ import { createEventId, isUuid, type StoredMemory } from "./records.js";
 import {
 	assertPruneFilterHasSelector,
 	type MemoryStore,
-	type StoreConsolidateInput,
-	type StoreConsolidateResult,
+	type StoreDeletedMemory,
+	type StoreDeleteFilterInput,
+	type StoreDeleteMemoryInput,
+	type StoreDeleteResult,
+	type StoreDeleteScopeInput,
+	type StoreDuplicatePage,
+	type StoreDuplicatePageInput,
 	type StoreDuplicatePair,
+	type StoreDuplicateResult,
+	type StoreDuplicateTop,
+	type StoreDuplicateTopInput,
 	type StoreLexicalCandidate,
-	type StoreLexicalSearchInput,
+	type StoreLexicalQuery,
+	type StoreMemoryFilter,
 	type StoreVectorCandidate,
-	type StoreVectorSearchInput,
+	type StoreVectorQuery,
 	type ValidatedPruneFilter,
 } from "./store.js";
 
@@ -453,8 +467,172 @@ export function createPostgresStore(
 		}
 	}
 
+	async function vectorCandidates(
+		filter: StoreMemoryFilter,
+		query: StoreVectorQuery,
+	): Promise<StoreVectorCandidate[]> {
+		const minScore = query.minScore ?? 0;
+		const [vectorType] = await Promise.all([
+			getVectorType(),
+			ensurePgvectorVersion(),
+		]);
+		const rows = await vectorSearchQuery(client, tables, {
+			...filter,
+			embedding: query.embedding,
+			limit: query.limit,
+			vectorType,
+		});
+		// Rows come in increasing distance, so the scores decrease and the
+		// rows at or above `minScore` are a prefix: filtering after the
+		// LIMIT keeps the same rows as filtering before it.
+		return rows
+			.map(
+				(row) =>
+					({
+						memory: rowToMemory(row),
+						vectorScore: toVectorScore(1 - row.vectorDistance),
+					}) satisfies StoreVectorCandidate,
+			)
+			.filter((candidate) => candidate.vectorScore >= minScore);
+	}
+
+	async function lexicalCandidates(
+		filter: StoreMemoryFilter,
+		query: StoreLexicalQuery,
+	): Promise<StoreLexicalCandidate[]> {
+		const rows = await lexicalSearchQuery(client, tables, {
+			...filter,
+			query: query.query,
+			limit: query.limit,
+			textSearchConfig: await getTextSearchConfig(),
+		});
+		return rows.map(
+			(row) =>
+				({
+					memory: rowToMemory(row),
+					lexicalScore: row.lexicalScore,
+				}) satisfies StoreLexicalCandidate,
+		);
+	}
+
+	async function deleteMemory({
+		signal,
+		target: _target,
+		...input
+	}: StoreDeleteMemoryInput): Promise<StoreDeletedMemory | null> {
+		throwIfAborted(signal);
+		if (!isUuid(input.memoryId)) {
+			return null;
+		}
+		const result = await deleteMemoryQuery(client, tables, input, signal);
+		if (!result.found) {
+			return null;
+		}
+		if (result.hasDependents) {
+			throw memoryHasDependentsError();
+		}
+		if (result.hiddenDependents) {
+			throw hiddenDependentsError();
+		}
+		// `isUuid` accepts either case. Postgres returns `uuid` in lower
+		// case, and the `"reject"` path echoes the input, so compare in
+		// lower case to list the memory once, as `Memory.id` spells it.
+		const memoryId = input.memoryId.toLowerCase();
+		return {
+			target: "memory",
+			found: true,
+			deletedIds: [
+				memoryId,
+				...result.deletedIds.filter((id) => id.toLowerCase() !== memoryId),
+			],
+			restoredIds: result.restoredIds,
+		};
+	}
+
+	async function deleteScope({
+		selector,
+		signal,
+	}: StoreDeleteScopeInput): Promise<number> {
+		throwIfAborted(signal);
+		const result = await deleteScopeQuery(client, tables, selector, signal);
+		if (result.hasDependents) {
+			throw memoryHasDependentsError();
+		}
+		return result.deletedCount;
+	}
+
+	async function prune(input: StoreDeleteFilterInput): Promise<PruneResult> {
+		throwIfAborted(input.signal);
+		assertPruneFilterHasSelector(input);
+		const filter = toPruneFilter(input);
+		const dryRun = input.dryRun === true;
+		if (dryRun) {
+			return {
+				matchedCount: await countPruneMatches(
+					client,
+					tables,
+					filter,
+					input.signal,
+				),
+				deletedCount: 0,
+				dryRun: true,
+			};
+		}
+		const result = await pruneMemories(
+			client,
+			tables,
+			filter,
+			input.audit ? { now: input.now } : undefined,
+			input.signal,
+		);
+		if (result.hasDependents) {
+			throw memoryHasDependentsError();
+		}
+		return {
+			matchedCount: result.matchedCount,
+			deletedCount: result.deletedCount,
+			dryRun: false,
+		};
+	}
+
+	function toStorePair(row: {
+		a: MemoryRow;
+		b: MemoryRow;
+		similarity: number;
+	}): StoreDuplicatePair {
+		return {
+			a: rowToMemory(row.a),
+			b: rowToMemory(row.b),
+			similarity: Math.max(0, Math.min(1, row.similarity)),
+		};
+	}
+
+	async function findDuplicatePairs({
+		mode: _mode,
+		signal,
+		...input
+	}: StoreDuplicateTopInput): Promise<StoreDuplicateTop> {
+		const rows = await findDuplicatePairsQuery(client, tables, input, signal);
+		return { mode: "top", pairs: rows.map(toStorePair) };
+	}
+
+	async function findDuplicatePage({
+		mode: _mode,
+		signal,
+		...input
+	}: StoreDuplicatePageInput): Promise<StoreDuplicatePage> {
+		const page = await findDuplicatePageQuery(client, tables, input, signal);
+		return {
+			mode: "page",
+			pairs: page.pairs.map(toStorePair),
+			compared: page.compared,
+			lastId: page.lastId,
+		};
+	}
+
 	return {
 		backend: "postgres",
+		capabilities: POSTGRES_CAPABILITIES,
 		...(tables.schema === null ? {} : { schemaName: tables.schema }),
 		migrate(input) {
 			return runPostgresMigrations(client, { ...input, tables });
@@ -472,110 +650,68 @@ export function createPostgresStore(
 		inspectInstallation(options) {
 			return inspectPostgresInstallation(client, options, tables);
 		},
-		ensureEmbeddingCompatibility,
-		async insertMemories(memories, options) {
+		ensureEmbeddingCompatibility({ embedder }) {
+			return ensureEmbeddingCompatibility(embedder);
+		},
+		async insert({ memories, audit, signal }) {
 			return run(async () => {
-				throwIfAborted(options?.signal);
+				throwIfAborted(signal);
 				const rows = await insertMemoryRows(
 					client,
 					tables,
 					memories.map(toMemoryRow),
 					await getVectorType(),
-					options?.signal,
-					options?.audit === true
-						? memories.map(() => createEventId())
-						: undefined,
+					signal,
+					audit === true ? memories.map(() => createEventId()) : undefined,
 				);
 				return rows.map(rowToMemory);
 			});
 		},
-		async vectorSearch(input: StoreVectorSearchInput) {
+		async searchCandidates({ vector, lexical, ...filter }) {
 			return run(async () => {
-				const { minVectorScore = 0, ...filters } = input;
-				const [vectorType] = await Promise.all([
-					getVectorType(),
-					ensurePgvectorVersion(),
+				const [vectorList, lexicalList] = await Promise.all([
+					vector === undefined ? [] : vectorCandidates(filter, vector),
+					lexical === undefined ? [] : lexicalCandidates(filter, lexical),
 				]);
-				const rows = await vectorSearchQuery(client, tables, {
-					...filters,
-					vectorType,
-				});
-				// Rows come in increasing distance, so the scores decrease and the
-				// rows at or above `minVectorScore` are a prefix: filtering after
-				// the LIMIT keeps the same rows as filtering before it.
-				return rows
-					.map(
-						(row) =>
-							({
-								memory: rowToMemory(row),
-								vectorScore: toVectorScore(1 - row.vectorDistance),
-							}) satisfies StoreVectorCandidate,
-					)
-					.filter((candidate) => candidate.vectorScore >= minVectorScore);
+				return { vector: vectorList, lexical: lexicalList };
 			});
 		},
-		async lexicalSearch(input: StoreLexicalSearchInput) {
+		async list({ signal, ...input }) {
 			return run(async () => {
-				const rows = await lexicalSearchQuery(client, tables, {
-					...input,
-					textSearchConfig: await getTextSearchConfig(),
-				});
-				return rows.map(
-					(row) =>
-						({
-							memory: rowToMemory(row),
-							lexicalScore: row.lexicalScore,
-						}) satisfies StoreLexicalCandidate,
-				);
-			});
-		},
-		async listMemories(input, options) {
-			return run(async () => {
-				throwIfAborted(options?.signal);
-				const rows = await listMemoriesQuery(
-					client,
-					tables,
-					input,
-					options?.signal,
-				);
+				throwIfAborted(signal);
+				const rows = await listMemoriesQuery(client, tables, input, signal);
 				return rows.map(rowToMemory);
 			});
 		},
-		async markMemoriesAccessed(visibility, memoryIds) {
+		async markAccessed({ visibility, ids }) {
 			return run(() =>
-				markMemoriesAccessed(client, tables, visibility, uuidsOnly(memoryIds)),
+				markMemoriesAccessed(client, tables, visibility, uuidsOnly(ids)),
 			);
 		},
-		async getMemory(visibility, memoryId, options) {
+		async get(input) {
 			return run(async () => {
-				throwIfAborted(options?.signal);
-				if (!isUuid(memoryId)) {
-					return null;
+				throwIfAborted(input.signal);
+				if ("key" in input) {
+					const row = await getMemoryByKeyQuery(
+						client,
+						tables,
+						input.scope,
+						input.key,
+						input.signal,
+					);
+					return row ? [rowToMemory(row)] : [];
 				}
-				const row = await getMemoryById(
+				const rows = await getMemoriesByIds(
 					client,
 					tables,
-					visibility,
-					memoryId,
-					options?.signal,
+					input.visibility,
+					uuidsOnly(input.ids),
+					input.signal,
 				);
-				return row ? rowToMemory(row) : null;
+				return rows.map(rowToMemory);
 			});
 		},
-		async getMemoryByKey(scope, key, options) {
-			return run(async () => {
-				throwIfAborted(options?.signal);
-				const row = await getMemoryByKeyQuery(
-					client,
-					tables,
-					scope,
-					key,
-					options?.signal,
-				);
-				return row ? rowToMemory(row) : null;
-			});
-		},
-		async updateMemory(input) {
+		async update(input) {
 			try {
 				if (!isUuid(input.id)) {
 					return null;
@@ -610,147 +746,44 @@ export function createPostgresStore(
 				throw normalize(error);
 			}
 		},
-		async deleteMemory(input, options) {
+		async delete(input): Promise<StoreDeleteResult> {
 			return runDelete(async () => {
-				throwIfAborted(options?.signal);
-				if (!isUuid(input.memoryId)) {
-					return null;
+				switch (input.target) {
+					case "memory":
+						return (
+							(await deleteMemory(input)) ?? { target: "memory", found: false }
+						);
+					case "scope":
+						return { target: "scope", deletedCount: await deleteScope(input) };
+					case "filter":
+						return { target: "filter", ...(await prune(input)) };
 				}
-				const result = await deleteMemoryQuery(
-					client,
-					tables,
-					input,
-					options?.signal,
-				);
-				if (!result.found) {
-					return null;
-				}
-				if (result.hasDependents) {
-					throw memoryHasDependentsError();
-				}
-				if (result.hiddenDependents) {
-					throw hiddenDependentsError();
-				}
-				// `isUuid` accepts either case. Postgres returns `uuid` in lower
-				// case, and the `"reject"` path echoes the input, so compare in
-				// lower case to list the memory once, as `Memory.id` spells it.
-				const memoryId = input.memoryId.toLowerCase();
-				return {
-					deletedIds: [
-						memoryId,
-						...result.deletedIds.filter((id) => id.toLowerCase() !== memoryId),
-					],
-					restoredIds: result.restoredIds,
-				};
 			});
 		},
-		async deleteScope(selector, options) {
-			return runDelete(async () => {
-				throwIfAborted(options?.signal);
-				const result = await deleteScopeQuery(
-					client,
-					tables,
-					selector,
-					options?.signal,
-				);
-				if (result.hasDependents) {
-					throw memoryHasDependentsError();
-				}
-				return result.deletedCount;
-			});
+		async findDuplicates(input) {
+			return run<StoreDuplicateResult>(() =>
+				input.mode === "top"
+					? findDuplicatePairs(input)
+					: findDuplicatePage(input),
+			);
 		},
-		async prune(input, options) {
-			return runDelete(async () => {
-				throwIfAborted(options?.signal);
-				assertPruneFilterHasSelector(input);
-				const filter = toPruneFilter(input);
-				const dryRun = input.dryRun === true;
-				if (dryRun) {
-					return {
-						matchedCount: await countPruneMatches(
-							client,
-							tables,
-							filter,
-							options?.signal,
-						),
-						deletedCount: 0,
-						dryRun: true,
-					};
-				}
-				const result = await pruneMemories(
-					client,
-					tables,
-					filter,
-					input.audit ? { now: input.now } : undefined,
-					options?.signal,
-				);
-				if (result.hasDependents) {
-					throw memoryHasDependentsError();
-				}
-				return {
-					matchedCount: result.matchedCount,
-					deletedCount: result.deletedCount,
-					dryRun: false,
-				};
-			});
-		},
-		async findDuplicatePairs(input, options) {
-			return run(async () => {
-				const rows = await findDuplicatePairsQuery(
-					client,
-					tables,
-					input,
-					options?.signal,
-				);
-				return rows.map(
-					(row) =>
-						({
-							a: rowToMemory(row.a),
-							b: rowToMemory(row.b),
-							similarity: Math.max(0, Math.min(1, row.similarity)),
-						}) satisfies StoreDuplicatePair,
-				);
-			});
-		},
-		async findDuplicatePage(input, options) {
-			return run(async () => {
-				const page = await findDuplicatePageQuery(
-					client,
-					tables,
-					input,
-					options?.signal,
-				);
-				return {
-					pairs: page.pairs.map(
-						(row) =>
-							({
-								a: rowToMemory(row.a),
-								b: rowToMemory(row.b),
-								similarity: Math.max(0, Math.min(1, row.similarity)),
-							}) satisfies StoreDuplicatePair,
-					),
-					compared: page.compared,
-					lastId: page.lastId,
-				};
-			});
-		},
-		async listAuditLog(input, options) {
+		async listAudit({ signal, ...input }) {
 			return run(async () => {
 				// `memory_id` is a uuid: no event is about an id that is not one.
 				if (input.memoryId !== undefined && !isUuid(input.memoryId)) {
-					throwIfAborted(options?.signal);
+					throwIfAborted(signal);
 					return [];
 				}
-				const rows = await listEvents(client, tables, input, options?.signal);
+				const rows = await listEvents(client, tables, input, signal);
 				return rows.map(({ row, position }) => ({
 					event: rowToAuditEvent(row),
 					position,
 				}));
 			});
 		},
-		async pruneAuditLog(input, options) {
+		async pruneAudit({ signal, ...input }) {
 			return run(async () => {
-				throwIfAborted(options?.signal);
+				throwIfAborted(signal);
 				const filter = { selector: input.selector, before: input.before };
 				if (input.dryRun) {
 					return {
@@ -758,7 +791,7 @@ export function createPostgresStore(
 							client,
 							tables,
 							filter,
-							options?.signal,
+							signal,
 						),
 						deletedCount: 0,
 						dryRun: true,
@@ -771,14 +804,14 @@ export function createPostgresStore(
 				let deletedCount = 0;
 				let after: EventPosition | null = null;
 				for (;;) {
-					throwIfAborted(options?.signal);
+					throwIfAborted(signal);
 					const batch = await deleteEventsBatch(
 						client,
 						tables,
 						filter,
 						input.batchSize,
 						after,
-						options?.signal,
+						signal,
 					);
 					deletedCount += batch.deletedCount;
 					if (batch.selectedCount < input.batchSize || batch.last === null) {
@@ -789,24 +822,9 @@ export function createPostgresStore(
 				return { matchedCount: deletedCount, deletedCount, dryRun: false };
 			});
 		},
-		async loadConsolidationTargets(visibility, ids, options) {
+		async consolidate(input) {
 			return run(async () => {
-				throwIfAborted(options?.signal);
-				return loadConsolidationTargets(
-					client,
-					tables,
-					visibility,
-					uuidsOnly(ids),
-					options?.signal,
-				);
-			});
-		},
-		async consolidate(
-			input: StoreConsolidateInput,
-			options,
-		): Promise<StoreConsolidateResult> {
-			return run(async () => {
-				throwIfAborted(options?.signal);
+				throwIfAborted(input.signal);
 				const supersededIds = uuidsOnly(input.supersededIds);
 				const result = await consolidateMemories(
 					client,
@@ -821,7 +839,7 @@ export function createPostgresStore(
 							? { auditEventIds: supersededIds.map(() => createEventId()) }
 							: {}),
 					},
-					options?.signal,
+					input.signal,
 				);
 				if (!result.survivorActive) {
 					throw new MnemocyteError({
@@ -841,9 +859,9 @@ export function createPostgresStore(
 				return { supersededIds: result.supersededIds };
 			});
 		},
-		async stats(selector, now, options) {
+		async stats({ selector, now, signal }) {
 			return run(() =>
-				getMemoryStatsCounts(client, tables, selector, now, options?.signal),
+				getMemoryStatsCounts(client, tables, selector, now, signal),
 			);
 		},
 	};

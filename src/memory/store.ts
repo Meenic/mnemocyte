@@ -48,10 +48,45 @@ export interface StoreSelector {
 	readonly sessionId?: string;
 }
 
-/** A selector for one entity, as `deleteScope` takes. */
+/** A selector for one entity, as a `"scope"` delete takes. */
 export interface StoreEntitySelector extends StoreSelector {
 	readonly namespace: string;
 	readonly entityId: string;
+}
+
+/**
+ * What a backend does differently, declared as data. The core reads it to
+ * choose its fusion inputs (no lexical list with `lexicalSearch: "none"`),
+ * and the shared tests read it to set their expectations; nothing else
+ * branches on it.
+ */
+export interface StoreCapabilities {
+	/** `"exact"` compares the query with every row; `"approximate"` uses an index. */
+	readonly vectorSearch: "exact" | "approximate";
+	/**
+	 * When filters apply to a vector search: before it (`"prefilter"`), after
+	 * an index scan that can then return fewer than the limit
+	 * (`"postfilter"`), or during a scan that continues until the limit is met
+	 * or a scan cap is reached (`"iterative"`; pgvector's
+	 * `hnsw.max_scan_tuples`).
+	 */
+	readonly filteredVectorSearch: "prefilter" | "postfilter" | "iterative";
+	/**
+	 * How keyword candidates are scored; `"overlap"` is the share of query
+	 * terms a memory contains. `"none"` means no keyword search.
+	 */
+	readonly lexicalSearch: "bm25" | "ts_rank" | "overlap" | "none";
+	/**
+	 * What concurrent writes wait on: the rows they change, or the whole
+	 * database (one write at a time).
+	 */
+	readonly locking: "row" | "database";
+	/** The largest embedding the backend can store and search. */
+	readonly maxDimensions: number;
+}
+
+export interface StoreOperationOptions {
+	signal?: AbortSignal;
 }
 
 export interface StoreMemoryFilter {
@@ -64,27 +99,23 @@ export interface StoreMemoryFilter {
 	readonly includeExpired?: boolean;
 }
 
-export interface StoreVectorSearchInput extends StoreMemoryFilter {
+/** The vector list of a {@link MemoryStore.searchCandidates} call. */
+export interface StoreVectorQuery {
 	readonly embedding: readonly number[];
 	readonly limit: number;
-	readonly minVectorScore?: number;
+	readonly minScore?: number;
 }
 
-export interface StoreLexicalSearchInput extends StoreMemoryFilter {
+/** The lexical list of a {@link MemoryStore.searchCandidates} call. */
+export interface StoreLexicalQuery {
 	readonly query: string;
 	readonly limit: number;
 }
 
-/** Position of the last row of a `list` page. */
-export interface StoreListPosition {
-	readonly createdAt: Date;
-	readonly id: string;
-}
-
-export interface StoreListInput extends StoreMemoryFilter {
-	readonly limit: number;
-	/** Return rows strictly after this position in `(createdAt, id)` descending order. */
-	readonly position?: StoreListPosition;
+/** One filter, and the lists to fill with it; a list left out stays empty. */
+export interface StoreSearchInput extends StoreMemoryFilter {
+	readonly vector?: StoreVectorQuery;
+	readonly lexical?: StoreLexicalQuery;
 }
 
 export interface StoreVectorCandidate {
@@ -96,6 +127,48 @@ export interface StoreVectorCandidate {
 export interface StoreLexicalCandidate {
 	memory: Memory;
 	lexicalScore: number;
+}
+
+export interface StoreSearchCandidates {
+	vector: StoreVectorCandidate[];
+	lexical: StoreLexicalCandidate[];
+}
+
+/** Memories by id, as far as `visibility` sees them. */
+export interface StoreGetByIdsInput extends StoreOperationOptions {
+	readonly visibility: StoreVisibility;
+	readonly ids: readonly string[];
+}
+
+/** The memory with this key in exactly this scope. */
+export interface StoreGetByKeyInput extends StoreOperationOptions {
+	readonly scope: StoreScope;
+	readonly key: string;
+}
+
+export type StoreGetInput = StoreGetByIdsInput | StoreGetByKeyInput;
+
+/** Position of the last row of a `list` page. */
+export interface StoreListPosition {
+	readonly createdAt: Date;
+	readonly id: string;
+}
+
+export interface StoreListInput
+	extends StoreMemoryFilter,
+		StoreOperationOptions {
+	readonly limit: number;
+	/** Return rows strictly after this position in `(createdAt, id)` descending order. */
+	readonly position?: StoreListPosition;
+}
+
+export interface StoreInsertInput extends StoreOperationOptions {
+	readonly memories: readonly StoredMemory[];
+	/**
+	 * Records `memory.created` or `memory.updated` per row in the same write,
+	 * timestamped with the row's `updatedAt`.
+	 */
+	readonly audit?: boolean;
 }
 
 /** Fields an update replaces. A new `embedding` comes with its model. */
@@ -126,10 +199,66 @@ export interface StoreUpdateInput {
 	readonly audit?: { readonly fields: readonly string[] };
 }
 
-export interface StoreDuplicateInput {
+export interface StoreMarkAccessedInput {
+	readonly visibility: StoreVisibility;
+	/** Distinct ids. */
+	readonly ids: readonly string[];
+}
+
+/** One memory by id, and its dependents by `dependents`. */
+export interface StoreDeleteMemoryInput extends StoreOperationOptions {
+	readonly target: "memory";
+	readonly visibility: StoreVisibility;
+	readonly memoryId: string;
+	readonly dependents: DependentsPolicy;
+	/** `updatedAt` of restored dependents and the audit events' timestamp. */
+	readonly now: Date;
+	/** Records one `memory.deleted` per deleted memory in the same write. */
+	readonly audit: boolean;
+}
+
+/** Every memory and audit event of one entity, or of part of it. */
+export interface StoreDeleteScopeInput extends StoreOperationOptions {
+	readonly target: "scope";
+	readonly selector: StoreEntitySelector;
+}
+
+/** The memories a `prune` filter matches, already validated. */
+export interface StoreDeleteFilterInput
+	extends ValidatedPruneFilter,
+		StoreOperationOptions {
+	readonly target: "filter";
+	/** Expiry reference and the audit events' timestamp. */
+	readonly now: Date;
+	/** Records one `memory.pruned` per affected entity in the same write. */
+	readonly audit: boolean;
+}
+
+export type StoreDeleteInput =
+	| StoreDeleteMemoryInput
+	| StoreDeleteScopeInput
+	| StoreDeleteFilterInput;
+
+/** A `"memory"` delete that found the memory. */
+export interface StoreDeletedMemory {
+	readonly target: "memory";
+	readonly found: true;
+	/** The memory, then the dependents deleted with it (`"delete"`). */
+	readonly deletedIds: readonly string[];
+	/** Dependents made active again (`"restore"`). */
+	readonly restoredIds: readonly string[];
+}
+
+/** The result of a delete, tagged with the input's `target`. */
+export type StoreDeleteResult =
+	| StoreDeletedMemory
+	| { readonly target: "memory"; readonly found: false }
+	| { readonly target: "scope"; readonly deletedCount: number }
+	| ({ readonly target: "filter" } & PruneResult);
+
+export interface StoreDuplicateFilter extends StoreOperationOptions {
 	readonly visibility: StoreVisibility;
 	readonly threshold: number;
-	readonly limit: number;
 	/** Nearest neighbors compared per memory. */
 	readonly neighbors: number;
 	readonly kinds?: readonly MemoryKind[];
@@ -138,28 +267,48 @@ export interface StoreDuplicateInput {
 	readonly includeExpired?: boolean;
 }
 
-export interface StoreDuplicatePair {
-	a: Memory;
-	b: Memory;
-	similarity: number;
+/** The most similar pairs, up to `limit`. */
+export interface StoreDuplicateTopInput extends StoreDuplicateFilter {
+	readonly mode: "top";
+	readonly limit: number;
 }
 
-export interface StoreDuplicatePageInput
-	extends Omit<StoreDuplicateInput, "limit"> {
+/** One page of a run over every memory, by id. */
+export interface StoreDuplicatePageInput extends StoreDuplicateFilter {
+	readonly mode: "page";
 	/** Memories whose neighbors the page compares. */
 	readonly batchSize: number;
 	/** Compare only memories whose id is greater than this one. */
 	readonly afterId?: string;
 }
 
+export type StoreDuplicateInput =
+	| StoreDuplicateTopInput
+	| StoreDuplicatePageInput;
+
+export interface StoreDuplicatePair {
+	a: Memory;
+	b: Memory;
+	similarity: number;
+}
+
+export interface StoreDuplicateTop {
+	readonly mode: "top";
+	pairs: StoreDuplicatePair[];
+}
+
 export interface StoreDuplicatePage {
-	/** The pairs the page owns, ordered like {@link MemoryStore.findDuplicatePairs}. */
+	readonly mode: "page";
+	/** The pairs the page owns, ordered like a `"top"` result. */
 	pairs: StoreDuplicatePair[];
 	/** Memories whose neighbors the page compared. */
 	compared: number;
 	/** The greatest id the page compared, or `null` when it compared none. */
 	lastId: string | null;
 }
+
+/** The result of a duplicate search, tagged with the input's `mode`. */
+export type StoreDuplicateResult = StoreDuplicateTop | StoreDuplicatePage;
 
 /**
  * Where an audit page stops: an event's `(timestamp, id)`, with the
@@ -171,7 +320,7 @@ export interface StoreAuditPosition {
 	readonly id: string;
 }
 
-export interface StoreAuditLogInput {
+export interface StoreAuditLogInput extends StoreOperationOptions {
 	readonly selector: StoreSelector;
 	readonly limit: number;
 	readonly before?: Date;
@@ -188,30 +337,17 @@ export interface StoreAuditLogEntry {
 	readonly position: StoreAuditPosition;
 }
 
-export interface StoreDeleteInput {
-	readonly visibility: StoreVisibility;
-	readonly memoryId: string;
-	readonly dependents: DependentsPolicy;
-	/** `updatedAt` of restored dependents and the audit events' timestamp. */
-	readonly now: Date;
-	/** Records one `memory.deleted` per deleted memory in the same write. */
-	readonly audit: boolean;
+/** Audit events a `pruneAuditLog` deletes, already validated. */
+export interface StoreAuditPruneInput extends StoreOperationOptions {
+	readonly selector: StoreSelector;
+	/** Events strictly before this time are selected. */
+	readonly before: Date;
+	/** Most events one statement deletes. */
+	readonly batchSize: number;
+	readonly dryRun: boolean;
 }
 
-export interface StoreDeleteResult {
-	/** The memory, then the dependents deleted with it (`"delete"`). */
-	readonly deletedIds: readonly string[];
-	/** Dependents made active again (`"restore"`). */
-	readonly restoredIds: readonly string[];
-}
-
-export interface StoreConsolidationTarget {
-	id: string;
-	tags: readonly string[];
-	supersededBy: string | null;
-}
-
-export interface StoreConsolidateInput {
+export interface StoreConsolidateInput extends StoreOperationOptions {
 	visibility: StoreVisibility;
 	survivorId: string;
 	supersededIds: readonly string[];
@@ -224,33 +360,10 @@ export interface StoreConsolidateResult {
 	supersededIds: readonly string[];
 }
 
-export interface StoreOperationOptions {
-	signal?: AbortSignal;
-}
-
-export interface StoreInsertOptions extends StoreOperationOptions {
-	/**
-	 * Records `memory.created` or `memory.updated` per row in the same write,
-	 * timestamped with the row's `updatedAt`.
-	 */
-	audit?: boolean;
-}
-
-export interface StorePruneInput extends ValidatedPruneFilter {
-	/** Expiry reference and the audit events' timestamp. */
-	readonly now: Date;
-	/** Records one `memory.pruned` per affected entity in the same write. */
-	readonly audit: boolean;
-}
-
-/** Audit events a `pruneAuditLog` deletes, already validated. */
-export interface StoreAuditPruneInput {
+export interface StoreStatsInput extends StoreOperationOptions {
 	readonly selector: StoreSelector;
-	/** Events strictly before this time are selected. */
-	readonly before: Date;
-	/** Most events one statement deletes. */
-	readonly batchSize: number;
-	readonly dryRun: boolean;
+	/** What `expired` is evaluated against. */
+	readonly now: Date;
 }
 
 export interface StoreMigrateInput {
@@ -265,6 +378,10 @@ export interface StoreTextSearchConfigInput {
 	readonly textSearchConfig: string;
 	readonly dryRun?: boolean;
 	readonly signal?: AbortSignal;
+}
+
+export interface StoreEmbedderInput {
+	readonly embedder: Embedder;
 }
 
 export interface ValidatedPruneFilter {
@@ -308,20 +425,23 @@ export function assertPruneFilterHasSelector(
  * Internal storage adapter boundary used by the shared client orchestration.
  * Not exported from the package.
  *
- * Every method that reads or writes memories takes a scope: a
- * {@link StoreVisibility} for reads and writes by id, a {@link StoreSelector}
- * for bulk operations.
+ * Every method takes one input object. Every method that reads or writes
+ * memories takes a scope: a {@link StoreVisibility} for reads and writes by
+ * id, a {@link StoreSelector} for bulk operations.
  *
- * Deleting a referenced consolidation survivor through `deleteMemory` or a
- * non-dry-run `prune` must reject with `"CONFLICT"` before deleting anything.
- * `deleteScope` rejects only when a dependent outside the selection remains.
- * The dependency check and mutation must be one atomic operation.
+ * Deleting a referenced consolidation survivor through a `"memory"` delete
+ * or a non-dry-run `"filter"` delete must reject with `"CONFLICT"` before
+ * deleting anything. A `"scope"` delete rejects only when a dependent
+ * outside the selection remains. The dependency check and mutation must be
+ * one atomic operation.
  *
  * Unless a method documents a stronger boundary, cancellation support and its
  * mechanism are implementation-defined.
  */
 export interface MemoryStore {
 	readonly backend: MnemocyteBackend;
+	/** What the backend does differently; see {@link StoreCapabilities}. */
+	readonly capabilities: StoreCapabilities;
 	/**
 	 * The Postgres schema of the tables when the store was given one
 	 * (`schemaName`); left out when they resolve through `search_path`. The
@@ -351,14 +471,14 @@ export interface MemoryStore {
 	 * `null`.
 	 */
 	inspectInstallation(
-		options?: StoreOperationOptions,
+		input?: StoreOperationOptions,
 	): Promise<InstallationReport | null>;
 	/**
 	 * Rejects with `"MIGRATION"` or `"CONFIG"` when the embedder does not match
 	 * the installation. A store without persistent installation state resolves
 	 * without work.
 	 */
-	ensureEmbeddingCompatibility(embedder: Embedder): Promise<void>;
+	ensureEmbeddingCompatibility(input: StoreEmbedderInput): Promise<void>;
 
 	/**
 	 * Inserts fresh rows, or for a row with a `key` already used in its exact
@@ -374,54 +494,29 @@ export interface MemoryStore {
 	 * split the rows into several statements, but they commit together, and
 	 * so do their audit events.
 	 */
-	insertMemories(
-		memories: readonly StoredMemory[],
-		options?: StoreInsertOptions,
-	): Promise<Memory[]>;
+	insert(input: StoreInsertInput): Promise<Memory[]>;
 	/**
-	 * Up to `input.limit` candidates that pass the filter and
-	 * `minVectorScore`, by decreasing vector similarity. Every `vectorScore`
-	 * is finite and clamped to `[0, 1]`. With an approximate index, inclusion
-	 * and order may differ from an exhaustive scan.
+	 * The candidate lists of a search, with the same filter. `vector` holds
+	 * up to `vector.limit` candidates that pass the filter and
+	 * `vector.minScore`, by decreasing vector similarity; every `vectorScore`
+	 * is finite and clamped to `[0, 1]`, and with an approximate index,
+	 * inclusion and order may differ from an exhaustive scan. `lexical` holds
+	 * up to `lexical.limit` candidates that pass the filter and have a
+	 * positive, backend-defined lexical score, by decreasing score. A list
+	 * whose query is left out comes back empty without being searched.
 	 */
-	vectorSearch(input: StoreVectorSearchInput): Promise<StoreVectorCandidate[]>;
+	searchCandidates(input: StoreSearchInput): Promise<StoreSearchCandidates>;
 	/**
-	 * Up to `input.limit` candidates that pass the filter and have a positive,
-	 * backend-defined lexical score, by decreasing score.
+	 * The visible memories with these ids, in no particular order, or the
+	 * memory with this key in exactly this scope. Ids nobody can see, or that
+	 * do not exist, are left out.
 	 */
-	lexicalSearch(
-		input: StoreLexicalSearchInput,
-	): Promise<StoreLexicalCandidate[]>;
+	get(input: StoreGetInput): Promise<Memory[]>;
 	/**
 	 * Up to `input.limit` memories that pass the filter, newest first by
 	 * `(createdAt, id)`, after `input.position` when given.
 	 */
-	listMemories(
-		input: StoreListInput,
-		options?: StoreOperationOptions,
-	): Promise<Memory[]>;
-	/**
-	 * Increments `accessCount` and sets `lastAccessedAt` once for each
-	 * requested memory that is still visible; others are skipped. Never changes
-	 * `updatedAt`. The ids must be distinct.
-	 */
-	markMemoriesAccessed(
-		visibility: StoreVisibility,
-		memoryIds: readonly string[],
-	): Promise<void>;
-
-	/** The visible memory with this id, or `null`. */
-	getMemory(
-		visibility: StoreVisibility,
-		memoryId: string,
-		options?: StoreOperationOptions,
-	): Promise<Memory | null>;
-	/** The memory with this key in exactly this scope, or `null`. */
-	getMemoryByKey(
-		scope: StoreScope,
-		key: string,
-		options?: StoreOperationOptions,
-	): Promise<Memory | null>;
+	list(input: StoreListInput): Promise<Memory[]>;
 	/**
 	 * Applies the patch to the visible memory with this id in one atomic write
 	 * and returns it, or `null` when no such memory exists. Sets `updatedAt`.
@@ -429,93 +524,33 @@ export interface MemoryStore {
 	 * memory's scope. The audit event, when requested, is written in the
 	 * same atomic write.
 	 */
-	updateMemory(input: StoreUpdateInput): Promise<Memory | null>;
+	update(input: StoreUpdateInput): Promise<Memory | null>;
 	/**
-	 * Deletes the visible memory with this id in one atomic write, or returns
-	 * `null` when there is none. Its dependents (memories whose
-	 * `supersededBy` points at it) follow `dependents`: `"reject"` throws
-	 * `"CONFLICT"` when there is any; `"restore"` clears their
-	 * `supersededBy` and `supersededAt`; `"delete"` deletes them and,
-	 * transitively, their own dependents. With `"restore"` a direct
-	 * dependent, and with `"delete"` any deleted one, that is not visible
-	 * throws `"CONFLICT"`. Nothing changes on a conflict. Audit events, when
-	 * requested, are written atomically with the delete.
+	 * Increments `accessCount` and sets `lastAccessedAt` once for each
+	 * requested memory that is still visible; others are skipped. Never changes
+	 * `updatedAt`.
 	 */
-	deleteMemory(
-		input: StoreDeleteInput,
-		options?: StoreOperationOptions,
-	): Promise<StoreDeleteResult | null>;
+	markAccessed(input: StoreMarkAccessedInput): Promise<void>;
 	/**
-	 * Deletes every selected memory and the selected audit events, atomically,
-	 * and returns the number of memories deleted. Rejects with `"CONFLICT"`
-	 * and deletes nothing when a memory outside the selection references a
-	 * selected one through `supersededBy`.
+	 * Deletes, atomically, and returns a result tagged with `input.target`:
+	 *
+	 * - `"memory"`: the visible memory with this id, or `found: false` when
+	 *   there is none. Its dependents (memories whose `supersededBy` points
+	 *   at it) follow `dependents`: `"reject"` throws `"CONFLICT"` when there
+	 *   is any; `"restore"` clears their `supersededBy` and `supersededAt`;
+	 *   `"delete"` deletes them and, transitively, their own dependents. With
+	 *   `"restore"` a direct dependent, and with `"delete"` any deleted one,
+	 *   that is not visible throws `"CONFLICT"`. Nothing changes on a
+	 *   conflict.
+	 * - `"scope"`: every selected memory and the selected audit events, with
+	 *   the number of memories deleted. Rejects with `"CONFLICT"` and deletes
+	 *   nothing when a memory outside the selection references a selected one
+	 *   through `supersededBy`.
+	 * - `"filter"`: the matching memories, or only their count on a dry run.
+	 *
+	 * Audit events, when requested, are written atomically with the delete.
 	 */
-	deleteScope(
-		selector: StoreEntitySelector,
-		options?: StoreOperationOptions,
-	): Promise<number>;
-	/**
-	 * Deletes the matching memories, or counts them on a dry run. Audit
-	 * events, when requested, are written atomically with the delete.
-	 */
-	prune(
-		input: StorePruneInput,
-		options?: StoreOperationOptions,
-	): Promise<PruneResult>;
-	/**
-	 * Unordered pairs of visible memories meeting the similarity threshold
-	 * where one is among the other's `neighbors` nearest (approximate on an
-	 * HNSW index), by decreasing similarity, then `a.id`, then `b.id`, up to
-	 * the limit. `a.id` is the smaller id. Similarities are clamped to
-	 * `[0, 1]`.
-	 */
-	findDuplicatePairs(
-		input: StoreDuplicateInput,
-		options?: StoreOperationOptions,
-	): Promise<StoreDuplicatePair[]>;
-	/**
-	 * One page of {@link MemoryStore.findDuplicatePairs}: the first
-	 * `batchSize` memories that pass the filters with an id greater than
-	 * `after`, in id order, each compared with every memory that passes them.
-	 * A pair found from memory `x` is returned when `x` has the smaller id,
-	 * or when the smaller id's own `neighbors` nearest do not include `x`;
-	 * either way it belongs to exactly one page of a run, the page of the
-	 * memory whose neighbors contain the other (the smaller id's when both
-	 * do). No limit.
-	 */
-	findDuplicatePage(
-		input: StoreDuplicatePageInput,
-		options?: StoreOperationOptions,
-	): Promise<StoreDuplicatePage>;
-
-	/**
-	 * Selected events in strict descending `(timestamp, id)` order, up to the
-	 * limit, each with its position. `before` / `after` are strict timestamp
-	 * filters; `position` is a strict tuple filter on `(timestamp, id)` at
-	 * the store's full timestamp precision.
-	 */
-	listAuditLog(
-		input: StoreAuditLogInput,
-		options?: StoreOperationOptions,
-	): Promise<StoreAuditLogEntry[]>;
-	/**
-	 * Deletes the selected events strictly before `before`, at most
-	 * `batchSize` per statement, or counts them on a dry run. Batches commit
-	 * one by one; the signal is checked before each, so an abort keeps the
-	 * batches already deleted.
-	 */
-	pruneAuditLog(
-		input: StoreAuditPruneInput,
-		options?: StoreOperationOptions,
-	): Promise<PruneAuditLogResult>;
-
-	/** Shared validation supplies distinct IDs before this preflight lookup. */
-	loadConsolidationTargets(
-		visibility: StoreVisibility,
-		ids: readonly string[],
-		options?: StoreOperationOptions,
-	): Promise<StoreConsolidationTarget[]>;
+	delete(input: StoreDeleteInput): Promise<StoreDeleteResult>;
 	/**
 	 * Applies one atomic consolidation after re-reading and protecting the
 	 * survivor and requested losers. Throws `"CONFLICT"` before mutation when
@@ -523,19 +558,44 @@ export interface MemoryStore {
 	 * to a different survivor. Tag merging starts from the protected survivor's
 	 * mutation-time tags.
 	 */
-	consolidate(
-		input: StoreConsolidateInput,
-		options?: StoreOperationOptions,
-	): Promise<StoreConsolidateResult>;
+	consolidate(input: StoreConsolidateInput): Promise<StoreConsolidateResult>;
+	/**
+	 * Pairs of visible memories meeting the similarity threshold where one is
+	 * among the other's `neighbors` nearest (approximate on an HNSW index),
+	 * tagged with `input.mode`. `a.id` is the smaller id, and similarities
+	 * are clamped to `[0, 1]`.
+	 *
+	 * - `"top"`: unordered pairs by decreasing similarity, then `a.id`, then
+	 *   `b.id`, up to the limit.
+	 * - `"page"`: the first `batchSize` memories that pass the filters with an
+	 *   id greater than `afterId`, in id order, each compared with every
+	 *   memory that passes them. A pair found from memory `x` is returned when
+	 *   `x` has the smaller id, or when the smaller id's own `neighbors`
+	 *   nearest do not include `x`; either way it belongs to exactly one page
+	 *   of a run, the page of the memory whose neighbors contain the other
+	 *   (the smaller id's when both do). No limit.
+	 */
+	findDuplicates(input: StoreDuplicateInput): Promise<StoreDuplicateResult>;
+
+	/**
+	 * Selected events in strict descending `(timestamp, id)` order, up to the
+	 * limit, each with its position. `before` / `after` are strict timestamp
+	 * filters; `position` is a strict tuple filter on `(timestamp, id)` at
+	 * the store's full timestamp precision.
+	 */
+	listAudit(input: StoreAuditLogInput): Promise<StoreAuditLogEntry[]>;
+	/**
+	 * Deletes the selected events strictly before `before`, at most
+	 * `batchSize` per statement, or counts them on a dry run. Batches commit
+	 * one by one; the signal is checked before each, so an abort keeps the
+	 * batches already deleted.
+	 */
+	pruneAudit(input: StoreAuditPruneInput): Promise<PruneAuditLogResult>;
 
 	/**
 	 * Counts of the selected memories evaluated against `now`. Active memories
 	 * are neither expired nor superseded; expired and superseded counts may
 	 * overlap. `entityCount` counts distinct `(namespace, entityId)` pairs.
 	 */
-	stats(
-		selector: StoreSelector,
-		now: Date,
-		options?: StoreOperationOptions,
-	): Promise<MemoryStats>;
+	stats(input: StoreStatsInput): Promise<MemoryStats>;
 }

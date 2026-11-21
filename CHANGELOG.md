@@ -9,6 +9,16 @@ marked **Breaking** in their entries. What semver covers is in
 
 ## [Unreleased]
 
+### Changed
+
+- **A store from another installed copy fails early.** When an app has two
+  copies of `mnemocyte` installed and passes a store from an older copy
+  to `createMemory`, it now throws `"CONFIG"` with reason
+  `"INVALID_OPTION"` at once. The internal store methods were renamed, so
+  such a store would otherwise fail on its first call. Install one version
+  (`npm ls mnemocyte` lists them). `migrate()` and the CLI still accept
+  such a store.
+
 ## [1.2.1] - 2026-11-20
 
 A patch release: `context` marks only the memories it puts in the text,

@@ -10,13 +10,16 @@
    `undefined`); resolve `limit` (default 10) and `minScore` (default 0)
    from the input, then `config.defaults`.
 2. Check embedding compatibility (Postgres) and embed the query.
-3. Run two candidate searches in parallel, each with
+3. Get two candidate lists from one `searchCandidates` store call (on
+   Postgres, two queries in parallel), each with
    `limit × candidateMultiplier` (default 3) and the same filters (the
    scope's visibility, see [scopes.md](./scopes.md#scope); `kinds`, `tags`
    must all match, `createdBefore`/`createdAfter` on `created_at` at the
    returned millisecond (see [scopes.md](./scopes.md#created-bounds)),
-   superseded and expired rows excluded unless asked for). A list whose fusion weight is 0
-   is not searched.
+   superseded and expired rows excluded unless asked for). A list whose
+   fusion weight is 0 is not searched, and neither is the lexical list of a
+   store whose capabilities say `lexicalSearch: "none"` (see
+   [DEVELOPMENT.md](../DEVELOPMENT.md#capabilities)).
    - **vector**: cosine similarity, clamped to `[0, 1]`. Postgres orders by
      `embedding <=> $query` (HNSW when the planner chooses it, with a
      `relaxed_order` iterative scan whose rows are sorted again; see
@@ -102,8 +105,8 @@ Off by default. `retrieval.trackAccess` sets it for the client and
 counts do not affect ranking.
 
 When it is on and search returns at least one memory, `trackAccess` in
-`memory/client-core.ts` calls `markMemoriesAccessed` for the returned ids and
-does not wait for it ("fire-and-forget"). `context` and
+`memory/client-core.ts` calls the store's `markAccessed` for the returned ids
+and does not wait for it ("fire-and-forget"). `context` and
 `contextWithMemories` mark only the memories in the text, not the ones the
 token budget left out: they run the search through `runSearch` with a
 `deferAccess` callback, which receives the search's visibility instead of

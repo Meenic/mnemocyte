@@ -1,11 +1,13 @@
 import { MnemocyteError } from "../errors.js";
 import type { MnemocyteBackend } from "../types.js";
-import type { MemoryStore } from "./store.js";
+import type { MemoryStore, StoreCapabilities } from "./store.js";
 
 /** Input for {@link createLazyStore}. */
 export interface LazyStoreInput {
 	/** Known before loading, because the client says which backend it is. */
 	readonly backend: MnemocyteBackend;
+	/** {@link MemoryStore.capabilities}, known before loading. */
+	readonly capabilities: StoreCapabilities;
 	/** {@link MemoryStore.schemaName}, known before loading. */
 	readonly schemaName?: string;
 	/** Loads the backend, typically with a dynamic `import()`. */
@@ -38,35 +40,26 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 
 	return {
 		backend: input.backend,
+		capabilities: input.capabilities,
 		...(input.schemaName === undefined ? {} : { schemaName: input.schemaName }),
-		migrate: async (...args) => (await load()).migrate(...args),
-		setTextSearchConfig: async (...args) =>
-			(await load()).setTextSearchConfig(...args),
-		inspectInstallation: async (...args) =>
-			(await load()).inspectInstallation(...args),
-		ensureEmbeddingCompatibility: async (...args) =>
-			(await load()).ensureEmbeddingCompatibility(...args),
-		insertMemories: async (...args) => (await load()).insertMemories(...args),
-		vectorSearch: async (...args) => (await load()).vectorSearch(...args),
-		lexicalSearch: async (...args) => (await load()).lexicalSearch(...args),
-		listMemories: async (...args) => (await load()).listMemories(...args),
-		markMemoriesAccessed: async (...args) =>
-			(await load()).markMemoriesAccessed(...args),
-		getMemory: async (...args) => (await load()).getMemory(...args),
-		getMemoryByKey: async (...args) => (await load()).getMemoryByKey(...args),
-		updateMemory: async (...args) => (await load()).updateMemory(...args),
-		deleteMemory: async (...args) => (await load()).deleteMemory(...args),
-		deleteScope: async (...args) => (await load()).deleteScope(...args),
-		prune: async (...args) => (await load()).prune(...args),
-		findDuplicatePairs: async (...args) =>
-			(await load()).findDuplicatePairs(...args),
-		findDuplicatePage: async (...args) =>
-			(await load()).findDuplicatePage(...args),
-		listAuditLog: async (...args) => (await load()).listAuditLog(...args),
-		pruneAuditLog: async (...args) => (await load()).pruneAuditLog(...args),
-		loadConsolidationTargets: async (...args) =>
-			(await load()).loadConsolidationTargets(...args),
-		consolidate: async (...args) => (await load()).consolidate(...args),
-		stats: async (...args) => (await load()).stats(...args),
+		migrate: async (value) => (await load()).migrate(value),
+		setTextSearchConfig: async (value) =>
+			(await load()).setTextSearchConfig(value),
+		inspectInstallation: async (value) =>
+			(await load()).inspectInstallation(value),
+		ensureEmbeddingCompatibility: async (value) =>
+			(await load()).ensureEmbeddingCompatibility(value),
+		insert: async (value) => (await load()).insert(value),
+		searchCandidates: async (value) => (await load()).searchCandidates(value),
+		get: async (value) => (await load()).get(value),
+		list: async (value) => (await load()).list(value),
+		update: async (value) => (await load()).update(value),
+		markAccessed: async (value) => (await load()).markAccessed(value),
+		delete: async (value) => (await load()).delete(value),
+		consolidate: async (value) => (await load()).consolidate(value),
+		findDuplicates: async (value) => (await load()).findDuplicates(value),
+		listAudit: async (value) => (await load()).listAudit(value),
+		pruneAudit: async (value) => (await load()).pruneAudit(value),
+		stats: async (value) => (await load()).stats(value),
 	};
 }

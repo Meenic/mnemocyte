@@ -18,7 +18,8 @@ describe("Postgres prune validation", () => {
 		const store = createPostgresStore(executor);
 
 		await expectMnemocyteError(
-			store.prune({
+			store.delete({
+				target: "filter",
 				selector: { namespace: "test" },
 				dryRun: false,
 				now: new Date(),

@@ -78,6 +78,7 @@ src/
     scope-binding.ts    the default namespace layer and memory.for() bound clients
     client-internals.ts the client's store and embedder under a symbol, for migrate({ memory })
     store.ts            the internal MemoryStore contract, scopes and selectors
+    capabilities.ts     each backend's StoreCapabilities
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     store-input.ts      resolveStore: a store config, or a client detected by shape → lazy store
@@ -158,6 +159,75 @@ writes a `sourceMappingURL` comment into every chunk, `.d.mts` included, and
 rolldown-plugin-dts drops the declaration maps without removing it; a small
 plugin in `tsdown.config.ts` strips that comment.
 
+## Store contract
+
+`MemoryStore` (`src/memory/store.ts`) is the internal boundary between the
+core (`memory/client-core.ts`, `migrate.ts`, the CLI) and a backend. It is
+not exported and semver leaves it out (ARCHITECTURE decision 39); the plan
+to publish it as `MemoryStoreV1` is in ARCHITECTURE.md, "Packaging". It has
+16 methods and three properties (ARCHITECTURE decision 61):
+
+| Method | What it does |
+|---|---|
+| `migrate`, `setTextSearchConfig`, `inspectInstallation` | schema; a store without one applies nothing and reports `null` |
+| `ensureEmbeddingCompatibility` | rejects an embedder the installation does not match |
+| `insert` | rows and keyed upserts, all or nothing |
+| `searchCandidates` | the vector and lexical lists of a search, same filter |
+| `get` | memories by ids (`visibility`), or one by key (exact `scope`) |
+| `list`, `update`, `markAccessed` | a page, a patch, an access count bump |
+| `delete` | `target: "memory"`, `"scope"` or `"filter"` (`prune`) |
+| `consolidate` | the atomic write after the core's checks |
+| `findDuplicates` | `mode: "top"` (`findDuplicates`) or `"page"` (`experimental.findDuplicatesPage`) |
+| `listAudit`, `pruneAudit` | audit pages and retention |
+| `stats` | counts for a selector |
+
+Plus `backend`, `capabilities` and, on Postgres, `schemaName`.
+
+- Every method takes one input object. `signal` sits inside it and is set
+  only when the caller passed one, since store inputs are exact. The
+  search lists, `update` and `markAccessed` took no signal before and
+  still take none.
+- `delete` and `findDuplicates` return results tagged with the input's
+  `target` or `mode`; the core checks the tag (`deleteResultFor`) and throws
+  `"DB"` for another, as it does for any store result it cannot trust.
+- `get` returns visible matches in no particular order and leaves out ids
+  it cannot see. `consolidate` on the client reads the survivor and then
+  its targets with two `get` calls, the abort check between them, before
+  the store's own locked re-read.
+- `migrate`, `setTextSearchConfig`, `inspectInstallation` and `schemaName`
+  kept their names and inputs through decision 61, because `migrate()` and
+  the CLI call them on a store that may come from another installed copy
+  of the package (the app's, through `Symbol.for`). `createMemory` checks
+  for the current contract with `assertStoreContract`
+  (`memory/store-input.ts`): a store without `capabilities` or
+  `searchCandidates` throws `"CONFIG"` at once instead of a `TypeError` on
+  the first call.
+- Audit events are written by the write they record, so there is no
+  separate append method (see
+  [features/maintenance.md](./features/maintenance.md#audit-log)).
+
+### Capabilities
+
+`capabilities` is declared data, the same object for every store of a
+backend (`src/memory/capabilities.ts`):
+
+| Field | In-memory | Postgres |
+|---|---|---|
+| `vectorSearch` | `"exact"` | `"approximate"` (HNSW) |
+| `filteredVectorSearch` | `"prefilter"` | `"iterative"` (pgvector 0.8 iterative scans) |
+| `lexicalSearch` | `"overlap"` | `"ts_rank"` |
+| `locking` | `"database"` (calls never interleave) | `"row"` (`SELECT … FOR UPDATE`) |
+| `maxDimensions` | `Number.POSITIVE_INFINITY` | 4,000 (`halfvec` in an HNSW index) |
+
+The other values the types allow are `"postfilter"` and `"bm25"` for
+libSQL, and `lexicalSearch: "none"`. The core reads capabilities in one
+place: `search` asks for no lexical list when `lexicalSearch` is `"none"`,
+as it skips a list whose fusion weight is 0. Nothing warns on them yet,
+since neither backend would trigger a warning. The Postgres constant lives
+apart from the backend, so the lazy store for `store: client` declares it
+before the backend loads. `test/memory/capabilities.test.ts` pins both
+declarations.
+
 ## Conventions
 
 - Shared behavior goes in `memory/client-core.ts`; backend mechanics stay in
@@ -189,7 +259,7 @@ plugin in `tsdown.config.ts` strips that comment.
   called. Returned records are detached copies.
 - Metadata is JSON value data (`JsonObject`). Anything else is rejected.
 - Store results are not trusted: shared code rejects missing, duplicate or
-  unknown rows from `insertMemories` (matching by id, or by key for keyed
+  unknown rows from `insert` (matching by id, or by key for keyed
   upserts) and restores input order.
 - Every store method that touches memories takes a scope: a visibility for
   reads and writes by id, a selector for bulk operations (see

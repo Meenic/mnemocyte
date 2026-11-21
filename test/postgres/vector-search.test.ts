@@ -40,11 +40,15 @@ function createRecordingExecutor(pgvectorVersion: string | null): {
 	return { executor: executorFor(false), queries };
 }
 
-const searchInput = {
+const searchFilter = {
 	visibility: testVisibility("alice"),
-	embedding: [1, 0, 0],
 	kinds: ["preference" as const],
 };
+
+/** A search for the vector list only, as a search with `fusion.lexical: 0`. */
+function vectorOnly(limit: number) {
+	return { ...searchFilter, vector: { embedding: [1, 0, 0], limit } };
+}
 
 describe("hnswEfSearch", () => {
 	test("is at least pgvector's default and the row count", () => {
@@ -82,7 +86,7 @@ describe("Postgres vector search", () => {
 		const { executor, queries } = createRecordingExecutor("0.8.7");
 		const store = createPostgresStore(executor);
 
-		await store.vectorSearch({ ...searchInput, limit: 150 });
+		await store.searchCandidates(vectorOnly(150));
 
 		const transactional = queries.filter((query) => query.inTransaction);
 		expect(transactional).toHaveLength(2);
@@ -107,8 +111,8 @@ describe("Postgres vector search", () => {
 		const { executor, queries } = createRecordingExecutor("0.8.7");
 		const store = createPostgresStore(executor);
 
-		await store.vectorSearch({ ...searchInput, limit: 5 });
-		await store.vectorSearch({ ...searchInput, limit: 5 });
+		await store.searchCandidates(vectorOnly(5));
+		await store.searchCandidates(vectorOnly(5));
 
 		expect(
 			queries.filter((query) => query.sql.includes("FROM pg_extension")),
@@ -120,12 +124,12 @@ describe("Postgres vector search", () => {
 		const store = createPostgresStore(executor);
 
 		for (let attempt = 0; attempt < 2; attempt += 1) {
-			await expect(
-				store.vectorSearch({ ...searchInput, limit: 5 }),
-			).rejects.toMatchObject({
-				code: "MIGRATION",
-				reason: "PGVECTOR_UNAVAILABLE",
-			});
+			await expect(store.searchCandidates(vectorOnly(5))).rejects.toMatchObject(
+				{
+					code: "MIGRATION",
+					reason: "PGVECTOR_UNAVAILABLE",
+				},
+			);
 		}
 
 		expect(queries.some((query) => query.inTransaction)).toBe(false);

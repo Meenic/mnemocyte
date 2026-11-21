@@ -38,13 +38,13 @@ export function createPausingConsolidationStore(baseStore: MemoryStore): {
 	return {
 		store: {
 			...baseStore,
-			async consolidate(input, options) {
+			async consolidate(input) {
 				const gate = pendingGates.shift();
 				if (gate) {
 					gate.entered.resolve();
 					await gate.released.promise;
 				}
-				return baseStore.consolidate(input, options);
+				return baseStore.consolidate(input);
 			},
 		},
 		pauseNext() {

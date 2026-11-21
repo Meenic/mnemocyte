@@ -417,24 +417,30 @@ function insertMemoriesStatement(
 	};
 }
 
-export async function getMemoryById(
+/**
+ * The visible rows with these ids, in no particular order. The ids must be
+ * uuids; an empty list sends no statement.
+ */
+export async function getMemoriesByIds(
 	db: SqlExecutor,
 	tables: PostgresTables,
 	visibility: StoreVisibility,
-	memoryId: string,
+	ids: readonly string[],
 	signal?: AbortSignal,
-): Promise<MemoryRow | null> {
+): Promise<MemoryRow[]> {
+	if (ids.length === 0) {
+		return [];
+	}
 	const params = createSqlParams();
 	const rows = await db.query<RawMemoryRow>(
 		`SELECT ${MEMORY_COLUMNS}
 		FROM ${tables.memories}
-		WHERE ${visibilityConditions(params, visibility)} AND id = ${params.uuid(memoryId)}
-		LIMIT 1`,
+		WHERE ${visibilityConditions(params, visibility)}
+			AND id IN (${params.uuidList(ids)})`,
 		params.values,
 		signal ? { signal } : undefined,
 	);
-	const row = rows[0];
-	return row ? toMemoryRow(row) : null;
+	return rows.map(toMemoryRow);
 }
 
 export async function getMemoryByKey(
@@ -1305,27 +1311,6 @@ export async function findDuplicatePage(
 				? first.lastId
 				: null,
 	};
-}
-
-export async function loadConsolidationTargets(
-	db: SqlExecutor,
-	tables: PostgresTables,
-	visibility: StoreVisibility,
-	ids: readonly string[],
-	signal?: AbortSignal,
-): Promise<Array<{ id: string; tags: string[]; supersededBy: string | null }>> {
-	if (ids.length === 0) {
-		return [];
-	}
-	const params = createSqlParams();
-	return db.query(
-		`SELECT id::text AS id, tags, superseded_by::text AS "supersededBy"
-		FROM ${tables.memories}
-		WHERE ${visibilityConditions(params, visibility)}
-			AND id IN (${params.uuidList(ids)})`,
-		params.values,
-		signal ? { signal } : undefined,
-	);
 }
 
 export interface ConsolidateMemoriesInput {

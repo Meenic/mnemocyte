@@ -62,6 +62,7 @@ import {
 } from "./records.js";
 import type {
 	MemoryStore,
+	StoreDeleteResult,
 	StoreMemoryFilter,
 	StoreMemoryPatch,
 	StoreScope,
@@ -110,8 +111,27 @@ function providerOptions(
 	};
 }
 
+/** `signal` for a store input, left out when unset (store inputs are exact). */
 function storeOptions(signal: AbortSignal | undefined) {
-	return signal === undefined ? undefined : { signal };
+	return signal === undefined ? {} : { signal };
+}
+
+/**
+ * The result of a delete, checked against the target it was asked for:
+ * store results are not trusted.
+ */
+function deleteResultFor<Target extends StoreDeleteResult["target"]>(
+	result: StoreDeleteResult,
+	target: Target,
+): Extract<StoreDeleteResult, { target: Target }> {
+	if (result.target !== target) {
+		throw new MnemocyteError({
+			message: "Memory delete returned a result for another target.",
+			code: "DB",
+		});
+	}
+	// Checked above; TypeScript does not narrow a union by a generic tag.
+	return result as Extract<StoreDeleteResult, { target: Target }>;
 }
 
 /**
@@ -340,7 +360,7 @@ export function createMemoryClient(
 	store: MemoryStore,
 ): CoreMemoryClient {
 	async function ensureEmbeddingCompatibility(): Promise<void> {
-		await store.ensureEmbeddingCompatibility(config.embedder);
+		await store.ensureEmbeddingCompatibility({ embedder: config.embedder });
 	}
 
 	// Audit events are written by the store in the same statement or
@@ -362,7 +382,7 @@ export function createMemoryClient(
 		}
 		// Settled into a value at once, so a failure that lands before the
 		// observed action awaits it is never an unhandled rejection.
-		const outcome = store.markMemoriesAccessed(visibility, memoryIds).then(
+		const outcome = store.markAccessed({ visibility, ids: memoryIds }).then(
 			() => ({ ok: true as const }),
 			(error: unknown) => ({ ok: false as const, error }),
 		);
@@ -380,6 +400,20 @@ export function createMemoryClient(
 		).catch(() => {
 			// Reported through onEvent; access tracking never fails a search.
 		});
+	}
+
+	/** The visible memory with this id, or `null`. */
+	async function getOne(
+		visibility: StoreVisibility,
+		id: string,
+		signal: AbortSignal | undefined,
+	): Promise<Memory | null> {
+		const [memory] = await store.get({
+			visibility,
+			ids: [id],
+			...storeOptions(signal),
+		});
+		return memory ?? null;
 	}
 
 	function add(input: AddInput): Promise<Memory> {
@@ -410,7 +444,7 @@ export function createMemoryClient(
 				];
 				const [outcome] = matchInsertResults(
 					stored,
-					await store.insertMemories(stored, { audit }),
+					await store.insert({ memories: stored, audit }),
 				);
 				if (!outcome) {
 					throw new MnemocyteError({
@@ -487,9 +521,10 @@ export function createMemoryClient(
 				// transaction, so a failure writes none of them.
 				const outcomes = matchInsertResults(
 					stored,
-					await store.insertMemories(stored, {
-						...storeOptions(signal),
+					await store.insert({
+						memories: stored,
 						audit,
+						...storeOptions(signal),
 					}),
 				);
 				return outcomes.map((outcome) => outcome.memory);
@@ -535,24 +570,32 @@ export function createMemoryClient(
 				const scoringConfig = createScoringConfig(config.retrieval);
 				const filter = memoryFilter(visibility, input);
 				// A list with weight 0 cannot change the fused score, so its
-				// search is skipped instead of adding unranked candidates.
-				const [vectorCandidates, lexicalCandidates] = await Promise.all([
-					scoringConfig.fusion.vector > 0
-						? store.vectorSearch({
+				// search is skipped instead of adding unranked candidates, and so
+				// is the lexical list of a backend without keyword search.
+				const searchVector = scoringConfig.fusion.vector > 0;
+				const searchLexical =
+					scoringConfig.fusion.lexical > 0 &&
+					store.capabilities.lexicalSearch !== "none";
+				const candidates =
+					searchVector || searchLexical
+						? await store.searchCandidates({
 								...filter,
-								embedding: queryEmbedding,
-								limit: candidateLimit,
-								minVectorScore: 0,
+								...(searchVector
+									? {
+											vector: {
+												embedding: queryEmbedding,
+												limit: candidateLimit,
+												minScore: 0,
+											},
+										}
+									: {}),
+								...(searchLexical
+									? { lexical: { query: input.query, limit: candidateLimit } }
+									: {}),
 							})
-						: [],
-					scoringConfig.fusion.lexical > 0
-						? store.lexicalSearch({
-								...filter,
-								query: input.query,
-								limit: candidateLimit,
-							})
-						: [],
-				]);
+						: { vector: [], lexical: [] };
+				const vectorCandidates = searchVector ? candidates.vector : [];
+				const lexicalCandidates = searchLexical ? candidates.lexical : [];
 				const merged = new Map<string, FusionCandidate>();
 				const vectorRanks = rankByScore(
 					vectorCandidates.map((candidate) => candidate.vectorScore),
@@ -659,18 +702,15 @@ export function createMemoryClient(
 					}
 					if (hasId) {
 						assertNonEmptyString(input.id, "id");
-						return store.getMemory(
-							visibility,
-							input.id,
-							storeOptions(input.signal),
-						);
+						return getOne(visibility, input.id, input.signal);
 					}
 					assertKey(input.key);
-					return store.getMemoryByKey(
-						visibility.scope,
-						input.key,
-						storeOptions(input.signal),
-					);
+					const [memory] = await store.get({
+						scope: visibility.scope,
+						key: input.key,
+						...storeOptions(input.signal),
+					});
+					return memory ?? null;
 				},
 				(memory) => ({
 					count: memory ? 1 : 0,
@@ -695,14 +735,12 @@ export function createMemoryClient(
 							? undefined
 							: decodeListCursor(input.cursor);
 					// One extra row says whether another page exists.
-					const rows = await store.listMemories(
-						{
-							...memoryFilter(visibility, input),
-							limit: limit + 1,
-							...(position === undefined ? {} : { position }),
-						},
-						storeOptions(input.signal),
-					);
+					const rows = await store.list({
+						...memoryFilter(visibility, input),
+						limit: limit + 1,
+						...(position === undefined ? {} : { position }),
+						...storeOptions(input.signal),
+					});
 					const memories = rows.slice(0, limit);
 					const last = memories.at(-1);
 					return {
@@ -759,7 +797,7 @@ export function createMemoryClient(
 									embeddingDimensions: config.embedder.dimensions,
 								}),
 					};
-					const memory = await store.updateMemory({
+					const memory = await store.update({
 						visibility: writeVisibility(scope),
 						id: input.id,
 						patch,
@@ -789,17 +827,19 @@ export function createMemoryClient(
 				async () => {
 					const { scope, dependents } = validateDeleteInput(input);
 					throwIfAborted(input.signal);
-					const result = await store.deleteMemory(
-						{
+					const result = deleteResultFor(
+						await store.delete({
+							target: "memory",
 							visibility: writeVisibility(scope),
 							memoryId: input.id,
 							dependents,
 							now: new Date(),
 							audit,
-						},
-						storeOptions(input.signal),
+							...storeOptions(input.signal),
+						}),
+						"memory",
 					);
-					if (!result) {
+					if (!result.found) {
 						throw new MnemocyteError({
 							message: "Memory was not found.",
 							code: "NOT_FOUND",
@@ -823,9 +863,13 @@ export function createMemoryClient(
 					const selector = validateEntitySelector(input?.scope);
 					assertOptionalSignal(input.signal);
 					throwIfAborted(input.signal);
-					const deletedCount = await store.deleteScope(
-						selector,
-						storeOptions(input.signal),
+					const { deletedCount } = deleteResultFor(
+						await store.delete({
+							target: "scope",
+							selector,
+							...storeOptions(input.signal),
+						}),
+						"scope",
 					);
 					return { deletedCount };
 				},
@@ -854,9 +898,15 @@ export function createMemoryClient(
 				async () => {
 					throwIfAborted(input?.signal);
 					const filter = validatePruneInput(input);
-					const result = await store.prune(
-						{ ...filter, now: new Date(), audit },
-						storeOptions(input.signal),
+					const result = deleteResultFor(
+						await store.delete({
+							target: "filter",
+							...filter,
+							now: new Date(),
+							audit,
+							...storeOptions(input.signal),
+						}),
+						"filter",
 					);
 					return {
 						matchedCount: result.matchedCount,
@@ -877,16 +927,21 @@ export function createMemoryClient(
 					throwIfAborted(input?.signal);
 					const visibility = validateFindDuplicatesInput(input);
 					await ensureEmbeddingCompatibility();
-					const pairs = await store.findDuplicatePairs(
-						{
-							...memoryFilter(visibility, input),
-							threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
-							limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
-							neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
-						},
-						storeOptions(input.signal),
-					);
-					return pairs.map(toDuplicatePair);
+					const result = await store.findDuplicates({
+						mode: "top",
+						...memoryFilter(visibility, input),
+						threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+						limit: input.limit ?? DEFAULT_DUPLICATE_LIMIT,
+						neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
+						...storeOptions(input.signal),
+					});
+					if (result.mode !== "top") {
+						throw new MnemocyteError({
+							message: "Duplicate search returned a page instead of pairs.",
+							code: "DB",
+						});
+					}
+					return result.pairs.map(toDuplicatePair);
 				},
 				(result) => ({ count: result.length }),
 			);
@@ -911,19 +966,17 @@ export function createMemoryClient(
 							? undefined
 							: decodeAuditCursor(input.cursor);
 					// One extra event says whether another page exists.
-					const entries = await store.listAuditLog(
-						{
-							selector,
-							limit: limit + 1,
-							...(input.before === undefined ? {} : { before: input.before }),
-							...(input.after === undefined ? {} : { after: input.after }),
-							...(input.memoryId === undefined
-								? {}
-								: { memoryId: input.memoryId }),
-							...(position === undefined ? {} : { position }),
-						},
-						storeOptions(input.signal),
-					);
+					const entries = await store.listAudit({
+						selector,
+						limit: limit + 1,
+						...(input.before === undefined ? {} : { before: input.before }),
+						...(input.after === undefined ? {} : { after: input.after }),
+						...(input.memoryId === undefined
+							? {}
+							: { memoryId: input.memoryId }),
+						...(position === undefined ? {} : { position }),
+						...storeOptions(input.signal),
+					});
 					const page = entries.slice(0, limit);
 					const last = page.at(-1);
 					return {
@@ -946,7 +999,7 @@ export function createMemoryClient(
 				async () => {
 					throwIfAborted(input?.signal);
 					const prune = validatePruneAuditLogInput(input);
-					return store.pruneAuditLog(prune, storeOptions(input.signal));
+					return store.pruneAudit({ ...prune, ...storeOptions(input.signal) });
 				},
 				(result) => ({ count: result.deletedCount }),
 			);
@@ -962,7 +1015,11 @@ export function createMemoryClient(
 					const selector = validateSelectorInput(input);
 					assertOptionalSignal(input.signal);
 					throwIfAborted(input.signal);
-					return store.stats(selector, new Date(), storeOptions(input.signal));
+					return store.stats({
+						selector,
+						now: new Date(),
+						...storeOptions(input.signal),
+					});
 				},
 			);
 		},
@@ -980,10 +1037,10 @@ export function createMemoryClient(
 				async () => {
 					throwIfAborted(input?.signal);
 					const visibility = writeVisibility(validateConsolidateInput(input));
-					const survivor = await store.getMemory(
+					const survivor = await getOne(
 						visibility,
 						input.survivorId,
-						storeOptions(input.signal),
+						input.signal,
 					);
 					throwIfAborted(input.signal);
 					if (!survivor) {
@@ -1001,11 +1058,11 @@ export function createMemoryClient(
 							reason: "CONSOLIDATION_CHANGED",
 						});
 					}
-					const targets = await store.loadConsolidationTargets(
+					const targets = await store.get({
 						visibility,
-						input.supersededIds,
-						storeOptions(input.signal),
-					);
+						ids: input.supersededIds,
+						...storeOptions(input.signal),
+					});
 					throwIfAborted(input.signal);
 					const foundIds = new Set(targets.map((target) => target.id));
 					for (const id of input.supersededIds) {
@@ -1040,17 +1097,15 @@ export function createMemoryClient(
 							supersededIds: [],
 						} satisfies ConsolidateResult;
 					}
-					const result = await store.consolidate(
-						{
-							visibility,
-							survivorId: survivor.id,
-							supersededIds: input.supersededIds,
-							mergeTags: input.mergeTags !== false,
-							now: new Date(),
-							auditEnabled: audit,
-						},
-						storeOptions(input.signal),
-					);
+					const result = await store.consolidate({
+						visibility,
+						survivorId: survivor.id,
+						supersededIds: input.supersededIds,
+						mergeTags: input.mergeTags !== false,
+						now: new Date(),
+						auditEnabled: audit,
+						...storeOptions(input.signal),
+					});
 					return {
 						survivorId: survivor.id,
 						supersededCount: result.supersededIds.length,
@@ -1092,17 +1147,17 @@ export function createMemoryClient(
 								? undefined
 								: decodeDuplicateCursor(input.cursor);
 						await ensureEmbeddingCompatibility();
-						const page = await store.findDuplicatePage(
-							{
-								...memoryFilter(visibility, input),
-								threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
-								neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
-								batchSize,
-								...(afterId === undefined ? {} : { afterId }),
-							},
-							storeOptions(input.signal),
-						);
+						const page = await store.findDuplicates({
+							mode: "page",
+							...memoryFilter(visibility, input),
+							threshold: input.threshold ?? DEFAULT_DUPLICATE_THRESHOLD,
+							neighbors: input.neighbors ?? DEFAULT_DUPLICATE_NEIGHBORS,
+							batchSize,
+							...(afterId === undefined ? {} : { afterId }),
+							...storeOptions(input.signal),
+						});
 						if (
+							page.mode !== "page" ||
 							!Number.isInteger(page.compared) ||
 							page.compared < 0 ||
 							page.compared > batchSize ||

@@ -13,7 +13,8 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const readmePath = join(root, "README.md");
+// The README is the repository's, two folders up.
+const readmePath = join(root, "..", "..", "README.md");
 const outDir = join(root, "test", "package", ".readme");
 const outFile = join(outDir, "readme.ts");
 

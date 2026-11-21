@@ -27,7 +27,7 @@ jobs:
 
       - name: Check tag matches package version
         run: |
-          version="$(node -p 'require("./package.json").version')"
+          version="$(node -p 'require("./packages/mnemocyte/package.json").version')"
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
@@ -97,11 +97,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # pnpm authenticates with trusted publishing (OIDC) and attaches
-      # provenance. prepublishOnly builds dist/ first. A tag checkout is a
+      # provenance. prepublishOnly builds dist/ first, and prepack copies the
+      # root README.md and LICENSE into the package folder. A tag checkout is a
       # detached HEAD, so pnpm's branch check is replaced by the verify job.
       # npm scans each upload before it becomes installable; the job waits
       # up to 10 minutes for the version to appear.
       - name: Publish
+        working-directory: packages/mnemocyte
         run: |
           dist_tag=latest
           case "$GITHUB_REF_NAME" in
@@ -117,7 +119,7 @@ jobs:
       - name: Remove stale next dist-tag
         if: ${{ !contains(github.ref_name, '-') }}
         run: |
-          name="$(node -p 'require("./package.json").name')"
+          name="$(node -p 'require("./packages/mnemocyte/package.json").name')"
           version="${GITHUB_REF_NAME#v}"
           if ! next="$(pnpm view "$name" dist-tags.next)"; then
             echo "::warning::Could not read the next dist-tag; check it with: npm view $name dist-tags"

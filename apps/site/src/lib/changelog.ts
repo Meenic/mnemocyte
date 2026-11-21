@@ -71,9 +71,9 @@ export function parseChangelog(source: string): ChangelogSection[] {
 export async function getChangelog(): Promise<ChangelogSection[]> {
   "use cache";
   cacheLife("max");
-  // The site lives in site/ of the library's repository.
+  // The site lives in apps/site/ of the library's repository.
   const source = await readFile(
-    join(process.cwd(), "..", "CHANGELOG.md"),
+    join(process.cwd(), "..", "..", "CHANGELOG.md"),
     "utf8",
   );
   return parseChangelog(source);

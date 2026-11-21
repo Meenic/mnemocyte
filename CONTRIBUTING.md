@@ -14,7 +14,7 @@ Found a security problem? Don't open an issue. Follow
 ## Set up
 
 You need Node.js 22.18 or newer and pnpm (the version in `packageManager`
-in `package.json`).
+in the root `package.json`).
 
 Install the dependencies:
 
@@ -41,8 +41,8 @@ throw away. It drops tables and extensions, so never point it at real data.
 [DEVELOPMENT.md](docs/DEVELOPMENT.md#testing) shows how to run it against a
 Docker container.
 
-Changed the website in `site/`? Run its checks too. Its own rules are in
-[site/AGENTS.md](site/AGENTS.md):
+Changed the website in `apps/site/`? Run its checks too. Its own rules
+are in [apps/site/AGENTS.md](apps/site/AGENTS.md):
 
 ```bash
 pnpm --filter site lint

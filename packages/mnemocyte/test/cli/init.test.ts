@@ -65,7 +65,7 @@ describe("chooseDriver", () => {
 describe("renderMemoryFile", () => {
 	test("each template is a memory.ts from the getting-started guide, and each of those is a template", async () => {
 		const guide = (
-			await readFile(resolve("docs/guide/getting-started.md"), "utf8")
+			await readFile(resolve("../../docs/guide/getting-started.md"), "utf8")
 		).replaceAll("\r\n", "\n");
 		const blocks = [...guide.matchAll(/```ts\n([\s\S]*?)```/g)]
 			.map((match) => match[1] ?? "")
@@ -82,7 +82,7 @@ describe("renderMemoryFile", () => {
 
 	test("each openai-compatible template is the OpenAI one with the guide's Ollama embedder", async () => {
 		const guide = (
-			await readFile(resolve("docs/guide/getting-started.md"), "utf8")
+			await readFile(resolve("../../docs/guide/getting-started.md"), "utf8")
 		).replaceAll("\r\n", "\n");
 		const ollama = [...guide.matchAll(/```ts\n([\s\S]*?)```/g)]
 			.map((match) => match[1] ?? "")

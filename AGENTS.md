@@ -10,9 +10,11 @@ there is nothing extra to host: callers bring the embedder and the
 database, and Mnemocyte adds scoped storage, hybrid recall, prompt-ready
 context and maintenance (prune, dedup, consolidation, audit).
 
-Today it is one ESM package (`mnemocyte`, 1.x) with an in-memory backend, a
-Postgres + pgvector backend, a libSQL backend, embedders over `fetch` and
-an AI SDK integration. The target design is in `docs/ARCHITECTURE.md`; the
+Today it is one ESM package (`mnemocyte`, 1.x, in `packages/mnemocyte/`)
+with an in-memory backend, a Postgres + pgvector backend, a libSQL
+backend, embedders over `fetch` and an AI SDK integration. The repository
+is a pnpm workspace: the site is in `apps/site/` and the examples in
+`examples/`. The target design is in `docs/ARCHITECTURE.md`; the
 plan to get there is `docs/ROADMAP.md`.
 
 ## Read before starting work
@@ -112,6 +114,9 @@ plan to get there is `docs/ROADMAP.md`.
 
 ## Commands
 
+Run them from the repository root; most pass through to the package
+(`pnpm --filter mnemocyte <script>`).
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm checktypes        # tsc for src and tests
@@ -125,22 +130,26 @@ pnpm lint:package      # build, pack, publint and attw on the tarball
 ```
 
 `pnpm lint:fix` and `pnpm format` write files. `pnpm test:integration` needs
-a Postgres + pgvector `DATABASE_URL` (see the safety rules above).
+a Postgres + pgvector `DATABASE_URL` (see the safety rules above); without
+one it loads `packages/mnemocyte/.env`, the folder the package's scripts
+run in.
 
 ## Documentation
 
 - `README.md` is the front page, not a guide: what Mnemocyte is, badges,
   install, one short example, what it works with and links. Setup steps,
-  API lists and other reference live in `docs/guide/*.md`. Links from
-  `README.md` are relative (`docs/guide/api.md`); npm turns them into GitHub links through
-  the `repository` field, so `docs/` does not need to ship.
+  API lists and other reference live in `docs/guide/*.md`. Edit the root
+  `README.md` only. Its links are relative (`docs/guide/api.md`); `pnpm
+  pack` copies it into `packages/mnemocyte/` with those links turned into
+  GitHub URLs (decision 74), so `docs/` does not need to ship.
   `docs/DEVELOPMENT.md` and `docs/features/*.md` describe what is built, for
   contributors. `docs/ARCHITECTURE.md` holds
   the target design and dated decisions and must never describe behavior the
   code does differently. `docs/ROADMAP.md` is the work queue.
   `CHANGELOG.md` records releases.
 - The tagline is "Memory for TypeScript AI apps." Keep it the same in
-  `README.md`, the `package.json` description and the GitHub About text.
+  `README.md`, the `packages/mnemocyte/package.json` description and the
+  GitHub About text.
 - User docs read like a friend explaining it: short sentences, everyday
   verbs (save, find, remember, clean up), code early and limitations stated
   plainly. Ollama's README is a good model for the shape: a one-line label

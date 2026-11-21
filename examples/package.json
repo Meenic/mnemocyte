@@ -1,0 +1,19 @@
+{
+	"name": "@mnemocyte/examples",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@electric-sql/pglite": "^0.5.16",
+		"@electric-sql/pglite-pgvector": "^0.0.17",
+		"ai": "^7.0.170",
+		"mnemocyte": "workspace:*",
+		"postgres": "^4.1.1"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.5",
+		"typescript": "^6.0.3"
+	}
+}

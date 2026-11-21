@@ -1,5 +1,5 @@
 {
-	// The whole repository for the editor and `pnpm checktypes`: src, tests
+	// The whole package for the editor and `pnpm checktypes`: src, tests
 	// and config files. The build settings are in tsconfig.build.json.
 	"extends": "./tsconfig.build.json",
 	"compilerOptions": {

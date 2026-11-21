@@ -340,17 +340,24 @@ The items, in order:
   major tag pointed at the same commit as its newest release, so pinning
   changed nothing at run time. The rules are in DEVELOPMENT.md
   ("Releasing" and "What CI runs").
-- [ ] `chore/contract-time`: the `contract` project is most of a Node
-  job's time. On the last `main` run before `chore/ci-matrix`,
-  `test/contract/pglite.test.ts` took 72 s and `cli.test.ts`,
-  `drizzle-schema.test.ts`, `text-search.test.ts` and
-  `schema-name.test.ts` 26 to 45 s each, inside a 106 s Vitest run on
-  Node 24, while `unit` files take milliseconds. Find where the time goes
-  (opening a PGlite per file or per test, migrating it each time) and cut
-  it without dropping coverage, for example one migrated PGlite per file
-  reset between tests, or running `contract` on one Node version only.
-  Decision for the maintainer if it comes to that: whether `contract`
-  needs every Node version.
+- [x] `chore/contract-time`: contract databases start from one PGlite
+  data folder that the `contract` project's global setup saves
+  (`openPGlite` in `test/contract/pglite.ts`), and the five PGlite runs of
+  the store contract are a file each. Measured first: a fresh PGlite took
+  about 0.75 s (initdb runs on every start without `loadDataDir`), a
+  start from a saved data folder 0.2 s, and `CREATE EXTENSION` plus
+  `migrate` 30 ms; `cli`, `drizzle-schema`, `schema-name` and
+  `text-search` opened about 55 fresh ones, one or two per test.
+  `pglite.test.ts` was query work instead, 5 to 11 s per run (the 260-row
+  `addMany` and the audit rollback the slowest), but its five runs shared
+  one worker. Same 215 tests; locally on Node 24 the project went from 47
+  to 51 s to 23 to 26 s. On the last `main` run, the Node jobs' Vitest
+  runs took 103 to 111 s, with `pglite.test.ts` at 70 to 74 s. Decided: a
+  saved data folder loaded per test over a reset between tests or
+  `clone()` (decision 60). `contract` stays on every Node version, since
+  the cut made that question moot. Found while building it:
+  `test/package/cli.test.ts` (32 s on that run) is now the slowest single
+  file locally. The rules are in DEVELOPMENT.md ("Testing" and "What CI runs").
 
 ## Backends and packages
 

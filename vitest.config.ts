@@ -56,9 +56,13 @@ export default defineConfig({
 					name: "contract",
 					include: ["test/contract/**/*.test.ts"],
 					testTimeout: 60_000,
-					// The files open PGlite in `beforeAll` / `beforeEach`, which takes
-					// over Vitest's 10 s hook default under load.
+					// The files open PGlite in `beforeAll` / `beforeEach`; before the
+					// saved data folder, that took over Vitest's 10 s hook default
+					// under load.
 					hookTimeout: 60_000,
+					// Saves one initialized PGlite data folder that `openPGlite`
+					// (test/contract/pglite.ts) loads instead of running initdb.
+					globalSetup: ["test/contract/pglite.global-setup.ts"],
 				},
 			},
 			{

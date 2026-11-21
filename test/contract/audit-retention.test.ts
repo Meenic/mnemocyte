@@ -1,5 +1,4 @@
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+import type { PGlite } from "@electric-sql/pglite";
 import { createMemory, type MemoryClient, migrate } from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -7,6 +6,7 @@ import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor, SqlStatement } from "../../src/sql/executor.js";
 import { verifyAuditRetention } from "../fixtures/audit-retention.js";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import { openPGlite } from "./pglite.js";
 
 const EVENTS_INDEX = "mnemocyte_events_scope_time_idx";
 
@@ -61,8 +61,7 @@ describe("pruneAuditLog (PGlite)", () => {
 	}
 
 	beforeAll(async () => {
-		db = await PGlite.create({ extensions: { vector } });
-		await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+		db = await openPGlite({ pgvector: true });
 		await migrate({ memory: client() });
 	}, 60_000);
 

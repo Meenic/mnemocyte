@@ -1,11 +1,11 @@
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+import type { PGlite } from "@electric-sql/pglite";
 import { createMemory, migrate } from "mnemocyte";
 import { postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor, SqlStatement } from "../../src/sql/executor.js";
 import { expectDefined } from "../helpers.js";
+import { openPGlite } from "./pglite.js";
 
 const DIMENSIONS = 16;
 const ROWS = 1500;
@@ -54,8 +54,7 @@ describe("findDuplicates query plan (PGlite)", () => {
 	}
 
 	beforeAll(async () => {
-		db = await PGlite.create({ extensions: { vector } });
-		await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+		db = await openPGlite({ pgvector: true });
 	}, 60_000);
 
 	afterAll(async () => {

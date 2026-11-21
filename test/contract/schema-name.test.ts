@@ -1,5 +1,4 @@
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+import type { PGlite } from "@electric-sql/pglite";
 import {
 	createMemory,
 	type Embedder,
@@ -14,6 +13,7 @@ import { MIGRATION_LOCK_KEY } from "../../src/db/migrations/runner.js";
 import { postgresTables } from "../../src/db/tables.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import { expectMnemocyteError } from "../helpers.js";
+import { openPGlite } from "./pglite.js";
 
 const NAMES = MIGRATIONS.map((migration) => migration.name);
 
@@ -36,8 +36,7 @@ afterEach(async () => {
 
 /** An in-process Postgres 18 with pgvector in `public` and no tables. */
 async function createDb(): Promise<PGlite> {
-	const db = await PGlite.create({ extensions: { vector } });
-	await db.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+	const db = await openPGlite({ pgvector: true });
 	open.push(db);
 	return db;
 }

@@ -361,6 +361,14 @@ The items, in order:
   `test/package/cli.test.ts` (17 to 29 s on PR #127) is now the slowest
   single file. The rules are in DEVELOPMENT.md ("Testing" and "What CI
   runs").
+- [ ] `chore/libsql-package-timeout`: `test/package/libsql.test.ts` has no
+  timeout of its own, so it runs under Vitest's 5 s default while it
+  copies the packed package into a temporary consumer and runs ESM and
+  `require()` scripts there. It
+  took 4.2 to 5.2 s alone on Windows (Node 24) and timed out once in a
+  full `pnpm test` on 2026-11-21 (found in `chore/libsql-remote-ci`).
+  Give it the 30 s the other packed-consumer tests use
+  (`require-esm.test.ts`, `lazy-postgres.test.ts`).
 
 ## Backends and packages
 
@@ -379,14 +387,14 @@ The items, in order:
   `F32_BLOB` up to 65,536 dimensions, single write batches, CI on database
   files, the CLI through a memory file, and duplicates in JavaScript. The
   backend is in [features/libsql.md](./features/libsql.md).
-- [ ] `chore/libsql-remote-ci`: a CI job that runs
+- [x] `chore/libsql-remote-ci`: CI runs
   `test/integration/libsql-remote.test.ts` against a libSQL server
-  container (`ghcr.io/tursodatabase/libsql-server`, pinned by its SHA tag,
-  as the manual run on 2026-11-21 was), so the Hrana protocol path (HTTP
-  batches and the server's own SQL parser, which rejected aggregate
-  `ORDER BY`) is tested on every PR that touches `src/`. Open: which job
-  it joins, and whether a commit-SHA tag (its newest tags have no
-  version numbers) is acceptable for a pin.
+  container, so the Hrana protocol path (HTTP batches and the server's
+  own SQL parser, which rejected aggregate `ORDER BY`) is tested on every
+  PR that changes its files. Decided (decision 71): a job of its own on
+  Node 24 with the Postgres file list, and the image pinned by its
+  commit-SHA tag and digest, bumped by hand. The job is in DEVELOPMENT.md
+  ("What CI runs").
 - [ ] `feat/public-store-contract`: `MemoryStoreV1` exported from
   `mnemocyte/store`, with the contract test suite at
   `mnemocyte/store/test`, so third-party backends can prove they conform.

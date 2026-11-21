@@ -8,9 +8,9 @@ import {
  * The libSQL contract over the network, on a libSQL server (sqld) whose
  * URL is `LIBSQL_URL`, such as `http://127.0.0.1:8080`: the Hrana protocol
  * Turso users connect with, where batches and transactions travel as
- * requests. Skipped without the variable; CI does not run it yet
- * (`chore/libsql-remote-ci` in docs/ROADMAP.md). The database must be empty
- * and disposable: the suite migrates it and leaves its rows.
+ * requests. Skipped without the variable. CI runs it in the `libSQL server
+ * integration` job (`pnpm test:integration:libsql`). The database must be
+ * empty and disposable: the suite migrates it and leaves its rows.
  */
 const url = process.env.LIBSQL_URL;
 

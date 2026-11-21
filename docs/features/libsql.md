@@ -235,13 +235,17 @@ before every call, so an aborted signal stops the next statement with
 - `test/package/libsql.test.ts`: the packed package with `@libsql/client`
   linked in, through ESM and `require()`.
 - `test/integration/libsql-remote.test.ts`: the shared contract on a
-  libSQL server at `LIBSQL_URL`; skipped without it, and not in CI yet
-  (`chore/libsql-remote-ci`). Run on 2026-11-21 against
-  `ghcr.io/tursodatabase/libsql-server:d6c75af`:
+  libSQL server at `LIBSQL_URL`; skipped without it. CI runs it in the
+  `libSQL server integration` job on
+  `ghcr.io/tursodatabase/libsql-server:d6c75af`, pinned by digest
+  (decision 71; how to bump the pin is in
+  [DEVELOPMENT.md](../DEVELOPMENT.md#what-ci-runs)). By hand, with the same
+  image (the server answers `GET /health` once it is up):
 
   ```bash
-  docker run -d --name mnemocyte-sqld-test -p 8089:8080 -e SQLD_NODE=primary ghcr.io/tursodatabase/libsql-server:d6c75af
-  LIBSQL_URL=http://127.0.0.1:8089 pnpm exec vitest run --project integration test/integration/libsql-remote.test.ts
+  docker run -d --name mnemocyte-sqld-test -p 8089:8080 -e SQLD_NODE=primary ghcr.io/tursodatabase/libsql-server:d6c75af@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+  curl --fail --retry 30 --retry-all-errors --retry-delay 1 http://127.0.0.1:8089/health
+  LIBSQL_URL=http://127.0.0.1:8089 pnpm test:integration:libsql
   docker rm -f mnemocyte-sqld-test
   ```
 

@@ -1399,6 +1399,8 @@ Dated 2026-10-26 unless noted.
     through `test/integration/libsql-remote.test.ts`, which found that the
     server's own SQL parser rejects aggregate `ORDER BY`; the SQL avoids
     it. A CI job is `chore/libsql-remote-ci` in ROADMAP.md.
+    (2026-11-21, revised) CI now runs the server suite on every PR that
+    changes its files, in a job of its own (decision 71).
 69. **The CLI reaches libSQL through the memory file** (2026-11-21,
     landed): the maintainer chose `migrate`, `check` and `text-search`
     for libSQL, through a memory file only. `DATABASE_URL` stays
@@ -1413,3 +1415,26 @@ Dated 2026-10-26 unless noted.
     1,536 dimensions: the self-join took 59 s for 1,000 memories, against
     1.2 s now. It still grows with the square of the scope, so large
     scopes use `experimental.findDuplicatesPage`.
+71. **The libSQL server suite in a CI job of its own, pinned by digest**
+    (2026-11-21, landed): the maintainer chose, with
+    `chore/libsql-remote-ci`, a `libSQL server integration` job with a
+    sqld service container, over a step in the Postgres jobs, which would
+    run it four times (or tie it to one matrix cell) and report a server
+    failure as a Postgres one. It runs on Node 24 only, since it tests
+    the Hrana protocol and the server's SQL parser, not Node, and on the
+    Postgres file list, since the suite reaches `test/fixtures/` and
+    `test/helpers.ts` through the shared contract and `migrations/libsql/`
+    through the bundle in `src/`. The image is
+    `ghcr.io/tursodatabase/libsql-server:d6c75af@sha256:6dd3eb27…`: the
+    upstream workflow tags each `main` build `latest` and a short commit
+    SHA, its builds after `d6c75af` (2026-08-23) failed, so that tag is
+    the newest and has the same digest as `latest`, and the digest keeps a
+    rebuilt, re-pushed tag from changing the image. Dependabot documents
+    `github-actions` updates for `uses:` references only, not service
+    images, and SHA tags have no order to compare, so the pin is bumped by
+    hand when `latest` moves (the check is in DEVELOPMENT.md). The image
+    has no `curl` or `wget`, so the runner polls `GET /health` instead of
+    a `--health-cmd`. The cost is one more runner and install per PR and a
+    pin that only moves when someone looks. Revisit when upstream
+    publishes versioned server tags again or the repository adopts an
+    updater that tracks service-image digests.

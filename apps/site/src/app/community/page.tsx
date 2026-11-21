@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const WAYS_TO_HELP = [
   {
     title: "Report a bug",
-    text: "Include your Node, Postgres and pgvector versions and a small reproduction.",
+    text: "Include your Node version, your database’s versions (Postgres and pgvector, or libSQL) and a small reproduction.",
     href: `${REPO_URL}/issues`,
     link: "Open an issue",
   },
@@ -33,23 +33,11 @@ const WAYS_TO_HELP = [
 ] as const;
 
 /*
- * Hand-written summaries of the open items in docs/ROADMAP.md, in roadmap
- * order. Update them when the roadmap moves on.
+ * Hand-written summaries of docs/ROADMAP.md: the open items in roadmap
+ * order, then ideas from "Later" with the condition they wait on. Update
+ * them when the roadmap moves on.
  */
 const NEXT: { title: string; text: ReactNode }[] = [
-  {
-    title: "libSQL and Turso",
-    text: (
-      <>
-        A second backend at <InlineCode>mnemocyte/libsql</InlineCode>, on your
-        own libSQL client.
-      </>
-    ),
-  },
-  {
-    title: "A public store contract",
-    text: "So third-party backends can prove they conform, with the contract tests to run.",
-  },
   {
     title: "An MCP server",
     text: (
@@ -58,6 +46,14 @@ const NEXT: { title: string; text: ReactNode }[] = [
         save memories.
       </>
     ),
+  },
+  {
+    title: "SQLite and sqlite-vec",
+    text: "Later, once sqlite-vec has a stable release.",
+  },
+  {
+    title: "A libSQL vector index",
+    text: "Later, when a scope grows too large for the exact scan libSQL search uses today.",
   },
 ];
 
@@ -97,7 +93,7 @@ export default function CommunityPage() {
           <div>
             <h2>What’s next</h2>
             <p className="lead mt-(--s-3) max-w-[20em]">
-              From the roadmap, in the order they are planned.
+              The next item on the roadmap, then ideas that wait on a condition.
             </p>
           </div>
           <ul className="m-0 list-none border-t border-ink p-0">

@@ -125,6 +125,24 @@ describe("parseChangelog", () => {
   });
 });
 
+describe("the repository's CHANGELOG.md", () => {
+  /*
+   * A release that falls back to raw Markdown still builds, so nothing else
+   * would catch an entry written without a bold lead-in.
+   */
+  it("shows every release from 1.0.0 up in the release layout", () => {
+    const source = readFileSync(
+      new URL("../../../../CHANGELOG.md", import.meta.url),
+      "utf8",
+    );
+    const raw = parseChangelog(source)
+      .filter((section) => section.kind === "raw")
+      .map((section) => (section.kind === "raw" ? section.heading : ""));
+    expect(raw).toEqual([]);
+    expect(releases(source).length).toBeGreaterThan(0);
+  });
+});
+
 describe("formatDate", () => {
   it("writes the day, month name and year", () => {
     expect(formatDate("2026-11-16")).toBe("16 November 2026");

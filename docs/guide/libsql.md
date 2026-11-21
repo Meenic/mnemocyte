@@ -7,7 +7,7 @@ are built into libSQL, so there is no extension to enable.
 ## Requirements
 
 - Node.js 22.18 or newer.
-- `@libsql/client` 0.18 or newer, the client Turso recommends for remote
+- `@libsql/client` 0.18 (`^0.18.0`), the client Turso recommends for remote
   databases and ORMs. Any of its entry points works (`@libsql/client`,
   `/web`, `/http`, `/ws`), and so does Drizzle over it
   (`drizzle-orm/libsql`).

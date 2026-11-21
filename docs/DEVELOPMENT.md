@@ -1093,11 +1093,11 @@ The release workflow runs three stages:
 - `ci` runs `ci.yml` (through `workflow_call`, with `release: true`) on the
   tagged commit. Path filtering applies only to pull requests, so every
   job runs except `Site`: the Node matrix, `Checks`, the package lint,
-  `Links` and the four Postgres integration jobs. The site is not in the
-  tarball, and the release PR and the push to `main` already ran it
-  (decision 59). A job that calls a reusable workflow cannot set
-  `timeout-minutes`; each `ci.yml` job has its own, and `verify` and
-  `publish` have theirs.
+  `Links`, the four Postgres integration jobs and `libSQL server
+  integration`. The site is not in the tarball, and the release PR and
+  the push to `main` already ran it (decision 59). A job that calls a
+  reusable workflow cannot set `timeout-minutes`; each `ci.yml` job has
+  its own, and `verify` and `publish` have theirs.
 - `publish` runs in the `npm` GitHub environment, the only job with
   `id-token: write`. It installs without a dependency cache and runs
   `pnpm publish --no-git-checks` in `packages/mnemocyte/`;

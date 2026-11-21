@@ -405,7 +405,7 @@ Design rules for the public surface:
 
 ## Testing
 
-Vitest has three projects (`vitest.config.ts`):
+Vitest has four projects (`vitest.config.ts`):
 
 | Project | Files | Imports | Command |
 |---|---|---|---|
@@ -504,13 +504,17 @@ Vitest has three projects (`vitest.config.ts`):
 - The `package` project's global setup (`test/package/pack.global-setup.ts`)
   packs the tarball once and extracts it with the system `tar` using
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
-  Each test that needs it copies the package into a temporary consumer of
-  its own (`createPackedConsumer` in `packed-consumer.ts`) with
-  `drizzle-orm`, `postgres`, `pg`, PGlite and `ai` absent. In
-  `lazy-postgres.test.ts` the consumer runs an in-memory
-  client from ESM and, through `require()`, a client with a `SqlExecutor`
-  as `store`, which loads the Postgres chunk lazily; `require()` would throw
-  if any module used top-level `await`. Then it links the dev `ai` into its
+  Each test file that needs it copies the package into a temporary
+  consumer of its own (`createPackedConsumer` in `packed-consumer.ts`)
+  with `drizzle-orm`, `postgres`, `pg`, PGlite, `@libsql/client` and `ai`
+  absent. A test that runs scripts in a consumer takes a 30 s timeout of
+  its own (the third argument to `test`): `libsql.test.ts` hit Vitest's
+  5 s default once in a loaded `pnpm test` on Windows. The in-process
+  package tests keep the default. In `lazy-postgres.test.ts` the
+  consumer runs an in-memory client from ESM and, through `require()`, a
+  client with a `SqlExecutor` as `store`, which loads the Postgres chunk
+  lazily; `require()` would throw if any module used top-level `await`.
+  Then it links the dev `ai` into its
   `node_modules` (a directory junction, which Windows allows without
   symlink rights) and embeds through `mnemocyte/ai-sdk` with an AI SDK mock
   model, checking that an `APICallError` comes out as the root entry's

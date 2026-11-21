@@ -79,5 +79,5 @@ describe("libSQL from the packed package", () => {
 		} finally {
 			await packed.remove().catch(() => undefined);
 		}
-	});
+	}, 30_000);
 });

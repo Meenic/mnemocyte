@@ -8,7 +8,7 @@ import { describe, test } from "vitest";
 import {
 	verifyAuditMemoryHistory,
 	verifyAuditPages,
-} from "../fixtures/audit-cursor.js";
+} from "../../src/store-test/fixtures/audit-cursor.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {

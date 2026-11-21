@@ -398,12 +398,16 @@ The items, in order:
   Node 24 with the Postgres file list, and the image pinned by its
   commit-SHA tag and digest, bumped by hand. The job is in DEVELOPMENT.md
   ("What CI runs").
-- [ ] `feat/public-store-contract`: `MemoryStoreV1` exported from
-  `mnemocyte/store`, with the contract test suite at
-  `mnemocyte/store/test`, so third-party backends can prove they conform.
-  Open there: whether `inspectInstallation`, `setTextSearchConfig` and
-  `ensureEmbeddingCompatibility` become optional, with the core supplying
-  what a store without schema returns today (decision 61).
+- [x] `feat/public-store-contract`: `MemoryStoreV1` exported from
+  `mnemocyte/store` with `defineMemoryStore`, and the contract test suite
+  at `mnemocyte/store/test`, so third-party backends can prove they
+  conform. Decided (decisions 72 and 73): `migrate` and
+  `ensureEmbeddingCompatibility` optional, `inspectInstallation` and
+  `setTextSearchConfig` first-party only, the fallbacks in one adapter,
+  `MemoryStoreV1…` type names over an internal `MemoryStore`, a
+  `"custom"` backend, and the suite on `vitest` as an optional peer. The
+  contract is in DEVELOPMENT.md ("Store contract"); the guide is
+  [guide/custom-stores.md](./guide/custom-stores.md).
 - [ ] `chore/workspace-layout`: the package moves to `packages/mnemocyte/`,
   the site to `apps/site/`, and `examples/` becomes a workspace package on
   `"mnemocyte": "workspace:*"` (decision 53). CI (with the path lists
@@ -431,6 +435,12 @@ Not queued. Each one comes back as an item when its condition holds.
   it would need a per-scope partial index or a fallback to the scan when
   too few rows survive, and `"postfilter"` would bring the warning
   decision 63 describes.
+- Helpers for JavaScript store backends in `mnemocyte/store` (audit event
+  builders, visibility and selector predicates, exact duplicate search,
+  all internal today), when a third-party backend author asks; they would
+  start under `experimental` (decision 72).
+- `vitest` `^4` in the `mnemocyte/store/test` peer range, if a backend
+  author on Vitest 4 asks and a CI run on it passes (decision 73).
 - The CLI for libSQL without a memory file (a `LIBSQL_URL` like
   `DATABASE_URL`) and an `init` template for `@libsql/client`, when users
   ask.

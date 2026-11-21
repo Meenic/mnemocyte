@@ -201,8 +201,10 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 
 One package, `mnemocyte`, with subpaths: `mnemocyte` (core),
 `mnemocyte/postgres` (backend and driver adapters), `mnemocyte/libsql`
-(landed, decision 62), `mnemocyte/embedders/*`, `mnemocyte/ai-sdk`.
-Drivers, `@libsql/client` and `ai` are optional peer dependencies.
+(landed, decision 62), `mnemocyte/store` and `mnemocyte/store/test`
+(landed, decisions 72 and 73), `mnemocyte/embedders/*`, `mnemocyte/ai-sdk`.
+Drivers, `@libsql/client`, `ai` and `vitest` are optional peer
+dependencies.
 
 After 1.0 (decision 1, revised 2026-11-15), a package is split out only when
 it needs dependencies of its own or its own release cadence:
@@ -213,10 +215,9 @@ it needs dependencies of its own or its own release cadence:
   the user loading the extension on their own connection, it becomes a
   package of its own. Drizzle and Kysely stay in `mnemocyte` for the same
   reason: the user brings the driver, and the drivers are optional peers.
-- **The public `MemoryStore` contract** is versioned in its name
-  (`MemoryStoreV1`), so the core can accept two versions during a change
-  instead of forcing a major. It is exported from `mnemocyte/store`, with
-  the contract test suite beside it at `mnemocyte/store/test`. Third-party
+- **The public store contract.** Landed (decisions 72 and 73):
+  `MemoryStoreV1` at `mnemocyte/store` and the contract suite at
+  `mnemocyte/store/test`; see DEVELOPMENT.md, "Store contract". Third-party
   backends are their own packages with `mnemocyte` as a peer (`^1`). A
   separate contract package, as `@ai-sdk/provider` is for the AI SDK,
   follows only if third-party backends become common.
@@ -1438,3 +1439,59 @@ Dated 2026-10-26 unless noted.
     pin that only moves when someone looks. Revisit when upstream
     publishes versioned server tags again or the repository adopts an
     updater that tracks service-image digests.
+72. **The public store contract is `MemoryStoreV1`** (2026-11-21, landed):
+    the maintainer chose, with `feat/public-store-contract`, 12 required
+    data methods and two optional ones. `migrate` and
+    `ensureEmbeddingCompatibility` are optional: a store without schema has
+    nothing to migrate, and the core answers as the in-memory store does
+    (nothing applied, every embedder accepted). `inspectInstallation` and
+    `setTextSearchConfig` stay out of V1, first-party only, over making
+    them optional: `InstallationReport` (`pgvectorVersion`,
+    `sqliteVersion`, `vectorType`) and `regconfig` names describe the
+    Postgres and libSQL schemas, and publishing them would freeze those
+    shapes under semver. Adding an optional member later is a minor;
+    removing one is a major. The core supplies the fallbacks in one adapter,
+    `fromMemoryStoreV1`, the way the AI SDK's `asLanguageModelV4` upgrades
+    a `"v2"` or `"v3"` model (`ai` 7 accepts all three and throws
+    `AI_UnsupportedModelVersionError` otherwise), so `client-core`,
+    `migrate()` and the CLI keep calling required methods, which answers
+    decision 61's concern about fallbacks in four callers. A store comes
+    in through `defineMemoryStore({ store })`, a store config like
+    `postgresStore()`'s, over detecting a store by shape in `createMemory`:
+    it keeps the `store` union and the root entry as they are, and checks
+    the store when the app starts. The envelope carries the raw V1 store
+    under a `Symbol.for` key of its own, and the copy of the package that
+    runs the client adapts it, so a store defined through another
+    installed copy works, and a copy from before V1 rejects it with
+    `"CONFIG"` instead of calling missing methods. An unknown
+    `specificationVersion` is `"CONFIG"` with `"INVALID_OPTION"`, not a new
+    reason: there is nothing for a caller to do but update. The internal
+    name stays `MemoryStore`, now `MemoryStoreV1` plus `backend`,
+    `schemaName`, `custom` and the two first-party methods. The V1 types are
+    the declarations, named `MemoryStoreV1…` as `@ai-sdk/provider` names
+    `LanguageModelV4…`, so a V2 can sit next to them; the backends keep
+    their `Store…` names as aliases. `MnemocyteBackend` gained `"custom"`
+    (open per "Stability"), and V1 stores declare a `name` for the CLI's
+    messages. Helpers for JavaScript backends (audit event builders,
+    visibility predicates, exact duplicate search) are left out until a
+    backend author asks for them (ROADMAP, "Later").
+73. **The contract suite ships on Vitest** (2026-11-21, landed): the
+    maintainer chose, with `feat/public-store-contract`, `vitest` `^5.0.0`
+    as an optional peer that `mnemocyte/store/test` imports at runtime,
+    over a runner-agnostic suite that takes `describe`, `test` and
+    `expect` from the caller: the fixtures use many Vitest matchers
+    (`toMatchObject`, `rejects`, `expect.arrayContaining`), which a
+    structural type would have to restate, and the repository's tests use
+    Vitest `expect`. better-auth makes the same choice
+    (`@better-auth/test-utils/adapter`, `vitest` `^4 || ^5` as a required
+    peer). The range is `^5` only because that is the version tested. The
+    suite and the fixtures it runs moved from `test/` to `src/store-test/`
+    so they build with the package and share its chunks;
+    `describeMemoryStoreContract({ name, store, failAuditWrites })` is the
+    one entry point, `store` a function called inside the tests (after the
+    caller's hooks), and the audit rollback test skips without
+    `failAuditWrites`. The first-party runs call the same
+    `registerSharedContract` with their own namespace cleanup. The tests it
+    runs are outside semver, so a minor may add some; its options and
+    exports are covered. `require()` of the entry works once `vitest` is
+    installed, since require(esm) reaches Vitest's ES entry.

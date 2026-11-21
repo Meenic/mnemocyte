@@ -1,7 +1,7 @@
 import { createMemory } from "mnemocyte";
 import { describe, test } from "vitest";
+import { verifyDuplicatePages } from "../../src/store-test/fixtures/duplicate-pages.js";
 import { CONTRACT_DIMENSIONS, embedText } from "../contract/suite.js";
-import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
 import { testScope } from "../helpers.js";
 
 describe("duplicate pages (in-memory)", () => {

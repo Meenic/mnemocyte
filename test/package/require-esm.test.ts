@@ -92,6 +92,15 @@ describe("require() from CommonJS", () => {
 				expect(result?.ok === false && result.message).toContain("'ai'");
 				continue;
 			}
+			if (specifier === "mnemocyte/store/test") {
+				// Its vitest peer is not installed.
+				expect(result).toMatchObject({
+					ok: false,
+					code: "ERR_MODULE_NOT_FOUND",
+				});
+				expect(result?.ok === false && result.message).toContain("'vitest'");
+				continue;
+			}
 			expect(result, specifier).toMatchObject({ ok: true });
 			if (result?.ok) {
 				expect(result.required.length, specifier).toBeGreaterThan(0);
@@ -105,6 +114,9 @@ describe("require() from CommonJS", () => {
 		const results = await requireEveryExport();
 		for (const specifier of specifiers) {
 			const result = results[specifier];
+			if (specifier === "mnemocyte/store/test") {
+				continue;
+			}
 			expect(result, specifier).toMatchObject({ ok: true });
 			if (result?.ok) {
 				expect(result.required, specifier).toEqual(result.imported);
@@ -113,6 +125,26 @@ describe("require() from CommonJS", () => {
 		expect(results["mnemocyte/ai-sdk"]).toMatchObject({
 			ok: true,
 			required: expect.arrayContaining(["memoryTools", "withMemory"]),
+		});
+	}, 30_000);
+
+	test("loads mnemocyte/store/test once vitest is installed", async () => {
+		await packed.linkVitest();
+		const results = await requireEveryExport();
+		// require(esm) loads the entry as ESM, so its import of vitest
+		// resolves to vitest's ESM entry, not the CommonJS one that throws.
+		expect(results["mnemocyte/store/test"]).toEqual({
+			ok: true,
+			required: [
+				"STORE_CONTRACT_DIMENSIONS",
+				"STORE_CONTRACT_EMBEDDING_MODEL",
+				"describeMemoryStoreContract",
+			],
+			imported: [
+				"STORE_CONTRACT_DIMENSIONS",
+				"STORE_CONTRACT_EMBEDDING_MODEL",
+				"describeMemoryStoreContract",
+			],
 		});
 	}, 30_000);
 });

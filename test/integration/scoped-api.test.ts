@@ -12,7 +12,7 @@ import {
 	verifyListPaging,
 	verifyScopeVisibility,
 	verifyUpdate,
-} from "../fixtures/scoped-api.js";
+} from "../../src/store-test/fixtures/scoped-api.js";
 
 const envPath = resolve(".env");
 if (!process.env.DATABASE_URL && existsSync(envPath)) {

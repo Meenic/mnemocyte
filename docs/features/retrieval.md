@@ -214,7 +214,7 @@ it like `findDuplicatesPage`.
 With access tracking on, both methods mark only `memories`; `omitted`
 keeps its counts (see [access tracking](#access-tracking)).
 
-**Tests.** `test/fixtures/context-memories.ts` runs on the in-memory
+**Tests.** `src/store-test/fixtures/context-memories.ts` runs on the in-memory
 backend (`test/context/context-memories.test.ts`) and in the Postgres
 contract suite, so on PGlite and, in integration, real Postgres through
 each driver: the text equals `context()`'s in each format, `memories`

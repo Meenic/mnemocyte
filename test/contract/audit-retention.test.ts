@@ -4,7 +4,7 @@ import { postgresStore } from "mnemocyte/postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor, SqlStatement } from "../../src/sql/executor.js";
-import { verifyAuditRetention } from "../fixtures/audit-retention.js";
+import { verifyAuditRetention } from "../../src/store-test/fixtures/audit-retention.js";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
 import { openPGlite } from "./pglite.js";
 

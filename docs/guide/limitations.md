@@ -91,6 +91,20 @@ them.
 - **No cancellation.** An aborted `signal` stops the next statement; one
   already sent runs to the end.
 
+## Custom stores
+
+- **No installation report.** `mnemocyte check` says a store from
+  `defineMemoryStore` reports no installation, and `setTextSearchConfig()`
+  and `mnemocyte text-search` change nothing for it.
+- **No embedder check unless the store has one.** Without
+  `ensureEmbeddingCompatibility`, a client with another embedding model
+  writes and searches the same memories without an error.
+- **The contract suite runs on Vitest 5 only.** It needs `vitest` installed
+  and writes 1,536-dimension embeddings.
+- **No JavaScript helpers.** Building audit events, visibility filters and
+  duplicate pairs is up to the store; see
+  [custom-stores.md](./custom-stores.md#what-a-custom-store-does-not-get).
+
 ## Retrieval
 
 - **Keyword search uses one language per installation on Postgres.** It
@@ -245,4 +259,5 @@ them.
   to compile its `import` of `mnemocyte` with TS1479; `node20` and
   `nodenext` accept it.
 - **`mnemocyte/ai-sdk` needs `ai` installed.** Without it, `require()`
-  throws `ERR_MODULE_NOT_FOUND`, as `import` does.
+  throws `ERR_MODULE_NOT_FOUND`, as `import` does. So does
+  `mnemocyte/store/test` without `vitest`.

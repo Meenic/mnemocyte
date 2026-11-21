@@ -75,6 +75,9 @@ moves them to Postgres in a few steps.
 - **[Embedders](docs/guide/embedders.md)**
   from OpenAI, Voyage, Cohere and Gemini, any OpenAI-compatible server such
   as Ollama, or your own
+- **[Your own store](docs/guide/custom-stores.md)**,
+  written against the public store contract and checked with the same
+  tests the built-in backends pass
 
 ## Documentation
 
@@ -85,6 +88,7 @@ moves them to Postgres in a few steps.
 [CLI](docs/guide/cli.md) ·
 [Embedders](docs/guide/embedders.md) ·
 [AI SDK](docs/guide/ai-sdk.md) ·
+[Custom stores](docs/guide/custom-stores.md) ·
 [Recipes](docs/guide/recipes.md) ·
 [FAQ](docs/guide/faq.md) ·
 [AI coding tools](docs/guide/ai-tools.md) ·

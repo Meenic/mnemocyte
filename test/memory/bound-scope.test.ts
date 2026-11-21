@@ -8,7 +8,7 @@ import {
 import { describe, expect, test } from "vitest";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
 import { createMnemocyteStoreConfig } from "../../src/memory/store-config.js";
-import { verifyBoundScope } from "../fixtures/bound-scope.js";
+import { verifyBoundScope } from "../../src/store-test/fixtures/bound-scope.js";
 import { expectMnemocyteError } from "../helpers.js";
 
 const embedder: Embedder = {

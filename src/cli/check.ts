@@ -307,7 +307,9 @@ export async function checkTarget(
 			} satisfies CheckJson);
 		} else {
 			io.write(
-				"This client uses the in-memory backend; there is nothing to check.\n",
+				target.store.custom === undefined
+					? "This client uses the in-memory backend; there is nothing to check.\n"
+					: `This client uses the custom store "${target.store.custom.name}", which reports no installation; there is nothing to check.\n`,
 			);
 		}
 		return 0;

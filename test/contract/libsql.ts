@@ -4,13 +4,13 @@ import { type Client, createClient } from "@libsql/client";
 import { migrate } from "mnemocyte";
 import { libsqlStore } from "mnemocyte/libsql";
 import { afterAll, beforeAll, describe, expect, inject, test } from "vitest";
-import { expectDefined } from "../helpers.js";
 import {
 	CONTRACT_DIMENSIONS,
 	type ContractStoreInput,
 	contractClientFactory,
 	registerSharedContract,
-} from "./shared.js";
+} from "../../src/store-test/contract.js";
+import { expectDefined } from "../helpers.js";
 
 declare module "vitest" {
 	export interface ProvidedContext {

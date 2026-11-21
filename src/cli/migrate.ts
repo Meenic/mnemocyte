@@ -165,6 +165,12 @@ export async function migrateTarget(
 		);
 		return 0;
 	}
+	if (target.store.custom?.migrates === false) {
+		io.write(
+			`This client uses the custom store "${target.store.custom.name}", which manages its own schema; there is nothing to migrate.\n`,
+		);
+		return 0;
+	}
 
 	const plan = await planMigrate(target, args);
 	if (args.dryRun) {

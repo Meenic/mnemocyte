@@ -1,6 +1,6 @@
-import type { MemoryClient, MemoryScope } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import type { MemoryClient, MemoryScope } from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 
 /**
  * Behavior of the scoped API shared by every backend. `namespace` should be

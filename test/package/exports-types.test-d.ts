@@ -173,6 +173,25 @@ import {
 	type SqlQueryOptions,
 	type SqlStatement,
 } from "mnemocyte/postgres";
+import {
+	type DefineMemoryStoreOptions,
+	defineMemoryStore,
+	type MemoryStoreV1,
+	type MemoryStoreV1Capabilities,
+	type MemoryStoreV1DeleteInput,
+	type MemoryStoreV1DeleteResult,
+	type MemoryStoreV1DuplicateResult,
+	type MemoryStoreV1InsertInput,
+	type MemoryStoreV1Row,
+	type MemoryStoreV1Visibility,
+} from "mnemocyte/store";
+import {
+	describeMemoryStoreContract,
+	type FailAuditWritesInput,
+	type MemoryStoreContractOptions,
+	STORE_CONTRACT_DIMENSIONS,
+	STORE_CONTRACT_EMBEDDING_MODEL,
+} from "mnemocyte/store/test";
 import type { Client, Pool } from "pg";
 import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import type {
@@ -1292,3 +1311,83 @@ libsqlStore({ client: libsqlDriver, schemaName: "memory" });
 void libsqlDriverClient;
 void rootLibsqlClients;
 void libsqlBackend;
+
+// mnemocyte/store: a backend written against MemoryStoreV1 alone, passed to
+// createMemory and migrate through defineMemoryStore.
+declare const v1Store: MemoryStoreV1;
+const v1Capabilities: MemoryStoreV1Capabilities = v1Store.capabilities;
+const v1Options: DefineMemoryStoreOptions = { store: v1Store };
+const v1Config: MnemocyteStoreConfig = defineMemoryStore(v1Options);
+createMemory({ store: v1Config, embedder });
+void migrate({ store: v1Config, dimensions: 1536 });
+const customBackend: MnemocyteObservation["backend"] = "custom";
+const minimalStore: Omit<
+	MemoryStoreV1,
+	"migrate" | "ensureEmbeddingCompatibility"
+> = v1Store;
+const minimalV1: MemoryStoreV1 = minimalStore;
+const v1Row: MemoryStoreV1Row = {
+	...({} as Memory),
+	embedding: [0.1, 0.2],
+};
+const v1Visibility: MemoryStoreV1Visibility = {
+	scope: { namespace: "app", entityId: "u", agentId: null, sessionId: null },
+	exactAgent: false,
+	exactSession: false,
+};
+const v1Insert: MemoryStoreV1InsertInput = { memories: [v1Row], audit: true };
+const v1Delete: MemoryStoreV1DeleteInput = {
+	target: "scope",
+	selector: { namespace: "app", entityId: "u" },
+};
+const v1DeleteResult: MemoryStoreV1DeleteResult = {
+	target: "filter",
+	matchedCount: 0,
+	deletedCount: 0,
+	dryRun: false,
+};
+const v1Duplicates: MemoryStoreV1DuplicateResult = {
+	mode: "page",
+	pairs: [],
+	compared: 0,
+	lastId: null,
+};
+// @ts-expect-error The version is the literal "v1".
+const wrongVersion: MemoryStoreV1 = { ...v1Store, specificationVersion: "v2" };
+const capabilityTypo: MemoryStoreV1Capabilities = {
+	...v1Capabilities,
+	// @ts-expect-error lexicalSearch is one of the declared values.
+	lexicalSearch: "fuzzy",
+};
+// @ts-expect-error A store must have every data method.
+const missingStats: MemoryStoreV1 = { ...v1Store, stats: undefined };
+// @ts-expect-error defineMemoryStore takes one options object.
+defineMemoryStore(v1Store);
+void customBackend;
+void minimalV1;
+void v1Insert;
+void v1Delete;
+void v1DeleteResult;
+void v1Duplicates;
+void v1Visibility;
+void wrongVersion;
+void capabilityTypo;
+void missingStats;
+
+// mnemocyte/store/test: the suite and its options.
+const contractOptions: MemoryStoreContractOptions = {
+	name: "acme",
+	store: () => v1Config,
+	failAuditWrites: async (input: FailAuditWritesInput) => {
+		void input.namespace;
+		void input.failing;
+	},
+};
+describeMemoryStoreContract(contractOptions);
+describeMemoryStoreContract({ name: "no hook", store: () => v1Config });
+const contractDimensions: number = STORE_CONTRACT_DIMENSIONS;
+const contractModel: string = STORE_CONTRACT_EMBEDDING_MODEL;
+// @ts-expect-error store is a function returning the store config.
+describeMemoryStoreContract({ name: "eager", store: v1Config });
+void contractDimensions;
+void contractModel;

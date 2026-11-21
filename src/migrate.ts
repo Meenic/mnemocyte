@@ -42,6 +42,9 @@ function maxDimensionsOf(store: MemoryStore): number | undefined {
  * so HTTP drivers cannot run it. `dryRun` reports what a run would do and
  * changes nothing.
  *
+ * A store from `defineMemoryStore` (`mnemocyte/store`) runs its own
+ * `migrate`, or applies nothing when it has none.
+ *
  * `textSearchConfig` picks the Postgres text search configuration keyword
  * search uses (`english` by default) on a fresh install; on an existing one
  * it must match, and {@link setTextSearchConfig} changes it.
@@ -120,8 +123,8 @@ export async function migrate(input: MigrateInput): Promise<MigrateResult> {
  * configuration they read first until they restart. `dryRun` reports what
  * would change from a read-only transaction.
  *
- * The in-memory store has no configuration: it resolves with `null` names
- * and `changed: false`.
+ * The in-memory store and stores from `defineMemoryStore` have no
+ * configuration: they resolve with `null` names and `changed: false`.
  *
  * @throws {MnemocyteError} `"VALIDATION"` for malformed input, both or
  * neither of `memory` and `store`, or a configuration the database does not

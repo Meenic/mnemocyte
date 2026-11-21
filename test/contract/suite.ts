@@ -4,20 +4,23 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { postgresTables } from "../../src/db/tables.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import type { SqlExecutor } from "../../src/sql/executor.js";
-import { allPages } from "../fixtures/audit-cursor.js";
-import { verifyCreatedBoundsRoundTrip } from "../fixtures/scoped-api.js";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
 import {
 	CONTRACT_DIMENSIONS,
 	type ContractStoreInput,
 	contractClientFactory,
 	registerSharedContract,
-} from "./shared.js";
+} from "../../src/store-test/contract.js";
+import { allPages } from "../../src/store-test/fixtures/audit-cursor.js";
+import { verifyCreatedBoundsRoundTrip } from "../../src/store-test/fixtures/scoped-api.js";
+import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
-export { CONTRACT_DIMENSIONS, embedText } from "./shared.js";
+export {
+	CONTRACT_DIMENSIONS,
+	embedText,
+} from "../../src/store-test/contract.js";
 
 /**
- * The Postgres contract: the shared contract (shared.ts) plus the checks
+ * The Postgres contract: the shared contract (src/store-test/contract.ts) plus the checks
  * only Postgres has (savepoints, microsecond timestamps), on every driver
  * Mnemocyte accepts, run on PGlite in the `contract` project and on real
  * Postgres in `integration`. Each run works in its own namespaces and removes them

@@ -182,6 +182,12 @@ export function assertSchemaFlag(
 			EXIT_USAGE,
 		);
 	}
+	if (flag !== undefined && store.custom !== undefined) {
+		throw new CliError(
+			`--schema applies to Postgres, but the store in ${label} is the custom store "${store.custom.name}". Drop --schema.`,
+			EXIT_USAGE,
+		);
+	}
 	if (flag === undefined || flag === store.schemaName) {
 		return;
 	}

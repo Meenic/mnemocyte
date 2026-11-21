@@ -28,7 +28,7 @@
   `jsonb_agg(id ORDER BY id)` and the store moves the memory to the front;
   in memory both sort with a string compare, which matches `uuid` order for
   the lower-case ids the package writes. The shared fixture
-  `test/fixtures/survivor-deletes.ts` checks the exact arrays on both
+  `src/store-test/fixtures/survivor-deletes.ts` checks the exact arrays on both
   backends, including a chain where the memory's id sorts last.
 - `deleteScope({ scope })` deletes every selected memory and the selected
   audit events; see [scopes.md](./scopes.md#deletescope).

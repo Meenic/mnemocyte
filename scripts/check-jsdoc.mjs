@@ -27,6 +27,7 @@ const configFile = join(outDir, "tsconfig.jsdoc.json");
 const preamble = [
 	'import type { BoundMemoryClient, Embedder, MemoryClient, MemoryConfig } from "mnemocyte";',
 	'import type { LanguageModel, ModelMessage } from "ai";',
+	'import type { MemoryStoreV1 } from "mnemocyte/store";',
 	"declare const memory: MemoryClient<true>;",
 	"declare const user: BoundMemoryClient;",
 	"declare const embedder: Embedder;",
@@ -43,6 +44,7 @@ const preamble = [
 	"declare const content: string;",
 	"declare const query: string;",
 	"declare const survivorId: string;",
+	"declare const kvStore: MemoryStoreV1;",
 	"declare function review(pairs: unknown[]): Promise<void>;",
 	"declare function waitUntil(promise: Promise<unknown>): void;",
 ];

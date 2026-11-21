@@ -1,12 +1,12 @@
+import { expect } from "vitest";
 import type {
 	ContextWithMemoriesResult,
 	MemoryClient,
 	MemoryScope,
 	MnemocyteObservation,
-} from "mnemocyte";
-import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
-import { trackAccessEvents } from "./access-tracking.js";
+} from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
+import { trackAccessEvents } from "./access-events.js";
 
 const WORDS = ["alpha", "bravo", "charlie", "delta", "echo"];
 

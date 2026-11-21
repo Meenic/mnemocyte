@@ -1,6 +1,6 @@
 import { createMemory } from "mnemocyte";
 import { describe, test } from "vitest";
-import { verifyAuditPayloads } from "../fixtures/atomic-audit.js";
+import { verifyAuditPayloads } from "../../src/store-test/fixtures/atomic-audit.js";
 import { testScope } from "../helpers.js";
 
 describe("atomic audit (in-memory)", () => {

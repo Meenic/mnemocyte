@@ -50,6 +50,14 @@
 			"types": "./dist/postgres.d.mts",
 			"default": "./dist/postgres.mjs"
 		},
+		"./store": {
+			"types": "./dist/store.d.mts",
+			"default": "./dist/store.mjs"
+		},
+		"./store/test": {
+			"types": "./dist/store-test.d.mts",
+			"default": "./dist/store-test.mjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"types": "./dist/index.d.mts",
@@ -131,7 +139,8 @@
 		"ai": "^7.0.135",
 		"drizzle-orm": "^0.45.4",
 		"pg": "^8.23.1",
-		"postgres": "^3.4.9 || ^4"
+		"postgres": "^3.4.9 || ^4",
+		"vitest": "^5.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@electric-sql/pglite": {
@@ -150,6 +159,9 @@
 			"optional": true
 		},
 		"postgres": {
+			"optional": true
+		},
+		"vitest": {
 			"optional": true
 		}
 	},

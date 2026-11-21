@@ -1,8 +1,8 @@
 import { createMemory, type MemoryClient } from "mnemocyte";
 import { describe, expect, test } from "vitest";
+import { verifyKnnDuplicates } from "../../src/store-test/fixtures/knn-duplicates.js";
+import { verifySurvivorDeletes } from "../../src/store-test/fixtures/survivor-deletes.js";
 import { CONTRACT_DIMENSIONS, embedText } from "../contract/suite.js";
-import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
-import { verifySurvivorDeletes } from "../fixtures/survivor-deletes.js";
 import { expectDefined, testScope } from "../helpers.js";
 
 function inMemoryClient(audit = false): MemoryClient {

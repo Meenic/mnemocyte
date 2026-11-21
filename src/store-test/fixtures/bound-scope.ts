@@ -1,6 +1,6 @@
-import { type MemoryClient, type MemoryScope, migrate } from "mnemocyte";
 import { expect } from "vitest";
-import { expectMnemocyteError } from "../helpers.js";
+import { type MemoryClient, type MemoryScope, migrate } from "../../index.js";
+import { expectMnemocyteError } from "../expect.js";
 
 /**
  * Default namespaces and bound clients, shared by every backend. `memory`

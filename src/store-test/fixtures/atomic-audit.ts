@@ -1,12 +1,12 @@
+import { expect } from "vitest";
 import type {
 	AuditEvent,
 	AuditEventType,
 	Memory,
 	MemoryClient,
 	MemoryScope,
-} from "mnemocyte";
-import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+} from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 import type { ScopeFor } from "./survivor-deletes.js";
 
 const UUID_V7 =

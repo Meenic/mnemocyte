@@ -1,6 +1,6 @@
 import { createMemory, type MnemocyteObservation } from "mnemocyte";
 import { describe, expect, test } from "vitest";
-import { verifyAuditRetention } from "../fixtures/audit-retention.js";
+import { verifyAuditRetention } from "../../src/store-test/fixtures/audit-retention.js";
 import { testScope } from "../helpers.js";
 
 const embedder = {

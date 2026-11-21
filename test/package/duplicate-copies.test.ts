@@ -10,7 +10,7 @@ import {
 	ProviderError,
 } from "mnemocyte";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { testScope } from "../helpers.js";
+import { testScope } from "../scope.js";
 
 const dist = fileURLToPath(new URL("../../dist", import.meta.url));
 

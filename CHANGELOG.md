@@ -26,7 +26,19 @@ marked **Breaking** in their entries. What semver covers is in
     matches, and query syntax is matched as words.
   - Embeddings up to 65,536 dimensions.
   - Limits are in [limitations](docs/guide/limitations.md#libsql).
-- `MnemocyteBackend` has a new member, `"libsql"`.
+- **Custom stores.** The store contract is public as `MemoryStoreV1`, in
+  the new `mnemocyte/store` entry, so a package can add a storage backend.
+  Wrap it with `defineMemoryStore({ store })` and pass the result as
+  `store`. Twelve methods are required; `migrate` and
+  `ensureEmbeddingCompatibility` are optional. `mnemocyte check` and
+  `setTextSearchConfig()` have nothing to report or change for a custom
+  store. See [docs/guide/custom-stores.md](docs/guide/custom-stores.md).
+- **The contract suite.** `describeMemoryStoreContract` from the new
+  `mnemocyte/store/test` entry runs the tests every built-in backend passes
+  against your store, under Vitest. `vitest` 5 is a new optional peer,
+  needed only for this entry.
+- `MnemocyteBackend` has new members, `"libsql"` and `"custom"` (a store
+  from `defineMemoryStore`).
 
 ### Changed
 

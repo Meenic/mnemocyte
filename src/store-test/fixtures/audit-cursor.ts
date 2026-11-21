@@ -1,11 +1,11 @@
+import { expect } from "vitest";
 import type {
 	AuditEvent,
 	ListAuditLogInput,
 	ListAuditLogResult,
 	MemoryClient,
-} from "mnemocyte";
-import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+} from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 import type { ScopeFor } from "./survivor-deletes.js";
 
 function pause(ms: number): Promise<void> {

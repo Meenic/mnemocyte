@@ -63,6 +63,9 @@ src/
   migrate.ts            migrate() and setTextSearchConfig(): validate input, resolve { memory } or { store } (resolveStore), call the store
   postgres.ts           `mnemocyte/postgres` entry: postgresStore, client types
   libsql.ts             `mnemocyte/libsql` entry: libsqlStore, client types
+  store.ts              `mnemocyte/store` entry: defineMemoryStore, the MemoryStoreV1 types
+  store-test.ts         `mnemocyte/store/test` entry: describeMemoryStoreContract (imports vitest)
+  store-test/           the shipped suite: contract.ts, expect.ts, fixtures/ it runs
   ai-sdk.ts             `mnemocyte/ai-sdk` entry: aiSdkEmbedder, re-exports memoryTools
   ai-sdk/
     tools.ts            memoryTools: searchMemories, saveMemory, forgetMemory over a bound client
@@ -78,14 +81,16 @@ src/
     client-core.ts      shared orchestration for every client method
     scope-binding.ts    the default namespace layer and memory.for() bound clients
     client-internals.ts the client's store and embedder under a symbol, for migrate({ memory })
-    store.ts            the internal MemoryStore contract, scopes and selectors
+    store.ts            the internal MemoryStore (MemoryStoreV1 plus first-party extras), internal aliases of the V1 types
+    store-v1.ts         the public MemoryStoreV1 contract and its types (the declarations)
+    store-v1-adapter.ts assertMemoryStoreV1, fromMemoryStoreV1: a V1 store → MemoryStore with the core's fallbacks
     capabilities.ts     each backend's StoreCapabilities
     in-memory.ts        in-memory MemoryStore
     postgres.ts         Postgres MemoryStore (runs on a SqlExecutor)
     libsql.ts           libSQL MemoryStore (runs on the user's @libsql/client)
     duplicates.ts       exact duplicate search over loaded memories (in-memory and libSQL)
     store-input.ts      resolveStore: a store config, or a libSQL or Postgres client detected by shape → lazy store
-    store-config.ts     the opaque store config envelope from postgresStore()
+    store-config.ts     the opaque store config envelopes: postgresStore() / libsqlStore(), and defineMemoryStore()
     lazy-store.ts       MemoryStore that loads the real one on its first call
     postgres-backend.ts dynamic import() target: client → Postgres MemoryStore
     libsql-backend.ts   dynamic import() target: client → libSQL MemoryStore
@@ -122,12 +127,20 @@ src/
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template; libsql/ holds the libSQL template (not shipped)
 scripts/                bundle-migrations.mjs, bundle-libsql-migrations.mjs, bench-libsql.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, check-links.mjs
 examples/               runnable scripts that import `mnemocyte` by name; not shipped
-test/                   unit, package, integration, fixtures, benchmarks
+test/                   unit, package, integration, fixtures (the ones that do not ship), benchmarks
 ```
+
+The contract suite and the fixtures it runs live in `src/store-test/`, not
+`test/`, because they ship: `mnemocyte/store/test` is built from them
+with the rest of `src/`, under `tsconfig.build.json`, and shares its
+chunks with the root entry, so a backend author's suite and app use the
+same `createMemory` and `MnemocyteError`. The repository's own tests
+import them from `src/store-test/` like any other source file.
 
 `dist/` is built by tsdown from the entries in `tsdown.config.ts`:
 `src/index.ts`, `src/ai-sdk.ts`, `src/cli.ts`, `src/postgres.ts`,
-`src/libsql.ts` and `src/embedders/*.ts`. `dist/cli.mjs` is the
+`src/libsql.ts`, `src/store.ts`, `src/store-test.ts` and
+`src/embedders/*.ts`. `dist/cli.mjs` is the
 `mnemocyte` bin (`bin` in `package.json`), not an export. The package has
 no runtime dependencies. `postgres`, `pg`, `@electric-sql/pglite`,
 `@libsql/client` and `drizzle-orm` are optional peer dependencies at the
@@ -140,6 +153,9 @@ dependencies, with `@types/pg` and `@electric-sql/pglite-pgvector`. `ai` is an o
 lockfile); `src/ai-sdk.ts` and the files in `src/ai-sdk/` import it at
 runtime, the only source files that do, and a package test follows
 the static imports of every other entry to check that none reaches it.
+`vitest` is an optional peer (`^5.0.0`) the same way: `src/store-test.ts`
+and `src/store-test/` import it at runtime, and a package test checks that
+no entry but `mnemocyte/store/test` reaches it.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
 Node 22.18 fully supports. There are two configs:
@@ -168,28 +184,60 @@ plugin in `tsdown.config.ts` strips that comment.
 
 ## Store contract
 
-`MemoryStore` (`src/memory/store.ts`) is the internal boundary between the
-core (`memory/client-core.ts`, `migrate.ts`, the CLI) and a backend. It is
-not exported and semver leaves it out (ARCHITECTURE decision 39); the plan
-to publish it as `MemoryStoreV1` is in ARCHITECTURE.md, "Packaging". It has
-16 methods and three properties (ARCHITECTURE decision 61):
+The core (`memory/client-core.ts`, `migrate.ts`, the CLI) talks to a
+backend through `MemoryStore` (`src/memory/store.ts`). It is the public
+`MemoryStoreV1` (`src/memory/store-v1.ts`, exported from
+`mnemocyte/store`) plus what only the first-party backends have
+(ARCHITECTURE decisions 61, 72 and 73):
 
-| Method | What it does |
-|---|---|
-| `migrate`, `setTextSearchConfig`, `inspectInstallation` | schema; a store without one applies nothing and reports `null` |
-| `ensureEmbeddingCompatibility` | rejects an embedder the installation does not match |
-| `insert` | rows and keyed upserts, all or nothing |
-| `searchCandidates` | the vector and lexical lists of a search, same filter |
-| `get` | memories by ids (`visibility`), or one by key (exact `scope`) |
-| `list`, `update`, `markAccessed` | a page, a patch, an access count bump |
-| `delete` | `target: "memory"`, `"scope"` or `"filter"` (`prune`) |
-| `consolidate` | the atomic write after the core's checks |
-| `findDuplicates` | `mode: "top"` (`findDuplicates`) or `"page"` (`experimental.findDuplicatesPage`) |
-| `listAudit`, `pruneAudit` | audit pages and retention |
-| `stats` | counts for a selector |
+| Method | V1 | What it does |
+|---|---|---|
+| `insert` | required | rows and keyed upserts, all or nothing |
+| `searchCandidates` | required | the vector and lexical lists of a search, same filter |
+| `get` | required | memories by ids (`visibility`), or one by key (exact `scope`) |
+| `list`, `update`, `markAccessed` | required | a page, a patch, an access count bump |
+| `delete` | required | `target: "memory"`, `"scope"` or `"filter"` (`prune`) |
+| `consolidate` | required | the atomic write after the core's checks |
+| `findDuplicates` | required | `mode: "top"` (`findDuplicates`) or `"page"` (`experimental.findDuplicatesPage`) |
+| `listAudit`, `pruneAudit` | required | audit pages and retention |
+| `stats` | required | counts for a selector |
+| `migrate` | optional | schema; a store without one applies nothing |
+| `ensureEmbeddingCompatibility` | optional | rejects an embedder the installation does not match |
+| `setTextSearchConfig`, `inspectInstallation` | first-party only | the text search configuration and the CLI's `check` report |
 
-Plus `backend`, `capabilities` and, on Postgres, `schemaName`.
+Plus `capabilities` on both. V1 adds `specificationVersion: "v1"` and
+`name`; the internal one adds `backend`, `schemaName` on Postgres, and
+`custom` (`{ name, migrates }`) on an adapted V1 store.
 
+- The V1 types are the declarations, with the docs, named
+  `MemoryStoreV1…` as the AI SDK names `LanguageModelV4…`, so a V2 can sit
+  next to them. `store.ts` aliases them under the internal `Store…` names
+  the backends use (`StoreVisibility = MemoryStoreV1Visibility`), and
+  `records.ts` aliases `StoredMemory` to `MemoryStoreV1Row`. The
+  first-party backends implement `MemoryStore`; nothing else changed for
+  them.
+- `defineMemoryStore({ store })` (`src/store.ts`) checks the store with
+  `assertMemoryStoreV1` and puts it, unadapted, in an envelope under
+  `Symbol.for("mnemocyte.memory-store-v1-config")`, a key apart from the
+  first-party one so a copy of the package built before V1 rejects it with
+  its usual `"CONFIG"` instead of calling missing methods.
+  `unwrapMnemocyteStoreConfig` (`resolveStore`) adapts it with
+  `fromMemoryStoreV1`, so the copy that runs the client adapts it, whichever
+  copy defined it. The adapter declares `backend: "custom"`, copies and
+  freezes `capabilities`, calls every method through the store (keeping
+  `this` for class stores) and supplies the fallbacks: `migrate` reports
+  nothing applied, `ensureEmbeddingCompatibility` does nothing,
+  `setTextSearchConfig` returns `null` names and `changed: false`, and
+  `inspectInstallation` returns `null`, the in-memory store's answers. The
+  callers keep calling required methods.
+- `assertMemoryStoreV1` throws `"CONFIG"` (`"INVALID_OPTION"`) for a
+  `specificationVersion` other than `"v1"` (naming the versions this copy
+  supports), an empty `name`, a capability value outside its union, a
+  `maxDimensions` that is not a positive integer or infinity, a missing
+  required method, or an optional one that is not a function.
+- The CLI reads `custom`: `check` says the store reports no installation,
+  `migrate` says a store without `migrate` manages its own schema,
+  `text-search` has nothing to change, and `--schema` is rejected.
 - Every method takes one input object. `signal` sits inside it and is set
   only when the caller passed one, since store inputs are exact. The
   search lists, `update` and `markAccessed` took no signal before and
@@ -212,11 +260,14 @@ Plus `backend`, `capabilities` and, on Postgres, `schemaName`.
 - Audit events are written by the write they record, so there is no
   separate append method (see
   [features/maintenance.md](./features/maintenance.md#audit-log)).
+- The user guide for backend authors is
+  [guide/custom-stores.md](./guide/custom-stores.md).
 
 ### Capabilities
 
 `capabilities` is declared data, the same object for every store of a
-backend (`src/memory/capabilities.ts`):
+first-party backend (`src/memory/capabilities.ts`); a custom store
+declares its own:
 
 | Field | In-memory | Postgres | libSQL |
 |---|---|---|---|
@@ -319,6 +370,15 @@ Exports:
 - `mnemocyte/libsql`: `libsqlStore({ client })`, its `LibsqlStoreOptions`,
   and the `LibsqlClient` and `LibsqlDriverClient` types (also exported
   from the root). See [features/libsql.md](./features/libsql.md).
+- `mnemocyte/store`: `defineMemoryStore({ store })`, its
+  `DefineMemoryStoreOptions`, and `MemoryStoreV1` with every type its
+  methods take and return (`MemoryStoreV1Capabilities`,
+  `MemoryStoreV1Row`, `MemoryStoreV1Visibility`, `MemoryStoreV1Selector`,
+  the `…Input` and `…Result` types). See "Store contract" above.
+- `mnemocyte/store/test`: `describeMemoryStoreContract`, its
+  `MemoryStoreContractOptions` and `FailAuditWritesInput` types, and
+  `STORE_CONTRACT_DIMENSIONS` and `STORE_CONTRACT_EMBEDDING_MODEL`; needs
+  the `vitest` peer.
 - `mnemocyte/postgres`: `postgresStore({ client })`, its
   `PostgresStoreOptions`, and the `SqlExecutor`, `SqlStatement`, `SqlQueryOptions`, `PostgresClient`, `PostgresJsClient`, `NodePostgresPool` (with its
   client and result types), `PGliteClient` (with its transaction and result
@@ -528,7 +588,11 @@ Vitest has four projects (`vitest.config.ts`):
 - `require-esm.test.ts` requires every key of the packed `exports` from a
   `.cjs` file (require(esm)) and checks each against `import()` of the
   same entry, with nothing on stderr. Without `ai`, `mnemocyte/ai-sdk`
-  must fail with `ERR_MODULE_NOT_FOUND`; with `ai` linked it must load. It
+  must fail with `ERR_MODULE_NOT_FOUND`; with `ai` linked it must load.
+  `mnemocyte/store/test` fails the same way without `vitest`, and loads
+  through `require()` once it is linked: require(esm) loads the entry as
+  ES modules, so its `import` of `vitest` reaches Vitest's ES entry, not
+  the CommonJS one that throws. It
   runs on every CI Node version, so it backs the README's `require()`
   sentence; the TypeScript `module` setting it needs is not tested
   ([limitations](./guide/limitations.md#commonjs)).
@@ -560,12 +624,31 @@ Vitest has four projects (`vitest.config.ts`):
   profile, which skips node10 resolution (it cannot see subpath `exports`),
   and ignores `cjs-resolves-to-esm`, because attw does not model `require()`
   of ES modules (Node 22.12+). CI runs it once, on Node 24.
-- Shared behavior is written once as a fixture in `test/fixtures/` and run
-  against the in-memory backend in `unit`, and against Postgres and
-  libSQL: through the shared contract (`test/contract/shared.ts`,
+- Shared behavior is written once as a fixture in `src/store-test/fixtures/`
+  (the ones the shipped suite runs) or `test/fixtures/` (the others) and
+  run against the in-memory backend in `unit`, and against Postgres and
+  libSQL: through the shared contract (`src/store-test/contract.ts`,
   `registerSharedContract`), or, for the fixtures the Postgres side runs
   in `integration` (`test/integration/*.test.ts`), in
   `test/contract/libsql-fixtures.test.ts` on libSQL.
+- The shared contract is what `mnemocyte/store/test` ships:
+  `describeMemoryStoreContract` (`src/store-test.ts`) registers it in a
+  `describe` of its own, with no namespace cleanup and `failAuditWrites`
+  optional (the audit rollback test skips without it).
+  `test/store/in-memory-contract.test.ts` runs it in `unit` on the
+  in-memory store handed over as a `MemoryStoreV1`
+  (`test/store/in-memory-v1.ts`), with and without its optional methods,
+  through `defineMemoryStore` and the adapter.
+  `test/package/store-contract.test.ts` runs it from the packed tarball:
+  a consumer with `@libsql/client` and `vitest` linked runs `vitest run`
+  on a test file that points the suite at `libsqlStore` on a database
+  file, with a trigger as `failAuditWrites`. The child gets the parent's
+  environment minus `VITEST*` and `NODE_OPTIONS`, so it does not think it
+  runs inside the parent's worker, and a 180 s timeout. The test reads the
+  child's `--reporter json` file, not its console: CI forces colored
+  output, which puts escape codes inside the summary lines.
+  `test/store/define-memory-store.test.ts` covers the checks and the
+  fallbacks, and `test/cli/custom-store.test.ts` the CLI's messages.
 - The shared contract runs the scoped-API, bound-scope, context,
   survivor-delete, duplicate and audit fixtures, plus value round trips,
   chunked `addMany`, search, filtered search and cross-scope isolation,
@@ -804,8 +887,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   (`pnpm test:integration:libsql`), on Node 24 only: it tests the Hrana
   protocol and the server's SQL parser, and the Node jobs already run
   the libSQL contract on files. Its list is the Postgres list in an output
-  of its own: the suite reaches `test/fixtures/` and `test/helpers.ts`
-  through `test/contract/shared.ts`, and `migrations/libsql/` through the
+  of its own: the suite reaches `src/store-test/`, `test/fixtures/` and
+  `test/helpers.ts`, and `migrations/libsql/` through the
   bundle in `src/db/libsql/bundled.ts`, so a narrower list would miss the
   next shared file.
 - The libSQL server service is

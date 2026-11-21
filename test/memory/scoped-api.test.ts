@@ -9,7 +9,7 @@ import {
 	verifyListPaging,
 	verifyScopeVisibility,
 	verifyUpdate,
-} from "../fixtures/scoped-api.js";
+} from "../../src/store-test/fixtures/scoped-api.js";
 
 function createClient(options: { audit?: boolean } = {}) {
 	let embedCalls = 0;

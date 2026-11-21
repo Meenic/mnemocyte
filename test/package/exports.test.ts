@@ -30,8 +30,10 @@ import * as libsqlEntry from "mnemocyte/libsql";
 import manifest from "mnemocyte/package.json" with { type: "json" };
 import * as postgresEntry from "mnemocyte/postgres";
 import { postgresStore } from "mnemocyte/postgres";
+import * as storeEntry from "mnemocyte/store";
+import { defineMemoryStore } from "mnemocyte/store";
 import { describe, expect, test } from "vitest";
-import { testScope } from "../helpers.js";
+import { testScope } from "../scope.js";
 
 describe("package exports", () => {
 	test("exports the package manifest", () => {
@@ -47,6 +49,13 @@ describe("package exports", () => {
 		expect(typeof postgresStore).toBe("function");
 		expect(Object.keys(postgresEntry)).toEqual(["postgresStore"]);
 		expect(Object.keys(libsqlEntry)).toEqual(["libsqlStore"]);
+		expect(Object.keys(storeEntry)).toEqual(["defineMemoryStore"]);
+		// The store entry shares the root's error class.
+		expect(() =>
+			defineMemoryStore({
+				store: { specificationVersion: "v2" } as never,
+			}),
+		).toThrow(MnemocyteError);
 		expect(typeof openaiEmbedder).toBe("function");
 		expect(typeof directOpenAIEmbedder).toBe("function");
 		expect(openaiCompatibleEmbedder).toBe(directOpenAICompatibleEmbedder);

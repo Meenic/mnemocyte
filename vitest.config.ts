@@ -8,6 +8,8 @@ const sourceAlias = [
 	},
 	{ find: "mnemocyte/postgres", replacement: resolve("src/postgres.ts") },
 	{ find: "mnemocyte/libsql", replacement: resolve("src/libsql.ts") },
+	{ find: "mnemocyte/store/test", replacement: resolve("src/store-test.ts") },
+	{ find: "mnemocyte/store", replacement: resolve("src/store.ts") },
 	{ find: "mnemocyte/ai-sdk", replacement: resolve("src/ai-sdk.ts") },
 	{
 		find: /^mnemocyte\/embedders\/(.+)$/,

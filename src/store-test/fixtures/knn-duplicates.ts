@@ -1,6 +1,6 @@
-import type { DuplicatePair, MemoryClient } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import type { DuplicatePair, MemoryClient } from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 import type { ScopeFor } from "./survivor-deletes.js";
 
 function pairIds(pairs: readonly DuplicatePair[]): string[][] {

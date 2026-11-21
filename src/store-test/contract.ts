@@ -1,3 +1,4 @@
+import { describe, expect, test } from "vitest";
 import {
 	createMemory,
 	type Embedder,
@@ -6,25 +7,25 @@ import {
 	type MemoryScope,
 	type MnemocyteStoreConfig,
 	type PostgresClient,
-} from "mnemocyte";
-import { describe, expect, test } from "vitest";
-import { readMemoryClientInternals } from "../../src/memory/client-internals.js";
+} from "../index.js";
+import { readMemoryClientInternals } from "../memory/client-internals.js";
+import { expectDefined, expectMnemocyteError } from "./expect.js";
 import {
 	verifyAuditFailureRollsBack,
 	verifyAuditPayloads,
-} from "../fixtures/atomic-audit.js";
+} from "./fixtures/atomic-audit.js";
 import {
 	verifyAuditMemoryHistory,
 	verifyAuditPages,
-} from "../fixtures/audit-cursor.js";
-import { verifyAuditRetention } from "../fixtures/audit-retention.js";
-import { verifyBoundScope } from "../fixtures/bound-scope.js";
+} from "./fixtures/audit-cursor.js";
+import { verifyAuditRetention } from "./fixtures/audit-retention.js";
+import { verifyBoundScope } from "./fixtures/bound-scope.js";
 import {
 	verifyContextMemories,
 	verifyContextTracksRenderedMemories,
-} from "../fixtures/context-memories.js";
-import { verifyDuplicatePages } from "../fixtures/duplicate-pages.js";
-import { verifyKnnDuplicates } from "../fixtures/knn-duplicates.js";
+} from "./fixtures/context-memories.js";
+import { verifyDuplicatePages } from "./fixtures/duplicate-pages.js";
+import { verifyKnnDuplicates } from "./fixtures/knn-duplicates.js";
 import {
 	verifyCreatedFilters,
 	verifyGetAndScopeValidation,
@@ -32,21 +33,29 @@ import {
 	verifyListPaging,
 	verifyScopeVisibility,
 	verifyUpdate,
-} from "../fixtures/scoped-api.js";
-import { verifySurvivorDeletes } from "../fixtures/survivor-deletes.js";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+} from "./fixtures/scoped-api.js";
+import { verifySurvivorDeletes } from "./fixtures/survivor-deletes.js";
 
 /**
- * The store contract every database backend passes, through the public
- * client only: the scoped-API, bound-scope, context, survivor-delete,
- * duplicate and audit fixtures in test/fixtures/ (which the in-memory
- * backend runs in `unit`), value round trips, chunked writes, search and
- * cross-scope isolation. `describeStoreContract` (Postgres, suite.ts) and
- * `describeLibsqlContract` (libsql.ts) register it next to the checks only
- * their own backend has.
+ * The store contract every backend passes, through the public client only:
+ * the scoped-API, bound-scope, context, survivor-delete, duplicate and audit
+ * fixtures in ./fixtures/ (which the in-memory backend also runs directly in
+ * `unit`), value round trips, chunked writes, search and cross-scope
+ * isolation. `mnemocyte/store/test` (store-test.ts) ships it as
+ * `describeMemoryStoreContract`; `describeStoreContract` (Postgres,
+ * test/contract/suite.ts) and `describeLibsqlContract`
+ * (test/contract/libsql.ts) register it next to the checks only their own
+ * backend has.
  */
 
+/** The dimensions of every embedding the suite writes. */
 export const CONTRACT_DIMENSIONS = 1536;
+
+/**
+ * The embedding model of every memory the suite writes. The integration
+ * files record the same one, so the suite can share their database.
+ */
+export const CONTRACT_EMBEDDING_MODEL = "mnemocyte-integration-test";
 
 function hashWord(word: string): number {
 	let hash = 2166136261;
@@ -89,9 +98,7 @@ export function embedText(text: string): number[] {
 export function createContractEmbedder(): Embedder & { calls: () => number } {
 	let calls = 0;
 	return {
-		// The model the other integration files record, so the suite can share
-		// their database.
-		model: "mnemocyte-integration-test",
+		model: CONTRACT_EMBEDDING_MODEL,
 		dimensions: CONTRACT_DIMENSIONS,
 		async embed(texts) {
 			calls += 1;
@@ -120,7 +127,7 @@ export type ContractStoreInput =
 	| PostgresClient
 	| LibsqlClient;
 
-/** A client in a namespace of its own, which the harness removes afterwards. */
+/** A client in a namespace of its own, which a first-party harness removes afterwards. */
 export interface ContractClient {
 	memory: MemoryClient;
 	namespace: string;
@@ -135,9 +142,10 @@ export interface SharedContractHarness {
 	client(label: string, options?: { audit?: boolean }): ContractClient;
 	/**
 	 * Make the audit inserts of `namespace` fail (`true`) or succeed again
-	 * (`false`), with a trigger in the backend's own SQL.
+	 * (`false`), with a trigger in the backend's own SQL. Without it the
+	 * audit rollback test is skipped.
 	 */
-	failAuditWrites(namespace: string, failing: boolean): Promise<void>;
+	failAuditWrites?: (namespace: string, failing: boolean) => Promise<void>;
 }
 
 /**
@@ -614,12 +622,17 @@ export function registerSharedContract(harness: SharedContractHarness): void {
 		});
 	});
 
-	test("a failed audit write rolls back every write path", async () => {
-		const { memory, namespace } = client("auditfail", { audit: true });
-		await verifyAuditFailureRollsBack(
-			memory,
-			(entityId, extra = {}) => ({ namespace, entityId, ...extra }),
-			(failing) => harness.failAuditWrites(namespace, failing),
-		);
-	});
+	const { failAuditWrites } = harness;
+	test.skipIf(failAuditWrites === undefined)(
+		"a failed audit write rolls back every write path",
+		async () => {
+			const fail = expectDefined(failAuditWrites);
+			const { memory, namespace } = client("auditfail", { audit: true });
+			await verifyAuditFailureRollsBack(
+				memory,
+				(entityId, extra = {}) => ({ namespace, entityId, ...extra }),
+				(failing) => fail(namespace, failing),
+			);
+		},
+	);
 }

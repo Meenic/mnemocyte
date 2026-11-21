@@ -221,8 +221,8 @@ The raw column stays on the left of both comparisons, a range an index on
 `created_at` can serve; `date_trunc('milliseconds', created_at) > B` would
 give the same rows and rule that index out. No index on `created_at`
 exists today, so plans did not change. `verifyCreatedBoundsRoundTrip`
-(`test/fixtures/scoped-api.ts`) passes the returned `createdAt` straight
-back as the bound, on both backends: the contract suite first spreads
+(`src/store-test/fixtures/scoped-api.ts`) passes the returned `createdAt`
+straight back as the bound, on both backends: the contract suite first spreads
 three memories over microseconds within one millisecond.
 
 ## `update`
@@ -288,7 +288,7 @@ calls have no scope and report none of the four.
 
 ## Tests
 
-`test/fixtures/scoped-api.ts` runs on both backends
+`src/store-test/fixtures/scoped-api.ts` runs on both backends
 (`test/memory/scoped-api.test.ts`, `test/integration/scoped-api.test.ts`):
 visibility and selection across agents, sessions, entities and namespaces;
 keyed adds, including mixed batches and five concurrent adds with one key;
@@ -301,7 +301,7 @@ memories and on `migrate`. The Postgres file
 adds microsecond `created_at` paging and the audit-event deletion of
 `deleteScope`.
 
-`test/fixtures/bound-scope.ts` runs on the in-memory backend
+`src/store-test/fixtures/bound-scope.ts` runs on the in-memory backend
 (`test/memory/bound-scope.test.ts`) and in the Postgres contract suite: the
 default namespace and its override, visibility and isolation between bound
 clients, selection for `stats`, `prune`, `listAuditLog` and

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { access, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -40,6 +41,7 @@ describe("lazy Postgres package loading", () => {
 			"drizzle-orm",
 			"pg",
 			"postgres",
+			"vitest",
 		];
 		expect(Object.keys(manifest.peerDependencies).sort()).toEqual(peers);
 		for (const peer of peers) {
@@ -47,7 +49,13 @@ describe("lazy Postgres package loading", () => {
 		}
 	});
 
-	test.each(["dist/index.mjs", "dist/postgres.mjs", "dist/libsql.mjs"])(
+	test.each([
+		"dist/index.mjs",
+		"dist/postgres.mjs",
+		"dist/libsql.mjs",
+		"dist/store.mjs",
+		"dist/store-test.mjs",
+	])(
 		"keeps database packages out of the static import graph of %s",
 		async (entry) => {
 			for (const file of await staticImportGraph(resolve(entry))) {
@@ -67,6 +75,8 @@ describe("lazy Postgres package loading", () => {
 		"dist/embedders/voyage.mjs",
 		"dist/embedders/cohere.mjs",
 		"dist/embedders/google.mjs",
+		"dist/store.mjs",
+		"dist/store-test.mjs",
 	])("keeps ai out of the static import graph of %s", async (entry) => {
 		for (const file of await staticImportGraph(resolve(entry))) {
 			const source = await readFile(file, "utf8");
@@ -74,6 +84,29 @@ describe("lazy Postgres package loading", () => {
 				/^import\s+(?:[^"']+\s+from\s+)?["']ai(?:\/[^"']*)?["'];?\s*$/m,
 			);
 		}
+	});
+
+	test.each(
+		Object.entries(
+			JSON.parse(readFileSync(resolve("package.json"), "utf8"))
+				.exports as Record<string, string | { default: string }>,
+		)
+			.filter(([key]) => key !== "./store/test" && key !== "./package.json")
+			.map(([, target]) =>
+				typeof target === "string" ? target : target.default,
+			),
+	)("keeps vitest out of the static import graph of %s", async (entry) => {
+		for (const file of await staticImportGraph(resolve(entry))) {
+			const source = await readFile(file, "utf8");
+			expect(source, file).not.toMatch(
+				/^import\s+(?:[^"']+\s+from\s+)?["']vitest(?:\/[^"']*)?["'];?\s*$/m,
+			);
+		}
+	});
+
+	test("imports vitest statically from the store/test entry only", async () => {
+		const source = await readFile(resolve("dist/store-test.mjs"), "utf8");
+		expect(source).toMatch(/^import\s+[^"']+\s+from\s+["']vitest["'];?\s*$/m);
 	});
 
 	test("imports ai statically from the ai-sdk entry only", async () => {

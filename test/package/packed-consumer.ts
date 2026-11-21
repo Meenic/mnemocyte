@@ -26,13 +26,15 @@ export interface PackedConsumer {
 	linkAi(): Promise<void>;
 	/** Links the dev `@libsql/client` into the consumer's `node_modules`. */
 	linkLibsql(): Promise<void>;
+	/** Links the dev `vitest` into the consumer's `node_modules`. */
+	linkVitest(): Promise<void>;
 	remove(): Promise<void>;
 }
 
 /**
  * A temporary project with the packed package installed and no other
- * dependencies, so `drizzle-orm`, `postgres`, `pg`, PGlite, `@libsql/client`
- * and `ai` are absent until a test links one in.
+ * dependencies, so `drizzle-orm`, `postgres`, `pg`, PGlite, `@libsql/client`,
+ * `ai` and `vitest` are absent until a test links one in.
  */
 export async function createPackedConsumer(): Promise<PackedConsumer> {
 	const dir = await mkdtemp(join(tmpdir(), "mnemocyte-packed-consumer-"));
@@ -68,6 +70,13 @@ export async function createPackedConsumer(): Promise<PackedConsumer> {
 			await symlink(
 				await realpath(resolve("node_modules", "@libsql", "client")),
 				join(nodeModules, "@libsql", "client"),
+				"junction",
+			);
+		},
+		async linkVitest() {
+			await symlink(
+				await realpath(resolve("node_modules", "vitest")),
+				join(nodeModules, "vitest"),
 				"junction",
 			);
 		},

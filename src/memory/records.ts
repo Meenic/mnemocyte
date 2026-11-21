@@ -1,9 +1,9 @@
 import type { AuditEvent, Memory, MemoryRecordScope } from "../types.js";
 import { cloneJsonObject } from "./json.js";
+import type { MemoryStoreV1Row } from "./store-v1.js";
 
-export interface StoredMemory extends Memory {
-	embedding: number[];
-}
+/** A memory with its embedding, as stores keep it. */
+export type StoredMemory = MemoryStoreV1Row;
 
 export function normalizeTags(tags: readonly string[] | undefined): string[] {
 	if (!tags) {

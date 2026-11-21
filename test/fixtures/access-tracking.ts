@@ -7,7 +7,10 @@ import type {
 import { expect } from "vitest";
 import { createMemoryClient } from "../../src/memory/client-core.js";
 import type { MemoryStore } from "../../src/memory/store.js";
+import { trackAccessEvents } from "../../src/store-test/fixtures/access-events.js";
 import { expectDefined, TEST_NAMESPACE, testScope } from "../helpers.js";
+
+export { trackAccessEvents };
 
 export interface StoredAccessState {
 	id: string;
@@ -26,41 +29,6 @@ export interface AccessTrackingHarness {
 	readStoredState(
 		ids: readonly string[],
 	): Promise<readonly StoredAccessState[]>;
-}
-
-/**
- * Collects `"trackAccess"` events and hands out each settled one
- * (`"success"` or `"error"`) once, whether it arrived before or after the
- * test asked for it.
- */
-export function trackAccessEvents() {
-	const all: MnemocyteObservation[] = [];
-	const settled: MnemocyteObservation[] = [];
-	const waiting: Array<(event: MnemocyteObservation) => void> = [];
-	return {
-		all,
-		onEvent(event: MnemocyteObservation) {
-			if (event.operation !== "trackAccess") {
-				return;
-			}
-			all.push(event);
-			if (event.phase === "start") {
-				return;
-			}
-			const resolve = waiting.shift();
-			if (resolve) {
-				resolve(event);
-			} else {
-				settled.push(event);
-			}
-		},
-		nextSettled(): Promise<MnemocyteObservation> {
-			const event = settled.shift();
-			return event
-				? Promise.resolve(event)
-				: new Promise((resolve) => waiting.push(resolve));
-		},
-	};
 }
 
 function createClient(

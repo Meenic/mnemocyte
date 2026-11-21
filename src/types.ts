@@ -160,10 +160,11 @@ export type ScopeSelectorInput<DefaultNamespace extends boolean = false> =
 /**
  * Identifies which backend a {@link MemoryClient} is using: the configured
  * {@link MemoryConfig.store}, or in-memory storage when none is supplied.
- * A minor release may add backends, so a `switch` over them needs a
+ * `"custom"` is a store from `defineMemoryStore` (`mnemocyte/store`). A
+ * minor release may add backends, so a `switch` over them needs a
  * `default`.
  */
-export type MnemocyteBackend = "in-memory" | "postgres" | "libsql";
+export type MnemocyteBackend = "in-memory" | "postgres" | "libsql" | "custom";
 
 /**
  * The {@link MemoryClient} methods that emit {@link MnemocyteObservation}
@@ -325,9 +326,10 @@ declare const mnemocyteStoreConfigBrand: unique symbol;
 /**
  * Opaque storage-adapter value accepted by {@link MemoryConfig.store}.
  *
- * Obtain this value from `postgresStore({ client })` in `mnemocyte/postgres`.
- * The underlying `MemoryStore` contract stays internal; this type
- * intentionally exposes no adapter implementation methods.
+ * Obtain this value from `postgresStore({ client })` in `mnemocyte/postgres`,
+ * `libsqlStore({ client })` in `mnemocyte/libsql`, or
+ * `defineMemoryStore({ store })` in `mnemocyte/store`. It exposes none of
+ * the store's methods.
  */
 export interface MnemocyteStoreConfig {
 	readonly [mnemocyteStoreConfigBrand]: true;
@@ -478,9 +480,9 @@ export type SetTextSearchConfigInput =
  * `search_path`). With `dryRun`, what the call would have produced.
  */
 export interface TextSearchConfigResult {
-	/** The configuration before the call; `null` on the in-memory store. */
+	/** The configuration before the call; `null` on the in-memory store and custom stores. */
 	previous: string | null;
-	/** The configuration after the call; `null` on the in-memory store. */
+	/** The configuration after the call; `null` on the in-memory store and custom stores. */
 	current: string | null;
 	/** True when the call rewrote the memories table for a new configuration. */
 	changed: boolean;

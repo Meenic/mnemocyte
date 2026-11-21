@@ -54,8 +54,9 @@ option fails at startup. A key set to `undefined` counts as absent.
 
 `store` takes a postgres.js `sql`, a `pg` Pool, a PGlite instance, a
 Drizzle instance over one of them, a `SqlExecutor`, an `@libsql/client`
-client or a Drizzle instance over one, or a store from `postgresStore()`
-or `libsqlStore()`; anything else throws `"CONFIG"` right away. Without
+client or a Drizzle instance over one, or a store from `postgresStore()`,
+`libsqlStore()` or `defineMemoryStore()` (a [custom store](./custom-stores.md));
+anything else throws `"CONFIG"` right away. Without
 `store`, memories live in process memory, which suits tests and
 prototypes.
 
@@ -1011,7 +1012,9 @@ API documented in these guides waits for a major release. That covers the
 client and its methods, the in-memory and Postgres backends with the four
 built-in drivers, `postgresStore` and the documented `SqlExecutor`
 interface, the libSQL backend and `libsqlStore`, `migrate`, every
-embedder, `mnemocyte/ai-sdk`, and the CLI's commands, flags and exit
+embedder, `mnemocyte/ai-sdk`, the store contract in `mnemocyte/store`
+(`MemoryStoreV1`, its types and `defineMemoryStore`), the options and
+exports of `mnemocyte/store/test`, and the CLI's commands, flags and exit
 codes, and the fields and codes of its
 [`--json` output](./cli.md#json-output). It does not cover:
 
@@ -1036,8 +1039,11 @@ codes, and the fields and codes of its
   results are covered;
 - `score` values and the order of results. A minor release may tune
   ranking; the shape of results and `scores` is covered;
-- the internal storage contract and modules not exported from a
-  documented entry.
+- the tests the contract suite in `mnemocyte/store/test` runs. A minor
+  release may add tests, or tighten one to match what the built-in
+  backends already do, so a store that passed may fail after an update;
+- the internal storage contract behind the built-in backends and modules
+  not exported from a documented entry.
 
 A minor release may add members to these unions, so a `switch` over them
 needs a `default` branch: `MnemocyteErrorCode`, `MnemocyteErrorReason`,

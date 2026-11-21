@@ -1,6 +1,6 @@
-import type { Memory, MemoryClient, MemoryScope } from "mnemocyte";
 import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+import type { Memory, MemoryClient, MemoryScope } from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 
 /** Builds the scope of one entity; each backend run passes its own namespace. */
 export type ScopeFor = (

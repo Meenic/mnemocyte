@@ -217,7 +217,7 @@ before every call, so an aborted signal stops the next statement with
 
 - `test/contract/libsql-store.test.ts`, `libsql-direct.test.ts` and
   `libsql-drizzle.test.ts` run the shared contract
-  (`test/contract/shared.ts`) through `libsqlStore`, the client itself
+  (`src/store-test/contract.ts`) through `libsqlStore`, the client itself
   and Drizzle, each on a database file of its own under the folder
   `test/contract/libsql.global-setup.ts` creates. Windows keeps a file
   locked for a while after `client.close()` (removing it took up to 16 s),

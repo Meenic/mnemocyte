@@ -2,11 +2,11 @@ import { createMemory, type Embedder } from "mnemocyte";
 import { describe, expect, test } from "vitest";
 import { createInMemoryStore } from "../../src/memory/in-memory.js";
 import { createMnemocyteStoreConfig } from "../../src/memory/store-config.js";
-import { CONTRACT_DIMENSIONS, embedText } from "../contract/suite.js";
 import {
 	verifyContextMemories,
 	verifyContextTracksRenderedMemories,
-} from "../fixtures/context-memories.js";
+} from "../../src/store-test/fixtures/context-memories.js";
+import { CONTRACT_DIMENSIONS, embedText } from "../contract/suite.js";
 import { testScope } from "../helpers.js";
 
 const embedder: Embedder = {

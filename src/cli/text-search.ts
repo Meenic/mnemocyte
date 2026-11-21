@@ -112,6 +112,12 @@ export async function textSearchTarget(
 		);
 		return 0;
 	}
+	if (target.store.custom !== undefined) {
+		io.write(
+			`This client uses the custom store "${target.store.custom.name}", which has no text search configuration Mnemocyte can change.\n`,
+		);
+		return 0;
+	}
 	if (!plan.changed) {
 		io.write(
 			`Keyword search already uses the "${plan.current}" text search configuration.\n`,

@@ -1,11 +1,11 @@
+import { expect } from "vitest";
 import type {
 	DuplicatePage,
 	DuplicatePair,
 	FindDuplicatesPageInput,
 	MemoryClient,
-} from "mnemocyte";
-import { expect } from "vitest";
-import { expectDefined, expectMnemocyteError } from "../helpers.js";
+} from "../../index.js";
+import { expectDefined, expectMnemocyteError } from "../expect.js";
 import type { ScopeFor } from "./survivor-deletes.js";
 
 function pairKey(pair: DuplicatePair): string {

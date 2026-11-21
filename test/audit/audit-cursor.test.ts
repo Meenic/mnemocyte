@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
 	verifyAuditMemoryHistory,
 	verifyAuditPages,
-} from "../fixtures/audit-cursor.js";
+} from "../../src/store-test/fixtures/audit-cursor.js";
 import { expectMnemocyteError, testScope } from "../helpers.js";
 
 const embedder = {

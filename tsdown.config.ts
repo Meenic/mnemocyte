@@ -6,6 +6,7 @@ export default defineConfig({
 		"src/ai-sdk.ts",
 		"src/cli.ts",
 		"src/postgres.ts",
+		"src/libsql.ts",
 		"src/embedders/*.ts",
 	],
 	// tsconfig.json covers the tests and config files for the editor; the

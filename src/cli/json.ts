@@ -38,8 +38,13 @@ export interface InstallationJson {
 	 * `--schema`; `null` when they resolve through `search_path`.
 	 */
 	readonly schema: string | null;
-	/** `null` when pgvector is not enabled. */
+	/** `null` when pgvector is not enabled, and always on libSQL. */
 	readonly pgvectorVersion: string | null;
+	/**
+	 * libSQL only: the SQLite release libSQL is built on
+	 * (`sqlite_version()`). Left out on Postgres.
+	 */
+	readonly sqliteVersion?: string;
 	/** Both lists are empty when the state is `none` or `invalid`. */
 	readonly migrations: {
 		readonly state: "none" | "tracked" | "untracked" | "invalid";
@@ -48,7 +53,10 @@ export interface InstallationJson {
 	};
 	/** `null` without a memories table. */
 	readonly dimensions: number | null;
-	/** `vector` or `halfvec`; `null` without a memories table. */
+	/**
+	 * `vector` or `halfvec` on Postgres, `F32_BLOB` on libSQL; `null`
+	 * without a memories table.
+	 */
 	readonly vectorType: string | null;
 	/** `null` when none is recorded or the installation row was not read. */
 	readonly model: string | null;

@@ -54,6 +54,30 @@ export type DetectedClient =
 	| { readonly driver: "node-postgres"; readonly client: NodePostgresPool }
 	| { readonly driver: "executor"; readonly client: SqlExecutor };
 
+/**
+ * The part of an `@libsql/client` `Client` Mnemocyte checks for, from any of
+ * its entry points (`@libsql/client`, `/web`, `/http`, `/ws`) and any URL
+ * (`file:`, `libsql:`, `http:`, `ws:`). Only the presence of these members
+ * is checked; the client's own overloads could not be assigned to narrower
+ * signatures here.
+ */
+export interface LibsqlDriverClient {
+	execute(...args: never[]): unknown;
+	batch(...args: never[]): unknown;
+	transaction(...args: never[]): unknown;
+	executeMultiple(...args: never[]): unknown;
+	/** `"file"`, `"http"` or `"ws"`. */
+	readonly protocol: string;
+}
+
+/**
+ * A libSQL client Mnemocyte accepts: an `@libsql/client` `Client`, or a
+ * Drizzle instance over one (`drizzle-orm/libsql`), whose `$client` it uses.
+ */
+export type LibsqlClient =
+	| LibsqlDriverClient
+	| { readonly $client: LibsqlDriverClient };
+
 /** What the caller called the value, for error messages. */
 export type ClientSubject = "client" | "store";
 
@@ -74,6 +98,42 @@ function isPostgresJs(value: unknown): value is PostgresJsClient {
 		hasFunctions(value, ["unsafe"]) &&
 		(hasFunctions(value, ["begin"]) || hasFunctions(value, ["savepoint"]))
 	);
+}
+
+function isLibsqlDriverClient(value: unknown): value is LibsqlDriverClient {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		hasFunctions(value, [
+			"execute",
+			"batch",
+			"transaction",
+			"executeMultiple",
+		]) &&
+		typeof (value as { protocol?: unknown }).protocol === "string"
+	);
+}
+
+/**
+ * The `@libsql/client` `Client` in `value`, itself or a Drizzle instance's
+ * `$client`, or `undefined`. Its methods (`execute`, `batch`,
+ * `transaction`, `executeMultiple`) and string `protocol` match no Postgres
+ * client, all of which have `query` or `unsafe`, so the order against
+ * {@link detectClient} does not matter. Reads properties only.
+ */
+export function detectLibsqlClient(
+	value: unknown,
+): LibsqlDriverClient | undefined {
+	if (isLibsqlDriverClient(value)) {
+		return value;
+	}
+	if (typeof value === "object" && value !== null && "$client" in value) {
+		const inner = (value as { $client: unknown }).$client;
+		if (isLibsqlDriverClient(inner)) {
+			return inner;
+		}
+	}
+	return undefined;
 }
 
 function isPGlite(value: unknown): value is PGliteClient {
@@ -171,7 +231,7 @@ export function detectClient(
 			throw nodePostgresClientError(subject);
 		}
 		throw new MnemocyteError({
-			message: `${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, and drizzle-orm/pglite; for others, implement SqlExecutor.`,
+			message: `${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, and drizzle-orm/pglite (and drizzle-orm/libsql through libsqlStore() or createMemory({ store })); for others, implement SqlExecutor.`,
 			code: "CONFIG",
 			reason: "INVALID_OPTION",
 		});

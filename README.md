@@ -13,8 +13,8 @@ Mnemocyte (*nee-mo-site*, "memory cell") helps your AI app remember. Save
 what it learns about users, agents and sessions, then pull back what matters
 when you build a prompt.
 
-Your memories live with the rest of your data, in the Postgres you already
-run.
+Your memories live with the rest of your data, in the Postgres or libSQL
+database you already run.
 
 ## Install
 
@@ -67,6 +67,9 @@ moves them to Postgres in a few steps.
   with pgvector, through postgres.js, node-postgres, PGlite or Drizzle,
   with the tables in [drizzle-kit](docs/guide/postgres.md#manage-the-tables-with-drizzle-kit)
   migrations if you like
+- **[libSQL and Turso](docs/guide/libsql.md)**,
+  a local file, Turso Cloud or a libSQL server, through `@libsql/client`
+  or Drizzle
 - **[The AI SDK](docs/guide/ai-sdk.md)**,
   as memory tools for a model or memory added to every prompt
 - **[Embedders](docs/guide/embedders.md)**
@@ -78,6 +81,7 @@ moves them to Postgres in a few steps.
 [Getting started](docs/guide/getting-started.md) ·
 [API](docs/guide/api.md) ·
 [Postgres](docs/guide/postgres.md) ·
+[libSQL](docs/guide/libsql.md) ·
 [CLI](docs/guide/cli.md) ·
 [Embedders](docs/guide/embedders.md) ·
 [AI SDK](docs/guide/ai-sdk.md) ·

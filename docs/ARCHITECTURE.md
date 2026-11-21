@@ -41,15 +41,19 @@ postgres.js, a node-postgres `Pool`, PGlite and Drizzle over them by shape
 the same detection and a lazily imported backend, so `postgresStore` is
 optional (decision 23); see
 [features/postgres.md](./features/postgres.md#client-detection). libSQL
-later gets its own store. We write our own interface instead of using
+has landed with a store of its own on its own small adapter, taking an
+`@libsql/client` client or Drizzle over one the same two ways (decision
+62); see [features/libsql.md](./features/libsql.md#clients). We write our
+own interface instead of using
 Kysely: it is two methods, adds no dependency, and a query builder does not
 help with vector or full-text SQL, which is where dialects differ.
 
 **Backend (`MemoryStore`).** This has landed (decision 61): the contract
 went from 22 methods to 16 and declares its `capabilities` as data; see
-[DEVELOPMENT.md](./DEVELOPMENT.md#store-contract). Warnings that read
-capabilities, and contract test expectations that differ by them, come
-with the first backend whose values call for them (libSQL, in ROADMAP.md).
+[DEVELOPMENT.md](./DEVELOPMENT.md#store-contract). libSQL, the first
+backend whose values could have called for a warning, declares an exact
+prefiltered search, so no warning reads capabilities (decision 63); the
+shared contract sets its expectations from them (decision 65).
 
 ## Data model
 
@@ -136,15 +140,22 @@ through their own APIs; ours run against the app's database.
 |---|---|---|---|
 | Postgres + pgvector | HNSW (approximate) | `ts_rank` | post-filter; iterative scans fix it |
 | PGlite + pgvector | same as Postgres | same | same |
-| libSQL / Turso | DiskANN via `vector_top_k` (approximate) | FTS5 `bm25` | join after `vector_top_k`; can return fewer than k |
+| libSQL / Turso | exact scan of the scope (`vector_distance_cos`), no index yet | FTS5 `bm25` | pre-filter: the scope index and filters select the rows the scan ranks |
 | SQLite + sqlite-vec | `vec0`, brute force | FTS5 `bm25` | partition keys pre-filter |
+
+The libSQL row has landed (decisions 62 to 70); see
+[features/libsql.md](./features/libsql.md). A DiskANN index was planned
+for it, but `vector_top_k` ranks the whole table before the filters
+(decision 63).
 
 Where hybrid results will differ between backends even with RRF:
 
-- Different lexical candidates: Postgres `english` stemming and stop words
-  versus FTS5 tokenizers (`unicode61`, optional `porter`); FTS5 needs user
-  terms quoted.
-- Different approximate neighbours (HNSW versus DiskANN versus exact).
+- Different lexical candidates: Postgres `english` stemming and stop words,
+  every query word required, versus FTS5 tokenizers (`porter` by default,
+  or `unicode61`), any word matching, no stop words; FTS5 needs user terms
+  quoted (decision 64).
+- Different neighbours: approximate on HNSW, exact on libSQL and in
+  memory.
 - Different filtering stage, which changes how many candidates survive.
 
 Shared contract tests therefore assert that expected memories appear in the
@@ -189,8 +200,9 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 ## Packaging
 
 One package, `mnemocyte`, with subpaths: `mnemocyte` (core),
-`mnemocyte/postgres` (backend and driver adapters), `mnemocyte/embedders/*`,
-`mnemocyte/ai-sdk`. Drivers and `ai` are optional peer dependencies.
+`mnemocyte/postgres` (backend and driver adapters), `mnemocyte/libsql`
+(landed, decision 62), `mnemocyte/embedders/*`, `mnemocyte/ai-sdk`.
+Drivers, `@libsql/client` and `ai` are optional peer dependencies.
 
 After 1.0 (decision 1, revised 2026-11-15), a package is split out only when
 it needs dependencies of its own or its own release cadence:
@@ -1304,3 +1316,100 @@ Dated 2026-10-26 unless noted.
     copy's `createMemory`; it now fails at once with `"CONFIG"`
     (`assertStoreContract`), while `migrate()` and the CLI, which use only
     methods that kept their shape, still accept it.
+62. **libSQL entry and clients** (2026-11-21, landed): the maintainer
+    chose, with `feat/libsql-store`, `libsqlStore({ client })` at
+    `mnemocyte/libsql` and `createMemory({ store: client })` /
+    `migrate({ store: client })` with the client itself, as decisions 21
+    and 23 do for Postgres. The client is an `@libsql/client` `Client` from
+    any entry point and URL, or a Drizzle instance over one
+    (`drizzle-orm/libsql` sets `db.$client`), recognised by `execute`,
+    `batch`, `transaction`, `executeMultiple` and a string `protocol`.
+    `@libsql/client` `^0.18.0` (2026-09-02) is an optional peer and a dev
+    dependency. The backend runs on its own adapter over the client, not
+    on `SqlExecutor`: libSQL takes `?NNN` placeholders and SQLite SQL,
+    which a Postgres-shaped executor would only disguise. Turso's
+    rewritten-engine clients (`@tursodatabase/database`,
+    `@tursodatabase/serverless`) are left out: their docs list no vector
+    functions. `MnemocyteBackend` gained `"libsql"`, which "Stability"
+    allows in a minor. `libsqlStore` takes no `schemaName`.
+63. **libSQL vector search is exact, and nothing warns on postfilter**
+    (2026-11-21, landed): the maintainer chose, with `feat/libsql-store`,
+    an exact scan over the rows the scope index selects
+    (`vector_distance_cos`, filters first) over the planned DiskANN index.
+    `vector_top_k` has no filter argument; the documented pattern joins
+    after it, and it ranks the whole table, while a Mnemocyte table holds
+    every user's memories, so for one user among many the top k would
+    mostly belong to others and the result would be empty, not just short.
+    Taking more candidates only makes that less likely. Capabilities are
+    therefore `"exact"`, `"prefilter"`, `"bm25"`, `"database"` and 65,536.
+    With no backend at `"postfilter"`, no warning was added and no channel
+    became public API; if an index lands with it, the warning would be a
+    field on the `search` success event of `onEvent` (vector candidates
+    returned against requested), not `console.warn`. The scan's cost
+    grows with the scope: about 0.5 s at 10,000 memories of 1,536
+    dimensions on a local file (features/libsql.md has the table); the
+    index waits in ROADMAP.md ("Later").
+64. **FTS5 with porter, terms quoted and joined with OR** (2026-11-21,
+    landed): the maintainer chose `porter unicode61 remove_diacritics 2`
+    as the default tokenizer, matching Postgres's `english` default, and
+    `unicode61 remove_diacritics 2` as the other choice, named `porter`
+    and `unicode61` in `textSearchConfig`. Each whitespace-separated query
+    term is an FTS5 string with `"` doubled, so operators and syntax in
+    user text are words; terms are joined with `OR`, because FTS5 has no
+    stop words and requiring every term would drop rows over "the";
+    `bm25` ranks rows with more and rarer terms higher. At most 64 distinct
+    terms. The score is `-bm25()`. `setTextSearchConfig` and
+    `mnemocyte text-search` rebuild the FTS5 table in one write batch
+    rather than being left out: unlike Postgres, no memory row is
+    rewritten.
+65. **Shared contract expectations come from capabilities** (2026-11-21,
+    landed): the maintainer chose, with `feat/libsql-store`, one shared
+    contract (`test/contract/shared.ts`) that every database backend runs
+    through the public client, with the Postgres-only checks left in
+    `suite.ts`. A check that a backend's declared behaviour changes reads
+    `capabilities` from the store: a selective filter keeps the vector
+    list full unless `filteredVectorSearch` is `"postfilter"`. Search
+    results are compared as sets or by membership in the top k, never by
+    a full order, since `ts_rank`, `bm25` and overlap scores differ.
+66. **`F32_BLOB` up to 65,536 dimensions, sent as blobs** (2026-11-21,
+    landed): the maintainer chose `F32_BLOB(N)` at every size, the type
+    Turso's docs suggest starting with, and `maxDimensions` 65,536,
+    libSQL's documented limit. `migrate()` now checks `dimensions`
+    against the store's `maxDimensions` after resolving the store (still
+    4,000 on Postgres and for the CLI's `--dimensions`). Vectors go to
+    libSQL as float32 blobs rather than JSON text, which it parsed again
+    for every row a search compared (97 against 43 ms per 1,000 rows).
+67. **libSQL writes are single write batches** (2026-11-21, landed): every
+    multi-statement write is one `batch(…, "write")` (`BEGIN IMMEDIATE`)
+    whose first statement reads what the later ones check and repeat as
+    conditions, so SQLite's missing data-modifying `WITH` and
+    `FOR UPDATE` need no interactive transaction. On a local file an
+    interactive transaction made concurrent writes fail at once with
+    `SQLITE_BUSY` (9 of 10 in a probe, a busy timeout did not help:
+    the driver is synchronous), while batches serialize. Only `migrate`
+    uses a transaction.
+68. **CI runs libSQL on files; a server run is manual for now**
+    (2026-11-21, landed): the maintainer chose `@libsql/client` on a
+    temporary `file:` database in the `contract` project, so every Node
+    job runs it without a service; not `:memory:`, whose single connection
+    rejects calls while a transaction holds it. The shared contract ran
+    once by hand on a libSQL server
+    (`ghcr.io/tursodatabase/libsql-server:d6c75af`; its newest tags are
+    commit SHAs)
+    through `test/integration/libsql-remote.test.ts`, which found that the
+    server's own SQL parser rejects aggregate `ORDER BY`; the SQL avoids
+    it. A CI job is `chore/libsql-remote-ci` in ROADMAP.md.
+69. **The CLI reaches libSQL through the memory file** (2026-11-21,
+    landed): the maintainer chose `migrate`, `check` and `text-search`
+    for libSQL, through a memory file only. `DATABASE_URL` stays
+    postgres.js; `sql`, `generate --adapter drizzle` and `init` stay
+    Postgres-only; `--schema` exits 2 with a libSQL store. `check` tells
+    the backends apart by `sqliteVersion` in the report.
+70. **Exact duplicates are computed in JavaScript** (2026-11-21, landed):
+    `findDuplicates` on libSQL reads the scope's embeddings and runs the
+    in-memory store's exact algorithm, now shared in
+    `memory/duplicates.ts` and computing each pair once. In SQL,
+    `vector_distance_cos` between two stored rows cost about 37 µs at
+    1,536 dimensions: the self-join took 59 s for 1,000 memories, against
+    1.2 s now. It still grows with the square of the scope, so large
+    scopes use `experimental.findDuplicatesPage`.

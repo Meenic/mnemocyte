@@ -138,9 +138,12 @@ run and were taken under `strict_order`; the 30,000-memory scope was not
 measured under `relaxed_order`.
 `test/contract/knn-duplicates-plan.test.ts` checks the HNSW plan on PGlite.
 
-In-memory computes the exact `neighbors` nearest for each memory, ties by
-id, so both backends follow the same rules; HNSW recall is the only
-difference.
+In-memory and libSQL compute the exact `neighbors` nearest for each
+memory, ties by id, in `src/memory/duplicates.ts`: every pair's cosine
+once, in a pass over the upper triangle, from vectors copied to
+`Float64Array`s once. libSQL reads the scope's embeddings for it
+([libsql.md](./libsql.md#duplicates)). All backends follow the same rules;
+HNSW recall is the only difference.
 
 ### Pages: `experimental.findDuplicatesPage`
 
@@ -179,8 +182,9 @@ same `LATERAL` subquery for `n`. The statement also returns the number of
 memories compared and the last id, on a row of its own when the page has
 no pairs. `findDuplicatePage` in `src/db/queries/memories.ts`.
 
-**In-memory** sorts the filtered memories by id, compares the next
-`batchSize` and applies the same rule with exact neighbors.
+**In-memory and libSQL** sort the filtered memories by id, compare the
+next `batchSize` and apply the same rule with exact neighbors, caching the
+neighbor lists the re-check reads.
 
 Pages read the scope again, so changes between pages can repeat or skip a
 pair: a memory consolidated after its page no longer hides pairs, and one

@@ -422,6 +422,109 @@ The items, in order:
 - [ ] `feat/mcp-server`: `@mnemocyte/mcp`, an MCP server with its own `bin`,
   at `packages/mcp/` in the pnpm workspace.
 
+## Drivers, CLI and ORMs
+
+Planned on 2026-11-22 from a walk through adding Mnemocyte to a Next.js
+app on Drizzle and Neon, and from how other libraries ship their tables
+(Better Auth, Auth.js, Payload, pg-boss, graphile-worker, Mastra, Kysely).
+The maintainer took the recommendations in decisions 76 to 83.
+
+- [ ] `feat/neon-http-driver`: accept Neon's HTTP driver as `store`: the
+  `neon()` function from `@neondatabase/serverless` 1.x and a Drizzle `db`
+  over `drizzle-orm/neon-http`, whose `$client` is that function. Today the
+  first is unrecognised and the second throws `"CONFIG"` as an unsupported
+  Drizzle driver, so Neon users must write a `SqlExecutor` or switch to a
+  `Pool`, which Neon's docs say not to create outside a request handler on
+  serverless. `query` maps to `sql.query(text, params)`, `batch` to
+  `sql.transaction([...])`, and the signal to `fetchOptions`. Neon does not
+  document whether an abort cancels the query on the server, so document
+  it as node-postgres's is. `@neondatabase/serverless` `>=1.0` becomes an
+  optional peer. `test/sql/clients.test.ts` rejects a Neon-shaped function
+  today and changes with it. Add an integration test of a Neon `Pool`
+  too, which the guide says is detected as a node-postgres pool but no
+  test covers.
+  Decided (decision 76): CI runs the HTTP path through
+  `ghcr.io/timowilhelm/local-neon-http-proxy`, the proxy Neon's
+  local-development guide uses, pinned by digest.
+- [ ] `feat/cli-migrate-direct-connection`: when the memory file's store
+  has no interactive transactions (Neon HTTP, a `batch`-only
+  `SqlExecutor`), `migrate` and `text-search` connect on their own instead
+  of failing, and take the dimensions, schema name and text search
+  configuration from the memory file. Decided (decision 77): a Neon `Pool`
+  on `DATABASE_URL_UNPOOLED`, falling back to `DATABASE_URL`, for Neon
+  stores; the `postgres` package as today for others.
+- [ ] `feat/cli-env-files`: the CLI reads `.env.local`, then `.env`, as
+  Next.js does, so Next.js users can drop `--env-file .env.local`. `init`
+  writes the API key to `.env.local` when that file exists. Decided
+  (decision 78): no `.env.$(NODE_ENV)` files, and `.env.local` is skipped
+  when `NODE_ENV` is `test`, as in Next.js.
+- [ ] `feat/installation-from-catalog`: read the embedding size from the
+  embedding column's type modifier, as `inspect.ts` and `runner.ts` already
+  do, instead of failing with `"INSTALLATION_INVALID"` when the
+  `mnemocyte_meta` row is missing. drizzle-kit installations then need
+  only the key index and pgvector by hand. Decided (decision 79): the row
+  is written when the model is first recorded.
+- [ ] `feat/scope-key-expression-index`: migration 0005 adds a unique
+  index on `(namespace, entity_id, coalesce(agent_id, ''),
+  coalesce(session_id, ''), key) WHERE key IS NOT NULL`, the shape the
+  libSQL backend already uses, and keyed writes name it in `ON CONFLICT`.
+  Drizzle can declare it, so `generate --adapter drizzle` writes it into
+  the schema file and the custom migration for it goes away.
+  `getMemoryByKey` filters on `agent_id IS NULL`, which cannot use the new
+  index, so rewrite it and bring `EXPLAIN (ANALYZE, BUFFERS)` evidence for
+  both queries. Decided (decision 80): the old `NULLS NOT DISTINCT` index
+  stays for one minor release, so clients on the previous version keep
+  their `ON CONFLICT` target during a deploy; `drizzle-kit push` stays
+  unsupported (see Later).
+- [ ] `feat/migrate-sql-plans`: `migrate --dry-run --sql` prints the SQL a
+  run would apply to this database, as pg-boss's `plans` does, so teams on
+  Prisma Migrate, the Supabase CLI, Flyway, dbmate, Atlas, Knex or
+  node-pg-migrate can paste it into their own migration. `--dry-run`
+  prints migration names only today, and `mnemocyte sql` prints a fresh
+  schema, not an upgrade.
+- [ ] `feat/cli-server-only`: a memory file that imports `server-only`
+  loads in the CLI. The package throws at import outside React's
+  `react-server` condition, so a Next.js `memory.ts` that guards itself
+  fails every command today. Decided (decision 81): the CLI's resolve hook
+  maps `server-only` alone to an empty module.
+- [ ] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
+  docs name 529 for an overloaded provider (its error list does not), and
+  the built-in rule retries 408, 429, 500, 502, 503 and 504 only.
+  Decided (decision 82): for every embedder, in `resilience.ts`.
+- [ ] `feat/openrouter-embedder`: `openrouterEmbedder` in
+  `mnemocyte/embedders`, on `fetch` like the others: `OPENROUTER_API_KEY`,
+  `https://openrouter.ai/api/v1`, OpenRouter's `provider` object as
+  `routing` (`provider` already means retry settings in `createMemory`),
+  and `app: { name, url }` sent as `HTTP-Referer` and
+  `X-OpenRouter-Title`. OpenRouter's model list has no vector size, so the
+  known sizes come from the model descriptions and docs. `input_type` is
+  sent by default for `perplexity/*` only (`query` and `document`, as in
+  its docs; its v2 models reject a call without it); other models take
+  `purposes`. Responses do not say which upstream provider served them, so
+  the guide shows pinning with `routing`. `aiSdkEmbedder` learns OpenRouter
+  model objects (`provider` is `'openrouter'`) the same way. Decided
+  (decision 83): the reported model id drops the vendor prefix.
+- [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
+  (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
+  or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`
+  for a Next.js app, with `import "server-only"`. Needs
+  `feat/neon-http-driver`, `feat/cli-env-files` and `feat/cli-server-only`.
+- [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
+  on Neon, `withMemory` in a route handler, extraction kept alive with
+  `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a
+  callback), and `mnemocyte migrate --yes` in the build script. Write it
+  after the items above, against the code as it then is.
+- [ ] `docs/migration-tools`: a guide section on applying Mnemocyte's
+  migrations with the team's own tool (Prisma Migrate with
+  `--create-only`, the Supabase CLI, Flyway, dbmate, Knex,
+  node-pg-migrate), built on `feat/migrate-sql-plans`.
+- [ ] `chore/release-schema-notes`: the release text format in
+  DEVELOPMENT.md ("Releasing") gains a line for each schema change: what
+  `drizzle-kit generate` will write after `mnemocyte generate`, and whether
+  it rewrites a table or drops a column, because drizzle-kit compares
+  schemas and knows nothing about the data Mnemocyte's own migrations
+  carry over.
+
 ## Later
 
 Not queued. Each one comes back as an item when its condition holds.
@@ -460,3 +563,20 @@ Not queued. Each one comes back as an item when its condition holds.
 - A Windows CI job for the package and CLI tests (`tar.exe`, directory
   junctions), if a Windows-only bug ships; the maintainer develops on
   Windows, and Windows runners are slower.
+- `drizzle-kit push` as a supported way to manage Mnemocyte's tables, once
+  drizzle-orm 1.0 is stable (decision 52) and drizzle-kit no longer drops
+  and re-creates an index that mixes columns and an expression on every
+  push (drizzle-orm issue #6386, open and labeled fixed in beta). The
+  guide then also tells drizzle-kit 1.0 users to set
+  `schemaFilter: ["public"]`, since 1.0 manages every schema by default
+  and 0.x only `public` (decision 80).
+- `mnemocyte generate --adapter prisma`, when a Prisma user asks. Prisma
+  can only declare the vector column as `Unsupported("vector(1536)")` and
+  cannot declare the HNSW index or the generated `tsvector` column, so
+  much of the schema would still be hand-written SQL in a
+  `--create-only` migration; `feat/migrate-sql-plans` covers that today.
+- More HTTP Postgres drivers, when a user asks for one by name. Each is a
+  `query` plus `batch` adapter like `feat/neon-http-driver`.
+- The Edge runtime (Vercel Edge, Cloudflare Workers) with
+  `feat/neon-http-driver`, once someone checks that the root import and the
+  Postgres backend load there without Node built-ins.

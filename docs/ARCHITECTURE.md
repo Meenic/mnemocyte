@@ -1535,3 +1535,83 @@ Dated 2026-10-26 unless noted.
     `scripts/check-links.mjs`, with `github-slugger` and Biome as the
     root's only dev dependencies. `@mnemocyte/mcp` adds pass-throughs
     under its own names when it lands.
+76. **Neon's HTTP driver is a built-in client** (2026-11-22, queued as
+    `feat/neon-http-driver`): the maintainer chose to recognise the
+    `neon()` function and a Drizzle `neon-http` `db` rather than leave them
+    to a hand-written `SqlExecutor`. Decision 16 already keeps every write
+    path to single statements or a `batch`, so only `migrate` and
+    `setTextSearchConfig` need an interactive transaction; the adapter is
+    `query` plus `batch`. In `@neondatabase/serverless` 1.x the function
+    has `query`, `unsafe` and `transaction` and no `begin` or `savepoint`,
+    so it cannot be taken for postgres.js. CI tests it through
+    `ghcr.io/timowilhelm/local-neon-http-proxy` in front of the pinned
+    Postgres image, the setup Neon's local-development guide documents,
+    pinned by digest as in decision 71; a Neon project with a CI secret
+    would test the real service but ties every PR to an account, and unit
+    tests with a fake would not catch a difference in results. The proxy
+    is a community project with no releases, so the pin moves by hand.
+77. **`migrate` opens its own connection for HTTP stores** (2026-11-22,
+    queued as `feat/cli-migrate-direct-connection`): the maintainer chose
+    this over a clear error. When the memory file's store has no
+    `transaction`, the CLI connects with a Neon `Pool` on
+    `DATABASE_URL_UNPOOLED` (set by Neon's Vercel integration), falling
+    back to `DATABASE_URL`, for a Neon store, and with the `postgres`
+    package as it does without a memory file otherwise. Dimensions, schema
+    name and text search configuration still come from the memory file, so
+    the app and the migration agree. `migrate({ memory })` in code keeps
+    throwing for such a store: it cannot know a connection string.
+78. **The CLI reads `.env.local` before `.env`** (2026-11-22, queued as
+    `feat/cli-env-files`): the maintainer chose Next.js's order for these
+    two files, skipping `.env.local` when `NODE_ENV` is `test` as Next.js
+    does, and set variables still win. The `.env.$(NODE_ENV)` files are
+    left out: the CLI runs outside a mode, and guessing one would pick a
+    file the user did not mean. `--env-file` still replaces both.
+79. **The installation's size comes from the column** (2026-11-22, queued
+    as `feat/installation-from-catalog`): the maintainer chose to read the
+    embedding size and vector type from the embedding column's type
+    modifier when the `mnemocyte_meta` row is missing, as the migration
+    runner and `inspectInstallation` already do, and to write the row when
+    the model is first recorded. A row is data, not schema, so this keeps
+    the rule that the client creates no extensions, tables or indexes, and
+    drizzle-kit installations lose one hand-written step.
+80. **The key index becomes an expression index** (2026-11-22, queued as
+    `feat/scope-key-expression-index`): the maintainer chose
+    `(namespace, entity_id, coalesce(agent_id, ''), coalesce(session_id,
+    ''), key) WHERE key IS NOT NULL`, the libSQL backend's shape, over
+    storing `''` for a missing agent or session. Postgres infers a partial
+    expression index as an `ON CONFLICT` arbiter when the target repeats
+    its expressions and predicate, and scope fields are validated
+    non-empty, so `''` cannot collide with a real value. drizzle-orm has
+    `nullsNotDistinct` only on constraints, but can declare this index with
+    `.on(...)` over SQL expressions and `.where(...)`. Storing `''` would
+    rewrite the table and break clients on the previous version, which
+    still insert `NULL`. The old index stays for one minor release, so
+    those clients keep their `ON CONFLICT` target during a deploy; a write
+    then maintains two indexes. This does not make `drizzle-kit push`
+    safe: drizzle-orm issue #6386 (open, labeled fixed in beta) reports
+    that push drops and re-creates an index mixing columns and an
+    expression on every run, so push waits for drizzle-orm 1.0 (decision
+    52). drizzle-kit 1.0 also manages every schema by default, where 0.x
+    manages only `public`, so a schema of its own does not hide the tables
+    from 1.0's push.
+81. **`server-only` loads as an empty module in the CLI** (2026-11-22,
+    queued as `feat/cli-server-only`): the maintainer chose to map that one
+    specifier in the CLI's resolve hook over loading the memory file with
+    React's `react-server` condition, which would change how every package
+    with such an export resolves (React itself among them). `server-only`
+    exports `react-server` to an empty file and throws by default.
+82. **HTTP 529 is retried** (2026-11-22, queued as `fix/retry-529`): the
+    maintainer chose to add 529 to the built-in retry statuses for every
+    embedder, not just OpenRouter's. OpenRouter's embeddings docs name 529
+    for an overloaded provider, though its error list does not, and the
+    status means "overloaded" wherever it is used, so retrying it is as
+    safe as retrying 503.
+83. **OpenRouter model ids drop the vendor prefix** (2026-11-22, queued as
+    `feat/openrouter-embedder`): the maintainer chose to report
+    `openai/text-embedding-3-small` as `text-embedding-3-small`, as
+    `aiSdkEmbedder` does for AI Gateway ids, so an installation can move
+    between a provider's own API, OpenRouter and the AI SDK without
+    re-embedding. The cost: OpenRouter can serve an open model from
+    several hosts, and does not say which one answered, so vectors under
+    one id may differ slightly between hosts; the guide shows pinning with
+    `routing`.

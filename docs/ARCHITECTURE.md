@@ -221,10 +221,11 @@ it needs dependencies of its own or its own release cadence:
   backends are their own packages with `mnemocyte` as a peer (`^1`). A
   separate contract package, as `@ai-sdk/provider` is for the AI SDK,
   follows only if third-party backends become common.
-- **`@mnemocyte/mcp`** is the first separate package: it brings the MCP SDK
-  and a `bin`. It lives in a pnpm workspace in this repository and takes
-  `mnemocyte` as a peer (`^1`), the way `@mastra/pg` takes `@mastra/core`;
-  it uses only the public API, so it needs no exact pins.
+- **`@mnemocyte/mcp`.** Landed (decisions 84 to 89): the first separate
+  package, at `packages/mcp/`, with the MCP SDK and the `mnemocyte-mcp`
+  bin, and `mnemocyte` as a peer (`^1.1.0`), the way `@mastra/pg` takes
+  `@mastra/core`; it uses only the public API, so it needs no exact pins.
+  See [features/mcp.md](./features/mcp.md).
 - **A first-party split.** If first-party code ever splits
   (`@mnemocyte/core`, `@mnemocyte/postgres`), `mnemocyte` stays an umbrella
   package that depends on them with exact pins, releases with them, and
@@ -1185,7 +1186,8 @@ Dated 2026-10-26 unless noted.
       becomes a workspace package that depends on `"mnemocyte":
       "workspace:*"`, the way an app installs it.
     - `CHANGELOG.md` stays at the root; whether `@mnemocyte/mcp` gets a
-      changelog of its own is asked in `feat/mcp-server`.
+      changelog of its own is asked in `feat/mcp-server` (it does,
+      decision 84).
     - The move is its own PR, `chore/workspace-layout`, right before
       `feat/mcp-server`, so the MCP PR changes only MCP.
     - Inside `src/`, the entry files stay at the root (tsdown names the
@@ -1534,7 +1536,9 @@ Dated 2026-10-26 unless noted.
     from the root, as before, and `test:links` runs the root
     `scripts/check-links.mjs`, with `github-slugger` and Biome as the
     root's only dev dependencies. `@mnemocyte/mcp` adds pass-throughs
-    under its own names when it lands.
+    under its own names when it lands (landed: `build:mcp`,
+    `checktypes:mcp`, `test:mcp`, `lint:package:mcp`, `pack:check:mcp`,
+    and `build`, `checktypes` and `test` cover both packages).
 76. **Neon's HTTP driver is a built-in client** (2026-11-22, queued as
     `feat/neon-http-driver`): the maintainer chose to recognise the
     `neon()` function and a Drizzle `neon-http` `db` rather than leave them
@@ -1615,3 +1619,69 @@ Dated 2026-10-26 unless noted.
     several hosts, and does not say which one answered, so vectors under
     one id may differ slightly between hosts; the guide shows pinning with
     `routing`.
+84. **`@mnemocyte/mcp` has a changelog of its own** (2026-11-23, landed
+    with `feat/mcp-server`): the maintainer chose
+    `packages/mcp/CHANGELOG.md` over sections in the root `CHANGELOG.md`.
+    The package has its own version line (0.x next to `mnemocyte` 1.x),
+    and the release check looks a version's heading up in one file; one
+    file with two version lines would need prefixed headings and a parser
+    that tells them apart. The root changelog's introduction points to it
+    rather than an `[Unreleased]` entry, since any `Added` entry there
+    makes the next `mnemocyte` release a minor. The file does not ship;
+    the package README links to it on GitHub.
+85. **The server loads the app's memory file** (2026-11-23, landed with
+    `feat/mcp-server`): the maintainer chose the CLI's memory file over
+    `DATABASE_URL` and flags, so the server uses the app's own store and
+    embedder and needs no embedder flags (provider, model, dimensions,
+    key) that could disagree with the app's. The CLI's resolve hook and
+    tsconfig reader are internal, so `packages/mcp/src/loader/` holds
+    byte-for-byte copies, with a test that fails when they differ, over
+    exporting a loader from `mnemocyte`, which would be public API that
+    only tools use and would tie this package to a newer `mnemocyte`.
+    The client is recognised by shape (`for`, `search`, `add`,
+    `delete`), not the CLI's internal symbol. Found while building: MCP
+    clients do not document which folder they start a stdio server in
+    (Claude Code sets `CLAUDE_PROJECT_DIR`, Cursor has
+    `${workspaceFolder}`), so `--project <dir>` sets the folder for the
+    lookup, `.env`, `--config` and `--env-file`.
+86. **The scope comes from flags only** (2026-11-23, landed with
+    `feat/mcp-server`): the maintainer chose `--entity-id` (required),
+    `--namespace`, `--agent-id` and `--session-id` over environment
+    variables. Every MCP client config takes `args`, which keeps the scope
+    visible in one place; a variable could come from the shell that
+    started the client and quietly change whose memories the server
+    reads. Without `--namespace`, the memory file's default namespace
+    applies, as in `memory.for`. As with `memoryTools`, no tool input
+    takes a scope field, and one sent is a tool error.
+87. **stdio only** (2026-11-23, landed with `feat/mcp-server`): the
+    maintainer chose stdio for the bin over Streamable HTTP too. A fixed
+    scope behind an HTTP port lets whoever reaches the port use that
+    user's memories; the 2026-07-28 specification says HTTP servers must
+    check `Origin` and should authenticate, and the scope would have to
+    come from that authentication, which is a design of its own
+    (ROADMAP). For stdio the specification says to take credentials from
+    the environment, which `.env` and the client's `env` do. The package
+    exports `createMemoryMcpServer({ memory })` without a transport, so
+    an app can serve it over its own authenticated HTTP.
+88. **Search and save by default, forget opt-in** (2026-11-23, landed
+    with `feat/mcp-server`): the maintainer chose the `memoryTools` set
+    with its names, inputs and outputs, with `forgetMemory` listed only
+    under `--allow-forget` and `--read-only` for search alone. A deletion
+    cannot be undone (consolidated duplicates go with it) and some MCP
+    clients run tools without asking, while `memoryTools` users have the
+    AI SDK's approval step. The tools carry the specification's
+    annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+    `openWorldHint: false`) and return structured content with an output
+    schema plus the same JSON as text. They are written again in the
+    package, since `mnemocyte/ai-sdk` needs `ai`.
+89. **Bin, version and release** (2026-11-23, landed with
+    `feat/mcp-server`): the maintainer chose the bin name `mnemocyte-mcp`,
+    a first version of 0.1.0 (the SDK's v2 line and the flags may still
+    change) and releases of its own on `mcp-vX.Y.Z` tags through the same
+    `release.yml`, which reads the package from the tag. npm configures a
+    trusted publisher only for an existing package, so the maintainer
+    publishes 0.1.0 by hand; the steps are in DEVELOPMENT.md
+    ("Releasing"). The SDK is v2 (`@modelcontextprotocol/server` 2.4,
+    the stable line for the 2026-07-28 specification), not the v1
+    `@modelcontextprotocol/sdk`. The peer range is `^1.1.0`, not `^1`:
+    `forgetMemory` uses `delete({ dependents })`, added in 1.1.0.

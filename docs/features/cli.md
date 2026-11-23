@@ -98,6 +98,10 @@ readable by the bin's copy.
   The longest matching prefix wins. A config that cannot be read or parsed
   contributes nothing. `baseUrl` on its own (bare imports relative to it)
   is not resolved.
+- **A copy in `@mnemocyte/mcp`.** `resolve-hook.ts` and `tsconfig.ts`
+  are copied byte for byte into `packages/mcp/src/loader/`, and the lookup
+  lists into its `memory-file.ts`; a test there fails when they differ, so
+  a change here is copied in the same PR (decision 85).
 - **Errors.** `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` (enum, namespace,
   parameter properties), `ERR_UNKNOWN_FILE_EXTENSION` (`.tsx`, or type
   stripping turned off) and `ERR_MODULE_NOT_FOUND` each get a message that

@@ -1,0 +1,71 @@
+{
+	"name": "@mnemocyte/mcp",
+	"version": "0.1.0",
+	"description": "An MCP server for Mnemocyte memory: search, save and forget for one fixed scope.",
+	"type": "module",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": "./dist/index.mjs",
+		"./package.json": "./package.json"
+	},
+	"types": "./dist/index.d.mts",
+	"bin": {
+		"mnemocyte-mcp": "./dist/cli.mjs"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Meenic/mnemocyte.git",
+		"directory": "packages/mcp"
+	},
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"mcp-server",
+		"ai-memory",
+		"agent-memory",
+		"mnemocyte"
+	],
+	"author": "Meenic",
+	"license": "MIT",
+	"funding": "https://github.com/sponsors/Meenic",
+	"bugs": {
+		"url": "https://github.com/Meenic/mnemocyte/issues"
+	},
+	"homepage": "https://github.com/Meenic/mnemocyte/blob/main/docs/guide/mcp.md",
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"checktypes": "tsc --noEmit --project tsconfig.build.json && tsc --noEmit",
+		"test": "pnpm build && vitest run",
+		"test:unit": "vitest run",
+		"lint:package": "pnpm build && node scripts/check-package.mjs",
+		"pack:check": "pnpm pack --dry-run",
+		"prepack": "node scripts/copy-license.mjs",
+		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"
+	},
+	"peerDependencies": {
+		"mnemocyte": "^1.1.0"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "0.18.5",
+		"@modelcontextprotocol/client": "^2.4.0",
+		"@types/node": "^22.20.5",
+		"mnemocyte": "workspace:*",
+		"publint": "0.3.25",
+		"tsdown": "0.23.1",
+		"typescript": "^6.0.3",
+		"vitest": "5.0.5"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/server": "^2.4.0"
+	}
+}

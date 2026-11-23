@@ -419,8 +419,15 @@ The items, in order:
   stay at the root; root scripts pass through with `--filter mnemocyte`.
   `pnpm pack --dry-run` lists the same 79 files as before. The layout is in
   DEVELOPMENT.md ("Structure").
-- [ ] `feat/mcp-server`: `@mnemocyte/mcp`, an MCP server with its own `bin`,
-  at `packages/mcp/` in the pnpm workspace.
+- [x] `feat/mcp-server`: `@mnemocyte/mcp`, an MCP server with its own `bin`,
+  at `packages/mcp/` in the pnpm workspace. Decided (decisions 84 to 89):
+  a changelog of its own, the app's memory file with a tested copy of the
+  CLI's loader and a `--project` flag, the scope from flags only, stdio
+  only with `createMemoryMcpServer` for other transports, search and save
+  with forget opt-in, the `mnemocyte-mcp` bin at 0.1.0 released on
+  `mcp-v*` tags with `mnemocyte` `^1.1.0` as a peer. The package is in
+  [features/mcp.md](./features/mcp.md); the first publish is the
+  maintainer's (DEVELOPMENT.md, "Releasing").
 
 ## Drivers, CLI and ORMs
 
@@ -457,7 +464,9 @@ The maintainer took the recommendations in decisions 76 to 83.
   Next.js does, so Next.js users can drop `--env-file .env.local`. `init`
   writes the API key to `.env.local` when that file exists. Decided
   (decision 78): no `.env.$(NODE_ENV)` files, and `.env.local` is skipped
-  when `NODE_ENV` is `test`, as in Next.js.
+  when `NODE_ENV` is `test`, as in Next.js. `mnemocyte-mcp` loads `.env`
+  the same way today (`loadEnvironment` in `packages/mcp/src/cli/main.ts`),
+  so change it to match.
 - [ ] `feat/installation-from-catalog`: read the embedding size from the
   embedding column's type modifier, as `inspect.ts` and `runner.ts` already
   do, instead of failing with `"INSTALLATION_INVALID"` when the
@@ -486,7 +495,9 @@ The maintainer took the recommendations in decisions 76 to 83.
   loads in the CLI. The package throws at import outside React's
   `react-server` condition, so a Next.js `memory.ts` that guards itself
   fails every command today. Decided (decision 81): the CLI's resolve hook
-  maps `server-only` alone to an empty module.
+  maps `server-only` alone to an empty module. `@mnemocyte/mcp` holds a
+  copy of that hook (`packages/mcp/src/loader/`, decision 85), and
+  `test/loader-copy.test.ts` there fails until the copy is updated too.
 - [ ] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
   docs name 529 for an overloaded provider (its error list does not), and
   the built-in rule retries 408, 429, 500, 502, 503 and 504 only.
@@ -528,6 +539,13 @@ The maintainer took the recommendations in decisions 76 to 83.
 ## Later
 
 Not queued. Each one comes back as an item when its condition holds.
+
+- `@mnemocyte/mcp` over Streamable HTTP for many users, when someone asks
+  for a hosted server: the scope taken from authentication (OAuth 2.1 as
+  the MCP specification's authorization section describes, or the app's
+  own sessions) instead of flags, `Origin` checks and a localhost
+  default. Decide first whether it belongs in the package or stays an
+  example around `createMemoryMcpServer` (decision 87).
 
 - SQLite + sqlite-vec, once sqlite-vec has a stable release (npm has 0.1.9
   today).

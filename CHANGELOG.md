@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 marked **Breaking** in their entries. What semver covers is in
 [docs/guide/api.md](docs/guide/api.md#stability).
 
+`@mnemocyte/mcp`, the MCP server, is released on its own; its changes are
+in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
+
 ## [Unreleased]
 
 ## [1.3.0] - 2026-11-21

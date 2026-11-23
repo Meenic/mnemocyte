@@ -3,10 +3,10 @@
 	"type": "module",
 	"packageManager": "pnpm@12.15.0",
 	"scripts": {
-		"build": "pnpm --filter mnemocyte build",
+		"build": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp build",
 		"dev": "pnpm --filter mnemocyte dev",
-		"checktypes": "pnpm --filter mnemocyte checktypes",
-		"test": "pnpm run test:links && pnpm --filter mnemocyte test && pnpm run test:examples",
+		"checktypes": "pnpm --filter mnemocyte checktypes && pnpm run checktypes:mcp",
+		"test": "pnpm run test:links && pnpm --filter mnemocyte test && pnpm --filter @mnemocyte/mcp test && pnpm run test:examples",
 		"test:checks": "pnpm --filter mnemocyte test:checks && pnpm run test:examples",
 		"test:ci": "pnpm --filter mnemocyte test:ci",
 		"test:unit": "pnpm --filter mnemocyte test:unit",
@@ -26,7 +26,12 @@
 		"lint:package": "pnpm --filter mnemocyte lint:package",
 		"format": "biome format --write",
 		"migration:bundle": "pnpm --filter mnemocyte migration:bundle",
-		"pack:check": "pnpm --filter mnemocyte pack:check"
+		"pack:check": "pnpm --filter mnemocyte pack:check",
+		"build:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp build",
+		"checktypes:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp checktypes",
+		"test:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp test",
+		"lint:package:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp lint:package",
+		"pack:check:mcp": "pnpm --filter @mnemocyte/mcp pack:check"
 	},
 	"engines": {
 		"node": ">=22.18"

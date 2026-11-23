@@ -6,7 +6,7 @@ moves here or into [features/](./features/).
 
 User-facing documentation is `README.md` plus [guide/](./guide/): getting
 started, the API reference, the CLI, Postgres setup, embedders, the AI SDK,
-limitations and upgrading. A change users can see
+the MCP server, limitations and upgrading. A change users can see
 updates the matching guide page in the same PR.
 
 Feature areas (their source and test paths are relative to
@@ -35,6 +35,10 @@ Feature areas (their source and test paths are relative to
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
   validation and scope boundary; `memoryMiddleware` and `withMemory`;
   extraction with `save: { model }` and `extractMemories`.
+- [features/mcp.md](./features/mcp.md): the separate `@mnemocyte/mcp`
+  package in `packages/mcp/` (its paths are relative to that folder): the
+  `mnemocyte-mcp` bin, `createMemoryMcpServer`, the tools, the copied
+  loader, its tests and releases.
 
 ## Setup
 
@@ -68,6 +72,7 @@ The repository is a pnpm workspace (`pnpm-workspace.yaml`: `packages/*`,
 
 ```txt
 packages/mnemocyte/     the published `mnemocyte` package: src/, test/, migrations/, scripts/, its configs and package.json
+packages/mcp/           the published `@mnemocyte/mcp` package: the MCP server and its bin; README.md and CHANGELOG.md of its own
 apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
 examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
 docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
@@ -77,7 +82,10 @@ README.md, CHANGELOG.md, LICENSE, CONTRIBUTING.md, SECURITY.md, AGENTS.md, CLAUD
 ```
 
 Libraries go under `packages/`, things that are run or deployed under
-`apps/` (decision 53). `@mnemocyte/mcp` lands as `packages/mcp/`.
+`apps/` (decision 53). `@mnemocyte/mcp` is `packages/mcp/`, with
+`mnemocyte` as a peer and a `workspace:*` dev dependency, so it builds and
+tests against `packages/mnemocyte/dist/`; see
+[features/mcp.md](./features/mcp.md).
 `examples/` stays at the root, where GitHub readers look for it, and
 installs `mnemocyte` from the workspace the way an app installs it from
 npm. Only the root `package.json` sets `packageManager`; `engines` is in
@@ -527,7 +535,15 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   way a consumer resolves it.
 
 - `pnpm test` at the root runs `pnpm test:links`, the package's `test`
-  (`test:checks`, then `test:ci`), then `pnpm test:examples`. The root
+  (`test:checks`, then `test:ci`), `@mnemocyte/mcp`'s `test` (its build
+  and Vitest, against the `mnemocyte` build just made), then
+  `pnpm test:examples`. `pnpm checktypes` and `pnpm build` cover both
+  packages too; `checktypes` builds `mnemocyte` first, because
+  `@mnemocyte/mcp` type-checks against its `dist/`. The `*:mcp` scripts
+  (`build:mcp`, `checktypes:mcp`, `test:mcp`, `lint:package:mcp`,
+  `pack:check:mcp`) run one step for `@mnemocyte/mcp` alone, building
+  `mnemocyte` first where they need it (decision 75); its tests are in
+  [features/mcp.md](./features/mcp.md#tests). The root
   `test:checks` is the package's `test:checks`, which builds and runs the
   type-level checks `test:types`, `test:readme` and `test:jsdoc`, then
   `pnpm test:examples`. `test:ci` builds again (under a second) and runs
@@ -583,7 +599,8 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   outside the package, so it does not ship.
 - `pnpm test:links` (the root `scripts/check-links.mjs`) checks that
   relative links and `#anchors` in `README.md`, `CHANGELOG.md`,
-  `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `examples/README.md` and
+  `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `examples/README.md`,
+  `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` and
   `docs/**/*.md` point at files and headings that exist. It needs no build and prints
   `<file>:<line>: <problem>` per broken link.
   - Files come from `git ls-files --cached --others --exclude-standard`
@@ -902,7 +919,8 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | in `packages/mnemocyte/`: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
-| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/check-links.mjs` |
+| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/check-links.mjs`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
+| `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/mnemocyte/src/**` (the public API it uses and the CLI loader it copies), `LICENSE` |
 
 - A change to `.github/**`, the root `package.json`,
   `packages/mnemocyte/package.json`, `examples/package.json`,
@@ -927,6 +945,13 @@ when the release calls it (`workflow_call`). It has these jobs:
   `test/cli/init.test.ts` compares its `memory.ts` blocks with the
   `mnemocyte init` templates. A test or script that starts reading another
   file needs that file on its job's list.
+- The MCP list has `packages/mnemocyte/src/**` because `@mnemocyte/mcp`
+  builds against that source's `dist/` and `test/loader-copy.test.ts`
+  compares the CLI's loader with its copy. A change to only
+  `packages/mcp/**` runs no `Checks` job, so the MCP job runs `lint`
+  itself. `packages/mcp/package.json` is on the MCP list, not the list
+  that runs every job; a dependency change also changes `pnpm-lock.yaml`,
+  which is.
 - Lint and the type-level checks give the same result on every Node
   version, so they run once, in `Checks`, and the Node jobs run only the
   build and the Vitest projects. The `contract` project on PGlite still
@@ -1153,6 +1178,56 @@ A failed publish can be retried by re-running the workflow; the tag stays.
 If the fix needs a new commit, delete the tag, merge the fix and tag again.
 npm never accepts the same version twice, so once a version is published a
 fix needs a new version.
+
+### `@mnemocyte/mcp`
+
+`@mnemocyte/mcp` has its own version (0.x) and changelog
+(`packages/mcp/CHANGELOG.md`) and releases on its own, whenever its
+`[Unreleased]` has entries, with the same rules for patch and minor
+(decisions 84 and 89). A change that needs a newer `mnemocyte` raises the
+peer range and waits for that `mnemocyte` release.
+
+1. On a `chore/release-mcp-vX.Y.Z` branch, run
+   `pnpm version patch --no-git-tag-version` (or `minor`) in
+   `packages/mcp/`, then move its `[Unreleased]` entries under
+   `## [X.Y.Z] - YYYY-MM-DD` and add an
+   `[X.Y.Z]: https://github.com/Meenic/mnemocyte/releases/tag/mcp-vX.Y.Z`
+   link at the end of that file.
+2. Open a PR titled `chore(release): mcp-vX.Y.Z` and squash merge it once
+   CI passes.
+3. Pull `main`, then `git tag -a mcp-vX.Y.Z -m mcp-vX.Y.Z` and
+   `git push origin mcp-vX.Y.Z`. `release.yml` reads the package from the
+   tag prefix, checks `packages/mcp/package.json` and its changelog, runs
+   CI, builds `mnemocyte` (the workspace link the build needs) and
+   publishes from `packages/mcp/`. The dist-tag and the stale-`next`
+   check read the version, not the tag, which has a hyphen of its own.
+4. Once npm has it, create a GitHub release titled `@mnemocyte/mcp
+   vX.Y.Z`, not marked as latest, so the repository's latest release stays
+   `mnemocyte`'s.
+
+The first version cannot go through the workflow: npm configures a
+trusted publisher only for a package that already exists. Step 1 above
+still applies (the version is already 0.1.0, so only the changelog
+moves), then the maintainer, once:
+
+1. makes sure the `@mnemocyte` scope on npm belongs to them (an
+   organization or user named `mnemocyte`);
+2. publishes 0.1.0 from their own login on an up-to-date `main`:
+   `pnpm --filter mnemocyte build`, then
+   `pnpm publish --access public --no-provenance` in `packages/mcp/`
+   (provenance needs the workflow's OIDC token, and pnpm's docs name
+   `--no-provenance` as the way to publish without it), and does not
+   push an `mcp-v0.1.0` tag, whose workflow would try to publish the
+   version again and fail;
+3. adds the trusted publisher for `@mnemocyte/mcp`: GitHub Actions,
+   `Meenic` / `mnemocyte`, workflow `release.yml`, environment `npm`, with
+   "Allow npm dist-tag", and sets publishing access to "Require two-factor
+   authentication and disallow tokens";
+4. adds `mcp-v*` to the tags the `npm` GitHub environment allows.
+
+From then on, `mcp-v*` tags publish with provenance.
+
+### Release text
 
 GitHub release title: `mnemocyte vX.Y.Z`. Description:
 

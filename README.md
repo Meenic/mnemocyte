@@ -72,6 +72,9 @@ moves them to Postgres in a few steps.
   or Drizzle
 - **[The AI SDK](docs/guide/ai-sdk.md)**,
   as memory tools for a model or memory added to every prompt
+- **[MCP clients](docs/guide/mcp.md)** such as Claude Code and Cursor,
+  through the `@mnemocyte/mcp` server, which searches and saves one
+  user's memories
 - **[Embedders](docs/guide/embedders.md)**
   from OpenAI, Voyage, Cohere and Gemini, any OpenAI-compatible server such
   as Ollama, or your own
@@ -88,6 +91,7 @@ moves them to Postgres in a few steps.
 [CLI](docs/guide/cli.md) ·
 [Embedders](docs/guide/embedders.md) ·
 [AI SDK](docs/guide/ai-sdk.md) ·
+[MCP server](docs/guide/mcp.md) ·
 [Custom stores](docs/guide/custom-stores.md) ·
 [Recipes](docs/guide/recipes.md) ·
 [FAQ](docs/guide/faq.md) ·

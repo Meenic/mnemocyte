@@ -28,6 +28,7 @@ const checked = [
 	/^AGENTS\.md$/,
 	/^examples\/README\.md$/,
 	/^docs\/.+\.md$/,
+	/^packages\/mcp\/(README|CHANGELOG)\.md$/,
 ];
 
 const files = new Set(

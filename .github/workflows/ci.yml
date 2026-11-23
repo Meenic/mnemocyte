@@ -398,6 +398,11 @@ jobs:
     timeout-minutes: 15
     env:
       NEON_PROXY_IMAGE: ghcr.io/timowilhelm/local-neon-http-proxy:main@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+      # The connection string's host names the proxy's endpoint. The steps
+      # build the string around this variable: GitGuardian's PostgreSQL
+      # detector skips local hosts but takes db.localtest.me for a real one,
+      # and flags the service's throwaway login next to it.
+      NEON_HOST: db.localtest.me
     services:
       postgres:
         image: pgvector/pgvector:0.8.7-pg17
@@ -456,17 +461,18 @@ jobs:
         run: >-
           curl --fail --silent --show-error --retry 30 --retry-all-errors
           --retry-delay 1 --output /dev/null
-          --header "Neon-Connection-String: postgres://postgres:postgres@db.localtest.me:5432/postgres"
+          --header "Neon-Connection-String: postgres://postgres:postgres@$NEON_HOST:5432/postgres"
           --header "Content-Type: application/json"
           --data '{"query":"SELECT 1","params":[]}'
           http://127.0.0.1:4444/sql
 
       - name: Test Neon
         env:
-          NEON_DATABASE_URL: postgres://postgres:postgres@db.localtest.me:5432/postgres
           NEON_FETCH_ENDPOINT: http://127.0.0.1:4444/sql
           NEON_WS_PROXY: 127.0.0.1:4444/v2
-        run: pnpm run test:integration:neon
+        run: |
+          export NEON_DATABASE_URL="postgres://postgres:postgres@$NEON_HOST:5432/postgres"
+          pnpm run test:integration:neon
 
       - name: Neon proxy logs
         if: failure()

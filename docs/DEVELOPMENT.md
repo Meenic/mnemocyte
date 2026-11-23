@@ -1039,10 +1039,14 @@ when the release calls it (`workflow_call`). It has these jobs:
   To run it locally, start `pgvector/pgvector:0.8.7-pg17` and the proxy on
   a Docker network of your own (`PG_CONNECTION_STRING` naming the Postgres
   container, the proxy's port 4444 published), run
-  `CREATE EXTENSION IF NOT EXISTS vector`, then
-  `NEON_DATABASE_URL=postgres://postgres:postgres@db.localtest.me:5432/postgres`,
+  `CREATE EXTENSION IF NOT EXISTS vector`, then run
+  `pnpm test:integration:neon` with `NEON_DATABASE_URL` set to the
+  container's login on host `db.localtest.me`, port 5432,
   `NEON_FETCH_ENDPOINT=http://127.0.0.1:<port>/sql` and
-  `NEON_WS_PROXY=127.0.0.1:<port>/v2` with `pnpm test:integration:neon`.
+  `NEON_WS_PROXY=127.0.0.1:<port>/v2`. `ci.yml` builds that connection
+  string from `NEON_HOST` rather than writing it out, because GitGuardian's
+  PostgreSQL detector skips local hosts but not `localtest.me`, and flags
+  the throwaway login next to it; keep it that way here and in `ci.yml`.
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs

@@ -1207,8 +1207,10 @@ peer range and waits for that `mnemocyte` release.
 
 The first version cannot go through the workflow: npm configures a
 trusted publisher only for a package that already exists. Step 1 above
-still applies (the version is already 0.1.0, so only the changelog
-moves), then the maintainer, once:
+still applies, with two differences: the version is already 0.1.0, so
+only the changelog moves, and 0.1.0 gets no tag (see below), so its link
+is `[0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0`. Then
+the maintainer, once:
 
 1. makes sure the `@mnemocyte` scope on npm belongs to them (an
    organization or user named `mnemocyte`);

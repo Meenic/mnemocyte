@@ -39,11 +39,12 @@ const WAYS_TO_HELP = [
  */
 const NEXT: { title: string; text: ReactNode }[] = [
   {
-    title: "An MCP server",
+    title: "Neon’s HTTP driver",
     text: (
       <>
-        <InlineCode>@mnemocyte/mcp</InlineCode>, so any MCP client can read and
-        save memories.
+        Pass Neon’s <InlineCode>neon()</InlineCode> function, or a Drizzle{" "}
+        <InlineCode>db</InlineCode> over it, as the store, without writing an
+        adapter.
       </>
     ),
   },

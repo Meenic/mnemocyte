@@ -8,12 +8,13 @@ const INTEGRATIONS: { paths: string[]; name: string; text: ReactNode }[] = [
     text: "Postgres with pgvector 0.8 or later, through postgres.js, node-postgres, PGlite or Drizzle. libSQL as a local file, Turso Cloud or a libSQL server. Prototype with no database at all.",
   },
   {
-    paths: ["mnemocyte/ai-sdk"],
-    name: "The AI SDK",
+    paths: ["mnemocyte/ai-sdk", "@mnemocyte/mcp"],
+    name: "The AI SDK and MCP",
     text: (
       <>
-        Memory tools a model can call, or <InlineCode>withMemory</InlineCode> to
-        add the user’s memories to every prompt.
+        Memory tools a model can call, <InlineCode>withMemory</InlineCode> to
+        add the user’s memories to every prompt, or an MCP server for Claude
+        Code and Cursor.
       </>
     ),
   },

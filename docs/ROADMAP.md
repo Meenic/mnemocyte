@@ -472,9 +472,9 @@ release, since the guide is read from `main`.
   local-development guide uses, pinned by digest.
   Landed: `neonHttpExecutor` (`src/sql/neon-http.ts`), the
   `Neon HTTP integration` job on Postgres 17 running the contract over
-  `neon()`, Drizzle `neon-http` and Neon's `Pool`, and a `"CONFIG"`
-  message for `migrate` and `setTextSearchConfig` that names Neon's `Pool`
-  until the next item; see
+  `neon()` and Neon's `Pool` (Drizzle `neon-http` as a smoke test), and a
+  `"CONFIG"` message for `migrate` and `setTextSearchConfig` that names
+  Neon's `Pool` until the next item; see
   [features/postgres.md](./features/postgres.md#client-detection).
 - [ ] `feat/cli-migrate-direct-connection`: when the memory file's store
   has no interactive transactions (Neon HTTP, a `batch`-only

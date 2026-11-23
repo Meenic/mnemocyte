@@ -1,9 +1,13 @@
 import { neon, neonConfig, Pool } from "@neondatabase/serverless";
 import { drizzle as drizzleNeonHttp } from "drizzle-orm/neon-http";
-import { migrate, setTextSearchConfig } from "mnemocyte";
+import { createMemory, migrate, setTextSearchConfig } from "mnemocyte";
 import { beforeAll, describe, expect, test } from "vitest";
 import { inspectPostgresInstallation } from "../../src/db/migrations/inspect.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
+import {
+	createContractEmbedder,
+	uniqueNamespace,
+} from "../../src/store-test/contract.js";
 import {
 	CONTRACT_DIMENSIONS,
 	type ContractTarget,
@@ -13,10 +17,12 @@ import { expectMnemocyteError } from "../helpers.js";
 
 /**
  * The Postgres contract over Neon's serverless driver: the `neon()` HTTP
- * function, Drizzle over it (`drizzle-orm/neon-http`) and the WebSocket
- * `Pool`, which Mnemocyte detects as a node-postgres pool. The HTTP
- * clients have no interactive transactions, so their suites migrate
- * through a `Pool` on the same database.
+ * function and the WebSocket `Pool`, which Mnemocyte detects as a
+ * node-postgres pool. `neon()` has no interactive transactions, so its
+ * suite migrates through a `Pool` on the same database. Drizzle over
+ * `neon()` (`drizzle-orm/neon-http`) gets a smoke test only: Mnemocyte runs
+ * on its `$client`, the same function through the same adapter, so a
+ * second full run over HTTP would repeat the first.
  *
  * Reads only variables set explicitly, never `.env`:
  *
@@ -47,26 +53,12 @@ function pool(): Pool {
 	return new Pool({ connectionString: url, max: 5 });
 }
 
-/** An HTTP client, with a Pool to migrate through. */
-async function overHttp(
-	client: (sql: ReturnType<typeof neon>) => ContractTarget["client"],
-): Promise<ContractTarget> {
-	const migrator = pool();
-	return {
-		client: client(neon(url)),
-		migrator,
-		close: () => migrator.end(),
-	};
-}
-
-describeStoreContract("Neon HTTP", () => overHttp((sql) => sql), {
-	skip,
-	directClient: true,
-});
-
 describeStoreContract(
-	"Drizzle over Neon HTTP",
-	() => overHttp((sql) => drizzleNeonHttp({ client: sql })),
+	"Neon HTTP",
+	async (): Promise<ContractTarget> => {
+		const migrator = pool();
+		return { client: neon(url), migrator, close: () => migrator.end() };
+	},
 	{ skip, directClient: true },
 );
 
@@ -79,7 +71,7 @@ describeStoreContract(
 	{ skip, directClient: true },
 );
 
-describe.skipIf(skip)("Neon HTTP without interactive transactions", () => {
+describe.skipIf(skip)("Neon HTTP outside the contract", () => {
 	beforeAll(async () => {
 		const migrator = pool();
 		try {
@@ -88,6 +80,26 @@ describe.skipIf(skip)("Neon HTTP without interactive transactions", () => {
 			await migrator.end();
 		}
 	}, 120_000);
+
+	test("a Drizzle neon-http db saves and finds memories through $client", async () => {
+		const memory = createMemory({
+			store: drizzleNeonHttp({ client: neon(url) }),
+			embedder: createContractEmbedder(),
+		});
+		const user = memory.for({
+			namespace: uniqueNamespace("drizzle_neon"),
+			entityId: "alice",
+		});
+		try {
+			// add is one statement (query); search sends its settings and the
+			// vector query together (batch).
+			const added = await user.add({ content: "Prefers green tea." });
+			const found = await user.search({ query: "green tea", limit: 5 });
+			expect(found.map((item) => item.id)).toContain(added.id);
+		} finally {
+			await user.deleteScope();
+		}
+	});
 
 	test("migrate and setTextSearchConfig throw CONFIG and name the workarounds", async () => {
 		const sql = neon(url);

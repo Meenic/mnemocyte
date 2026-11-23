@@ -779,9 +779,12 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   deletes them afterwards, and uses the integration files' embedding model
   name so it can share their database.
   `test/integration/neon.test.ts` runs it over Neon's serverless driver:
-  `neon()` and Drizzle over it (`neon-http`), which have no
-  `transaction`, so `ContractTarget.migrator` (a Neon `Pool`) migrates
-  for them, and the WebSocket `Pool` itself. It reads only
+  `neon()`, which has no `transaction`, so `ContractTarget.migrator` (a
+  Neon `Pool`) migrates for it, and the WebSocket `Pool` itself. Drizzle
+  over `neon()` (`neon-http`) gets a smoke test (save and search through
+  `db.$client`) instead of a third run: Mnemocyte runs on the same
+  function through the same adapter, so a second run would repeat the
+  first. It reads only
   `NEON_DATABASE_URL`, `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY`, never
   `.env`, and skips without the first, so it also runs against a real
   Neon branch by hand. For a client without `transaction` the suite
@@ -1015,22 +1018,33 @@ when the release calls it (`workflow_call`). It has these jobs:
   over WebSockets on port 4444. The Postgres service gets no port; the
   proxy starts with `docker run` on `job.services.postgres.network` after
   pgvector is enabled, because its start script runs `psql` once and exits
-  when Postgres is not ready yet, which a service container could hit. It
-  connects to the service's IP address, read with `docker inspect`: GitHub
-  documents the service's label as a hostname for the job's own container,
-  not for others on the network. The image has no health check, so a
-  step posts `SELECT 1` to `/sql` with `curl --retry-all-errors` first.
-  The
-  connection string's host, `db.localtest.me`, only names the endpoint;
-  the driver sends it in a header (HTTP) or as the `address` parameter
-  (WebSockets) and never resolves it (checked with DNS lookups of it made
-  to fail), so `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY` point at
-  `127.0.0.1:4444` and the runner needs no DNS. The proxy logs are printed
-  when the job fails. The image has one tag, `main`, and no releases, so
-  `ci.yml` pins `main@sha256:cd2ae14e…` (built 2026-03-27 from commit
-  `7c86dc3`) and the pin is bumped by hand: compare the digest of `main`
-  with the pin, and when it differs, rerun the job on the new digest
-  before updating `ci.yml` and this bullet:
+  when Postgres is not ready yet, which a service container could hit.
+  Before that, a step stores the throwaway password with one SCRAM round
+  (`SET scram_iterations = 1`, then `ALTER ROLE … PASSWORD`, the value
+  read with psql's `\getenv` from the container's `POSTGRES_PASSWORD`).
+  The proxy is a debug build (its binary is 628 MB) and checks the
+  password with SCRAM on every HTTP request: at the default 4096 rounds a
+  query took about 130 ms through it, at one round about 22 ms (16 ms over
+  the `Pool`'s WebSocket, which logs in once per connection), and the
+  suite went from about 125 s to 40 s locally. Through the proxy, each
+  HTTP request also opens a new Postgres connection unless it sends
+  `Neon-Pool-Opt-In: true`, which the driver does not; a new direct
+  connection with its login took about 13 ms here, so that is left as it
+  is. The proxy connects to the service's IP address, read with
+  `docker inspect`:
+  GitHub documents the service's label as a hostname for the job's own
+  container, not for others on the network. The image has no health check,
+  so a step posts `SELECT 1` to `/sql` with `curl --retry-all-errors`
+  first. The connection string's host, `db.localtest.me`, only names the
+  endpoint; the driver sends it in a header (HTTP) or as the `address`
+  parameter (WebSockets) and never resolves it (checked with DNS lookups
+  of it made to fail), so `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY` point
+  at `127.0.0.1:4444` and the runner needs no DNS. The proxy logs are
+  printed when the job fails. The image has one tag, `main`, and no
+  releases, so `ci.yml` pins `main@sha256:cd2ae14e…` (built 2026-03-27
+  from commit `7c86dc3`) and the pin is bumped by hand: compare the digest
+  of `main` with the pin, and when it differs, rerun the job on the new
+  digest before updating `ci.yml` and this bullet:
 
   ```bash
   docker buildx imagetools inspect ghcr.io/timowilhelm/local-neon-http-proxy:main --format '{{.Manifest.Digest}}'
@@ -1039,7 +1053,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   To run it locally, start `pgvector/pgvector:0.8.7-pg17` and the proxy on
   a Docker network of your own (`PG_CONNECTION_STRING` naming the Postgres
   container, the proxy's port 4444 published), run
-  `CREATE EXTENSION IF NOT EXISTS vector`, then run
+  `CREATE EXTENSION IF NOT EXISTS vector` and the SCRAM step from
+  `ci.yml` (without it the suite takes about three times as long), then run
   `pnpm test:integration:neon` with `NEON_DATABASE_URL` set to the
   container's login on host `db.localtest.me`, port 5432,
   `NEON_FETCH_ENDPOINT=http://127.0.0.1:<port>/sql` and
@@ -1102,7 +1117,9 @@ when the release calls it (`workflow_call`). It has these jobs:
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
   Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
   later, has 10, `Links` 5, `libSQL server integration` 10 and
-  `Neon HTTP integration` 15 (the suite took about 5 minutes locally).
+  `Neon HTTP integration` 15 (the suite takes about 40 s locally; on
+  GitHub its first run took 5 minutes, before the changes in the Neon
+  bullet above).
 - Both workflows pin each action to a full-length commit SHA with its
   release after it (`actions/checkout@<sha> # v7.0.1`), since the release
   runs `ci.yml` and its publish job holds the npm OIDC token (decision

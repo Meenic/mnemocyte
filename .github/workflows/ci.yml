@@ -438,6 +438,22 @@ jobs:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
+      # The proxy image is a debug build (a 628 MB binary) that checks the
+      # password with SCRAM on every HTTP request; at Postgres's default of
+      # 4096 rounds that made each query take about 130 ms, and at 1 round
+      # about 22 ms. The login is a throwaway one, so its hash strength does
+      # not matter. psql reads the password from the container's own
+      # POSTGRES_PASSWORD, so it is not written out here.
+      - name: Store the password with one SCRAM round
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          SET scram_iterations = 1;
+          \getenv password POSTGRES_PASSWORD
+          ALTER ROLE postgres PASSWORD :'password';
+          SQL
+
       # The proxy runs psql against Postgres once when it starts and exits if
       # that fails, so it starts here, after the service is healthy, on the
       # service's network, rather than as a service container that may start

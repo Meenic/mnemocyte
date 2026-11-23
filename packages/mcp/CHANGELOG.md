@@ -8,6 +8,10 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-23
+
+The first release: an MCP server for Mnemocyte memory.
+
 ### Added
 
 - **The MCP server.** `mnemocyte-mcp` serves Mnemocyte memory to MCP
@@ -20,3 +24,5 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
   name a scope. See [the guide](../../docs/guide/mcp.md).
 - **`createMemoryMcpServer({ memory })`** returns the same server over a
   bound client, without a transport, for apps that serve MCP themselves.
+
+[0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0

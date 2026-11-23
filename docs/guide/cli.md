@@ -530,10 +530,14 @@ deploy would run a migration, using `jq -e`, which exits 1 on `false`:
 - **PGlite.** A PGlite data folder opens in one process at a time, so run
   the command while the app is stopped, or call
   `migrate({ memory, createExtension: true })` when the app starts.
-- **HTTP drivers.** `migrate` needs interactive transactions. With a
-  stateless HTTP driver in the memory file, run `migrate` against a regular
-  connection (`DATABASE_URL` and `--dimensions`, without `--config`, from a
-  folder with no memory file).
+- **HTTP drivers.** `migrate` and `text-search` need interactive
+  transactions, so a memory file whose store is Neon's `neon()` (or another
+  batch-only `SqlExecutor`) makes them exit 1 with `"CONFIG"`. Point
+  `--config` at a second memory file whose store is Neon's `Pool`, or run
+  them against
+  `DATABASE_URL` from a folder with no memory file (with `--dimensions` for
+  a fresh install, and the `postgres` package installed). `check` works
+  over HTTP.
 - **libSQL.** Only through a memory file, for `migrate`, `check` and
   `text-search`. `--schema` exits 2 with a libSQL store, and
   `--dimensions` stops at 4,000.

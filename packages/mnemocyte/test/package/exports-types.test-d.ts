@@ -1,6 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type { Client as LibsqlDriver } from "@libsql/client";
 import type { Client as LibsqlWebDriver } from "@libsql/client/web";
+import type {
+	Pool as NeonPool,
+	NeonQueryFunction,
+} from "@neondatabase/serverless";
 import {
 	type InferToolInput,
 	type InferToolOutput,
@@ -11,6 +15,7 @@ import {
 } from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 import type { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
+import type { drizzle as drizzleNeonHttp } from "drizzle-orm/neon-http";
 import type { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import type { drizzle as drizzlePGlite } from "drizzle-orm/pglite";
 import type { drizzle as drizzlePostgresJs } from "drizzle-orm/postgres-js";
@@ -163,6 +168,7 @@ import {
 } from "mnemocyte/libsql";
 import {
 	type DrizzleClient,
+	type NeonHttpClient,
 	type NodePostgresPool,
 	type PGliteClient,
 	type PostgresClient,
@@ -253,6 +259,16 @@ declare const drizzleOverPool: ReturnType<
 declare const drizzleOverPGlite: ReturnType<
 	typeof drizzlePGlite<Record<string, never>, PGlite>
 >;
+// Neon: the HTTP function (with neon()'s defaults and with full results),
+// Drizzle over it, and the WebSocket Pool, which is pg-compatible.
+declare const neonSql: NeonQueryFunction<false, false>;
+declare const neonFullResults: NeonQueryFunction<true, true>;
+declare const drizzleOverNeonHttp: ReturnType<
+	typeof drizzleNeonHttp<Record<string, never>, NeonQueryFunction<false, false>>
+>;
+declare const neonPool: NeonPool;
+const neonHttpClient: NeonHttpClient = neonSql;
+const drizzleNeonClient: DrizzleClient = drizzleOverNeonHttp;
 const postgresJsClient: PostgresJsClient = postgresJsSql;
 const nodePostgresPoolClient: NodePostgresPool = nodePostgresPool;
 const pgliteClient: PGliteClient = pglite;
@@ -264,6 +280,10 @@ const driverClients: PostgresClient[] = [
 	drizzleOverPostgresJs,
 	drizzleOverPool,
 	drizzleOverPGlite,
+	neonSql,
+	neonFullResults,
+	drizzleOverNeonHttp,
+	neonPool,
 	executor,
 	batchOnlyExecutor,
 ];
@@ -319,6 +339,8 @@ void postgresJsClient;
 void nodePostgresPoolClient;
 void pgliteClient;
 void drizzleClient;
+void neonHttpClient;
+void drizzleNeonClient;
 const postgresConfig: MemoryConfig = {
 	embedder,
 	store: postgresStore(postgresOptions),

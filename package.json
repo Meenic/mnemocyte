@@ -18,6 +18,7 @@
 		"test:examples": "pnpm --filter @mnemocyte/examples typecheck",
 		"test:integration": "pnpm --filter mnemocyte test:integration",
 		"test:integration:libsql": "pnpm --filter mnemocyte test:integration:libsql",
+		"test:integration:neon": "pnpm --filter mnemocyte test:integration:neon",
 		"bench:retrieval": "pnpm --filter mnemocyte bench:retrieval",
 		"bench:postgres": "pnpm --filter mnemocyte bench:postgres",
 		"bench:libsql": "pnpm --filter mnemocyte bench:libsql",

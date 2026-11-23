@@ -111,7 +111,7 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 	test("has no static import of a database driver and no top-level await", async () => {
 		const source = await readFile(CLI, "utf8");
 		expect(source).not.toMatch(
-			/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?)["'];?\s*$/m,
+			/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?|@neondatabase\/[^"']*)["'];?\s*$/m,
 		);
 		expect(source).not.toMatch(/\bimport\(["']postgres["']\)/);
 		expect(source).not.toMatch(/^await\s/m);

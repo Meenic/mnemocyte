@@ -503,10 +503,11 @@ export interface MemoryConfig {
 	/**
 	 * Where memories live: the database client the app already owns (a
 	 * postgres.js `sql` function, a node-postgres `Pool`, a PGlite instance,
-	 * a Drizzle instance over one of them, or a `SqlExecutor`), recognised by
-	 * its shape, or a store from `postgresStore({ client })`. Mnemocyte never
-	 * closes the client. The Postgres backend is imported on the first call
-	 * that uses it. When omitted, an in-memory backend is used.
+	 * Neon's `neon()` function, a Drizzle instance over one of them, or a
+	 * `SqlExecutor`), recognised by its shape, or a store from
+	 * `postgresStore({ client })`. Mnemocyte never closes the client. The
+	 * Postgres backend is imported on the first call that uses it. When
+	 * omitted, an in-memory backend is used.
 	 */
 	store?: MnemocyteStoreConfig | PostgresClient | LibsqlClient | undefined;
 	/** Required embedder used to vectorise content for storage and retrieval. */

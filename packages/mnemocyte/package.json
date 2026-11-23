@@ -86,6 +86,7 @@
 		"test:context": "vitest run --project unit test/context/builder.test.ts",
 		"test:integration": "vitest run --project integration",
 		"test:integration:libsql": "vitest run --project integration test/integration/libsql-remote.test.ts",
+		"test:integration:neon": "vitest run --project integration test/integration/neon.test.ts",
 		"bench:retrieval": "pnpm build && vitest bench --project \"package (bench)\" test/benchmarks/retrieval.bench.ts",
 		"bench:postgres": "vitest bench --project \"integration (bench)\" test/benchmarks/postgres-plans.bench.ts",
 		"bench:libsql": "pnpm build && node scripts/bench-libsql.mjs",
@@ -132,6 +133,7 @@
 	"peerDependencies": {
 		"@electric-sql/pglite": "^0.5.16",
 		"@libsql/client": "^0.18.0",
+		"@neondatabase/serverless": ">=1.0",
 		"ai": "^7.0.135",
 		"drizzle-orm": "^0.45.4",
 		"pg": "^8.23.1",
@@ -143,6 +145,9 @@
 			"optional": true
 		},
 		"@libsql/client": {
+			"optional": true
+		},
+		"@neondatabase/serverless": {
 			"optional": true
 		},
 		"ai": {
@@ -166,6 +171,7 @@
 		"@electric-sql/pglite": "^0.5.16",
 		"@electric-sql/pglite-pgvector": "^0.0.17",
 		"@libsql/client": "^0.18.0",
+		"@neondatabase/serverless": "^1.2.1",
 		"@types/node": "^22.20.5",
 		"@types/pg": "^8.23.1",
 		"ai": "^7.0.170",

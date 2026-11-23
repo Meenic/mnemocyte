@@ -436,7 +436,24 @@ app on Drizzle and Neon, and from how other libraries ship their tables
 (Better Auth, Auth.js, Payload, pg-boss, graphile-worker, Mastra, Kysely).
 The maintainer took the recommendations in decisions 76 to 83.
 
-- [ ] `feat/neon-http-driver`: accept Neon's HTTP driver as `store`: the
+Release plan (2026-11-23): the items ship in four minors, in the order
+below. Cut each release when its group lands; a docs item needs no
+release, since the guide is read from `main`.
+
+- **1.4.0, Next.js on Neon:** `feat/neon-http-driver` to
+  `feat/init-detect-app`. `@mnemocyte/mcp` 0.2.0 goes with it, since
+  `feat/cli-env-files` and `feat/cli-server-only` change its copies.
+  `docs/nextjs-recipe` follows once 1.4.0 is on npm.
+- **1.5.0, OpenRouter:** `fix/retry-529` and `feat/openrouter-embedder`.
+- **1.6.0, migration 0005:** `chore/release-schema-notes` first, since this
+  release's text needs its schema line, then
+  `feat/installation-from-catalog`, `feat/migrate-sql-plans` (so teams on
+  their own migration tool can print 0005's SQL) and
+  `feat/scope-key-expression-index`. `docs/migration-tools` follows.
+- **1.7.0 or later:** `feat/drop-old-key-index`, at least one minor after
+  0005 ships.
+
+- [x] `feat/neon-http-driver`: accept Neon's HTTP driver as `store`: the
   `neon()` function from `@neondatabase/serverless` 1.x and a Drizzle `db`
   over `drizzle-orm/neon-http`, whose `$client` is that function. Today the
   first is unrecognised and the second throws `"CONFIG"` as an unsupported
@@ -453,6 +470,12 @@ The maintainer took the recommendations in decisions 76 to 83.
   Decided (decision 76): CI runs the HTTP path through
   `ghcr.io/timowilhelm/local-neon-http-proxy`, the proxy Neon's
   local-development guide uses, pinned by digest.
+  Landed: `neonHttpExecutor` (`src/sql/neon-http.ts`), the
+  `Neon HTTP integration` job on Postgres 17 running the contract over
+  `neon()` and Neon's `Pool` (Drizzle `neon-http` as a smoke test), and a
+  `"CONFIG"` message for `migrate` and `setTextSearchConfig` that names
+  Neon's `Pool` until the next item; see
+  [features/postgres.md](./features/postgres.md#client-detection).
 - [ ] `feat/cli-migrate-direct-connection`: when the memory file's store
   has no interactive transactions (Neon HTTP, a `batch`-only
   `SqlExecutor`), `migrate` and `text-search` connect on their own instead
@@ -467,30 +490,6 @@ The maintainer took the recommendations in decisions 76 to 83.
   when `NODE_ENV` is `test`, as in Next.js. `mnemocyte-mcp` loads `.env`
   the same way today (`loadEnvironment` in `packages/mcp/src/cli/main.ts`),
   so change it to match.
-- [ ] `feat/installation-from-catalog`: read the embedding size from the
-  embedding column's type modifier, as `inspect.ts` and `runner.ts` already
-  do, instead of failing with `"INSTALLATION_INVALID"` when the
-  `mnemocyte_meta` row is missing. drizzle-kit installations then need
-  only the key index and pgvector by hand. Decided (decision 79): the row
-  is written when the model is first recorded.
-- [ ] `feat/scope-key-expression-index`: migration 0005 adds a unique
-  index on `(namespace, entity_id, coalesce(agent_id, ''),
-  coalesce(session_id, ''), key) WHERE key IS NOT NULL`, the shape the
-  libSQL backend already uses, and keyed writes name it in `ON CONFLICT`.
-  Drizzle can declare it, so `generate --adapter drizzle` writes it into
-  the schema file and the custom migration for it goes away.
-  `getMemoryByKey` filters on `agent_id IS NULL`, which cannot use the new
-  index, so rewrite it and bring `EXPLAIN (ANALYZE, BUFFERS)` evidence for
-  both queries. Decided (decision 80): the old `NULLS NOT DISTINCT` index
-  stays for one minor release, so clients on the previous version keep
-  their `ON CONFLICT` target during a deploy; `drizzle-kit push` stays
-  unsupported (see Later).
-- [ ] `feat/migrate-sql-plans`: `migrate --dry-run --sql` prints the SQL a
-  run would apply to this database, as pg-boss's `plans` does, so teams on
-  Prisma Migrate, the Supabase CLI, Flyway, dbmate, Atlas, Knex or
-  node-pg-migrate can paste it into their own migration. `--dry-run`
-  prints migration names only today, and `mnemocyte sql` prints a fresh
-  schema, not an upgrade.
 - [ ] `feat/cli-server-only`: a memory file that imports `server-only`
   loads in the CLI. The package throws at import outside React's
   `react-server` condition, so a Next.js `memory.ts` that guards itself
@@ -498,6 +497,16 @@ The maintainer took the recommendations in decisions 76 to 83.
   maps `server-only` alone to an empty module. `@mnemocyte/mcp` holds a
   copy of that hook (`packages/mcp/src/loader/`, decision 85), and
   `test/loader-copy.test.ts` there fails until the copy is updated too.
+- [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
+  (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
+  or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`
+  for a Next.js app, with `import "server-only"`. Needs
+  `feat/neon-http-driver`, `feat/cli-env-files` and `feat/cli-server-only`.
+- [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
+  on Neon, `withMemory` in a route handler, extraction kept alive with
+  `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a
+  callback), and `mnemocyte migrate --yes` in the build script. Write it
+  after the items above, against the code as it then is.
 - [ ] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
   docs name 529 for an overloaded provider (its error list does not), and
   the built-in rule retries 408, 429, 500, 502, 503 and 504 only.
@@ -515,26 +524,49 @@ The maintainer took the recommendations in decisions 76 to 83.
   the guide shows pinning with `routing`. `aiSdkEmbedder` learns OpenRouter
   model objects (`provider` is `'openrouter'`) the same way. Decided
   (decision 83): the reported model id drops the vendor prefix.
-- [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
-  (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
-  or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`
-  for a Next.js app, with `import "server-only"`. Needs
-  `feat/neon-http-driver`, `feat/cli-env-files` and `feat/cli-server-only`.
-- [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
-  on Neon, `withMemory` in a route handler, extraction kept alive with
-  `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a
-  callback), and `mnemocyte migrate --yes` in the build script. Write it
-  after the items above, against the code as it then is.
-- [ ] `docs/migration-tools`: a guide section on applying Mnemocyte's
-  migrations with the team's own tool (Prisma Migrate with
-  `--create-only`, the Supabase CLI, Flyway, dbmate, Knex,
-  node-pg-migrate), built on `feat/migrate-sql-plans`.
 - [ ] `chore/release-schema-notes`: the release text format in
   DEVELOPMENT.md ("Releasing") gains a line for each schema change: what
   `drizzle-kit generate` will write after `mnemocyte generate`, and whether
   it rewrites a table or drops a column, because drizzle-kit compares
   schemas and knows nothing about the data Mnemocyte's own migrations
   carry over.
+- [ ] `feat/installation-from-catalog`: read the embedding size from the
+  embedding column's type modifier, as `inspect.ts` and `runner.ts` already
+  do, instead of failing with `"INSTALLATION_INVALID"` when the
+  `mnemocyte_meta` row is missing. drizzle-kit installations then need
+  only the key index and pgvector by hand. Decided (decision 79): the row
+  is written when the model is first recorded.
+- [ ] `feat/migrate-sql-plans`: `migrate --dry-run --sql` prints the SQL a
+  run would apply to this database, as pg-boss's `plans` does, so teams on
+  Prisma Migrate, the Supabase CLI, Flyway, dbmate, Atlas, Knex or
+  node-pg-migrate can paste it into their own migration. `--dry-run`
+  prints migration names only today, and `mnemocyte sql` prints a fresh
+  schema, not an upgrade.
+- [ ] `feat/scope-key-expression-index`: migration 0005 adds a unique
+  index on `(namespace, entity_id, coalesce(agent_id, ''),
+  coalesce(session_id, ''), key) WHERE key IS NOT NULL`, the shape the
+  libSQL backend already uses, and keyed writes name it in `ON CONFLICT`.
+  Drizzle can declare it, so `generate --adapter drizzle` writes it into
+  the schema file and the custom migration for it goes away.
+  `getMemoryByKey` filters on `agent_id IS NULL`, which cannot use the new
+  index, so rewrite it and bring `EXPLAIN (ANALYZE, BUFFERS)` evidence for
+  both queries. Decided (decision 80): the old `NULLS NOT DISTINCT` index
+  stays for one minor release, so clients on the previous version keep
+  their `ON CONFLICT` target during a deploy; `drizzle-kit push` stays
+  unsupported (see Later).
+- [ ] `docs/migration-tools`: a guide section on applying Mnemocyte's
+  migrations with the team's own tool (Prisma Migrate with
+  `--create-only`, the Supabase CLI, Flyway, dbmate, Knex,
+  node-pg-migrate), built on `feat/migrate-sql-plans`.
+- [ ] `feat/drop-old-key-index`: a migration drops the old
+  `NULLS NOT DISTINCT` key index that `feat/scope-key-expression-index`
+  keeps for clients on the previous minor (decision 80), so writes
+  maintain one key index again. Ship it at least one minor after the
+  release with 0005, and say in the release text that apps still on a
+  version before that release lose their `ON CONFLICT` target, so they
+  must upgrade before this migration runs. Check what `fresh-install.sql`,
+  `mnemocyte sql` and `generate --adapter drizzle` write for the key
+  index at that point.
 
 ## Later
 

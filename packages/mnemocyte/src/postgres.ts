@@ -7,6 +7,7 @@ import type { MnemocyteStoreConfig } from "./types.js";
 
 export type {
 	DrizzleClient,
+	NeonHttpClient,
 	PostgresClient,
 	PostgresJsClient,
 } from "./sql/clients.js";
@@ -30,8 +31,9 @@ export type {
 export interface PostgresStoreOptions {
 	/**
 	 * The caller-owned database client: a postgres.js `sql` function, a
-	 * node-postgres `Pool`, a PGlite instance, a Drizzle instance over one of
-	 * them, or a hand-written {@link SqlExecutor}.
+	 * node-postgres `Pool`, a PGlite instance, Neon's `neon()` function, a
+	 * Drizzle instance over one of them, or a hand-written
+	 * {@link SqlExecutor}.
 	 */
 	client: PostgresClient;
 	/**

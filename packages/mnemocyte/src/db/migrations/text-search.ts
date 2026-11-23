@@ -158,7 +158,7 @@ export async function setPostgresTextSearchConfig(
 	if (transaction === undefined) {
 		throw new MnemocyteError({
 			message:
-				"setTextSearchConfig needs an executor with interactive transactions (SqlExecutor.transaction). Run it over a regular connection, not a stateless HTTP driver.",
+				"setTextSearchConfig needs interactive transactions (SqlExecutor.transaction), which stateless HTTP drivers such as Neon's neon() function do not have. Run it over a Pool on the same database (from @neondatabase/serverless or pg), or run mnemocyte text-search on DATABASE_URL without a memory file.",
 			code: "CONFIG",
 			reason: "INVALID_OPTION",
 		});

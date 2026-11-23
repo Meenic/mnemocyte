@@ -35,6 +35,27 @@ function fakePool() {
 	};
 }
 
+/**
+ * A function with Neon's HTTP `query`, `unsafe` and `transaction` (1.x).
+ * Its queries are lazy, as the driver's are: nothing runs until awaited.
+ */
+function fakeNeon() {
+	const query = vi.fn((text: string) => ({
+		text,
+		// biome-ignore lint/suspicious/noThenProperty: the driver's queries are thenables
+		then: (resolve: (rows: unknown[]) => unknown) => resolve([{ via: "neon" }]),
+	}));
+	const transaction = vi.fn(
+		async (queries: { text: string }[], _options?: unknown) =>
+			queries.map((item) => [{ via: "neon", text: item.text }]),
+	);
+	return Object.assign(() => undefined, {
+		query,
+		unsafe: vi.fn(),
+		transaction,
+	});
+}
+
 function fakePgClient() {
 	return { query: vi.fn(), connect: vi.fn(), end: vi.fn() };
 }
@@ -62,6 +83,41 @@ describe("client detection", () => {
 		});
 		await expect(via(fakePGlite())).resolves.toEqual({ via: "pglite" });
 		await expect(via(fakePool())).resolves.toEqual({ via: "pg" });
+		await expect(via(fakeNeon())).resolves.toEqual({ via: "neon" });
+	});
+
+	test("maps Neon's HTTP function to query plus batch, without transaction", async () => {
+		const sql = fakeNeon();
+		const executor = toSqlExecutor(sql);
+		expect(executor.transaction).toBeUndefined();
+		await executor.query("SELECT $1", ["a"]);
+		expect(sql.query).toHaveBeenCalledWith("SELECT $1", ["a"], {
+			arrayMode: false,
+			fullResults: false,
+		});
+		const batch = executor.batch;
+		if (!batch) {
+			throw new Error("Expected batch.");
+		}
+		const signal = new AbortController().signal;
+		await expect(
+			batch(
+				[
+					{ sql: "SELECT 1", params: [] },
+					{ sql: "SELECT 2", params: [] },
+				],
+				{ signal },
+			),
+		).resolves.toEqual([
+			[{ via: "neon", text: "SELECT 1" }],
+			[{ via: "neon", text: "SELECT 2" }],
+		]);
+		expect(sql.transaction).toHaveBeenCalledTimes(1);
+		expect(sql.transaction.mock.calls[0]?.[1]).toEqual({
+			arrayMode: false,
+			fullResults: false,
+			fetchOptions: { signal },
+		});
 	});
 
 	test("recognises postgres.js 3.x and 4.x sql functions and rejects a reserved one", async () => {
@@ -101,6 +157,7 @@ describe("client detection", () => {
 			[fakePostgresJs(), "postgres.js"],
 			[fakePGlite(), "pglite"],
 			[fakePool(), "pg"],
+			[fakeNeon(), "neon"],
 		] as const) {
 			await expect(
 				via({ $client: client, select: vi.fn(), transaction: vi.fn() }),
@@ -142,12 +199,8 @@ describe("client detection", () => {
 			"postgres://localhost",
 			{},
 			{ query: async () => [] },
-			// Neon's HTTP `sql` is a function with query and transaction, but its
-			// transaction takes an array of queries, not a callback.
-			Object.assign(() => undefined, {
-				query: vi.fn(),
-				transaction: vi.fn(),
-			}),
+			// A function needs Neon's `transaction` next to `query`.
+			Object.assign(() => undefined, { query: vi.fn() }),
 		]) {
 			expectConfig(() => toSqlExecutor(value), /SqlExecutor/);
 		}

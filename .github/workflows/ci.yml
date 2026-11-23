@@ -385,6 +385,115 @@ jobs:
           LIBSQL_URL: http://127.0.0.1:8080
         run: pnpm run test:integration:libsql
 
+  # The contract over Neon's serverless driver (HTTP and the WebSocket Pool)
+  # through the local Neon proxy, the setup Neon's local-development guide
+  # documents, in front of the pinned pgvector image (decision 76). The proxy
+  # has no releases: its image is pinned by digest and bumped by hand, like
+  # the sqld image above.
+  neon-http:
+    name: Neon HTTP integration
+    needs: changes
+    if: needs.changes.outputs.postgres == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_PROXY_IMAGE: ghcr.io/timowilhelm/local-neon-http-proxy:main@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+      # The connection string's host names the proxy's endpoint. The steps
+      # build the string around this variable: GitGuardian's PostgreSQL
+      # detector skips local hosts but takes db.localtest.me for a real one,
+      # and flags the service's throwaway login next to it.
+      NEON_HOST: db.localtest.me
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Enable pgvector
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      # The proxy image is a debug build (a 628 MB binary) that checks the
+      # password with SCRAM on every HTTP request; at Postgres's default of
+      # 4096 rounds that made each query take about 130 ms, and at 1 round
+      # about 22 ms. The login is a throwaway one, so its hash strength does
+      # not matter. psql reads the password from the container's own
+      # POSTGRES_PASSWORD, so it is not written out here.
+      - name: Store the password with one SCRAM round
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          SET scram_iterations = 1;
+          \getenv password POSTGRES_PASSWORD
+          ALTER ROLE postgres PASSWORD :'password';
+          SQL
+
+      # The proxy runs psql against Postgres once when it starts and exits if
+      # that fails, so it starts here, after the service is healthy, on the
+      # service's network, rather than as a service container that may start
+      # first. GitHub documents the service's label as a hostname for the
+      # job's own container only, so the proxy gets the service's address.
+      - name: Start the Neon proxy
+        env:
+          NETWORK: ${{ job.services.postgres.network }}
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          address="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$POSTGRES_CONTAINER")"
+          docker run --detach --name neon-proxy --network "$NETWORK" \
+            --publish 4444:4444 \
+            --env "PG_CONNECTION_STRING=postgres://postgres:postgres@$address:5432/postgres" \
+            "$NEON_PROXY_IMAGE"
+
+      # The image has no health check; a query over HTTP is the readiness
+      # probe. The host name in the connection string names the endpoint and
+      # is never resolved, so the runner needs no DNS for localtest.me.
+      - name: Wait for the Neon proxy
+        run: >-
+          curl --fail --silent --show-error --retry 30 --retry-all-errors
+          --retry-delay 1 --output /dev/null
+          --header "Neon-Connection-String: postgres://postgres:postgres@$NEON_HOST:5432/postgres"
+          --header "Content-Type: application/json"
+          --data '{"query":"SELECT 1","params":[]}'
+          http://127.0.0.1:4444/sql
+
+      - name: Test Neon
+        env:
+          NEON_FETCH_ENDPOINT: http://127.0.0.1:4444/sql
+          NEON_WS_PROXY: 127.0.0.1:4444/v2
+        run: |
+          export NEON_DATABASE_URL="postgres://postgres:postgres@$NEON_HOST:5432/postgres"
+          pnpm run test:integration:neon
+
+      - name: Neon proxy logs
+        if: failure()
+        run: docker logs neon-proxy
+
   # @mnemocyte/mcp on each supported Node: the built bin loads a TypeScript
   # memory file through type stripping, which changed between them. It
   # builds mnemocyte first and uses its dist/, as an app would. Types, lint
@@ -449,6 +558,7 @@ jobs:
       - links
       - postgres-integration
       - libsql-remote
+      - neon-http
       - mcp
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest

@@ -37,6 +37,7 @@ describe("lazy Postgres package loading", () => {
 		const peers = [
 			"@electric-sql/pglite",
 			"@libsql/client",
+			"@neondatabase/serverless",
 			"ai",
 			"drizzle-orm",
 			"pg",
@@ -61,7 +62,7 @@ describe("lazy Postgres package loading", () => {
 			for (const file of await staticImportGraph(resolve(entry))) {
 				const source = await readFile(file, "utf8");
 				expect(source, file).not.toMatch(
-					/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?|@libsql\/[^"']*|libsql)["'];?\s*$/m,
+					/^import\s+(?:[^"']+\s+from\s+)?["'](?:drizzle-orm(?:\/[^"']*)?|postgres|pg|@electric-sql\/pglite(?:\/[^"']*)?|@libsql\/[^"']*|libsql|@neondatabase\/[^"']*)["'];?\s*$/m,
 				);
 			}
 		},

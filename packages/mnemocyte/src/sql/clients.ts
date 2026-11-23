@@ -6,6 +6,7 @@ import {
 	SUPPORTED_CLIENTS,
 } from "./detect.js";
 import type { SqlExecutor } from "./executor.js";
+import { neonHttpExecutor } from "./neon-http.js";
 import { nodePostgresExecutor } from "./node-postgres.js";
 import { pgliteExecutor } from "./pglite.js";
 import { postgresJs } from "./postgres-js.js";
@@ -15,6 +16,7 @@ export type {
 	PostgresClient,
 	PostgresJsClient,
 } from "./detect.js";
+export type { NeonHttpClient } from "./neon-http.js";
 
 /** Wrap a recognised client in its adapter. */
 export function executorFor(detected: DetectedClient): SqlExecutor {
@@ -27,6 +29,8 @@ export function executorFor(detected: DetectedClient): SqlExecutor {
 			return pgliteExecutor(detected.client);
 		case "node-postgres":
 			return nodePostgresExecutor(detected.client);
+		case "neon-http":
+			return neonHttpExecutor(detected.client);
 		case "executor":
 			return detected.client;
 	}

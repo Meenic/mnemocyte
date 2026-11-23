@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
+      # mnemocyte: vX.Y.Z. @mnemocyte/mcp: mcp-vX.Y.Z (decision 89).
       - "v*"
+      - "mcp-v*"
 
 permissions:
   contents: read
@@ -17,6 +19,9 @@ jobs:
     name: Verify tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      directory: ${{ steps.package.outputs.directory }}
+      version: ${{ steps.package.outputs.version }}
 
     steps:
       - name: Checkout
@@ -25,26 +30,58 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check tag matches package version
+      # The tag names the package: vX.Y.Z is mnemocyte with the root
+      # CHANGELOG.md, mcp-vX.Y.Z is @mnemocyte/mcp with its own.
+      - name: Find the package
+        id: package
         run: |
-          version="$(node -p 'require("./packages/mnemocyte/package.json").version')"
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+          case "$GITHUB_REF_NAME" in
+            mcp-v*)
+              directory=packages/mcp
+              changelog=packages/mcp/CHANGELOG.md
+              version="${GITHUB_REF_NAME#mcp-v}"
+              ;;
+            v*)
+              directory=packages/mnemocyte
+              changelog=CHANGELOG.md
+              version="${GITHUB_REF_NAME#v}"
+              ;;
+            *)
+              echo "::error::Tag $GITHUB_REF_NAME names no package"
+              exit 1
+              ;;
+          esac
+          {
+            echo "directory=$directory"
+            echo "changelog=$changelog"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check tag matches package version
+        env:
+          DIRECTORY: ${{ steps.package.outputs.directory }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          actual="$(node -p "require('./$DIRECTORY/package.json').version")"
+          if [ "$VERSION" != "$actual" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match $DIRECTORY/package.json version $actual"
             exit 1
           fi
 
       # The GitHub release is written from this section and the site shows
-      # it, so the version needs its heading and its compare link.
-      - name: Check CHANGELOG.md has the version
+      # mnemocyte's, so the version needs its heading and its compare link.
+      - name: Check the changelog has the version
+        env:
+          CHANGELOG: ${{ steps.package.outputs.changelog }}
+          VERSION: ${{ steps.package.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          escaped="${version//./\\.}"
-          if ! grep -qE "^## \[$escaped\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\$" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no \"## [$version] - YYYY-MM-DD\" heading"
+          escaped="${VERSION//./\\.}"
+          if ! grep -qE "^## \[$escaped\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\$" "$CHANGELOG"; then
+            echo "::error::$CHANGELOG has no \"## [$VERSION] - YYYY-MM-DD\" heading"
             exit 1
           fi
-          if ! grep -qE "^\[$escaped\]: https://github\.com/Meenic/mnemocyte/" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no \"[$version]: https://github.com/Meenic/mnemocyte/...\" link"
+          if ! grep -qE "^\[$escaped\]: https://github\.com/Meenic/mnemocyte/" "$CHANGELOG"; then
+            echo "::error::$CHANGELOG has no \"[$VERSION]: https://github.com/Meenic/mnemocyte/...\" link"
             exit 1
           fi
 
@@ -68,7 +105,9 @@ jobs:
 
   publish:
     name: Publish to npm
-    needs: ci
+    needs:
+      - verify
+      - ci
     runs-on: ubuntu-latest
     environment: npm
     # The publish step waits up to 10 minutes for npm.
@@ -96,17 +135,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # @mnemocyte/mcp builds against mnemocyte's dist/ (its workspace link),
+      # which pnpm's install does not build.
+      - name: Build mnemocyte for @mnemocyte/mcp
+        if: needs.verify.outputs.directory == 'packages/mcp'
+        run: pnpm --filter mnemocyte build
+
       # pnpm authenticates with trusted publishing (OIDC) and attaches
       # provenance. prepublishOnly builds dist/ first, and prepack copies the
-      # root README.md and LICENSE into the package folder. A tag checkout is a
+      # root README.md and LICENSE into mnemocyte's folder (only LICENSE for
+      # @mnemocyte/mcp, which has a README of its own). A tag checkout is a
       # detached HEAD, so pnpm's branch check is replaced by the verify job.
       # npm scans each upload before it becomes installable; the job waits
-      # up to 10 minutes for the version to appear.
+      # up to 10 minutes for the version to appear. The prerelease check
+      # reads the version, not the tag: mcp-v0.1.0 has a hyphen of its own.
       - name: Publish
-        working-directory: packages/mnemocyte
+        working-directory: ${{ needs.verify.outputs.directory }}
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           dist_tag=latest
-          case "$GITHUB_REF_NAME" in
+          case "$VERSION" in
             *-*) dist_tag=next ;;
           esac
           pnpm publish --no-git-checks --tag "$dist_tag" --publish-wait-timeout 600000
@@ -117,10 +166,13 @@ jobs:
       # only when "Allow npm dist-tag" is on for the trusted publisher. The
       # version is already published, so a failure here only warns.
       - name: Remove stale next dist-tag
-        if: ${{ !contains(github.ref_name, '-') }}
+        if: ${{ !contains(needs.verify.outputs.version, '-') }}
+        env:
+          DIRECTORY: ${{ needs.verify.outputs.directory }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          name="$(node -p 'require("./packages/mnemocyte/package.json").name')"
-          version="${GITHUB_REF_NAME#v}"
+          name="$(node -p "require('./$DIRECTORY/package.json').name")"
+          version="$VERSION"
           if ! next="$(pnpm view "$name" dist-tags.next)"; then
             echo "::warning::Could not read the next dist-tag; check it with: npm view $name dist-tags"
             exit 0

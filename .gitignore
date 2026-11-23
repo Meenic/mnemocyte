@@ -41,6 +41,9 @@ packages/mnemocyte/test/package/.readme
 # The README and LICENSE copies `pnpm pack` makes (scripts/copy-readme.mjs)
 packages/mnemocyte/README.md
 packages/mnemocyte/LICENSE
+
+# The LICENSE copy `pnpm pack` makes for @mnemocyte/mcp (scripts/copy-license.mjs)
+packages/mcp/LICENSE
 bench-results
 
 # Runtime

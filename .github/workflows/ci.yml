@@ -39,6 +39,7 @@ jobs:
       libsql: ${{ steps.filter.outputs.libsql }}
       site: ${{ steps.filter.outputs.site }}
       links: ${{ steps.filter.outputs.links }}
+      mcp: ${{ steps.filter.outputs.mcp }}
 
     steps:
       # A pull_request checkout is the PR's test merge commit; depth 2 also
@@ -63,7 +64,8 @@ jobs:
           postgres='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           libsql='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           site='^(apps/site/|CHANGELOG\.md$)'
-          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/check-links\.mjs$)'
+          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/check-links\.mjs$|packages/mcp/(README|CHANGELOG)\.md$)'
+          mcp='^(packages/mcp/|packages/mnemocyte/src/|LICENSE$)'
 
           files=''
           all=true
@@ -89,7 +91,7 @@ jobs:
             fi
           fi
 
-          for job in node package postgres libsql site links; do
+          for job in node package postgres libsql site links mcp; do
             run=$all
             if [ "$run" = false ] && grep -qE "${!job}" <<< "$files"; then
               run=true
@@ -383,6 +385,57 @@ jobs:
           LIBSQL_URL: http://127.0.0.1:8080
         run: pnpm run test:integration:libsql
 
+  # @mnemocyte/mcp on each supported Node: the built bin loads a TypeScript
+  # memory file through type stripping, which changed between them. It
+  # builds mnemocyte first and uses its dist/, as an app would. Types, lint
+  # and the packed tarball are checked once, on Node 24.
+  mcp:
+    name: MCP (Node ${{ matrix.node-version }})
+    needs: changes
+    if: needs.changes.outputs.mcp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 22.18
+          - 24
+          - 26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm run test:mcp
+
+      - name: Check types
+        if: matrix.node-version == 24
+        run: pnpm run checktypes:mcp
+
+      - name: Lint
+        if: matrix.node-version == 24
+        run: pnpm lint
+
+      - name: Lint packed tarball
+        if: matrix.node-version == 24
+        run: pnpm run lint:package:mcp
+
   # One check that sums up the run: a job skipped by its if reports success,
   # so this fails only when a job that ran failed or was cancelled.
   ci-ok:
@@ -396,6 +449,7 @@ jobs:
       - links
       - postgres-integration
       - libsql-remote
+      - mcp
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

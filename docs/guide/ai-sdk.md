@@ -38,6 +38,9 @@ Take the entity id from your own session or auth, never from the request
 body. Passing the unbound client (`memory` instead of `memory.for(...)`)
 throws `"CONFIG"`.
 
+MCP clients such as Claude Code and Cursor get the same tools from the
+[`@mnemocyte/mcp`](./mcp.md) server.
+
 Every function here throws `"CONFIG"` for an option it does not take,
 including the keys of `context` and `save`. `extractMemories` also accepts
 a `MemoryTurn` spread into its input, so `finishReason` is allowed.

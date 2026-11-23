@@ -12,8 +12,10 @@ context and maintenance (prune, dedup, consolidation, audit).
 
 Today it is one ESM package (`mnemocyte`, 1.x, in `packages/mnemocyte/`)
 with an in-memory backend, a Postgres + pgvector backend, a libSQL
-backend, embedders over `fetch` and an AI SDK integration. The repository
-is a pnpm workspace: the site is in `apps/site/` and the examples in
+backend, embedders over `fetch` and an AI SDK integration, plus
+`@mnemocyte/mcp` (0.x, in `packages/mcp/`), an MCP server with
+`mnemocyte` as a peer and a release line of its own. The repository is a
+pnpm workspace: the site is in `apps/site/` and the examples in
 `examples/`. The target design is in `docs/ARCHITECTURE.md`; the
 plan to get there is `docs/ROADMAP.md`.
 
@@ -37,7 +39,9 @@ plan to get there is `docs/ROADMAP.md`.
   call.
 - The root `mnemocyte` import stays provider-free. No provider SDKs anywhere;
   embedders use `fetch`. Optional integrations (AI SDK, drivers) are optional
-  peer dependencies behind subpaths.
+  peer dependencies behind subpaths. `@mnemocyte/mcp` is the exception by
+  design: a separate package that depends on the MCP SDK and uses only
+  `mnemocyte`'s public API.
 - Every query that reads or writes memories is scoped. A global operation
   needs an explicit opt-in in its input.
 - Unstable API lives under `client.experimental.*`.
@@ -127,6 +131,7 @@ pnpm test:types        # tsc on the export type tests (needs pnpm build)
 pnpm build             # tsdown to dist/
 pnpm run pack:check    # pnpm pack --dry-run
 pnpm lint:package      # build, pack, publint and attw on the tarball
+pnpm test:mcp          # @mnemocyte/mcp alone; see the other *:mcp scripts
 ```
 
 `pnpm lint:fix` and `pnpm format` write files. `pnpm test:integration` needs

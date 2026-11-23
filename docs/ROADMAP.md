@@ -444,6 +444,15 @@ The items, in order:
   `mcp-v*` tags with `mnemocyte` `^1.1.0` as a peer. The package is in
   [features/mcp.md](./features/mcp.md); the first publish is the
   maintainer's (DEVELOPMENT.md, "Releasing").
+- [x] `docs/architecture-review`: the packaging, the migrations, the
+  repository layout and `src/` re-tested against drizzle-orm and
+  drizzle-kit, Prisma, better-auth, the AI SDK, Mastra, turbomem,
+  Graphile Worker, pg-boss and LangGraph, from their manifests, sources
+  and docs. Decided (decisions 92 to 96): one package stays, with the CLI
+  as its bin; the loader copy becomes a private bundled package
+  (`chore/shared-loader`); the migrations ship as they are; the site and
+  folder names stay; the Postgres and libSQL scope predicates become one
+  (`chore/shared-scope-sql`). No code changed.
 
 ## Drivers, CLI and ORMs
 
@@ -458,9 +467,12 @@ release, since the guide is read from `main`.
 
 - **1.4.0, Next.js on Neon:** `feat/neon-http-driver` to
   `feat/init-detect-app`. `@mnemocyte/mcp` 0.2.0 goes with it, since
-  `feat/cli-env-files` and `feat/cli-server-only` change its copies.
-  `docs/nextjs-recipe` follows once 1.4.0 is on npm.
+  `feat/cli-env-files` and `feat/cli-server-only` change its `.env`
+  loading and the loader it bundles (`chore/shared-loader`, which needs
+  no release, comes before them). `docs/nextjs-recipe` follows once
+  1.4.0 is on npm.
 - **1.5.0, OpenRouter:** `fix/retry-529` and `feat/openrouter-embedder`.
+  `chore/shared-scope-sql` follows it and needs no release.
 - **1.6.0, migration 0005:** `chore/release-schema-notes` first, since this
   release's text needs its schema line, then
   `feat/installation-from-catalog`, `feat/migrate-sql-plans` (so teams on
@@ -499,6 +511,21 @@ release, since the guide is read from `main`.
   configuration from the memory file. Decided (decision 77): a Neon `Pool`
   on `DATABASE_URL_UNPOOLED`, falling back to `DATABASE_URL`, for Neon
   stores; the `postgres` package as today for others.
+- [ ] `chore/shared-loader`: move what the CLI and `mnemocyte-mcp` share
+  to load a memory file (`src/cli/resolve-hook.ts`, `src/cli/tsconfig.ts`
+  and `MEMORY_FILE_NAMES`) into a private workspace package under
+  `packages/` (`"private": true`, for example `@mnemocyte/loader`), a
+  devDependency of both that tsdown bundles into their `dist/`. Then
+  delete `packages/mcp/src/loader/` and `test/loader-copy.test.ts`, and
+  keep the loader's tests in one place. Decided (decision 93), so
+  `feat/cli-server-only` changes the resolve hook once, and
+  `feat/cli-env-files` can put the `.env` order there for both. Check
+  that `pnpm pack` lists the
+  same files, that neither `package.json` gains a dependency, that
+  `lint:package` and `lint:package:mcp` pass, and that the root entry
+  still does not reach the loader. Update DEVELOPMENT.md ("Structure"),
+  features/cli.md and features/mcp.md. No release of its own: users see
+  no change.
 - [ ] `feat/cli-env-files`: the CLI reads `.env.local`, then `.env`, as
   Next.js does, so Next.js users can drop `--env-file .env.local`. `init`
   writes the API key to `.env.local` when that file exists. Decided
@@ -510,9 +537,9 @@ release, since the guide is read from `main`.
   loads in the CLI. The package throws at import outside React's
   `react-server` condition, so a Next.js `memory.ts` that guards itself
   fails every command today. Decided (decision 81): the CLI's resolve hook
-  maps `server-only` alone to an empty module. `@mnemocyte/mcp` holds a
-  copy of that hook (`packages/mcp/src/loader/`, decision 85), and
-  `test/loader-copy.test.ts` there fails until the copy is updated too.
+  maps `server-only` alone to an empty module. After `chore/shared-loader`
+  the hook is in the shared loader package, which `@mnemocyte/mcp`
+  bundles too, so the change is made once (decision 93).
 - [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
   (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
   or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`
@@ -540,6 +567,18 @@ release, since the guide is read from `main`.
   the guide shows pinning with `routing`. `aiSdkEmbedder` learns OpenRouter
   model objects (`provider` is `'openrouter'`) the same way. Decided
   (decision 83): the reported model id drops the vendor prefix.
+- [ ] `chore/shared-scope-sql`: one copy of the scope predicates for both
+  SQL backends. `visibilityConditions`, `selectorConditions` and
+  `exactScopeConditions` in `src/db/queries/memories.ts` and their twins
+  in `src/db/libsql/queries.ts` differ only in the parameter type
+  (`SqlParams` against `LibsqlParams`) and the always-true literal
+  (`TRUE` against `1`), so they move to one module over a small
+  `add(value)` interface both satisfy, with the literal passed in. Also share `driverDetail`
+  (`src/memory/postgres.ts` and `src/memory/libsql.ts`) and the
+  consolidation conflict checks that throw `"CONSOLIDATION_CHANGED"`.
+  Decided (decision 96): the queries themselves stay per dialect. The
+  generated SQL must not change: compare it before and after, and run the
+  contract suite on PGlite and libSQL. No release of its own.
 - [ ] `chore/release-schema-notes`: the release text format in
   DEVELOPMENT.md ("Releasing") gains a line for each schema change: what
   `drizzle-kit generate` will write after `mnemocyte generate`, and whether

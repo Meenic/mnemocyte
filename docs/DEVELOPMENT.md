@@ -1205,29 +1205,38 @@ peer range and waits for that `mnemocyte` release.
    vX.Y.Z`, not marked as latest, so the repository's latest release stays
    `mnemocyte`'s.
 
-The first version cannot go through the workflow: npm configures a
-trusted publisher only for a package that already exists. Step 1 above
-still applies, with two differences: the version is already 0.1.0, so
-only the changelog moves, and 0.1.0 gets no tag (see below), so its link
-is `[0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0`. Then
-the maintainer, once:
+The first version could not go through the workflow: npm configures a
+trusted publisher only for a package that already exists. 0.1.0 was
+published by hand on 2026-11-23, without a tag, so its changelog link is
+`[0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0`. The
+steps, for the record and for any new package:
 
-1. makes sure the `@mnemocyte` scope on npm belongs to them (an
-   organization or user named `mnemocyte`);
-2. publishes 0.1.0 from their own login on an up-to-date `main`:
-   `pnpm --filter mnemocyte build`, then
-   `pnpm publish --access public --no-provenance` in `packages/mcp/`
-   (provenance needs the workflow's OIDC token, and pnpm's docs name
-   `--no-provenance` as the way to publish without it), and does not
-   push an `mcp-v0.1.0` tag, whose workflow would try to publish the
-   version again and fail;
-3. adds the trusted publisher for `@mnemocyte/mcp`: GitHub Actions,
-   `Meenic` / `mnemocyte`, workflow `release.yml`, environment `npm`, with
-   "Allow npm dist-tag", and sets publishing access to "Require two-factor
-   authentication and disallow tokens";
-4. adds `mcp-v*` to the tags the `npm` GitHub environment allows.
+1. Own the scope on npm (here the `mnemocyte` organization, with the
+   maintainer as owner: `npm org ls mnemocyte <user>`).
+2. Sign in with `pnpm login`. pnpm 12 does not use the token `npm login`
+   writes; with only that one, `pnpm whoami` failed with 401 and
+   `pnpm publish` with "404 Not Found" (2026-11-23).
+3. On an up-to-date `main`, `pnpm --filter mnemocyte build`, then
+   `pnpm publish --access public --no-provenance` in the package folder.
+   Provenance needs the workflow's OIDC token, and pnpm's docs name
+   `--no-provenance` as the way to publish without it. Push no tag for
+   this version: its workflow would try to publish it again and fail.
+4. Wait a minute or two. A new package first shows only a public
+   `0.0.0-stage` placeholder, tagged `latest`; once npm has scanned the
+   upload, the real version appears and `latest` moves to it. The
+   placeholder version stays.
+5. Add the trusted publisher: GitHub Actions, `Meenic` / `mnemocyte`,
+   workflow `release.yml`, environment `npm`, with both "Allow npm
+   publish" and "Allow npm dist-tag" ticked. Trusted publishers created
+   after 2026-09-03 allow only `npm stage publish` by default, and the
+   workflow runs a plain `pnpm publish`. These fields cannot be changed
+   later. Then set publishing access to "Require two-factor
+   authentication and disallow tokens".
+6. Add the tag pattern (`mcp-v*`) to the tags the `npm` GitHub
+   environment allows.
 
-From then on, `mcp-v*` tags publish with provenance.
+From then on, `mcp-v*` tags publish with provenance. The first such
+release is also the first run of that path, so watch its `publish` job.
 
 ### Release text
 

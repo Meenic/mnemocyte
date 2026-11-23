@@ -57,9 +57,11 @@ function timeText(m: Measurement): string {
 export class Report {
 	private readonly sections = new Map<string, ReportRow[]>();
 	private readonly notes: string[] = [];
+	private readonly outFile: string | undefined;
 
 	/** Appends every flushed section to `outFile`, creating its folder. */
-	constructor(private readonly outFile: string | undefined) {
+	constructor(outFile: string | undefined) {
+		this.outFile = outFile;
 		if (outFile) {
 			mkdirSync(dirname(outFile), { recursive: true });
 		}

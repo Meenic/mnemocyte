@@ -128,7 +128,7 @@ describe("libSQL client detection", () => {
 describe("libSQL migrations", () => {
 	test("are what the bundling script generates", async () => {
 		const { stdout } = await execFileAsync("node", [
-			"scripts/bundle-libsql-migrations.mjs",
+			"scripts/bundle-libsql-migrations.ts",
 			"--stdout",
 		]);
 		expect(await readFile("src/db/libsql/bundled.ts", "utf8")).toBe(stdout);

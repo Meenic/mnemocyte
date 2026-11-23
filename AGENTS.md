@@ -123,7 +123,7 @@ Run them from the repository root; most pass through to the package
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm checktypes        # tsc for src and tests
+pnpm checktypes        # tsc for src, tests and scripts
 pnpm lint              # read-only Biome check
 pnpm test              # links, build, export type check, unit and package tests
 pnpm test:links        # relative links and #anchors in the Markdown

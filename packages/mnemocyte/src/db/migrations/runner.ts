@@ -31,7 +31,7 @@ import {
 export const MIGRATION_LOCK_KEY = "7885351518266947956";
 
 // pgvector's HNSW index supports `vector` up to 2,000 dimensions; above that
-// the column is `halfvec`. scripts/bundle-migrations.mjs renders
+// the column is `halfvec`. scripts/bundle-migrations.ts renders
 // fresh-install.sql with the same rule; the 4,000-dimension `halfvec` limit
 // is checked by `assertMigrateDimensions`.
 const MAX_VECTOR_DIMENSIONS = 2000;

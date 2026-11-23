@@ -327,7 +327,7 @@ loaded backend of `store: client`.
   differs (`"CONFIG"`) and checks the 1–4,000 bound under the name
   `embedder.dimensions`. An in-memory store resolves with empty lists.
 
-- **Bundled SQL.** `scripts/bundle-migrations.mjs` (`pnpm migration:bundle`)
+- **Bundled SQL.** `scripts/bundle-migrations.ts` (`pnpm migration:bundle`)
   writes every numbered migration and the template into `bundled.ts` as
   template literals, failing on a gap or a repeated number, and renders
   `fresh-install.sql` from the template at 1536 dimensions. Reading `migrations/` at runtime through `import.meta.url` would

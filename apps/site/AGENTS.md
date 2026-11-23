@@ -12,10 +12,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 The website for the `mnemocyte` library, in `apps/site/` of the library's
 repository. `CLAUDE.md` only imports this file. The spec is
-`design/BRIEF.md`. The visual reference is `design/reference/index.html`:
-take layout, values and behaviour from its CSS instead of guessing, but
-pixel-perfect parity is not the goal. A clean, conventional codebase
-comes first.
+`design/BRIEF.md`. The built site is the visual reference: take layout,
+values and behaviour from the tokens in `src/app/globals.css` and the
+existing components instead of guessing, and give a new page the same
+system. The brief describes the pages not built yet. A clean,
+conventional codebase comes first.
 
 ## Architecture
 
@@ -81,7 +82,8 @@ src/
 - Only touch `apps/site/` (and, when the brief says so,
   `pnpm-workspace.yaml`, `.gitignore` and the CI workflow). Never change
   the library (`packages/mnemocyte/`), `examples/`, `scripts/` or
-  `docs/`.
+  `docs/`, except ticking the site item in `docs/ROADMAP.md` that the PR
+  completes.
 - Content comes from the repository (`README.md`, `docs/guide/*`,
   `CHANGELOG.md`, `docs/ROADMAP.md`). Never describe an API the library does
   not have. Keep the tagline "Memory for TypeScript AI apps." word for word.
@@ -131,10 +133,12 @@ the browser preview, so run `build` before previewing a change.
 
 ## Workflow
 
-- `design/PROMPTS.md` holds one prompt per step; its status section says
-  what is done and what is next. Each remaining step is a branch from
-  `main` and a PR, following the repository's git rules. Write
-  conventional commits, such as `feat(site): render guides from docs/guide`.
-- Before you call a step done, run lint, typecheck, test and build. Then check
-  the pages at 1440 × 900 and 390 × 844 against the reference and fix what
-  is clearly off.
+- Site work is queued in `docs/ROADMAP.md` ("Site") like the library's:
+  each item is a branch from `main` and a PR, following the repository's
+  git rules. Write conventional commits, such as
+  `feat(site): render guides from docs/guide`.
+- Before you call a step done, run lint, typecheck, test and build. Then
+  check the pages at 1440 × 900 and 390 × 844 against the built pages and
+  the brief's "Done means" (section 9), and fix what is clearly off.
+- The site is not deployed yet. The maintainer deploys it on Vercel (Root
+  Directory `apps/site`) and then sets the domain in `src/lib/site.ts`.

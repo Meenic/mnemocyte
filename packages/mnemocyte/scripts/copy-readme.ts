@@ -9,10 +9,9 @@
 // how npmjs.com resolves relative links is not documented, so the copy turns
 // every relative link into a GitHub URL on main, like the links in src/.
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, posix } from "node:path";
 
-const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const packageDir = join(import.meta.dirname, "..");
 const root = join(packageDir, "..", "..");
 const readme = join(packageDir, "README.md");
 const license = join(packageDir, "LICENSE");
@@ -22,7 +21,7 @@ const external = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const fence = /^\s*(`{3,}|~{3,})/;
 
 // A relative link from the root README → its GitHub URL.
-function absolute(href) {
+function absolute(href: string): string {
 	if (external.test(href)) return href;
 	const path = posix.normalize(href.replace(/^\//, ""));
 	if (path.startsWith("..")) {
@@ -47,14 +46,14 @@ const lines = readFileSync(join(root, "README.md"), "utf8")
 			return line;
 		}
 		return line
-			.replace(/\]\(\s*(<[^>\n]*>|[^)\s]+)/g, (_match, href) =>
+			.replace(/\]\(\s*(<[^>\n]*>|[^)\s]+)/g, (_match, href: string) =>
 				href.startsWith("<")
 					? `](<${absolute(href.slice(1, -1))}>`
 					: `](${absolute(href)}`,
 			)
 			.replace(
 				/^( {0,3}\[[^\]^][^\]]*\]:\s*)(\S+)/,
-				(_match, label, href) => `${label}${absolute(href)}`,
+				(_match, label: string, href: string) => `${label}${absolute(href)}`,
 			);
 	});
 

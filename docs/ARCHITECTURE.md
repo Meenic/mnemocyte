@@ -1225,7 +1225,7 @@ Dated 2026-10-26 unless noted.
     `chore/repo-tidy`. The last two points landed there, the rest with
     `chore/workspace-layout` (2026-11-21), which kept `docs/`,
     `CHANGELOG.md` and `migrations/` where this list puts them; see
-    DEVELOPMENT.md, "Structure". The one change: `scripts/check-links.mjs`
+    DEVELOPMENT.md, "Structure". The one change: `scripts/check-links.ts`
     stays in a root `scripts/` folder, since it checks the whole
     repository's Markdown, not the package (decision 75).
     - The root keeps only what is about the whole repository: `apps/`,
@@ -1234,9 +1234,10 @@ Dated 2026-10-26 unless noted.
       `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`,
       `LICENSE`, `AGENTS.md`, `CLAUDE.md`, `biome.json`, the private
       workspace `package.json`, `pnpm-workspace.yaml` and
-      `pnpm-lock.yaml`.
+      `pnpm-lock.yaml` (and, from decision 91, a `tsconfig.json` for the
+      root `scripts/`).
     - The published package moves to `packages/mnemocyte/` with its
-      `src/`, `test/`, `migrations/`, `scripts/` (but `check-links.mjs`)
+      `src/`, `test/`, `migrations/`, `scripts/` (but `check-links.ts`)
       and build, test and
       TypeScript configs; the site moves to `apps/site/`. `@mnemocyte/mcp`
       then lands as `packages/mcp/`. Libraries go under `packages/`, things
@@ -1284,7 +1285,7 @@ Dated 2026-10-26 unless noted.
     would first fail on `main`, after the merge.
 56. **github-slugger for Markdown anchors** (2026-11-21, landed): the
     maintainer chose, with `chore/docs-links`, `github-slugger` 2 as a
-    dev dependency for the anchors `scripts/check-links.mjs` checks, over
+    dev dependency for the anchors `scripts/check-links.ts` checks, over
     slug rules written by hand and the lychee binary. GitHub documents
     only basic rules, and `github-slugger` aims to match GitHub's anchors
     and is what rehype-slug uses; it is ESM with no dependencies, and it
@@ -1563,7 +1564,7 @@ Dated 2026-10-26 unless noted.
 74. **One README, copied into the package at pack time** (2026-11-21,
     landed): the maintainer chose, with `chore/workspace-layout`, the root
     `README.md` as the only source, with relative links, and a `prepack`
-    script (`scripts/copy-readme.mjs`) that writes a gitignored copy into
+    script (`scripts/copy-readme.ts`) that writes a gitignored copy into
     `packages/mnemocyte/` with every relative link turned into a
     `https://github.com/Meenic/mnemocyte/blob/main/…` URL, over
     `repository.directory` plus absolute links written by hand. GitHub
@@ -1593,8 +1594,9 @@ Dated 2026-10-26 unless noted.
     one file (`test:prune`, `test:exports`) stay in the package only.
     `lint`, `lint:fix` and `format` run Biome over the whole repository
     from the root, as before, and `test:links` runs the root
-    `scripts/check-links.mjs`, with `github-slugger` and Biome as the
-    root's only dev dependencies. `@mnemocyte/mcp` adds pass-throughs
+    `scripts/check-links.ts`, with `github-slugger` and Biome as the
+    root's only dev dependencies (decision 91 adds `typescript` and
+    `@types/node` to type-check it). `@mnemocyte/mcp` adds pass-throughs
     under its own names when it lands (landed: `build:mcp`,
     `checktypes:mcp`, `test:mcp`, `lint:package:mcp`, `pack:check:mcp`,
     and `build`, `checktypes` and `test` cover both packages).
@@ -1784,3 +1786,34 @@ Dated 2026-10-26 unless noted.
     vendor's numbers come from different models, judges and retrieval
     budgets. The README keeps no comparison table (ROADMAP.md,
     "Discoverability").
+91. **Scripts are TypeScript that Node runs** (2026-11-23, landed with
+    `chore/typescript-scripts`): the maintainer chose to turn the ten
+    `.mjs` scripts (the root `scripts/check-links`, seven in
+    `packages/mnemocyte/scripts/`, two in `packages/mcp/scripts/`) into
+    `.ts` files that `node` runs directly, and to type-check them, over
+    keeping plain JavaScript that no config covered. Node strips types by
+    default from 22.18, the `engines` minimum, with no warning there or
+    from 24.3, and the examples already run that way. Node reads no
+    `tsconfig.json` and refuses to strip types under `node_modules`, which
+    no script needs. Every package's own `tsconfig.json` includes its
+    `scripts/`, so a script is checked against that package's
+    dependencies and `paths`, and `pnpm checktypes` needs no build for
+    them; a single root config was rejected because `bench-libsql`'s
+    `mnemocyte` import would then resolve to `dist/`. The root gets a
+    `tsconfig.json` for its own `scripts/` and `typescript` and
+    `@types/node` as dev dependencies, at the versions the packages
+    already use. `erasableSyntaxOnly` is on in both packages'
+    `tsconfig.build.json`, so `src/`, the tests, the scripts and the
+    README and JSDoc examples all keep to syntax type stripping can
+    remove; four parameter properties became declared fields for it, one
+    in `src/memory/duplicates.ts` (an internal class) and three in the
+    Postgres benchmark helpers. The `@mnemocyte/mcp` test fixtures became
+    `memory.ts` too: the lookup of `memory.mjs` is tested on the CLI's
+    copy (`packages/mnemocyte/test/cli/resolve.test.ts`), and
+    `packages/mcp/test/loader-copy.test.ts` keeps the server's list of
+    file names equal to it. The migrations stay
+    `.sql`: they ship in the tarball for teams that run them with `psql`
+    (guide/postgres.md), and the bundle scripts generate the code copy
+    from them. With the scripts the site's static reference
+    (`apps/site/design/reference/`) went too; the built site is the
+    reference now.

@@ -16,7 +16,7 @@ decisions 62 to 70). Known problems are listed at the end.
 | `src/db/libsql/sql.ts` | `?NNN` parameters, row conversion, `sqlUuidV7`, the blob vector format. |
 | `src/db/libsql/queries.ts` | Every statement the store runs. |
 | `src/db/libsql/migrations.ts` | The runner, `check`'s report, the tokenizer change. |
-| `src/db/libsql/bundled.ts` | Generated from `migrations/libsql/` by `scripts/bundle-libsql-migrations.mjs`. |
+| `src/db/libsql/bundled.ts` | Generated from `migrations/libsql/` by `scripts/bundle-libsql-migrations.ts`. |
 
 ## Clients
 
@@ -175,7 +175,7 @@ each pair once, and 1.2 s after.
 
 ## Measured
 
-`pnpm bench:libsql` (`scripts/bench-libsql.mjs`) builds, then seeds one
+`pnpm bench:libsql` (`scripts/bench-libsql.ts`) builds, then seeds one
 entity of N memories next to another of the same size on a local file and
 times each operation through `dist/`:
 

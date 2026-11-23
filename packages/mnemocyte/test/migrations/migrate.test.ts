@@ -790,7 +790,7 @@ describe("bundled migrations", () => {
 
 	test("are what the bundling script generates", async () => {
 		const { stdout } = await execFileAsync("node", [
-			"scripts/bundle-migrations.mjs",
+			"scripts/bundle-migrations.ts",
 			"--stdout",
 		]);
 

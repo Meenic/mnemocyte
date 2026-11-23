@@ -1,8 +1,12 @@
-# Mnemocyte website: build brief
+# Mnemocyte website: brief
 
-The spec for rebuilding the Mnemocyte site in Next.js. Read it end to end
-before writing code. `reference/index.html` is the visual source of truth: open
-it in a browser, and copy exact CSS values from it rather than guessing.
+The spec for the Mnemocyte site in `apps/site/`. Read it end to end before
+writing code. The built site is the visual reference: build it
+(`pnpm --filter site build`), start it (`pnpm --filter site start`, or the
+`site` entry in `.claude/launch.json` on port 3100) and take values from
+the code rather than guessing: the tokens in `src/app/globals.css` and the
+components in `src/components/`. A new page reuses them. The docs pages
+are not built yet; section 6 gives their layout in full.
 
 ## 1. What we are building
 
@@ -16,34 +20,29 @@ in v1, analytics.
 
 ## 2. Where it lives
 
-Put the site in the library's repository as a pnpm workspace package at
-`site/`. The library stays at the repository root and is not moved.
+The site is the private workspace package `@mnemocyte/site` in
+`apps/site/` of the library's repository. Things that are run or deployed
+go under `apps/`, libraries under `packages/` (ARCHITECTURE.md, decision
+53).
 
-Why here and not in a separate repository:
+It stays in this repository because the docs pages render
+`docs/guide/*.md` and `CHANGELOG.md` straight from it at build time, so a
+docs fix and the site change land in one PR and cannot drift. It never
+reaches npm: both packages publish only what their `files` field lists.
 
-- The docs pages render `docs/guide/*.md` and `CHANGELOG.md` straight from
-  the repository at build time, so the site can never drift from the docs.
-- `docs/ROADMAP.md` already plans a pnpm workspace in this repository for
-  `@mnemocyte/mcp`. This is the first step of that.
-- `package.json` publishes only `dist` and `migrations/*.sql` (`files`), so
-  nothing in `site/` can reach npm.
+The site has its own `tsconfig.json`, its own `biome.json` (`"root": false`,
+Next's Biome defaults, using the root's Biome binary) and its own
+`.gitignore` (`.next`, `out`, `next-env.d.ts`, `.source`). CI's `Site` job
+runs the root `pnpm lint`, then the site's typecheck, test and build.
 
-Repository changes this needs (make them in the first PR):
+Hosting: Vercel, with Root Directory `apps/site`. Vercel detects the pnpm
+workspace and installs from the repository root. The site is not deployed
+yet; the maintainer deploys it and then sets the domain in
+`src/lib/site.ts`.
 
-| File                       | Change                                                                                                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm-workspace.yaml`      | Add `packages: ["site"]`. Keep `allowBuilds`.                                                                                                                                        |
-| `biome.json`               | No change. The site has its own nested `site/biome.json` (`"root": false`) with Next's Biome defaults, so the library's formatting stays separate. Both use the root's Biome binary. |
-| `.gitignore`               | No change. `site/.gitignore` (Next's default) ignores `.next`, `out` and `next-env.d.ts`, plus `.source` (Fumadocs output).                                                          |
-| `tsconfig.json` (root)     | No change: its `include` covers only `src`, `test` and configs. `site/` has its own `tsconfig.json`.                                                                                 |
-| `.github/workflows/ci.yml` | Add a `site` job: `pnpm install --frozen-lockfile`, `pnpm --filter site lint`, `pnpm --filter site typecheck`, `pnpm --filter site build`. Leave the library jobs alone.             |
-| `site/package.json`        | `"name": "@mnemocyte/site"`, `"private": true`. It does not depend on `mnemocyte`.                                                                                                   |
-
-Hosting: Vercel, with Root Directory `site`. Vercel detects the pnpm
-workspace and installs from the repository root.
-
-Never change library code (`src/`, `test/`, `migrations/`, `scripts/`) as
-part of site work.
+Never change library code (`packages/`, `examples/`, `scripts/`, `docs/`)
+as part of site work. The one exception is ticking the site's own item in
+`docs/ROADMAP.md` in the PR that completes it.
 
 ## 3. Stack
 
@@ -58,46 +57,48 @@ the numbers here.
   `text-md`) and the base styles are all in `src/app/globals.css`.
   Tailwind's default colors, font sizes and breakpoints are removed, so
   there is no second palette. Components use tokens only, never a
-  hard-coded color. Every component uses Tailwind utilities; there are no CSS modules.
-  See `site/AGENTS.md` for the architecture.
+  hard-coded color. Every component uses Tailwind utilities; there are no
+  CSS modules. See `apps/site/AGENTS.md` for the architecture.
 - **Fonts with `next/font`:** Geist and Geist Mono, from the `geist`
   package (`geist/font/sans`, `geist/font/mono`), exposing
   `--font-geist-sans` and `--font-geist-mono`.
 - **Docs: Fumadocs, headless.** Use `fumadocs-mdx` and `fumadocs-core` for
   loading, the page tree and the table of contents. Don't use `fumadocs-ui`:
-  its styles fight this design. Build the docs layout from the reference.
-- **Biome** with the site's own `site/biome.json`. No ESLint or Prettier.
+  its styles fight this design. Build the docs layout from section 6.
+- **Biome** with the site's own `apps/site/biome.json`. No ESLint or
+  Prettier.
 
-## 4. Starter code (written, type-checked, linted, tested)
+## 4. Building blocks
 
-These files are in `site/src/`, a faithful TypeScript port of the
-reference's JavaScript.
+The pieces a new page is made of already exist; `apps/site/AGENTS.md` maps
+every folder.
 
-| File                           | What it is                                                                                                                                                                 |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app/globals.css`              | Every color, font, size and space token, the Tailwind theme, base styles and the shared `.key`, `.wrap` and `.lead` classes (Tailwind's `sr-only` replaces the old class). |
-| `lib/colony/pixel.ts`          | Bayer dither, hash, `toAbgr` and `cssVar` helpers.                                                                                                                         |
-| `lib/colony/cell.ts`           | `drawCell`: one cell at any life stage.                                                                                                                                    |
-| `lib/colony/engine.ts`         | `Colony`: the growing, decaying, linking colony. Framework-free.                                                                                                           |
-| `lib/colony/glyph.ts`          | `drawGlyph`: the four 20 × 20 life-cycle icons.                                                                                                                            |
-| `components/art/colony.tsx`   | Client component, `variant="hero"` or `"card"`. Handles layout, the bleed, resize, visibility, reduced motion, pointer and keyboard.                                       |
-| `components/art/lifecycle-icon.tsx` | Client component for one icon, animated at 10 fps when on screen.                                                                                                          |
-| `components/brand/logo.tsx`   | `Logo` (mark + wordmark link) and `LogoMark`.                                                                                                                              |
-| `components/ui/copy-button.tsx` | Copy with "Copied" confirmation for 1.5 s, clipboard fallback and a status message for screen readers.                                                                     |
+| Piece                                               | Where                                                                |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
+| Tokens, Tailwind theme, base styles, `.key`, `.wrap` | `src/app/globals.css`                                               |
+| Buttons, text links, install box, copy button       | `src/components/ui/`                                                 |
+| The ink code slab, highlighted with Shiki           | `src/components/ui/code-block.tsx`, `src/lib/highlight.ts`           |
+| Inline code                                         | `src/components/ui/inline-code.tsx`                                  |
+| Header, nav, mobile menu, footer                    | `src/components/layout/`                                             |
+| Logo and mark                                       | `src/components/brand/logo.tsx`                                      |
+| The colony and the life-cycle icons                 | `src/components/art/`, engine in `src/lib/colony/`                   |
+| Markdown to hast, relative links to GitHub          | `src/lib/markdown.ts`                                                |
 
 The colony reads its colors from tokens at mount. Pass `texts` as a
 module-level constant: a new array on every render restarts the colony.
 
 ## 5. Design system
 
-The tokens in `src/app/globals.css` are the system. The summary below is so you know how to use it.
+The tokens in `src/app/globals.css` are the system. The summary below is so
+you know how to use it.
 
 **Palette.** Background `--bg` #ECEEE8. Near-black `--ink`. One loud color,
 `--primary` #FF4F9A (pink). Pink only ever sits next to ink: ink text on
 pink, or pink text on ink, both about 6:1. Pink never carries text on the
 light background. It appears in only a few places: active cells in the
 artwork, the key word on the pink card, the conversation highlights, the
-latest version on the changelog, and the copy confirmation.
+latest version on the changelog, the copy confirmation and the current
+guide's marker in the docs sidebar (a bar beside the ink link text).
 
 **Type.** Headings use Geist at weight 440 with -0.03em tracking. Hierarchy
 comes from size and space, not weight. One scale:
@@ -140,18 +141,17 @@ full-width strip), 720px (the nav collapses into a Menu button), 560px
 **Header.** Sticky, a plain `--bg` background, no border, no blur.
 
 **States.** Every link and button has hover, `:focus-visible` (2px ink
-outline; light outline on dark blocks) and `:active` states. Copy them from
-the reference.
+outline; light outline on dark blocks) and `:active` states. Reuse the ones
+in `src/components/ui/` instead of writing new ones.
 
 ## 6. Pages
 
-Real routes replace the reference's `#hash` views. The reference only used
-hashes because of where it was hosted.
+Every page is a real route; every route is static.
 
-### `/` Home
+### `/` Home (built)
 
-Six blocks, separated by `--section`. Exact copy and layout are in the
-reference.
+Six blocks, separated by `--section`, in `src/app/(home)/_sections/`. The
+copy there is the current copy.
 
 1. **Hero.** Copy on the left (13fr); the colony on the right (10fr) at the
    height of the copy, bleeding off the right edge of the viewport.
@@ -182,21 +182,68 @@ reference.
    line, **Star on GitHub** and the install box, with `<Colony
    variant="card" />` on the right.
 
-### `/docs` and `/docs/[slug]`
+### `/docs` and `/docs/[slug]` (not built yet)
 
-Rendered from `../docs/guide/*.md` with Fumadocs. `getting-started.md` is
+Rendered from `../../docs/guide/*.md` with Fumadocs. `getting-started.md` is
 `/docs`, and every other guide is `/docs/<file-name>`.
 
-- **Layout** (copy it from the reference's docs view): a 200px sticky
-  sidebar of guides in four groups, then the article, at most 700px. Under
-  960px the sidebar becomes an "All guides" toggle. Add an "On this page"
-  table of contents on the right above 1180px only, if it fits without
-  crowding.
+- **Layout.** A grid of a 200px sidebar and the article, at most 700px
+  wide (`minmax(0, 700px)`), with a gap of `clamp(48px, 8vw, 120px)` and
+  `--page-top` above. Add an "On this page" table of contents on the right
+  above 1180px only, if it fits without crowding.
+- **Sidebar.** Sticky, `--nav-h` plus 40px from the top, aligned to the
+  top of the grid. Four groups, each a small heading in `--ink-soft`,
+  weight 600, 32px above (none above the first) and 10px below, then a list
+  without bullets, 2px between links. A link is a block with 5px above and
+  below, in `--ink-soft`, turning `--ink` on hover with a 0.15s color
+  transition. The current guide (`aria-current="page"`) is `--ink`, weight
+  600, with 12px of left padding and a 3px `--primary` bar on its left edge
+  (an inset box-shadow).
+- **Under 960px.** One column, `--s-3` gap. The sidebar stops being sticky,
+  gets a `--line` hairline below and `--s-2` of bottom padding, and its
+  groups hide behind a full-width "All guides" button: a row with the label
+  left and a `+` right (`aria-hidden`), no background or border, 8px above
+  and below, `--fs-base`, weight 500, with `aria-expanded` and
+  `aria-controls`. Open, the groups show with `--s-2` above them.
 - **Sidebar groups:**
   - Start: Getting started, Recipes, FAQ
   - Reference: API, CLI, Limitations
   - Integrations: Postgres, Embedders, AI SDK, AI coding tools
   - Upgrading: From 0.x
+- **Article.** The page title as on the other pages, then a lead
+  `--s-3` below it. `h2` is `--fs-lg`
+  with -0.03em tracking, `--s-5` above and `--s-2` below. Paragraphs have
+  `--s-2` above and below and a line height of 1.7. Inline code is
+  `InlineCode` (`--fs-sm`, `--surface`, a 1px `--line` border).
+- **Code blocks.** The home page's `CodeBlock` slab with its
+  `CopyButton tone="dark"`, `--s-3` above and below, with 28px 32px 30px of
+  padding and `--fs-sm` text in the article, and the copy button 10px from
+  the top and right. Under 560px the padding is 52px 20px 24px, so the code
+  starts below the button.
+- **Callouts.** A guide's "No database yet?"-style note is an outlined box:
+  a 1px `--line` border, a `--surface` background, `--s-3` above and below
+  and 28px left and right inside, `--s-4` outside. A list of requirements
+  (the getting started guide's Node.js, Postgres with pgvector and an
+  embedder) is a list without bullets with a
+  `--line` hairline above and between rows, each row the name on the left
+  and the value on the right in `--ink-soft`, 14px above and below,
+  `--s-4` above the list.
+- **Footer of each guide.** Previous and next guide links in two equal
+  columns, `--s-2` apart and `--s-6` above, then "Edit this page on
+  GitHub". Each link is a 1px `--line` box with 20px 24px of padding:
+  "Previous" or "Next" in `--fs-sm` `--ink-soft`, 4px above the guide's
+  name at 18px, weight 500. Hover turns the border `--ink` and the
+  background `--surface`; active, the background is `--bg`. The next link
+  is right-aligned. Under 560px the two stack in one column, both
+  left-aligned.
+- **Off-scale values.** The values above are the reference design's,
+  which mixed tokens with raw pixels. Its type sizes outside the scale
+  (13px, 15px, 18px) and its spacing outside the scale (2px, 4px, 5px,
+  10px, 12px, 14px, 20px, 28px, 30px and 32px) become the nearest token,
+  as `apps/site/AGENTS.md` requires. The layout values stay as written:
+  the 200px and 700px columns, the column gap, the sticky offset and the
+  3px marker. Hover and border changes use 0.15s transitions, like the
+  rest of the site.
 - **The guides have no frontmatter.** Relax the Fumadocs schema so `title`
   is optional, and take the title from the first `#` heading. Remove that
   heading from the body, since the layout renders the title.
@@ -206,17 +253,13 @@ Rendered from `../docs/guide/*.md` with Fumadocs. `getting-started.md` is
     `../../CHANGELOG.md` → `/changelog` for the changelog, GitHub blob URLs
     for the rest
   - Heading anchors must match GitHub's slugs, because the guides link to
-    them. Test a few, such as `#4-write-memoryts` and `#use-ollama-instead-of-openai`.
-- **Code blocks:** use the same ink slab as the home page, with a Shiki theme
-  built from the `--code-*` tokens and a `CopyButton tone="dark"` on each
-  block.
-- **Footer of each guide:** previous and next guide links, plus "Edit this
-  page on GitHub".
+    them. Test a few, such as `#4-write-memoryts` and
+    `#use-ollama-instead-of-openai`.
 
-### `/changelog`
+### `/changelog` (built)
 
-Built from `../CHANGELOG.md` at build time. Show 1.0.0 and later. For each
-release:
+Built from `../../CHANGELOG.md` at build time (`src/lib/changelog.ts`). Show
+1.0.0 and later. For each release:
 
 - the version in mono on the left, with its date; the latest version's
   number sits on a pink notched block
@@ -227,9 +270,9 @@ End with "Full changelog, back to 0.1" linking to the file on GitHub. Skip
 "Unreleased". Parse defensively: if a section doesn't match the expected
 shape, render its Markdown as-is instead of failing the build.
 
-### `/community`
+### `/community` (built)
 
-As in the reference:
+In `src/app/community/page.tsx`:
 
 - "Built in the **open**." with "View on GitHub"
 - three ways to help, linking to issues, the guides and `DEVELOPMENT.md`
@@ -237,7 +280,7 @@ As in the reference:
   `docs/ROADMAP.md`. They are hand-written copy; update them when the
   roadmap changes.
 
-### Shared
+### Shared (built)
 
 - **Nav:** the logo, then Docs, Changelog and Community, then a GitHub
   button. Under 720px, a Menu button opens a list; Escape closes it.
@@ -249,7 +292,8 @@ As in the reference:
   - `app/icon.svg` from the logo mark
   - an Open Graph image made from a still colony frame and the tagline,
     with `next/og`
-  - `sitemap.ts` and `robots.ts`
+  - `sitemap.ts` and `robots.ts`; add the docs routes to the sitemap when
+    they land
 - **Links:** repository `https://github.com/Meenic/mnemocyte`, package
   `https://www.npmjs.com/package/mnemocyte`.
 
@@ -282,15 +326,18 @@ As in the reference:
 
 ## 9. Done means
 
-- [ ] Each page matches `reference/index.html` at 1440 × 900 and 390 × 844
-  (compare screenshots side by side).
-- [ ] The hero headline is at most two lines at both widths; nothing scrolls
-  sideways on a phone.
+For every new or changed page:
+
+- [ ] It sits in the same system as the built pages at 1440 × 900 and
+  390 × 844: the same header-to-heading gap, section rhythm, type scale and
+  states. Compare screenshots with an existing page side by side.
+- [ ] Headings are at most two lines at both widths where this brief says
+  so; nothing scrolls sideways on a phone.
 - [ ] Section gaps are equal: measure them, don't eyeball them.
 - [ ] Keyboard: you can tab through everything with a visible focus ring;
   the colony works with the arrow keys; Escape closes the menu.
-- [ ] `pnpm --filter site lint`, `typecheck` and `build` pass, and the root
-  `pnpm lint` still passes.
+- [ ] `pnpm --filter site lint`, `typecheck`, `test` and `build` pass, and
+  the root `pnpm lint` still passes.
 - [ ] Lighthouse: Accessibility ≥ 95, Best Practices ≥ 95, CLS < 0.05.
-- [ ] Every docs link in `docs/guide/*` resolves (write a small link check
-  for the build).
+- [ ] For the docs: every link in `docs/guide/*` resolves to a page or an
+  anchor, checked at build time, and the build fails if one doesn't.

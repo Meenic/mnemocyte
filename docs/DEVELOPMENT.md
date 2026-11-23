@@ -76,8 +76,9 @@ packages/mcp/           the published `@mnemocyte/mcp` package: the MCP server a
 apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
 examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
 docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
-scripts/                check-links.mjs: relative links in the repository's Markdown
-package.json            the private workspace root: packageManager, Biome, github-slugger, pass-through scripts
+scripts/                check-links.ts: relative links in the repository's Markdown
+package.json            the private workspace root: packageManager, Biome, github-slugger, TypeScript for scripts/, pass-through scripts
+tsconfig.json           types for the root scripts/ only
 README.md, CHANGELOG.md, LICENSE, CONTRIBUTING.md, SECURITY.md, AGENTS.md, CLAUDE.md, biome.json, .github/, .vscode/
 ```
 
@@ -92,7 +93,7 @@ npm. Only the root `package.json` sets `packageManager`; `engines` is in
 both.
 
 `README.md` and `LICENSE` live at the root, where GitHub shows them. The
-package's `prepack` script (`scripts/copy-readme.mjs`) copies both into
+package's `prepack` script (`scripts/copy-readme.ts`) copies both into
 `packages/mnemocyte/` before `pnpm pack` and `pnpm publish`, so the
 tarball holds the same files as before the move. The copies are
 gitignored and stay after a pack (`pnpm pack --dry-run` runs `prepack`
@@ -177,7 +178,7 @@ src/
   embedders/            openai, openai-compatible, voyage, cohere, google (fetch only); each file is an export
     internal/           http-embedder.ts (createFetchEmbedder, the fetch core of every HTTP embedder; createHttpEmbedder, OpenAI-shaped; option checks) and provider-error.ts (createProviderError, error body and Retry-After parsing)
 migrations/             numbered SQL migrations, fresh-install.sql, the schema template; libsql/ holds the libSQL template (not shipped)
-scripts/                bundle-migrations.mjs, bundle-libsql-migrations.mjs, bench-libsql.mjs, check-package.mjs, check-readme.mjs, check-jsdoc.mjs, copy-readme.mjs
+scripts/                bundle-migrations.ts, bundle-libsql-migrations.ts, bench-libsql.ts, check-package.ts, check-readme.ts, check-jsdoc.ts, copy-readme.ts
 test/                   unit, package, integration, fixtures (the ones that do not ship), benchmarks
 ```
 
@@ -217,17 +218,32 @@ Node 22.18 fully supports. There are two configs:
   `test/package/tsconfig.json`. `isolatedDeclarations` is on there, so
   every export needs a type a declaration emitter can read without
   inference (explicit return types on exported functions).
-- `tsconfig.json` extends it for the whole repository: `src/`, `test/` and
-  the config files, with `paths` to `src/` and `isolatedDeclarations` off.
-  Editors only pick up files named `tsconfig.json`, so this is the one that
-  must cover the tests; a file no config includes lands in an inferred
-  project, where TypeScript 6 loads no `@types` and `node:` imports and
-  `process` fail. `pnpm checktypes` runs both, so the editor does not flag
-  a missing return type in `src/` but CI does.
+  `erasableSyntaxOnly` is on there too, so no file uses syntax Node's type
+  stripping cannot remove: no `enum`, no runtime `namespace`, no parameter
+  properties (`constructor(readonly x: T)`; declare the field instead).
+- `tsconfig.json` extends it for the whole package: `src/`, `test/`,
+  `scripts/` and the config files, with `paths` to `src/` and
+  `isolatedDeclarations` off. Editors only pick up files named
+  `tsconfig.json`, so this is the one that must cover the tests and
+  scripts; a file no config includes lands in an inferred project, where
+  TypeScript 6 loads no `@types` and `node:` imports and `process` fail.
+  `pnpm checktypes` runs both, so the editor does not flag a missing
+  return type in `src/` but CI does.
 
 `examples/tsconfig.json` stands on its own: no `paths`, so the examples
 resolve `mnemocyte` to `packages/mnemocyte/dist/` through the
 `workspace:*` link (see `pnpm test:examples` under Testing).
+
+The scripts in `scripts/` (the root's and each package's) are TypeScript
+that Node runs directly: `node scripts/<name>.ts`, with no build step,
+through type stripping, which is on by default from Node 22.18 (decision
+91). Node reads no `tsconfig.json`, so a script imports types with
+`import type` (`verbatimModuleSyntax` checks it). No script imports
+another: Node needs the `.ts` extension in such an import, and the
+configs would then need `allowImportingTsExtensions`, which `src/` must
+not get. Each package's `tsconfig.json` covers its own
+`scripts/`, and the root `tsconfig.json` covers the root `scripts/`
+(`pnpm checktypes:scripts`, which `pnpm checktypes` runs first).
  The `.mjs` files ship with source maps that embed
 their sources. The `.d.mts` files ship without maps, because a declaration
 map points at `src/`, which is not published. With `sourcemap` on, rolldown
@@ -540,7 +556,8 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   (`test:checks`, then `test:ci`), `@mnemocyte/mcp`'s `test` (its build
   and Vitest, against the `mnemocyte` build just made), then
   `pnpm test:examples`. `pnpm checktypes` and `pnpm build` cover both
-  packages too; `checktypes` builds `mnemocyte` first, because
+  packages too, and `checktypes` the root `scripts/` as well;
+  `checktypes` builds `mnemocyte` first, because
   `@mnemocyte/mcp` type-checks against its `dist/`. The `*:mcp` scripts
   (`build:mcp`, `checktypes:mcp`, `test:mcp`, `lint:package:mcp`,
   `pack:check:mcp`) run one step for `@mnemocyte/mcp` alone, building
@@ -559,7 +576,7 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   no `test()` blocks, and Vitest's `--typecheck` drops type errors outside
   test blocks, so plain `tsc` checks it instead. The `@ts-expect-error`
   negative cases fail with TS2578 if they stop being errors.
-- `pnpm test:readme` (`scripts/check-readme.mjs`) type-checks the root
+- `pnpm test:readme` (`scripts/check-readme.ts`) type-checks the root
   `README.md` code blocks fenced as `ts` or `typescript`, so it also needs
   a build first. The blocks build on each other, so they are joined in
   order into `test/package/.readme/readme.ts`, and every line outside a
@@ -574,7 +591,7 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   picked up; a block that should not compile needs another fence language.
   No `ts` blocks or an unclosed fence fails the check. `docs/guide/`
   snippets are not checked.
-- `pnpm test:jsdoc` (`scripts/check-jsdoc.mjs`) type-checks the `ts` blocks
+- `pnpm test:jsdoc` (`scripts/check-jsdoc.ts`) type-checks the `ts` blocks
   in `@example` doc comments under `src/` the same way, and needs a build
   first. Each block becomes an `async function` in
   `test/package/.readme/jsdoc.ts` (gitignored, own `tsconfig.jsdoc.json`),
@@ -599,7 +616,7 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   optional peers of `mnemocyte`. Types only: nothing runs, since every
   example needs an API key and some need a database. `examples/` is
   outside the package, so it does not ship.
-- `pnpm test:links` (the root `scripts/check-links.mjs`) checks that
+- `pnpm test:links` (the root `scripts/check-links.ts`) checks that
   relative links and `#anchors` in `README.md`, `CHANGELOG.md`,
   `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `examples/README.md`,
   `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` and
@@ -937,7 +954,7 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
 | `Neon HTTP integration` | `test:integration:neon` through the local Neon proxy in front of Postgres 17, on Node 24 | the same files as the Postgres jobs |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
-| `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/check-links.mjs`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
+| `Links` | `checktypes:scripts` (the root `scripts/`), then `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/**`, the root `tsconfig.json`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
 | `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/mnemocyte/src/**` (the public API it uses and the CLI loader it copies), `LICENSE` |
 
 - A change to `.github/**`, the root `package.json`,

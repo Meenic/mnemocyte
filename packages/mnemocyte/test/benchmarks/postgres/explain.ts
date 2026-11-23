@@ -2,15 +2,21 @@ import type { SqlExecutor, SqlStatement } from "../../../src/sql/executor.js";
 
 /** Thrown by a {@link Recorder} to stop a statement before it runs. */
 export class CapturedStatement extends Error {
-	constructor(readonly statement: SqlStatement) {
+	readonly statement: SqlStatement;
+
+	constructor(statement: SqlStatement) {
 		super("Statement captured for the benchmark.");
+		this.statement = statement;
 	}
 }
 
 /** Thrown inside a measurement transaction to roll it back. */
 class Rollback extends Error {
-	constructor(readonly value: unknown) {
+	readonly value: unknown;
+
+	constructor(value: unknown) {
 		super("Rolled back by the benchmark.");
+		this.value = value;
 	}
 }
 

@@ -38,11 +38,11 @@ Thumbs.db
 coverage
 packages/mnemocyte/test/package/.readme
 
-# The README and LICENSE copies `pnpm pack` makes (scripts/copy-readme.mjs)
+# The README and LICENSE copies `pnpm pack` makes (scripts/copy-readme.ts)
 packages/mnemocyte/README.md
 packages/mnemocyte/LICENSE
 
-# The LICENSE copy `pnpm pack` makes for @mnemocyte/mcp (scripts/copy-license.mjs)
+# The LICENSE copy `pnpm pack` makes for @mnemocyte/mcp (scripts/copy-license.ts)
 packages/mcp/LICENSE
 bench-results
 

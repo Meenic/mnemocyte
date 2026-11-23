@@ -1,8 +1,8 @@
 /*
  * Mnemocyte design tokens, the Tailwind theme built from them, and the base
  * styles. Every color, size and space on the site comes from the tokens;
- * components never hard-code a color. See design/reference/index.html for
- * every rule.
+ * components never hard-code a color. design/BRIEF.md, section 5, says how
+ * to use them.
  */
 @import "tailwindcss";
 
@@ -178,9 +178,9 @@
 
   /*
    * The brief's breakpoints: phone type (560), nav menu (720), one column
-   * (960), docs TOC (above 1180). The reference uses max-width: 560px and so
-   * on, so each min-width is one pixel more: max-sm: is exactly ≤ 560px and
-   * sm: is exactly > 560px.
+   * (960), docs TOC (above 1180). The brief's breakpoints are max-widths
+   * (560px and under is a phone), so each min-width is one pixel more:
+   * max-sm: is exactly ≤ 560px and sm: is exactly > 560px.
    */
   --breakpoint-*: initial;
   --breakpoint-sm: 561px;

@@ -373,6 +373,22 @@ The items, in order:
   package tests keep the 5 s default. No other `test/package` test runs
   scripts in a consumer under the default; the rule is in DEVELOPMENT.md
   ("Testing").
+- [x] `chore/typescript-scripts`: the ten `.mjs` scripts (the root
+  `scripts/check-links`, seven in `packages/mnemocyte/scripts/`, two in
+  `packages/mcp/scripts/`) are `.ts` files Node runs through type
+  stripping, and `pnpm checktypes` covers them: each package's
+  `tsconfig.json` includes its `scripts/`, and a root `tsconfig.json`
+  with `typescript` and `@types/node` as root dev dependencies covers the
+  root's (`pnpm checktypes:scripts`, also run by the Links job).
+  `erasableSyntaxOnly` is on in both packages, which turned four
+  parameter properties into declared fields. The `@mnemocyte/mcp` test
+  fixtures are `memory.ts` now. The migrations stay `.sql`. The site's
+  static reference (`apps/site/design/reference/`) and
+  `apps/site/design/PROMPTS.md` are gone: the built site is the
+  reference, `design/BRIEF.md` describes the docs layout that was only in
+  the reference, and the open site step is the "Site" item below.
+  `pnpm pack --dry-run` lists the same files for both packages
+  (decision 91).
 
 ## Backends and packages
 
@@ -710,6 +726,26 @@ The items, in order:
 - [ ] `feat/mcp-claude-code-hooks`: Claude Code hooks for
   `@mnemocyte/mcp`: relevant memories added before each prompt, and
   extraction after a session on a model the user sets.
+
+## Site
+
+The website in `apps/site/`; its rules are in `apps/site/AGENTS.md` and
+its spec in `apps/site/design/BRIEF.md`. Home, changelog, community and
+the metadata are built; the site is not deployed yet (the maintainer
+deploys it on Vercel).
+
+- [ ] `feat/site-docs`: render `docs/guide/*.md` at `/docs`
+  (getting started) and `/docs/[slug]` with `fumadocs-mdx` and
+  `fumadocs-core`, headless, without `fumadocs-ui` (check their current
+  docs first). The guides have no frontmatter: the title comes from the
+  first heading. Rewrite relative links and match GitHub's heading
+  anchors as BRIEF.md section 6 says, and build the layout it describes:
+  the grouped sidebar with the "All guides" toggle under 960px, the code
+  slabs with a copy button, and the previous, next and "Edit this page on
+  GitHub" links. Add a build-time check that every link in `docs/guide`
+  resolves to a page or an anchor and fails the build if one doesn't, and
+  add the docs routes to `src/app/sitemap.ts`. Until it lands, `/docs` is
+  a 404.
 
 ## Later
 

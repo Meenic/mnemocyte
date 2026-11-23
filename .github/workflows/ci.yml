@@ -64,7 +64,7 @@ jobs:
           postgres='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           libsql='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           site='^(apps/site/|CHANGELOG\.md$)'
-          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/check-links\.mjs$|packages/mcp/(README|CHANGELOG)\.md$)'
+          links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/|tsconfig\.json$|packages/mcp/(README|CHANGELOG)\.md$)'
           mcp='^(packages/mcp/|packages/mnemocyte/src/|LICENSE$)'
 
           files=''
@@ -245,8 +245,9 @@ jobs:
       - name: Build
         run: pnpm --filter site build
 
-  # Relative links and #anchors in the Markdown. It needs only the checkout
-  # (the script lists files with git ls-files) and github-slugger.
+  # Relative links and #anchors in the Markdown, and the types of the root
+  # scripts/. It needs only the checkout (the script lists files with git
+  # ls-files), github-slugger and TypeScript.
   links:
     name: Links
     needs: changes
@@ -271,6 +272,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # A PR that changes only the root scripts/ runs no other job: the
+      # Checks job's `pnpm checktypes` runs only with the Node jobs.
+      - name: Check script types
+        run: pnpm run checktypes:scripts
 
       - name: Check links
         run: pnpm run test:links

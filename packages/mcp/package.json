@@ -47,9 +47,9 @@
 		"checktypes": "tsc --noEmit --project tsconfig.build.json && tsc --noEmit",
 		"test": "pnpm build && vitest run",
 		"test:unit": "vitest run",
-		"lint:package": "pnpm build && node scripts/check-package.mjs",
+		"lint:package": "pnpm build && node scripts/check-package.ts",
 		"pack:check": "pnpm pack --dry-run",
-		"prepack": "node scripts/copy-license.mjs",
+		"prepack": "node scripts/copy-license.ts",
 		"prepublishOnly": "tsdown && tsc --noEmit && pnpm pack --dry-run"
 	},
 	"peerDependencies": {

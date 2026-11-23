@@ -15,11 +15,10 @@
 // one fails.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, posix } from "node:path";
 import GithubSlugger from "github-slugger";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(import.meta.dirname, "..");
 const checked = [
 	/^README\.md$/,
 	/^CHANGELOG\.md$/,
@@ -40,7 +39,7 @@ const files = new Set(
 		.split("\0")
 		.filter((file) => file !== "" && existsSync(join(root, file))),
 );
-const dirs = new Set();
+const dirs = new Set<string>();
 for (const file of files) {
 	for (let dir = posix.dirname(file); dir !== "."; dir = posix.dirname(dir)) {
 		dirs.add(dir);
@@ -55,7 +54,7 @@ const wrappedCodeSpan = /(`+)([\s\S]+?)\1/g;
 const blockStart = /^\s*(?:[-*+]\s|\d+[.)]\s|\||#{1,6}(?:\s|$))/;
 
 // Yields each line outside fenced code blocks with its 1-based number.
-function* proseLines(text) {
+function* proseLines(text: string): Generator<[number, string]> {
 	let open = "";
 	for (const [index, line] of text.split(/\r?\n/).entries()) {
 		const marker = line.match(fence)?.[1];
@@ -75,9 +74,9 @@ function* proseLines(text) {
 
 // Yields [first line number, text] for each run of adjacent non-blank
 // prose lines, joined with "\n".
-function* blocks(text) {
+function* blocks(text: string): Generator<[number, string]> {
 	let start = 0;
-	let lines = [];
+	let lines: string[] = [];
 	for (const [number, line] of proseLines(text)) {
 		const blank = line.trim() === "";
 		if (
@@ -96,7 +95,7 @@ function* blocks(text) {
 }
 
 // The index of the "[" that opens the link text ending at `end`, or -1.
-function textStart(block, end) {
+function textStart(block: string, end: number): number {
 	let depth = 0;
 	for (let i = end - 1; i >= 0; i -= 1) {
 		if (block[i] === "]") depth += 1;
@@ -109,28 +108,28 @@ function textStart(block, end) {
 }
 
 // The text GitHub slugs for a heading: markup removed, code spans kept.
-function headingText(raw) {
+function headingText(raw: string): string {
 	const parts = raw.replace(/\s+#+\s*$/, "").split(codeSpan);
 	let text = "";
-	// split() with one capture group gives [prose, ticks, code, prose, …].
+	// split() with two capture groups gives [prose, ticks, code, prose, …].
 	for (let i = 0; i < parts.length; i += 3) {
-		text += parts[i]
+		text += (parts[i] ?? "")
 			.replace(/!?\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?/g, "$1")
 			.replace(/<[^>]+>/g, "")
 			.replace(/(^|[^\p{L}\p{N}])[*_]+(?=\S)/gu, "$1")
 			.replace(/(?<=\S)[*_]+(?=[^\p{L}\p{N}]|$)/gu, "")
 			.replace(/\\(\p{P})/gu, "$1");
-		if (i + 2 < parts.length) text += parts[i + 2].trim();
+		text += parts[i + 2]?.trim() ?? "";
 	}
 	return text.trim();
 }
 
-const anchorCache = new Map();
+const anchorCache = new Map<string, Set<string>>();
 
-function anchorsOf(file) {
+function anchorsOf(file: string): Set<string> {
 	let anchors = anchorCache.get(file);
 	if (anchors) return anchors;
-	anchors = new Set();
+	anchors = new Set<string>();
 	const slugger = new GithubSlugger();
 	const lines = [...proseLines(readFileSync(join(root, file), "utf8"))];
 	for (const [index, [number, line]] of lines.entries()) {
@@ -143,8 +142,10 @@ function anchorsOf(file) {
 			/^ {0,3}(=+|-+)\s*$/.test(next[1]);
 		if (atx) anchors.add(slugger.slug(headingText(atx[1] ?? "")));
 		else if (setext) anchors.add(slugger.slug(headingText(line)));
-		for (const custom of line.matchAll(/<a\s[^>]*\b(?:id|name)="([^"]+)"/g)) {
-			anchors.add(custom[1]);
+		for (const [, custom] of line.matchAll(
+			/<a\s[^>]*\b(?:id|name)="([^"]+)"/g,
+		)) {
+			if (custom !== undefined) anchors.add(custom);
 		}
 	}
 	anchorCache.set(file, anchors);
@@ -155,7 +156,7 @@ const inlineLink = /\]\(\s*(?:<([^>\n]*)>|([^)\s]+))/g;
 const definition = /^ {0,3}\[[^\]^][^\]]*\]:\s*(?:<([^>]*)>|(\S+))/;
 const external = /^[a-z][a-z0-9+.-]*:|^\/\//i;
 
-function decode(text) {
+function decode(text: string): string | null {
 	try {
 		return decodeURIComponent(text);
 	} catch {
@@ -163,7 +164,7 @@ function decode(text) {
 	}
 }
 
-function check(file, href) {
+function check(file: string, href: string): string | null {
 	const hash = href.indexOf("#");
 	const path = (hash === -1 ? href : href.slice(0, hash)).replace(/\?.*$/, "");
 	const fragment = hash === -1 ? "" : decode(href.slice(hash + 1));
@@ -190,6 +191,14 @@ function check(file, href) {
 	return null;
 }
 
+interface Link {
+	href: string;
+	// Offset of the link in its block, for the line number.
+	index: number;
+	// The link text spans lines; only inline links can.
+	wrapped?: boolean;
+}
+
 const markdown = [...files]
 	.filter((file) => checked.some((pattern) => pattern.test(file)))
 	.sort();
@@ -204,11 +213,11 @@ for (const file of markdown) {
 		const prose = block.replace(wrappedCodeSpan, (span) =>
 			span.replace(/[^\n]/g, " "),
 		);
-		const found = [];
+		const found: Link[] = [];
 		for (const match of prose.matchAll(inlineLink)) {
 			const open = textStart(prose, match.index);
 			found.push({
-				href: match[1] ?? match[2],
+				href: match[1] ?? match[2] ?? "",
 				index: match.index,
 				wrapped: open !== -1 && prose.slice(open, match.index).includes("\n"),
 			});
@@ -216,7 +225,7 @@ for (const file of markdown) {
 		let offset = 0;
 		for (const line of prose.split("\n")) {
 			const def = line.match(definition);
-			if (def) found.push({ href: def[1] ?? def[2], index: offset });
+			if (def) found.push({ href: def[1] ?? def[2] ?? "", index: offset });
 			offset += line.length + 1;
 		}
 		for (const { href, index, wrapped } of found) {

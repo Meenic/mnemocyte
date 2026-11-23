@@ -1,0 +1,25 @@
+{
+	// The repository's own scripts in scripts/, for the editor and
+	// `pnpm checktypes:scripts`. Node runs them as .ts through type
+	// stripping, so only erasable syntax is allowed. Each package and app
+	// has a tsconfig.json of its own.
+	"compilerOptions": {
+		"module": "nodenext",
+		"target": "es2024",
+		"lib": ["es2024"],
+		"types": ["node"],
+		"noEmit": true,
+
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+
+		"strict": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+		"isolatedModules": true,
+		"noUncheckedSideEffectImports": true,
+		"moduleDetection": "force",
+		"skipLibCheck": true
+	},
+	"include": ["scripts/*.ts"]
+}

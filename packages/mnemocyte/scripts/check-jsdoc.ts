@@ -1,6 +1,6 @@
 // Type-checks the ```ts blocks in `@example` doc comments under src/ against
 // the built dist/, the way a consumer imports "mnemocyte". Run through
-// `pnpm test:jsdoc` after a build. See check-readme.mjs for the README.
+// `pnpm test:jsdoc` after a build. See check-readme.ts for the README.
 //
 // Examples use names they never declare (`memory`, `scope`, `userId`, ...),
 // so every block becomes its own async function behind one shared preamble
@@ -14,10 +14,9 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(import.meta.dirname, "..");
 const srcDir = join(root, "src");
 const outDir = join(root, "test", "package", ".readme");
 const outFile = join(outDir, "jsdoc.ts");
@@ -49,7 +48,7 @@ const preamble = [
 	"declare function waitUntil(promise: Promise<unknown>): void;",
 ];
 
-function* sourceFiles(dir) {
+function* sourceFiles(dir: string): Generator<string> {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) yield* sourceFiles(path);
@@ -57,17 +56,29 @@ function* sourceFiles(dir) {
 	}
 }
 
-const fail = (message) => {
+const fail = (message: string): never => {
 	console.error(message);
 	process.exit(1);
 };
 
-// Blocks: { file, line (of the fence), lines: [{ text, line }] }
-const blocks = [];
+/** A line of an example, with its line number in the source file. */
+interface SourceLine {
+	text: string;
+	line: number;
+}
+
+/** An `@example` ts block; `line` is the line of its opening fence. */
+interface Block {
+	file: string;
+	line: number;
+	lines: SourceLine[];
+}
+
+const blocks: Block[] = [];
 for (const path of [...sourceFiles(srcDir)].sort()) {
 	const file = relative(root, path).replaceAll("\\", "/");
 	const lines = readFileSync(path, "utf8").split(/\r?\n/);
-	let current;
+	let current: Block | undefined;
 	let sawExample = false;
 	for (const [index, raw] of lines.entries()) {
 		const text = raw.replace(/^\s*\*\s?/, "");
@@ -97,10 +108,13 @@ for (const path of [...sourceFiles(srcDir)].sort()) {
 if (blocks.length === 0) fail("src: no @example ts blocks found.");
 
 // Merge imports per module; everything else goes into the block's function.
-const modules = new Map();
-const bodies = [];
+const modules = new Map<
+	string,
+	{ defaults: Set<string>; named: Set<string> }
+>();
+const bodies: { block: Block; body: SourceLine[] }[] = [];
 for (const block of blocks) {
-	const body = [];
+	const body: SourceLine[] = [];
 	for (const { text, line } of block.lines) {
 		if (!/^import\s/.test(text)) {
 			body.push({ text, line });
@@ -109,16 +123,16 @@ for (const block of blocks) {
 		const match = text.match(
 			/^import\s+(?:(\w+)\s*,?\s*)?(?:\{([^}]*)\}\s*)?from\s+["']([^"']+)["'];?\s*$/,
 		);
-		if (match === null) {
+		const [, defaultName, named, specifier] =
+			match ??
 			fail(
 				`${block.file}:${line}: unsupported import (use one single-line default or named import per line).`,
 			);
-		}
-		const [, defaultName, named, specifier] = match;
-		if (specifier.startsWith(".")) continue;
+		// The regular expression always captures the specifier.
+		if (specifier === undefined || specifier.startsWith(".")) continue;
 		const entry = modules.get(specifier) ?? {
-			defaults: new Set(),
-			named: new Set(),
+			defaults: new Set<string>(),
+			named: new Set<string>(),
 		};
 		if (defaultName) entry.defaults.add(defaultName);
 		for (const name of (named ?? "").split(",")) {
@@ -130,9 +144,12 @@ for (const block of blocks) {
 }
 
 // Generated file, with a source position for every line that came from src.
-const output = [];
-const origin = [];
-const emit = (text, source) => {
+const output: string[] = [];
+const origin: ({ file: string; line: number } | undefined)[] = [];
+const emit = (
+	text: string,
+	source: { file: string; line: number } | undefined,
+): void => {
 	output.push(text);
 	origin.push(source);
 };
@@ -173,6 +190,14 @@ writeFileSync(
 
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
+// execFileSync fails with an Error that carries the child's stdout and stderr.
+function tscOutput(error: unknown): string {
+	if (typeof error !== "object" || error === null) return String(error);
+	const stdout = "stdout" in error ? String(error.stdout ?? "") : "";
+	const stderr = "stderr" in error ? String(error.stderr ?? "") : "";
+	return `${stdout}${stderr}`;
+}
+
 try {
 	execFileSync(
 		process.execPath,
@@ -182,12 +207,11 @@ try {
 	console.log(`src: ${blocks.length} @example ts blocks type-check.`);
 } catch (error) {
 	const generated = relative(root, outFile).replaceAll("\\", "/");
-	const text = `${error.stdout ?? ""}${error.stderr ?? ""}`;
-	for (const line of text.split(/\r?\n/)) {
+	for (const line of tscOutput(error).split(/\r?\n/)) {
 		if (line === "") continue;
 		const normalized = line.replaceAll("\\", "/");
 		const match = normalized.match(/^(.+?)\((\d+),(\d+)\): (.*)$/);
-		if (match && match[1] === generated) {
+		if (match?.[1] === generated) {
 			const source = origin[Number(match[2]) - 1];
 			console.error(
 				source === undefined

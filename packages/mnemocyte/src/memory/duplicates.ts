@@ -33,10 +33,12 @@ function compareIds(a: string, b: string): number {
 
 /** The candidates' vectors as typed arrays, with their magnitudes. */
 class SimilarityIndex {
+	readonly memories: readonly StoredMemory[];
 	readonly #vectors: Float64Array[];
 	readonly #magnitudes: Float64Array;
 
-	constructor(readonly memories: readonly StoredMemory[]) {
+	constructor(memories: readonly StoredMemory[]) {
+		this.memories = memories;
 		this.#vectors = memories.map((memory) =>
 			Float64Array.from(memory.embedding),
 		);

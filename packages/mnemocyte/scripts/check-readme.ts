@@ -9,17 +9,16 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(import.meta.dirname, "..");
 // The README is the repository's, two folders up.
 const readmePath = join(root, "..", "..", "README.md");
 const outDir = join(root, "test", "package", ".readme");
 const outFile = join(outDir, "readme.ts");
 
 const lines = readFileSync(readmePath, "utf8").split(/\r?\n/);
-const output = [];
+const output: string[] = [];
 let openFence = 0;
 let blocks = 0;
 
@@ -64,6 +63,14 @@ writeFileSync(
 
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
+// execFileSync fails with an Error that carries the child's stdout and stderr.
+function tscOutput(error: unknown): string {
+	if (typeof error !== "object" || error === null) return String(error);
+	const stdout = "stdout" in error ? String(error.stdout ?? "") : "";
+	const stderr = "stderr" in error ? String(error.stderr ?? "") : "";
+	return `${stdout}${stderr}`;
+}
+
 try {
 	execFileSync(
 		process.execPath,
@@ -73,12 +80,11 @@ try {
 	console.log(`README.md: ${blocks} ts blocks type-check.`);
 } catch (error) {
 	const generated = relative(root, outFile).replaceAll("\\", "/");
-	const text = `${error.stdout ?? ""}${error.stderr ?? ""}`;
-	for (const line of text.split(/\r?\n/)) {
+	for (const line of tscOutput(error).split(/\r?\n/)) {
 		if (line === "") continue;
 		const normalized = line.replaceAll("\\", "/");
 		const match = normalized.match(/^(.+?)\((\d+),(\d+)\): (.*)$/);
-		if (match && match[1] === generated) {
+		if (match?.[1] === generated) {
 			console.error(`README.md:${match[2]}:${match[3]}: ${match[4]}`);
 		} else {
 			console.error(line);

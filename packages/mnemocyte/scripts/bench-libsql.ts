@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Times the libSQL store's exact scans on a local file, against dist/ (run
 // `pnpm bench:libsql`, which builds first). One entity holds N memories of
 // 1,536 dimensions, next to a second entity of the same size, so the scope
@@ -9,7 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
-import { createMemory, migrate } from "mnemocyte";
+import { createMemory, type Embedder, migrate } from "mnemocyte";
 
 const DIMENSIONS = 1536;
 const SIZES = (process.env.MNEMOCYTE_BENCH_SIZES ?? "1000,10000,50000")
@@ -18,7 +17,7 @@ const SIZES = (process.env.MNEMOCYTE_BENCH_SIZES ?? "1000,10000,50000")
 const SEARCHES = 20;
 const WORDS = ["amber", "birch", "cedar", "dune", "ember", "fjord", "grove"];
 
-function random(seed) {
+function random(seed: number): () => number {
 	let state = seed >>> 0;
 	return () => {
 		state = (state + 0x6d2b79f5) >>> 0;
@@ -29,7 +28,7 @@ function random(seed) {
 	};
 }
 
-function vectorFor(text) {
+function vectorFor(text: string): number[] {
 	let seed = 2166136261;
 	for (const char of text) {
 		seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
@@ -38,7 +37,7 @@ function vectorFor(text) {
 	return Array.from({ length: DIMENSIONS }, () => next() * 2 - 1);
 }
 
-const embedder = {
+const embedder: Embedder = {
 	model: "bench-libsql",
 	dimensions: DIMENSIONS,
 	async embed(texts) {
@@ -46,18 +45,29 @@ const embedder = {
 	},
 };
 
-function median(values) {
+function median(values: readonly number[]): number {
 	const sorted = [...values].sort((a, b) => a - b);
-	return sorted[Math.floor(sorted.length / 2)];
+	return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
 }
 
-async function time(fn) {
+async function time(fn: () => Promise<unknown>): Promise<number> {
 	const start = performance.now();
 	await fn();
 	return performance.now() - start;
 }
 
-const rows = [];
+interface Row {
+	size: number;
+	seedSeconds: number;
+	hybrid: number;
+	vectorOnly: number;
+	filtered: number;
+	// Measured only up to 10,000 memories.
+	page?: number;
+	top?: number;
+}
+
+const rows: Row[] = [];
 for (const size of SIZES) {
 	const dir = await mkdtemp(join(tmpdir(), "mnemocyte-bench-libsql-"));
 	const client = createClient({
@@ -86,9 +96,9 @@ for (const size of SIZES) {
 	const seedSeconds = (performance.now() - seedStart) / 1000;
 	const scope = { namespace: "bench", entityId: "measured" };
 
-	const hybrid = [];
-	const vectorOnly = [];
-	const filtered = [];
+	const hybrid: number[] = [];
+	const vectorOnly: number[] = [];
+	const filtered: number[] = [];
 	for (let query = 0; query < SEARCHES; query += 1) {
 		hybrid.push(
 			await time(() =>
@@ -111,7 +121,7 @@ for (const size of SIZES) {
 			),
 		);
 	}
-	const row = {
+	const row: Row = {
 		size,
 		seedSeconds,
 		hybrid: median(hybrid),
@@ -140,7 +150,8 @@ for (const size of SIZES) {
 	process.stderr.write(`size ${size} done\n`);
 }
 
-const ms = (value) => (value === undefined ? "-" : `${value.toFixed(1)} ms`);
+const ms = (value: number | undefined): string =>
+	value === undefined ? "-" : `${value.toFixed(1)} ms`;
 console.log(
 	`Node ${process.version}, ${process.platform} ${process.arch}, ${DIMENSIONS} dimensions, median of ${SEARCHES} searches (limit 10).\n`,
 );

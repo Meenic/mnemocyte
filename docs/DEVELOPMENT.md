@@ -158,6 +158,7 @@ src/
     clients.ts          executorFor / toSqlExecutor: detected client → its adapter
     postgres-js.ts      the postgres.js adapter (internal)
     node-postgres.ts    the node-postgres Pool adapter
+    neon-http.ts        the Neon HTTP adapter (neon() from @neondatabase/serverless): query plus batch, no transaction
     pglite.ts           the PGlite adapter
     scoped.ts           transaction executor with savepoints (pg, PGlite)
   db/
@@ -193,9 +194,10 @@ import them from `src/store-test/` like any other source file.
 `src/embedders/*.ts`. `dist/cli.mjs` is the
 `mnemocyte` bin (`bin` in `package.json`), not an export. The package has
 no runtime dependencies. `postgres`, `pg`, `@electric-sql/pglite`,
-`@libsql/client` and `drizzle-orm` are optional peer dependencies at the
+`@libsql/client`, `@neondatabase/serverless` (`>=1.0`) and `drizzle-orm`
+are optional peer dependencies at the
 versions the tests run; source files import at most their types
-(`postgres` and `drizzle-orm` only; the libSQL client types are
+(`postgres` and `drizzle-orm` only; the libSQL and Neon client types are
 structural), so no built entry imports a driver (a package test follows
 each entry's static imports to check this). They are also dev
 dependencies, with `@types/pg` and `@electric-sql/pglite-pgvector`. `ai` is an optional peer too
@@ -526,7 +528,7 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
 | `unit` | `test/**/*.test.ts` except integration, contract, package, benchmarks | `src/` through aliases | `pnpm test:unit` |
 | `contract` | `test/contract/**/*.test.ts` | `src/` through aliases | `pnpm test:contract` |
 | `package` | `test/package/*.test.ts` | built `dist/` through self-reference | `pnpm test:exports` |
-| `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` (`pnpm test:integration:libsql` for the libSQL server file alone) |
+| `integration` | `test/integration/**/*.test.ts` | `src/` through aliases | `pnpm test:integration` (`pnpm test:integration:libsql` for the libSQL server file alone, `pnpm test:integration:neon` for the Neon file) |
 
 - `unit` and `integration` map `mnemocyte` to `src/` with `resolve.alias`,
   and `tsconfig.json` does the same with `paths`. The `package` project
@@ -634,9 +636,10 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   relative paths, so GNU tar, bsdtar and Windows' `tar.exe` all work.
   Each test file that needs it copies the package into a temporary
   consumer of its own (`createPackedConsumer` in `packed-consumer.ts`)
-  with `drizzle-orm`, `postgres`, `pg`, PGlite, `@libsql/client` and `ai`
-  absent. A test that runs scripts in a consumer takes a 30 s timeout of
-  its own (the third argument to `test`): `libsql.test.ts` hit Vitest's
+  with `drizzle-orm`, `postgres`, `pg`, PGlite, `@libsql/client`,
+  `@neondatabase/serverless` and `ai` absent. A test that runs scripts in
+  a consumer takes a 30 s timeout of its own (the third argument to
+  `test`): `libsql.test.ts` hit Vitest's
   5 s default once in a loaded `pnpm test` on Windows. The in-process
   package tests keep the default. In `lazy-postgres.test.ts` the
   consumer runs an in-memory client from ESM and, through `require()`, a
@@ -775,6 +778,17 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   migrates (adopting an existing schema), works in its own namespaces,
   deletes them afterwards, and uses the integration files' embedding model
   name so it can share their database.
+  `test/integration/neon.test.ts` runs it over Neon's serverless driver:
+  `neon()` and Drizzle over it (`neon-http`), which have no
+  `transaction`, so `ContractTarget.migrator` (a Neon `Pool`) migrates
+  for them, and the WebSocket `Pool` itself. It reads only
+  `NEON_DATABASE_URL`, `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY`, never
+  `.env`, and skips without the first, so it also runs against a real
+  Neon branch by hand. For a client without `transaction` the suite
+  skips its savepoint test and `migrate` must throw `"CONFIG"` (the
+  shared bound-scope fixture takes `migrates: false` for that); a client
+  with `batch` also runs a test that a batch commits and rolls back as
+  one, with a `set_config(…, true)` reaching the later statements.
 - Contract files open PGlite with `openPGlite({ pgvector })`
   (`test/contract/pglite.ts`), not `PGlite.create`. Without `loadDataDir`,
   PGlite runs initdb on every start: on Node 24 with 8 cores an idle
@@ -918,6 +932,7 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `Package` | `lint:package` (build, pack, publint, attw) | in `packages/mnemocyte/`: `src/**`, `migrations/**`, `scripts/**`, `tsconfig*.json`, `tsdown.config.ts`; and `README.md`, `LICENSE` |
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | in `packages/mnemocyte/`: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
+| `Neon HTTP integration` | `test:integration:neon` through the local Neon proxy in front of Postgres 17, on Node 24 | the same files as the Postgres jobs |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
 | `Links` | `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/check-links.mjs`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
 | `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/mnemocyte/src/**` (the public API it uses and the CLI loader it copies), `LICENSE` |
@@ -992,6 +1007,42 @@ when the release calls it (`workflow_call`). It has these jobs:
   ```bash
   docker buildx imagetools inspect ghcr.io/tursodatabase/libsql-server:latest --format '{{.Manifest.Digest}}'
   ```
+- `Neon HTTP integration` (decision 76) runs Neon's driver against
+  `pgvector/pgvector:0.8.7-pg17`, the version Neon's local-development
+  guide uses, through `ghcr.io/timowilhelm/local-neon-http-proxy`, the
+  proxy that guide documents: Neon's own proxy binary (its log reports
+  `git:58abce0`) behind Caddy, which serves `/sql` over HTTP and `/v2`
+  over WebSockets on port 4444. The Postgres service gets no port; the
+  proxy starts with `docker run` on `job.services.postgres.network` after
+  pgvector is enabled, because its start script runs `psql` once and exits
+  when Postgres is not ready yet, which a service container could hit. It
+  connects to the service's IP address, read with `docker inspect`: GitHub
+  documents the service's label as a hostname for the job's own container,
+  not for others on the network. The image has no health check, so a
+  step posts `SELECT 1` to `/sql` with `curl --retry-all-errors` first.
+  The
+  connection string's host, `db.localtest.me`, only names the endpoint;
+  the driver sends it in a header (HTTP) or as the `address` parameter
+  (WebSockets) and never resolves it (checked with DNS lookups of it made
+  to fail), so `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY` point at
+  `127.0.0.1:4444` and the runner needs no DNS. The proxy logs are printed
+  when the job fails. The image has one tag, `main`, and no releases, so
+  `ci.yml` pins `main@sha256:cd2ae14e…` (built 2026-03-27 from commit
+  `7c86dc3`) and the pin is bumped by hand: compare the digest of `main`
+  with the pin, and when it differs, rerun the job on the new digest
+  before updating `ci.yml` and this bullet:
+
+  ```bash
+  docker buildx imagetools inspect ghcr.io/timowilhelm/local-neon-http-proxy:main --format '{{.Manifest.Digest}}'
+  ```
+
+  To run it locally, start `pgvector/pgvector:0.8.7-pg17` and the proxy on
+  a Docker network of your own (`PG_CONNECTION_STRING` naming the Postgres
+  container, the proxy's port 4444 published), run
+  `CREATE EXTENSION IF NOT EXISTS vector`, then
+  `NEON_DATABASE_URL=postgres://postgres:postgres@db.localtest.me:5432/postgres`,
+  `NEON_FETCH_ENDPOINT=http://127.0.0.1:<port>/sql` and
+  `NEON_WS_PROXY=127.0.0.1:<port>/v2` with `pnpm test:integration:neon`.
 - The Postgres jobs run all four combinations on every PR that changes
   their files (decision 55). They enable pgvector with `docker exec` on
   `job.services.postgres.id`, the service container's id, so `psql` runs
@@ -1046,7 +1097,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   usual time on the last `main` run before this change: Node 15 (1.5 to
   2.5 minutes), Postgres 15 (1 to 1.5), Package 10 (under 30 seconds),
   Site 10 (under a minute), `Changes` and `CI ok` 5. `Checks`, added
-  later, has 10, `Links` 5 and `libSQL server integration` 10.
+  later, has 10, `Links` 5, `libSQL server integration` 10 and
+  `Neon HTTP integration` 15 (the suite took about 5 minutes locally).
 - Both workflows pin each action to a full-length commit SHA with its
   release after it (`actions/checkout@<sha> # v7.0.1`), since the release
   runs `ci.yml` and its publish job holds the npm OIDC token (decision
@@ -1078,8 +1130,8 @@ When to release (agreed 2026-11-15), with no fixed schedule:
   ROADMAP section. Any `Added` or `Deprecated` entry in `[Unreleased]`
   makes the next version a minor.
 - **Major (2.0):** only for changes that break the documented API. The
-  ROADMAP is a work queue, not a version plan; its items ship across 1.x
-  minors.
+  ROADMAP is a work queue; its items ship across 1.x minors, grouped by
+  a section's release plan where it has one ("Drivers, CLI and ORMs").
 - A question about releasing is not a request for one. Open a release PR
   only when the maintainer asks for it.
 

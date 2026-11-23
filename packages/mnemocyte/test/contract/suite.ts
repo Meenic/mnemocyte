@@ -30,6 +30,11 @@ export {
 /** A connected driver client and how to release it. */
 export interface ContractTarget {
 	client: PostgresClient;
+	/**
+	 * A client on the same database to migrate with, for a `client` without
+	 * interactive transactions (Neon's HTTP driver), which `migrate` needs.
+	 */
+	migrator?: PostgresClient;
 	close(): Promise<void>;
 }
 
@@ -71,6 +76,20 @@ export function describeStoreContract(
 					});
 		}
 
+		/** `storeInput()`, or the same store over `migrator` when there is one. */
+		function migrationInput(): ContractStoreInput {
+			const migrator = expectDefined(target, "not connected").migrator;
+			if (migrator === undefined) {
+				return storeInput();
+			}
+			return postgresStore({
+				client: migrator,
+				...(suiteOptions.schemaName === undefined
+					? {}
+					: { schemaName: suiteOptions.schemaName }),
+			});
+		}
+
 		const client = contractClientFactory(storeInput, namespaces);
 
 		/**
@@ -110,7 +129,10 @@ export function describeStoreContract(
 		beforeAll(async () => {
 			target = await connect();
 			executor = toSqlExecutor(target.client);
-			await migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS });
+			await migrate({
+				store: migrationInput(),
+				dimensions: CONTRACT_DIMENSIONS,
+			});
 		}, 120_000);
 
 		afterAll(async () => {
@@ -136,8 +158,15 @@ export function describeStoreContract(
 		}, 120_000);
 
 		test("migrate is a no-op once the schema is current", async () => {
+			if (db().transaction === undefined) {
+				// Without interactive transactions migrate refuses to start.
+				await expectMnemocyteError(
+					migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS }),
+					"CONFIG",
+				);
+			}
 			await expect(
-				migrate({ store: storeInput(), dimensions: CONTRACT_DIMENSIONS }),
+				migrate({ store: migrationInput(), dimensions: CONTRACT_DIMENSIONS }),
 			).resolves.toEqual({
 				applied: [],
 				adopted: [],
@@ -146,7 +175,57 @@ export function describeStoreContract(
 			});
 		});
 
-		test("transactions commit, roll back and nest as savepoints", async () => {
+		test("a batch commits together and rolls back together", async (context) => {
+			const batch = db().batch?.bind(db());
+			if (batch === undefined) {
+				// node-postgres and PGlite: statements go through transaction.
+				context.skip();
+				return;
+			}
+			const { namespace } = client("batch");
+			const insert = (description: string) => ({
+				sql: `INSERT INTO ${tables.events} (id, namespace, entity_id, description, metadata)
+					VALUES (gen_random_uuid(), $1, 'batch', $2, '{}'::jsonb)
+					RETURNING description`,
+				params: [namespace, description],
+			});
+			await expect(
+				batch([
+					{
+						sql: "SELECT set_config('mnemocyte.test', $1, true)",
+						params: ["x"],
+					},
+					{
+						sql: "SELECT current_setting('mnemocyte.test', true) AS value",
+						params: [],
+					},
+					insert("first"),
+					insert("second"),
+				]),
+			).resolves.toEqual([
+				[{ set_config: "x" }],
+				[{ value: "x" }],
+				[{ description: "first" }],
+				[{ description: "second" }],
+			]);
+			await expect(
+				batch([insert("rolled back"), { sql: "SELECT 1 / 0", params: [] }]),
+			).rejects.toThrow();
+			await expect(
+				db().query<{ description: string }>(
+					`SELECT description FROM ${tables.events} WHERE namespace = $1 ORDER BY description`,
+					[namespace],
+				),
+			).resolves.toEqual([{ description: "first" }, { description: "second" }]);
+		});
+
+		test("transactions commit, roll back and nest as savepoints", async (context) => {
+			if (db().transaction === undefined) {
+				// Neon's HTTP driver has no interactive transactions; the batch
+				// test above covers its atomic path.
+				context.skip();
+				return;
+			}
 			const { namespace } = client("tx");
 			const transaction = expectDefined(
 				db().transaction?.bind(db()),
@@ -277,6 +356,14 @@ export function describeStoreContract(
 			}
 		});
 
-		registerSharedContract({ storeInput, client, failAuditWrites });
+		registerSharedContract({
+			storeInput,
+			client,
+			failAuditWrites,
+			// Read when the tests run, after beforeAll connected.
+			get migrates() {
+				return db().transaction !== undefined;
+			},
+		});
 	});
 }

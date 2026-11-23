@@ -5,7 +5,7 @@ const INTEGRATIONS: { paths: string[]; name: string; text: ReactNode }[] = [
   {
     paths: ["mnemocyte/postgres", "mnemocyte/libsql"],
     name: "Postgres or libSQL",
-    text: "Postgres with pgvector 0.8 or later, through postgres.js, node-postgres, PGlite or Drizzle. libSQL as a local file, Turso Cloud or a libSQL server. Prototype with no database at all.",
+    text: "Postgres with pgvector 0.8 or later, through postgres.js, node-postgres, PGlite, Neon's serverless driver or Drizzle. libSQL as a local file, Turso Cloud or a libSQL server. Prototype with no database at all.",
   },
   {
     paths: ["mnemocyte/ai-sdk", "@mnemocyte/mcp"],

@@ -34,8 +34,8 @@ files in `node_modules/mnemocyte/dist` carry JSDoc with examples.
   `reason`, not on `instanceof` or the message.
 - Do not use anything under `client.experimental`. It can change in a minor
   release.
-- `migrate` needs a regular connection with interactive transactions, not
-  Neon's HTTP driver.
+- `migrate` and `setTextSearchConfig` need a connection with interactive
+  transactions, not Neon's HTTP driver: use Neon's `Pool` for them.
 ````
 
 ## Why each rule is there
@@ -113,6 +113,8 @@ Use it only when you accept that, and pin the version.
 ### `migrate` and Neon's HTTP driver
 
 `migrate` runs each migration in a transaction, and Neon's HTTP driver has
-no interactive transactions. Migrate over a regular connection (Neon's
-pooled `Pool` or a direct postgres.js connection). The app can use any
-driver after that. See [limitations](./limitations.md).
+no interactive transactions, so `migrate({ store: neon(url) })` throws
+`"CONFIG"`. Migrate over Neon's `Pool` on the same database instead
+(`migrate({ store: new Pool({ connectionString }), dimensions })`, then
+`pool.end()`). The app keeps using `neon()` after that. See
+[Neon](./postgres.md#neon).

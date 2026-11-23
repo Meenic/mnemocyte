@@ -12,6 +12,8 @@ export async function verifyBoundScope(input: {
 	memory: MemoryClient;
 	defaulted: MemoryClient<true>;
 	namespace: string;
+	/** `false` when the store's `migrate` throws `"CONFIG"` (no transactions). */
+	migrates?: boolean;
 }): Promise<void> {
 	const { memory, defaulted, namespace } = input;
 	const other = `${namespace}_other`;
@@ -150,13 +152,21 @@ export async function verifyBoundScope(input: {
 		expect.objectContaining({ code: "VALIDATION" }),
 	);
 
-	// migrate takes a bound client; the schema is current here.
-	await expect(migrate({ memory: alice })).resolves.toEqual({
-		applied: [],
-		adopted: [],
-		extensionCreated: false,
-		schemaCreated: false,
-	});
+	// migrate takes a bound client; the schema is current here. A store
+	// without interactive transactions (Neon's HTTP driver) refuses to run
+	// it with "CONFIG", after accepting the bound client.
+	if (input.migrates === false) {
+		await expect(migrate({ memory: alice })).rejects.toMatchObject({
+			code: "CONFIG",
+		});
+	} else {
+		await expect(migrate({ memory: alice })).resolves.toEqual({
+			applied: [],
+			adopted: [],
+			extensionCreated: false,
+			schemaCreated: false,
+		});
+	}
 
 	// deleteScope erases the bound scope only.
 	await expect(aliceAgent.deleteScope()).resolves.toEqual({ deletedCount: 1 });

@@ -18,8 +18,11 @@ full-text search and the in-memory store with substrings
 
 ## Which database drivers work?
 
-postgres.js, a node-postgres `Pool`, PGlite, and Drizzle over any of the
-three. A `pg.Client` and other Drizzle drivers throw `"CONFIG"`. For
+postgres.js, a node-postgres `Pool`, PGlite, Neon's HTTP driver (`neon()`
+from `@neondatabase/serverless`), and Drizzle over postgres.js,
+node-postgres, PGlite or Neon's HTTP driver. Neon's `Pool` works as a
+node-postgres pool. A `pg.Client` and other Drizzle
+drivers throw `"CONFIG"`. For
 anything else you can write a `SqlExecutor` by hand. See
 [connect](./postgres.md#connect) and
 [bring another driver](./postgres.md#bring-another-driver).

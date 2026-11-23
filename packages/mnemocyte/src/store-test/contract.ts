@@ -146,6 +146,11 @@ export interface SharedContractHarness {
 	 * audit rollback test is skipped.
 	 */
 	failAuditWrites?: (namespace: string, failing: boolean) => Promise<void>;
+	/**
+	 * `false` when the store's `migrate` throws `"CONFIG"` because its client
+	 * has no interactive transactions (Neon's HTTP driver). Default `true`.
+	 */
+	migrates?: boolean;
 }
 
 /**
@@ -313,6 +318,7 @@ export function registerSharedContract(harness: SharedContractHarness): void {
 				audit: { enabled: true },
 			}),
 			namespace,
+			...(harness.migrates === undefined ? {} : { migrates: harness.migrates }),
 		});
 	});
 

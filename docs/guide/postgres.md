@@ -146,7 +146,8 @@ larger. The choice is recorded in `mnemocyte_meta.vector_type` and fixed
 for the installation; a different `dimensions` later throws `"CONFIG"`.
 
 `migrate` needs a driver with interactive transactions. Run it over a
-regular TCP connection, even if the app itself uses an HTTP driver.
+regular connection, even if the app itself uses Neon's HTTP driver
+([Neon](#neon) shows how).
 
 ### Apply the SQL files yourself
 
@@ -365,11 +366,13 @@ Checks run in this order, and the first match wins:
 1. **postgres.js:** a function with `unsafe` and `begin`, or `unsafe` and
    `savepoint` (the `sql` a `sql.begin` callback receives). A reserved
    connection from `sql.reserve()` has neither and throws `"CONFIG"`.
-2. **Drizzle:** an object with `$client`; Mnemocyte uses that client.
-3. **PGlite:** an object with `query`, `exec` and `transaction`.
-4. **node-postgres `Pool`:** an object with `query`, `connect` and a
+2. **Neon's HTTP driver:** a function with `query` and `transaction`, as
+   `neon()` from `@neondatabase/serverless` 1.x returns.
+3. **Drizzle:** an object with `$client`; Mnemocyte uses that client.
+4. **PGlite:** an object with `query`, `exec` and `transaction`.
+5. **node-postgres `Pool`:** an object with `query`, `connect` and a
    numeric `totalCount`.
-5. **`SqlExecutor`:** an object with `query` and `transaction` or `batch`
+6. **`SqlExecutor`:** an object with `query` and `transaction` or `batch`
    (see [below](#bring-another-driver)).
 
 Anything else throws `"CONFIG"` from `createMemory` (or `postgresStore`)
@@ -392,6 +395,62 @@ different connections, so each transaction checks out one connection with
 
 node-postgres cannot cancel a running query. An aborted `signal` stops the
 next statement; the one already sent runs to the end.
+
+### Neon
+
+Pass the `neon()` function from `@neondatabase/serverless` 1.x:
+
+```ts
+import { neon } from "@neondatabase/serverless";
+
+const sql = neon(process.env.DATABASE_URL!);
+const memory = createMemory({ store: sql, embedder });
+```
+
+A Drizzle instance over it works the same way:
+
+```ts
+import { drizzle } from "drizzle-orm/neon-http";
+
+const db = drizzle({ client: neon(process.env.DATABASE_URL!) });
+const memory = createMemory({ store: db, embedder });
+```
+
+Each statement is one HTTP request. Statements that must run together (the
+settings plus vector query of each search, and `addMany`'s chunks) go out
+as one `sql.transaction([...])`: one request that commits or rolls back as
+a unit. Rows come back as plain objects whatever `arrayMode` or
+`fullResults` you gave `neon()`, and your `fetchOptions` stay in place.
+
+HTTP has no interactive transactions, so `migrate` and
+`setTextSearchConfig` throw `"CONFIG"` on a `neon()` store. Run them over
+Neon's `Pool` on the same database, with the same `schemaName` and
+`textSearchConfig` as the app:
+
+```ts
+import { Pool } from "@neondatabase/serverless";
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+await migrate({ store: pool, dimensions: 1536 });
+await pool.end();
+```
+
+`mnemocyte migrate` and `mnemocyte text-search` fail the same way with a
+memory file whose store is `neon()`. Point `--config` at a second memory
+file whose store is a `Pool`, or run them without a memory file
+([cli.md](./cli.md#without-a-memory-file)). `mnemocyte check` works over
+HTTP.
+
+Neon's `Pool` (over WebSockets) is detected as a node-postgres pool and
+has interactive transactions. In edge runtimes such as Cloudflare Workers
+a `Pool` cannot outlive one request, and Neon's Vercel examples also
+create and end it inside the handler. `neon()` has no such limit, so it
+is the one to pass to a memory client you create once.
+
+An aborted `signal` stops waiting for the response and rejects with
+`"ABORTED"` right away. Neon does not say whether the statement also stops
+on the server, so assume it runs to the end, as with node-postgres: an
+aborted `addMany` may still have saved its memories.
 
 ### PGlite
 
@@ -426,8 +485,9 @@ const memory = createMemory({ store: db, embedder });
 ```
 
 Mnemocyte runs its own SQL on `db.$client` and shares its pool. Supported:
-`drizzle-orm/postgres-js`, `drizzle-orm/node-postgres` with a `Pool`, and
-`drizzle-orm/pglite`; any other Drizzle driver throws `"CONFIG"`. Your
+`drizzle-orm/postgres-js`, `drizzle-orm/node-postgres` with a `Pool`,
+`drizzle-orm/neon-http` ([Neon](#neon)) and `drizzle-orm/pglite`; any
+other Drizzle driver throws `"CONFIG"`. Your
 Drizzle schema does not need to include Mnemocyte's tables, but the
 migrations must be applied. To let drizzle-kit apply them, see
 [Manage the tables with drizzle-kit](#manage-the-tables-with-drizzle-kit).
@@ -480,8 +540,8 @@ the other two (`"CONFIG"` otherwise):
   savepoint when already inside one.
 - `batch(statements)` runs the statements in order in one transaction, all
   or nothing, and returns each one's rows in order. A driver without
-  interactive transactions maps it to its non-interactive transaction,
-  such as Neon's `sql.transaction([...])` over HTTP.
+  interactive transactions maps it to its non-interactive transaction, as
+  the built-in Neon adapter does with `sql.transaction([...])`.
 
 When both exist, Mnemocyte uses `batch`. `migrate` needs `transaction`, so
 run it over a regular connection. Drivers are checked first, so an

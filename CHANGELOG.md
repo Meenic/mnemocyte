@@ -12,6 +12,28 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Neon's serverless driver.** `createMemory({ store })` and
+  `postgresStore({ client })` take the `neon()` function from
+  `@neondatabase/serverless` 1.x, and a Drizzle instance over it
+  (`drizzle-orm/neon-http`), with no `SqlExecutor` to write. Each
+  statement is one HTTP request, and statements that must commit together
+  go out as one `sql.transaction([...])`. `@neondatabase/serverless`
+  (`>=1.0`) is an optional peer, and `NeonHttpClient` is exported from
+  `mnemocyte/postgres`. HTTP has no interactive transactions, so
+  `migrate()` and `setTextSearchConfig()` still throw `"CONFIG"` on such
+  a store; run them over Neon's `Pool`, which now has an integration test
+  of its own ([postgres.md](docs/guide/postgres.md#neon)). An aborted
+  `signal` rejects with `"ABORTED"` at once, but the statement may still
+  finish on the server.
+
+### Changed
+
+- The `"CONFIG"` error that `migrate()` and `setTextSearchConfig()` throw
+  for a client without interactive transactions names Neon's HTTP driver
+  and how to run them instead.
+
 ## [1.3.0] - 2026-11-21
 
 The third minor release: memories can live in libSQL and Turso, and other

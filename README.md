@@ -64,7 +64,8 @@ moves them to Postgres in a few steps.
 ## Works with
 
 - **[Postgres](docs/guide/postgres.md)**
-  with pgvector, through postgres.js, node-postgres, PGlite or Drizzle,
+  with pgvector, through postgres.js, node-postgres, PGlite, Neon's
+  serverless driver or Drizzle,
   with the tables in [drizzle-kit](docs/guide/postgres.md#manage-the-tables-with-drizzle-kit)
   migrations if you like
 - **[libSQL and Turso](docs/guide/libsql.md)**,

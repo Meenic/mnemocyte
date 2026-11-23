@@ -405,10 +405,13 @@ loaded backend of `store: client`.
   `readAppliedVersions`, `readCatalogState`, `installedVersion` and
   `assertContiguous`, without the lock or a transaction; see
   [cli.md](./cli.md#check).
-- **Limits.** Stateless HTTP drivers have no `transaction`, so they cannot
-  migrate or dry-run. There is no `lock_timeout`: `0003` and `0004`
-  wait for their `ACCESS EXCLUSIVE` locks as long as the server allows, and
-  while one waits, statements queued behind it on the same table wait too.
+- **Limits.** Stateless HTTP drivers (Neon's `neon()`, a batch-only
+  `SqlExecutor`) have no `transaction`, so they cannot migrate or dry-run;
+  the `"CONFIG"` message names Neon's `Pool` and the CLI without a memory
+  file as the ways out, until `feat/cli-migrate-direct-connection`.
+  There is no `lock_timeout`: `0003` and `0004` wait for their
+  `ACCESS EXCLUSIVE` locks as long as the server allows, and while one
+  waits, statements queued behind it on the same table wait too.
   Every step is one transaction, so a migration cannot use `CREATE INDEX
   CONCURRENTLY`.
 
@@ -777,6 +780,23 @@ interface SqlExecutor {
   non-interactive transaction: Neon's HTTP `sql.transaction([...])` and D1's
   `batch()` take a list of statements and return a list of results. A
   `set_config(…, true)` in one statement applies to the later ones.
+- The Neon HTTP adapter (`neonHttpExecutor` in `src/sql/neon-http.ts`)
+  wraps the `neon()` function of `@neondatabase/serverless` 1.x in an
+  executor with `query` and `batch` and no `transaction` (ARCHITECTURE
+  decision 76). `query` is `sql.query(text, params, options)`, one HTTP
+  request. `batch` is `sql.transaction([sql.query(…), …], options)`: the
+  queries are lazy thenables that send nothing until awaited, so the
+  transaction sends them all in one request, which Neon runs as one
+  transaction (`Neon-Batch-*` headers are left out, so Neon's defaults
+  apply). An empty batch sends nothing. Every call passes
+  `arrayMode: false` and `fullResults: false`, so rows are plain objects
+  whatever defaults the caller gave `neon()`; the driver applies these per
+  query and per transaction (checked in its source, 1.0.0 and 1.2.1).
+  Values are parsed with pg-types, as node-postgres does, and errors are
+  `NeonDbError`s with pg's fields (`code`, `constraint`), so the error
+  mappings need nothing new. `test/sql/neon-http.test.ts` runs the real
+  `neon()` against a stubbed `neonConfig.fetchFunction` to check the
+  requests it builds.
 - The postgres.js adapter (`postgresJs` in `src/sql/postgres-js.ts`,
   internal since 1.0) wraps a postgres.js 3.4.9+ or 4.x client in an
   executor with both optional methods.
@@ -823,9 +843,10 @@ interface SqlExecutor {
 Writes need no connection held across round trips, which is what
 stateless HTTP drivers (Neon's HTTP driver, D1) require. The guarded deletes
 are one `WITH … DELETE`, and `consolidate` is one `WITH` query (see
-[maintenance.md](./maintenance.md#consolidate)). Only `migrate()`
-needs `transaction`, because each step reads the tracking table and decides
-what to run from it; without one it throws `"CONFIG"`.
+[maintenance.md](./maintenance.md#consolidate)). Only `migrate()` and
+`setTextSearchConfig()` need `transaction`, because each step reads the
+tracking table and decides what to run from it; without one they throw
+`"CONFIG"`. The installation inspection behind `check` needs none.
 
 ### Client detection
 
@@ -844,19 +865,26 @@ first match wins (ARCHITECTURE decisions 21 and 23):
    (`sql.reserve()`) has neither `begin` nor `savepoint` on either major,
    so it falls through to the `"CONFIG"` error: it cannot open a
    transaction.
-2. Drizzle: an object with `$client`, which must match 1, 3 or 4. A
+2. Neon's HTTP driver: a function with `query` and `transaction` →
+   `neonHttpExecutor`. In `@neondatabase/serverless` 1.x `neon()` returns
+   a tagged-template function with `query`, `unsafe` and `transaction` and
+   no `begin` or `savepoint`, so step 1 never takes it; postgres.js's `sql`
+   has no `query`. Its `transaction` takes an array of queries, not a
+   callback, which is why it becomes `batch`.
+3. Drizzle: an object with `$client`, which must match 1, 2, 4 or 5
+   (`drizzle-orm/neon-http`'s `$client` is the `neon()` function). A
    `pg.Client` there gets the error below; anything else gets `"CONFIG"`
    naming the supported Drizzle drivers.
-3. PGlite (or `PGliteWorker`): an object with `query`, `exec` and
+4. PGlite (or `PGliteWorker`): an object with `query`, `exec` and
    `transaction` → `pgliteExecutor`. It comes before the `SqlExecutor`
    check because it has that shape too, but its `query` returns
    `{ rows }`.
-4. node-postgres `Pool`: an object with `query`, `connect` and a numeric
-   `totalCount` → `nodePostgresExecutor`. pg-compatible pools (Neon's
-   serverless `Pool`) match.
-5. `SqlExecutor`: an object with `query` and `transaction` or `batch`,
-   returned unchanged. A function never matches, so Neon's HTTP `sql`
-   (which has `query` and an array-taking `transaction`) is rejected.
+5. node-postgres `Pool`: an object with `query`, `connect` and a numeric
+   `totalCount` → `nodePostgresExecutor`. pg-compatible pools match:
+   Neon's serverless `Pool` is built on pg-pool, and the Neon integration
+   suite runs the contract on it.
+6. `SqlExecutor`: an object with `query` and `transaction` or `batch`,
+   returned unchanged. A function never matches.
 
 An object with `query` and `connect` but no `totalCount` is a `pg.Client`
 and throws `"CONFIG"` asking for a `Pool`: a transaction must run on one
@@ -868,10 +896,11 @@ clients. Messages name what the caller passed: `client` for
 
 The public types are structural (`PostgresJsClient`, a union of the
 `begin` and `savepoint` shapes, `NodePostgresPool`,
-`PGliteClient`, `DrizzleClient`, their union `PostgresClient`), so the
-`.d.mts` files name no driver package either. `MemoryConfig.store` and
-`migrate`'s `store` are `MnemocyteStoreConfig | PostgresClient`, without
-extra `createMemory` overloads, and `mnemocyte` exports `PostgresClient`
+`PGliteClient`, `NeonHttpClient`, `DrizzleClient`, their union
+`PostgresClient`), so the `.d.mts` files name no driver package either.
+`MemoryConfig.store` and `migrate`'s `store` are
+`MnemocyteStoreConfig | PostgresClient`, without extra `createMemory`
+overloads, and `mnemocyte` exports `PostgresClient`
 as a type. A `pg.Client` still type-checks, because its `query` fits
 `SqlExecutor`, whose other methods are optional; it fails at runtime.
 
@@ -1026,7 +1055,16 @@ which on 4.x rejects when the server does not answer within
 `cancel_timeout` (`CANCEL_UNANSWERED`); the adapter catches it, since the
 query rejects on its own. The node-postgres and PGlite adapters
 only check the signal before each statement (see
-[client detection](#client-detection)). postgres.js opens a second connection
+[client detection](#client-detection)). The Neon HTTP adapter passes the
+signal to `fetch` as `fetchOptions: { signal }` (the driver shallow-merges
+it into the caller's own `fetchOptions`, so only a `signal` set there is
+replaced) on `query` and on the whole `transaction`, never per query
+inside it. An abort makes `fetch` reject, which the driver wraps in a
+`NeonDbError` ("Error connecting to database"); the adapter turns any
+failure after the signal fired into `"ABORTED"`. Neon does not document
+whether the server stops the statement when the request goes away, so the
+guide treats it as node-postgres's: the statement may run to the end, and
+an aborted batch may still commit. postgres.js opens a second connection
 for the cancel request and documents that, in a race, it can cancel a
 different query on that backend; Mnemocyte accepts this and rejects the
 caller with `"ABORTED"` either way. Because `consolidate` is one statement, a

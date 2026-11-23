@@ -21,9 +21,10 @@ them.
   `vector` stops at 2,000; `halfvec` indexes stop at 4,000, and `migrate` and
   `mnemocyte sql` refuse larger sizes. Half precision is close to lossless for cosine
   ranking but not bit-for-bit equal to the vectors you sent.
-- **Four drivers are built in.** postgres.js, a node-postgres `Pool`,
-  PGlite, and Drizzle over one of them. A `pg.Client` and other Drizzle
-  drivers throw `"CONFIG"`; anything else needs a hand-written `SqlExecutor`
+- **Five drivers are built in.** postgres.js, a node-postgres `Pool`,
+  PGlite, Neon's HTTP driver (`neon()`, `@neondatabase/serverless` 1.x),
+  and Drizzle over one of them. A `pg.Client` and other Drizzle drivers
+  throw `"CONFIG"`; anything else needs a hand-written `SqlExecutor`
   ([postgres.md](./postgres.md#bring-another-driver)). postgres.js 3.4.9+
   and 4.x both work; a reserved connection (`sql.reserve()`) throws
   `"CONFIG"`, because it cannot open a transaction.
@@ -31,9 +32,16 @@ them.
   `signal` stops the next statement and the call rejects with `"ABORTED"`,
   but a statement already sent runs to the end. postgres.js cancels it on
   the server.
+- **An abort over Neon's HTTP driver may still commit.** The call rejects
+  with `"ABORTED"` as soon as the signal fires, but Neon does not say
+  whether the statement stops on the server. Assume it runs to the end:
+  an aborted `addMany` may still have saved its memories.
 - **`migrate` needs interactive transactions.** It runs each migration in
-  a transaction, so HTTP drivers without one (Neon's HTTP driver) cannot
-  run it; use a regular connection for migrating.
+  a transaction, so HTTP drivers without one (Neon's HTTP driver) throw
+  `"CONFIG"`, and so does `setTextSearchConfig`. Run both over a
+  connection with transactions, such as Neon's `Pool`
+  ([postgres.md](./postgres.md#neon)). The CLI does not open one for you
+  yet.
 - **`migrate` does not move an installation between schemas.** With
   `schemaName` set, a fresh install throws `"CONFIG"`
   (`INSTALLATION_ELSEWHERE`) while `search_path` finds Mnemocyte tables in

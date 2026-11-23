@@ -1539,7 +1539,7 @@ Dated 2026-10-26 unless noted.
     under its own names when it lands (landed: `build:mcp`,
     `checktypes:mcp`, `test:mcp`, `lint:package:mcp`, `pack:check:mcp`,
     and `build`, `checktypes` and `test` cover both packages).
-76. **Neon's HTTP driver is a built-in client** (2026-11-22, queued as
+76. **Neon's HTTP driver is a built-in client** (2026-11-22, landed with
     `feat/neon-http-driver`): the maintainer chose to recognise the
     `neon()` function and a Drizzle `neon-http` `db` rather than leave them
     to a hand-written `SqlExecutor`. Decision 16 already keeps every write
@@ -1554,6 +1554,27 @@ Dated 2026-10-26 unless noted.
     would test the real service but ties every PR to an account, and unit
     tests with a fake would not catch a difference in results. The proxy
     is a community project with no releases, so the pin moves by hand.
+    (2026-11-23, landed) The maintainer chose, with the PR: the job runs
+    on `pgvector/pgvector:0.8.7-pg17` only, the version Neon's guide uses,
+    since nothing says the proxy (built 2026-03-27) was tried with 18; a
+    job of its own (`Neon HTTP integration`, Node 24, the Postgres file
+    list), as decision 71 did for sqld, over a step in the Postgres
+    matrix, which would run it four times and report a proxy failure as a
+    Postgres one; and until `feat/cli-migrate-direct-connection`,
+    `migrate` and `setTextSearchConfig` (dry runs included) keep throwing
+    `"CONFIG"` on a store without `transaction`, with a message that names
+    Neon's `neon()` and the ways out (Neon's `Pool`, or the CLI without a
+    memory file), rather than opening a connection (the `neon()` function
+    does not expose its connection string, and the client creates no
+    connections) or migrating through `batch` (each step reads the
+    tracking table under an advisory lock first). The proxy starts with
+    `docker run` after Postgres is healthy rather than as a service,
+    because it runs `psql` once at start and exits on failure. The peer
+    range is `>=1.0` as the roadmap item set it, and
+    `@neondatabase/serverless` 1.0.0 handles `query`, `transaction` and
+    `fetchOptions` as 1.2.1 does. The rest is in
+    [features/postgres.md](./features/postgres.md#client-detection) and
+    DEVELOPMENT.md ("What CI runs").
 77. **`migrate` opens its own connection for HTTP stores** (2026-11-22,
     queued as `feat/cli-migrate-direct-connection`): the maintainer chose
     this over a clear error. When the memory file's store has no

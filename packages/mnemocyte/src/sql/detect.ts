@@ -1,5 +1,6 @@
 import { MnemocyteError } from "../errors.js";
 import type { SqlExecutor } from "./executor.js";
+import type { NeonHttpClient } from "./neon-http.js";
 import type { NodePostgresPool } from "./node-postgres.js";
 import type { PGliteClient } from "./pglite.js";
 
@@ -25,11 +26,16 @@ export type PostgresJsClient =
 
 /**
  * A Drizzle instance built on postgres.js (`drizzle-orm/postgres-js`),
- * node-postgres (`drizzle-orm/node-postgres`, with a `Pool`) or PGlite
- * (`drizzle-orm/pglite`). Mnemocyte runs its SQL on `db.$client`.
+ * node-postgres (`drizzle-orm/node-postgres`, with a `Pool`), PGlite
+ * (`drizzle-orm/pglite`) or Neon's HTTP driver (`drizzle-orm/neon-http`).
+ * Mnemocyte runs its SQL on `db.$client`.
  */
 export interface DrizzleClient {
-	readonly $client: PostgresJsClient | NodePostgresPool | PGliteClient;
+	readonly $client:
+		| PostgresJsClient
+		| NodePostgresPool
+		| PGliteClient
+		| NeonHttpClient;
 }
 
 /**
@@ -40,6 +46,7 @@ export type PostgresClient =
 	| PostgresJsClient
 	| NodePostgresPool
 	| PGliteClient
+	| NeonHttpClient
 	| DrizzleClient
 	| SqlExecutor;
 
@@ -52,6 +59,7 @@ export type DetectedClient =
 	| { readonly driver: "postgres-js"; readonly client: PostgresJsClient }
 	| { readonly driver: "pglite"; readonly client: PGliteClient }
 	| { readonly driver: "node-postgres"; readonly client: NodePostgresPool }
+	| { readonly driver: "neon-http"; readonly client: NeonHttpClient }
 	| { readonly driver: "executor"; readonly client: SqlExecutor };
 
 /**
@@ -83,7 +91,7 @@ export type ClientSubject = "client" | "store";
 
 /** The clients every "unrecognised" message lists. */
 export const SUPPORTED_CLIENTS =
-	"a postgres.js sql function, a node-postgres Pool, a PGlite instance, a Drizzle instance over one of them, or a SqlExecutor (query plus transaction or batch)";
+	"a postgres.js sql function, a node-postgres Pool, a PGlite instance, Neon's neon() function, a Drizzle instance over one of them, or a SqlExecutor (query plus transaction or batch)";
 
 function hasFunctions(value: object, names: readonly string[]): boolean {
 	const record = value as Record<string, unknown>;
@@ -97,6 +105,16 @@ function isPostgresJs(value: unknown): value is PostgresJsClient {
 		typeof value === "function" &&
 		hasFunctions(value, ["unsafe"]) &&
 		(hasFunctions(value, ["begin"]) || hasFunctions(value, ["savepoint"]))
+	);
+}
+
+/**
+ * Neon's `neon()` function (1.x): a function with `query` and
+ * `transaction`. postgres.js's `sql` has neither, and is checked first.
+ */
+function isNeonHttp(value: unknown): value is NeonHttpClient {
+	return (
+		typeof value === "function" && hasFunctions(value, ["query", "transaction"])
 	);
 }
 
@@ -172,10 +190,16 @@ function isSqlExecutor(value: unknown): value is SqlExecutor {
 	);
 }
 
-/** postgres.js, PGlite or a pg Pool; `undefined` for anything else. */
+/**
+ * postgres.js, Neon's HTTP function, PGlite or a pg Pool; `undefined` for
+ * anything else.
+ */
 function detectDriver(client: unknown): DetectedClient | undefined {
 	if (isPostgresJs(client)) {
 		return { driver: "postgres-js", client };
+	}
+	if (isNeonHttp(client)) {
+		return { driver: "neon-http", client };
 	}
 	// PGlite before the SqlExecutor check: it also has `query` and
 	// `transaction`, but its `query` returns `{ rows }`.
@@ -201,11 +225,12 @@ function nodePostgresClientError(subject: ClientSubject): MnemocyteError {
  * imports no driver. Checks run in this order (ARCHITECTURE decision 21):
  *
  * 1. postgres.js: a function with `unsafe` and `begin` (or `savepoint`).
- * 2. Drizzle: an object with `$client`, which must be one of the drivers
+ * 2. Neon's HTTP driver: a function with `query` and `transaction`.
+ * 3. Drizzle: an object with `$client`, which must be one of the drivers
  *    below or above.
- * 3. PGlite: `query`, `exec` and `transaction`.
- * 4. node-postgres `Pool`: `query`, `connect` and a numeric `totalCount`.
- * 5. A hand-written `SqlExecutor` object: `query` and `transaction` or
+ * 4. PGlite: `query`, `exec` and `transaction`.
+ * 5. node-postgres `Pool`: `query`, `connect` and a numeric `totalCount`.
+ * 6. A hand-written `SqlExecutor` object: `query` and `transaction` or
  *    `batch`.
  *
  * @returns `undefined` when `client` matches none of them, so each caller
@@ -231,7 +256,7 @@ export function detectClient(
 			throw nodePostgresClientError(subject);
 		}
 		throw new MnemocyteError({
-			message: `${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, and drizzle-orm/pglite (and drizzle-orm/libsql through libsqlStore() or createMemory({ store })); for others, implement SqlExecutor.`,
+			message: `${subject} is a Drizzle instance over an unsupported driver. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres with a Pool, drizzle-orm/neon-http and drizzle-orm/pglite (and drizzle-orm/libsql through libsqlStore() or createMemory({ store })); for others, implement SqlExecutor.`,
 			code: "CONFIG",
 			reason: "INVALID_OPTION",
 		});

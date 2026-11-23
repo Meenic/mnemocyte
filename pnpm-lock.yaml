@@ -304,6 +304,9 @@ importers:
       '@libsql/client':
         specifier: ^0.18.0
         version: 0.18.0
+      '@neondatabase/serverless':
+        specifier: ^1.2.1
+        version: 1.2.1
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -318,7 +321,7 @@ importers:
         version: 0.31.11
       drizzle-orm:
         specifier: ^0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.16)(@libsql/client@0.18.0)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1)
+        version: 0.45.4(@electric-sql/pglite@0.5.16)(@libsql/client@0.18.0)(@neondatabase/serverless@1.2.1)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1)
       pg:
         specifier: ^8.23.1
         version: 8.23.1
@@ -1184,6 +1187,10 @@ packages:
 
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
+
+  '@neondatabase/serverless@1.2.1':
+    resolution: {integrity: sha512-PI2JjuyEFE7oZDTkV/s6WP4KEceCwnjQHClfunhysuIATtvcVTBLdA4UgHTnJo7C0mkK+OZ6U7SV1NDnYa0HgA==}
+    engines: {node: '>=19.0.0'}
 
   '@next/env@16.4.6':
     resolution: {integrity: sha512-SunBjJ6t+oBtecS3dTjdVuMhUogP5wD/vrGL5EVuQYM1iS4O5ilL51HkiJ3sPjMzRHiCChvr4dbaSJbR7F3lxA==}
@@ -3453,6 +3460,8 @@ snapshots:
 
   '@neon-rs/load@0.0.4': {}
 
+  '@neondatabase/serverless@1.2.1': {}
+
   '@next/env@16.4.6': {}
 
   '@next/swc-darwin-arm64@16.4.6':
@@ -3890,10 +3899,11 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.2
 
-  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.16)(@libsql/client@0.18.0)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1):
+  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.16)(@libsql/client@0.18.0)(@neondatabase/serverless@1.2.1)(@types/pg@8.23.1)(pg@8.23.1)(postgres@4.1.1):
     optionalDependencies:
       '@electric-sql/pglite': 0.5.16
       '@libsql/client': 0.18.0
+      '@neondatabase/serverless': 1.2.1
       '@types/pg': 8.23.1
       pg: 8.23.1
       postgres: 4.1.1

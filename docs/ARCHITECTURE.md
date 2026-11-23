@@ -274,6 +274,11 @@ it needs dependencies of its own or its own release cadence:
   the user loading the extension on their own connection, it becomes a
   package of its own. Drizzle and Kysely stay in `mnemocyte` for the same
   reason: the user brings the driver, and the drivers are optional peers.
+- **The CLI.** The `mnemocyte` bin stays in `mnemocyte` (decision 92): it
+  has no dependencies of its own and imports internal modules, so in one
+  package the CLI, the migrations and the client are always one version.
+  It moves out only if it needs dependencies, and then pins `mnemocyte`
+  exactly, as `auth` pins `better-auth`.
 - **The public store contract.** Landed (decisions 72 and 73):
   `MemoryStoreV1` at `mnemocyte/store` and the contract suite at
   `mnemocyte/store/test`; see DEVELOPMENT.md, "Store contract". Third-party
@@ -284,7 +289,9 @@ it needs dependencies of its own or its own release cadence:
   package, at `packages/mcp/`, with the MCP SDK and the `mnemocyte-mcp`
   bin, and `mnemocyte` as a peer (`^1.1.0`), the way `@mastra/pg` takes
   `@mastra/core`; it uses only the public API, so it needs no exact pins.
-  See [features/mcp.md](./features/mcp.md).
+  See [features/mcp.md](./features/mcp.md). The memory file loader it
+  shares with the CLI moves to a private workspace package that tsdown
+  bundles into both (decision 93, queued as `chore/shared-loader`).
 - **A first-party split.** If first-party code ever splits
   (`@mnemocyte/core`, `@mnemocyte/postgres`), `mnemocyte` stays an umbrella
   package that depends on them with exact pins, releases with them, and
@@ -314,6 +321,9 @@ Dated 2026-10-26 unless noted.
    as a peer). If first-party code ever splits, `mnemocyte` stays an
    umbrella that re-exports every current import path, so the split is
    non-breaking.
+   (2026-11-23) Re-tested against drizzle-orm, Prisma, better-auth, the AI
+   SDK, Mastra and turbomem in decision 92: the rule holds, and the CLI
+   stays the package's bin.
    Details and the public `MemoryStore` plan are in "Packaging" above.
 2. **Backend order:** Postgres (postgres.js, Drizzle, PGlite, node-postgres)
    → 1.0 → libSQL → SQLite + sqlite-vec when it reaches a stable release
@@ -1720,6 +1730,8 @@ Dated 2026-10-26 unless noted.
     byte-for-byte copies, with a test that fails when they differ, over
     exporting a loader from `mnemocyte`, which would be public API that
     only tools use and would tie this package to a newer `mnemocyte`.
+    (Revised by decision 93: the copy becomes a private package bundled
+    into both, `chore/shared-loader`.)
     The client is recognised by shape (`for`, `search`, `add`,
     `delete`), not the CLI's internal symbol. Found while building: MCP
     clients do not document which folder they start a stdio server in
@@ -1817,3 +1829,210 @@ Dated 2026-10-26 unless noted.
     from them. With the scripts the site's static reference
     (`apps/site/design/reference/`) went too; the built site is the
     reference now.
+92. **One package stays** (2026-11-23, `docs/architecture-review`): after
+    comparing how established libraries ship a core, backends and a CLI,
+    the maintainer kept `mnemocyte` as one package with the CLI as its
+    bin and the backends as subpaths, and kept decision 1's split rule.
+    What their manifests on npm showed that day:
+    - `drizzle-orm` 0.45.4 has no `dependencies` and 29 peers, all
+      optional; every dialect is a subpath. `drizzle-kit` 0.31.11 is apart
+      and depends on `esbuild`, `tsx`, `@esbuild-kit/esm-loader` and
+      `@drizzle-team/brocli`; its docs install it with `-D`.
+    - `prisma` 7.10.1 (42 MB unpacked, six dependencies including
+      `@prisma/engines`) is the CLI, installed with `--save-dev`;
+      `@prisma/client` has one dependency and `prisma` as an optional peer
+      (`*`). npm's `latest` for `prisma` was 8.0.0-rc.35 that day.
+    - `better-auth` 1.7.27 has 17 dependencies (its five
+      `@better-auth/*-adapter` packages, `@better-auth/core`, `kysely`,
+      `zod`, `jose`, …) and 18 optional peers. The 1.5 release post says
+      the adapters were extracted because it "reduces bundle size and
+      allows adapters to be versioned independently", yet the umbrella
+      depends on all of them and they release in lockstep. The CLI moved
+      from `@better-auth/cli` (deprecated on npm) to `auth` 1.7.27, run as
+      `npx auth@latest`, with 21 dependencies (Babel, Prettier, `c12`,
+      `jiti`, …) and `better-auth` pinned exactly.
+    - `ai` 7.0.180 depends on `@ai-sdk/provider`, `@ai-sdk/provider-utils`
+      and `@ai-sdk/gateway`; each provider (`@ai-sdk/openai` 4.0.122) is a
+      package with a version line of its own, written against the
+      published specification in `@ai-sdk/provider`. The docs explain the
+      specification, not why providers are separate packages.
+    - `@mastra/pg` 1.37.0 depends on `pg` and three more packages, with
+      `@mastra/core` as its only peer. turbomem 0.8.4, a memory library,
+      puts its CLI (`@turbomem/cli`: `commander`, `chalk`,
+      `@clack/prompts`), MCP server and AI SDK adapter in packages of
+      their own.
+
+    Every CLI above that is a package of its own carries dependencies of
+    its own, and so does `@mastra/pg`; the AI SDK's providers have a
+    release line of their own. That is decision 1's rule. Better Auth's
+    adapters are the exception: `@better-auth/drizzle-adapter` has no
+    dependencies, only peers, and since the umbrella depends on every
+    adapter, a `better-auth` install gets them all anyway. Mnemocyte's
+    CLI and backends have neither dependencies nor a cadence of their
+    own. Measured on `main` at `ef2e3dc` (package version 1.3.0; 1 KB =
+    1,024 bytes):
+    - Install size: the tarball is 513 KB, 2,043 KB unpacked in 79 files,
+      1,236 KB of it source maps with their sources (DEVELOPMENT.md). Code
+      only the bin loads is `dist/cli.mjs`, 85 KB plus a 160 KB map; every
+      other chunk it loads is shared with a library entry. A
+      `@mnemocyte/cli` would save about 245 KB on disk and nothing in an
+      app's bundle, since apps do not import the bin.
+    - Bundle size (Rolldown, minified, gzipped): an app importing
+      `createMemory` starts at 14.8 KB, and 15.0 KB with
+      `mnemocyte/postgres` or `mnemocyte/libsql`. The Postgres backend
+      (17.8 KB, with the migration runner), the libSQL backend (12.7 KB)
+      and about 5 KB of code they share are lazy chunks (decision 23). A
+      bundler includes the code an app reaches, so package boundaries
+      change neither number.
+    - Version skew: the CLI imports 14 internal modules (the migration
+      runner, table names, validation, store config, client internals).
+      Split out, it would have to pin `mnemocyte` exactly, as `auth` pins
+      `better-auth`, and running a newer CLI than the installed client
+      would apply migrations that client does not know. In one package
+      the CLI, the migrations and the client are one version by
+      construction. A `@mnemocyte/postgres` would also be a dependency of
+      the `mnemocyte` umbrella, which keeps the raw-client shortcut
+      (decision 23, "Packaging" above), so every user would install it
+      anyway.
+    - Release work: each package adds a tag prefix, a changelog, a release
+      check and a first publish by hand (decisions 84 and 89).
+    - npm: one name to search for and one README; scoped packages would
+      split the page and the download counts.
+
+    The rule gains the CLI case: the bin moves to a package of its own
+    only when it needs dependencies of its own, and then pins
+    `mnemocyte` exactly. Nothing changes for users: no import path, bin
+    or shipped file.
+93. **One loader, bundled into both packages** (2026-11-23,
+    `docs/architecture-review`, queued as `chore/shared-loader`): revises
+    decision 85's copy. The maintainer chose a private workspace package,
+    never published, for the code `mnemocyte`'s CLI and `mnemocyte-mcp`
+    share to load a memory file (the resolve hook, the tsconfig reader
+    and the list of memory file names). Both packages list it as a
+    devDependency, and tsdown bundles it into their `dist/`. This was
+    chosen over the tested copy, whose resolve hook `feat/cli-server-only`
+    would change twice, and over a public export, which decision 85
+    rejected. `feat/cli-env-files` changes the `.env` loading each package
+    writes for itself, which can move into the shared package then.
+    tsdown 0.23.1 keeps `dependencies`, `peerDependencies` and
+    `optionalDependencies` external and bundles everything else
+    (`getProductionDeps` in its source; `deps.alwaysBundle` forces
+    external ones in), so neither published package gains a dependency. Mastra does the same: `@internal/auth`,
+    `@internal/voice` and the like are private workspace packages,
+    devDependencies of `@mastra/core`, listed in its tsdown
+    `deps.alwaysBundle`. `@mnemocyte/mcp` still needs a release to ship a
+    loader change, as with the copy.
+94. **Migrations ship as they are** (2026-11-23, `docs/architecture-review`):
+    the maintainer kept the numbered `.sql` files as the source, the
+    generated `bundled.ts` committed next to the code, and the files in
+    the tarball (decisions 9 and 91). How others ship schema, read from
+    their sources and docs that day:
+    - Graphile Worker 0.18 has the same shape: `sql/000001.sql` to
+      `000020.sql`, `"files": ["dist", "sql"]`, and
+      `scripts/buildSqlModule.mjs` writing a committed
+      `src/generated/sql.ts` that `src/migrate.ts` imports, rerun in
+      `prepack`.
+    - pg-boss (its `main` branch, 12.40.0; npm has 12.39.0) keeps its SQL
+      in TypeScript (`plans.ts`, and
+      `migrationStore.ts` at 2,437 lines), ships no `.sql`, and prints it
+      with `pg-boss plans`. Mnemocyte's
+      `mnemocyte sql` prints a fresh schema the same way, and
+      `feat/migrate-sql-plans` adds the upgrades.
+    - Prisma Migrate and drizzle-kit write migrations into the app's own
+      repository (`prisma/migrations/<timestamp>_<name>/migration.sql`;
+      the docs say "You must commit the entire prisma/migrations folder"; `migration.sql` and `snapshot.json` per
+      folder in drizzle-kit 1.0's docs). `mnemocyte generate --adapter
+      drizzle` hands the tables to that flow (decision 52).
+    - Mastra's `PostgresStore` creates and alters its tables when it
+      starts unless `disableInit: true`, which its docs suggest for CI/CD
+      that runs migrations separately. LangGraph's `PostgresStore` runs its
+      migrations before first use, since `ensureTables` defaults to
+      `true`. turbomem's `init()` runs `CREATE EXTENSION IF NOT EXISTS
+      vector` and `CREATE TABLE IF NOT EXISTS`. Decision 20 rejects
+      runtime schema changes.
+    - Better Auth's `npx auth generate` writes a Prisma or Drizzle schema,
+      or an SQL file for Kysely; `migrate` applies it only with the
+      built-in Kysely adapter.
+
+    Mnemocyte already has all three outputs: files (Graphile Worker),
+    printed SQL (pg-boss) and an ORM schema (Better Auth). Shipping SQL
+    only through the CLI would break the
+    `node_modules/mnemocyte/migrations/` paths that guide/postgres.md
+    documents for installing and upgrading with `psql`, to save 10,556
+    bytes (the six files), so it would wait for 2.0
+    and is not planned. libSQL ships no SQL files and installs only
+    through `migrate` (features/cli.md, "Known limits"); that stays.
+95. **The site and the folder names stay** (2026-11-23,
+    `docs/architecture-review`): records the comparison behind decision
+    53. The maintainer kept the layout as recommended. Sites, checked
+    that day:
+    - Better Auth's site is `docs/`, listed in its `pnpm-workspace.yaml`.
+    - The AI SDK has `apps/docs` and `content/`, with `apps/*` in its
+      workspace.
+    - Mastra's site is `docs/`, listed in its workspace.
+    - Drizzle's is a separate repository, `drizzle-team/drizzle-orm-docs`
+      (CC-BY-4.0).
+
+    The site renders `docs/guide/*.md` and `CHANGELOG.md` at build time
+    (apps/site/design/BRIEF.md, section 2), so a docs fix and the site
+    change land in one PR. A separate repository would need a sync step.
+    Folder names:
+    - Better Auth: `packages/better-auth`, and `packages/core` for
+      `@better-auth/core`.
+    - The AI SDK: `packages/ai`, and `packages/openai` for
+      `@ai-sdk/openai`.
+    - Mastra: `packages/core` for `@mastra/core`, and `stores/pg` for
+      `@mastra/pg`.
+    - Drizzle: top-level `drizzle-orm/` and `drizzle-kit/`.
+    - turbomem: `packages/core` for the npm package `turbomem`, the one
+      exception found.
+
+    `core` names the folder of a package called core.
+    `packages/mnemocyte` follows Better Auth and the AI SDK, and
+    `apps/site` follows the AI SDK's `apps/`.
+96. **Internal changes from the review** (2026-11-23,
+    `docs/architecture-review`, queued as `chore/shared-scope-sql`):
+    measured on `packages/mnemocyte/src` on `main` at `ef2e3dc` (111
+    files, 30,654 lines):
+    - Import cycles: none at runtime, static or through `import()`. Three
+      come only through type imports, which the build erases:
+      `types.ts` with `resilience.ts` and five `sql/` files,
+      `ai-sdk/extraction.ts` with `ai-sdk/middleware.ts`, and
+      `cli/args.ts` with `cli/init.ts`. Not queued.
+    - Largest files: `types.ts` 2,073 lines (1,405 of them comments, 93
+      exports, imported by 53 files), `db/queries/memories.ts` 1,624,
+      `memory/validation.ts` 1,561 (38 exported functions),
+      `db/libsql/queries.ts` 1,550, `memory/client-core.ts` 1,185.
+      `types.ts` is mostly the public API's JSDoc, and splitting it would
+      scatter one documented surface. `validation.ts` would only read
+      better split up. Neither is queued.
+    - Boundaries: `db/` imports from `memory/` only the contract types in
+      `memory/store.ts`, and `retrieval/` only `cloneMemory`. The CLI
+      reaches into 14 internal modules, which is fine inside one package
+      (decision 92).
+    - Duplicates: the Postgres and libSQL code repeats 14 runs of eight
+      or more matching code lines (comments, imports and lone brackets
+      skipped). The ones that matter are the scope predicates
+      (`visibilityConditions`, `selectorConditions` and
+      `exactScopeConditions`), which differ only in their parameter type
+      and in the always-true literal (`TRUE` against `1`), the driver
+      message trimming
+      (`driverDetail`) and the consolidation conflict checks. The scope
+      predicate is the rule every query depends on, so it should exist
+      once: `chore/shared-scope-sql`. Covered by the contract suite on
+      both backends; no behavior change. The rest of the queries differ in
+      the SQL itself (`tsvector` against FTS5, HNSW against an exact scan,
+      transactions against write batches), and one builder for both
+      would be a query builder, which decision 4 rejected.
+    - Store contract: `MemoryStoreV1` (12 required methods and 2
+      optional) makes every backend implement scope visibility, audit
+      writes atomic with their change, consolidation's write and
+      duplicate search. The shared predicates are the internal code that
+      the "Later" helpers for JavaScript backends would export
+      (decision 72).
+
+    Order: `chore/shared-loader` right after
+    `feat/cli-migrate-direct-connection`, before `feat/cli-env-files` and
+    `feat/cli-server-only`; `chore/shared-scope-sql` after the 1.5.0
+    group, before
+    the migration 0005 group. Neither needs a release of its own.

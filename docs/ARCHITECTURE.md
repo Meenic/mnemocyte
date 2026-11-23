@@ -134,6 +134,65 @@ the user's own model through `save: { model }` and `extractMemories`
 Hosted alternatives (mem0's provider, Supermemory's tools) do the same jobs
 through their own APIs; ours run against the app's database.
 
+## Memory intelligence
+
+The target design for the work after the drivers queue (decision 90).
+Mnemocyte stays a library in the app's own database. A step that needs a
+language model runs on the app's own model through `mnemocyte/ai-sdk`,
+only when the app calls it or turns it on, and no step needs a service
+running beside the app, a queue or a graph database. The core keeps
+working with an embedder alone. Each part except entities is an item in
+[ROADMAP.md](./ROADMAP.md#memory-intelligence), where the choices left
+to its PR are listed; entities wait in its Later list.
+
+- **Evaluation first.** A private workspace package runs LongMemEval and
+  LoCoMo through the real pipeline (extraction, `context`, a chat model
+  answering from it), plus product cases: recall@k, superseded facts,
+  scope isolation. It runs by hand, never in CI, and its results record
+  the models, the judge and the retrieval settings, so anyone can repeat
+  a run. Each item that changes what is saved or found names the number
+  it should move.
+- **Re-embedding.** A supported switch to another embedding model, of
+  the same size or another: vectors written in batches outside any
+  transaction, resumable, with search on the old model until the switch
+  completes.
+- **Superseding during extraction.** Extraction may name memories it was
+  shown that a new fact replaces, and Mnemocyte supersedes them through
+  `consolidate` in the exact bound scope, so a changed fact no longer
+  sits next to the old one.
+- **Profiles.** A short description of an entity that is always in the
+  prompt: `context` renders it before the search results, and extraction
+  and a memory tool keep it current.
+- **Time.** When something happened (`occurredAt`), next to when it was
+  stored (`createdAt`); filters on it, a search of what was current at a
+  past date, and dates in `context` output so a model can answer "when"
+  questions.
+- **Metadata filters.** A small `where` on `metadata` (equality, `in`,
+  existence, `and` / `or`) on every backend.
+- **Reranking.** A `Reranker` contract next to `Embedder`: fetch-based
+  rerankers and one over the AI SDK's `rerank()`, applied to the fused
+  candidates before `limit`, plus maximal marginal relevance (MMR), which
+  spreads results without a network call.
+- **Decay.** A recency half-life per kind and an opt-in boost from
+  `accessCount` and `lastAccessedAt`, inside the boost formula, so they
+  still never lift a poor match.
+- **Reflection.** Duplicate groups from `findDuplicates` merged into a
+  survivor the app's model writes, with the merged memories kept as its
+  evidence, run from a scheduled job.
+- **Observation.** A long conversation compressed into dated `episode`
+  memories from messages the app passes in. Mnemocyte stores no chat
+  history.
+- **Batched extraction.** Extraction every few turns, or past a token
+  threshold, instead of after every response.
+- **Write guards.** A hook that can change or reject a memory before it
+  is embedded, with a built-in redactor for common secret formats.
+- **Reach.** A local inspector, checked Edge and browser runtimes,
+  framework adapters as optional-peer subpaths, a local embedder, and
+  Claude Code hooks for `@mnemocyte/mcp`.
+- **Entities (later).** Names extracted with facts, kept in a link
+  table, with entity overlap as a third ranked list in the fusion. No
+  graph traversal.
+
 ## Backends
 
 | Backend | Vector | Full-text | Filtering with vectors |
@@ -1706,3 +1765,22 @@ Dated 2026-10-26 unless noted.
     the stable line for the 2026-07-28 specification), not the v1
     `@modelcontextprotocol/sdk`. The peer range is `^1.1.0`, not `^1`:
     `forgetMemory` uses `delete({ dependents })`, added in 1.1.0.
+90. **Memory intelligence as a library** (2026-11-23): after a
+    comparison of mem0, Mastra, Zep and Graphiti, Letta, Hindsight,
+    Supermemory, Honcho, Cognee, LangMem, turbomem and db0, the
+    maintainer took the recommendation to add model-driven memory
+    features as opt-in library calls on the app's own model, not to
+    become a memory server. Hindsight and Supermemory lead on what they
+    do with memories (background consolidation, profiles, contradiction
+    handling, published benchmark scores; Hindsight also searches by
+    time and reranks), but run as services beside a TypeScript app
+    (Hindsight starts in process only in Python) and extract facts with
+    a model on their side. Mastra's memory runs in process on the app's
+    database, but is built for Mastra agents. Mnemocyte's place is
+    memory in the app's own database for any TypeScript framework (the
+    "Memory intelligence" section above). A feature that changes what is
+    saved or found is measured with the eval harness first. Scores are
+    published with the method to repeat them, not as a ranking: each
+    vendor's numbers come from different models, judges and retrieval
+    budgets. The README keeps no comparison table (ROADMAP.md,
+    "Discoverability").

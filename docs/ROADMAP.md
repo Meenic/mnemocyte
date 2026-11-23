@@ -568,6 +568,149 @@ release, since the guide is read from `main`.
   `mnemocyte sql` and `generate --adapter drizzle` write for the key
   index at that point.
 
+## Memory intelligence
+
+Planned on 2026-11-23 from a comparison with mem0, Mastra, Zep and
+Graphiti, Letta, Hindsight, Supermemory, Honcho, Cognee, LangMem,
+turbomem and db0 (decision 90). The design is in
+[ARCHITECTURE.md](./ARCHITECTURE.md#memory-intelligence). Each item's
+PR decides the choices listed with it; the recommendation comes first.
+The queue starts after the drivers queue, except `chore/eval-harness`,
+which ships nothing to npm and can run at any time. Releases are grouped
+when the drivers queue is done.
+
+Facts checked on 2026-11-23; re-read the official pages in each PR:
+
+- Hindsight (MIT, a Python server on Postgres + pgvector, which Python
+  apps can also start in process) searches four ways in parallel
+  (vector, BM25, graph links, time range), fuses them with RRF and
+  reranks with a cross-encoder. It also keeps observations with their
+  evidence, mental models (standing questions answered and rewritten in
+  the background) and an opt-in redactor for secrets and personal data.
+- Supermemory (MIT, self-hostable) keeps user profiles split into stable
+  facts and recent activity, and handles contradictions and forgetting.
+- Mastra keeps a working memory with a schema the app gives, and its
+  observational memory compresses long threads into dated observations;
+  its blog reports 94.87% on LongMemEval with gpt-5-mini.
+- mem0's README reports 92.5 on LoCoMo and 94.4 on LongMemEval for its
+  managed platform, and open-sources its evaluation framework.
+- turbomem keeps a private eval package: product cases (extraction,
+  recall@k, MRR, dedup, scope isolation) and LoCoMo with its official
+  scoring, the dataset downloaded rather than committed.
+- Graphiti stores when a fact was valid (`valid_at`, `invalid_at`) and
+  when the graph learned or dropped it, and reranks with RRF, MMR, a
+  cross-encoder or graph distance.
+- The AI SDK 7 exports `rerank()`.
+
+The items, in order:
+
+- [ ] `chore/eval-harness`: a private workspace package, not published,
+  that runs LongMemEval and LoCoMo through extraction, `context` and a
+  chat model answering from it, plus product cases (recall@k, a changed
+  fact replacing the old one, scope isolation). It runs by hand, never
+  in CI. Results record the models, the judge and the retrieval
+  settings, and baseline numbers for 1.x go into the PR. Choices:
+  models through the AI Gateway, so one key covers them (recommended),
+  or each provider's key; datasets downloaded at run time (recommended)
+  or committed; and how many questions a full run uses, since every
+  question costs model calls.
+- [ ] `feat/reembed`: a supported switch to another embedding model on
+  Postgres and libSQL, replacing the "no supported path" limitation in
+  `guide/limitations.md`. Vectors are written in batches outside any
+  transaction and resume after a failure, and search stays on the old
+  model until the switch completes. The one-model-per-installation
+  check then allows a switch in progress. Choice: a second embedding
+  column for the new model, filled and then swapped by migrations
+  (recommended, since it covers a new size too), or a fresh
+  installation the rows are copied into. Needs `EXPLAIN (ANALYZE,
+  BUFFERS)` evidence for the index build. Number: none; the product
+  cases pass after a switch.
+- [ ] `feat/extraction-supersede`: extraction may name the memories it
+  was shown that a new fact replaces, and Mnemocyte supersedes them with
+  `consolidate` in the exact bound scope. Choice: only `extracted:`
+  memories by default, with an opt-in for app and `saveMemory` ones
+  (recommended, since `guide/limitations.md` says extraction never
+  changes them), or every memory it was shown. Number: LongMemEval's
+  knowledge-update questions.
+- [ ] `feat/profiles`: a short description of an entity that `context`
+  renders before the search results, kept current by extraction and an
+  `updateProfile` memory tool. Choice of shape: a JSON document with a
+  schema the app gives, stored as a keyed memory (recommended: no new
+  table, and Mastra's working memory has this shape), standing
+  questions rewritten in the background (Hindsight's mental models), or
+  stable and recent facts (Supermemory). Number: LongMemEval's
+  preference questions.
+- [ ] `feat/occurred-at`: when something happened, next to when it was
+  stored: an optional `occurredAt`, `occurredBefore` and
+  `occurredAfter` filters, a search of what was current at a past date
+  (superseded memories included for the time they were current), and
+  dates in `context` output, which shows none today. Extraction fills
+  `occurredAt` when the user states a date. Ships as numbered
+  migrations on Postgres and libSQL. Number: LongMemEval's
+  temporal-reasoning questions.
+- [ ] `feat/metadata-filters`: a `where` on `metadata` for `search`,
+  `list`, `context` and `prune` (equality, `in`, existence, `and` /
+  `or`) on every backend. On Postgres, a GIN index on the `jsonb` column
+  only with `EXPLAIN (ANALYZE, BUFFERS)` evidence. Choice: a small
+  operator set of our own (recommended; mem0's operators vary by vector
+  store) or a known filter syntax. Number: none; it narrows what the app
+  asks for, and the product cases check it.
+- [ ] `feat/rerankers`: a `Reranker` contract next to `Embedder`, with
+  fetch-based Cohere, Voyage and Jina rerankers, an `aiSdkReranker` over
+  the AI SDK's `rerank()`, and maximal marginal relevance (MMR), which
+  needs no network call. A reranker reorders the fused candidates before
+  `limit`. Choice: a `mnemocyte/rerankers` subpath (recommended) or the
+  `mnemocyte/embedders` one. Number: recall@k and LongMemEval overall.
+- [ ] `feat/decay-boosts`: a recency half-life per kind and an opt-in
+  boost from `accessCount` and `lastAccessedAt`, inside the boost
+  formula so they never lift a poor match. Number: recall@k must not
+  drop with the defaults.
+- [ ] `feat/reflect`: `reflect` in `mnemocyte/ai-sdk` merges duplicate
+  groups from `findDuplicates` into a survivor the app's model writes,
+  keeps the merged memories as its evidence through `consolidate` and
+  the audit log, and runs from a scheduled job. Starts under
+  `experimental`. Number: LongMemEval multi-session questions, and
+  fewer memories per scope after a run.
+- [ ] `feat/observe`: a long conversation compressed into dated
+  `episode` memories by the app's model, from messages the app passes
+  in; Mnemocyte stores no chat history. Starts under `experimental`.
+  Number: LongMemEval overall at a smaller `maxTokens`.
+- [ ] `feat/extraction-batching`: extraction every few turns or past a
+  token threshold, instead of after every response. Choice: where the
+  turns wait between runs, since Mnemocyte stores no messages. Number:
+  model calls per conversation, at the same LongMemEval score.
+- [ ] `feat/before-add`: a hook that can change or reject a memory's
+  content before it is embedded, run by `add`, `addMany` and `update`,
+  so extraction, the memory tools and the MCP server go through it too,
+  with a built-in redactor for common secret formats. It narrows the
+  prompt-injection and secrets limitations in `guide/limitations.md`
+  ("AI SDK tools" and "Extraction") but cannot remove them.
+- [ ] `feat/studio`: `mnemocyte studio`, a local inspector over the
+  memory file: browse scopes, search with `explain`, one memory's audit
+  history, duplicates. Choice: read-only (recommended for the first
+  release) or with edits.
+- [ ] `chore/edge-runtimes`: check that the root import, the Postgres
+  backend on Neon's HTTP driver and the libSQL backend on Turso load and
+  run on Vercel Edge and Cloudflare Workers without Node built-ins, and
+  PGlite on IndexedDB in a browser; fix what fails and document what
+  works. Choice: which of them get a CI smoke test. This replaces the
+  Edge item that was in Later.
+- [ ] `feat/langgraph-store`: a LangGraph.js `BaseStore` on Mnemocyte,
+  at a subpath with `@langchain/langgraph-checkpoint` (where `BaseStore`
+  is defined; `@langchain/langgraph` re-exports it) as an optional peer.
+- [ ] `feat/mastra-adapter`: Mnemocyte as memory for Mastra agents, at a
+  subpath with the Mastra package as an optional peer. Read Mastra's
+  memory processor and storage docs first to choose which one it is.
+- [ ] `feat/openai-agents-tools`: the memory tools for the OpenAI Agents
+  SDK for JavaScript, at a subpath with `@openai/agents` as an optional
+  peer.
+- [ ] `feat/transformers-embedder`: a local embedder on
+  `@huggingface/transformers` as an optional peer, for setups and tests
+  with no API key.
+- [ ] `feat/mcp-claude-code-hooks`: Claude Code hooks for
+  `@mnemocyte/mcp`: relevant memories added before each prompt, and
+  extraction after a session on a model the user sets.
+
 ## Later
 
 Not queued. Each one comes back as an item when its condition holds.
@@ -627,6 +770,9 @@ Not queued. Each one comes back as an item when its condition holds.
   `--create-only` migration; `feat/migrate-sql-plans` covers that today.
 - More HTTP Postgres drivers, when a user asks for one by name. Each is a
   `query` plus `batch` adapter like `feat/neon-http-driver`.
-- The Edge runtime (Vercel Edge, Cloudflare Workers) with
-  `feat/neon-http-driver`, once someone checks that the root import and the
-  Postgres backend load there without Node built-ins.
+- Entities (ARCHITECTURE.md "Memory intelligence"): names extracted with
+  facts, kept in a link table, with entity overlap as a third ranked list
+  in the fusion, when the eval harness shows questions that need facts
+  about one person or thing gathered across memories, and the items
+  above do not fix them. mem0's open-source SDK also boosts search
+  results by shared entities without a graph database.

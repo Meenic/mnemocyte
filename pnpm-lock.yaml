@@ -181,6 +181,9 @@ importers:
 
   apps/site:
     dependencies:
+      '@mnemocyte/release':
+        specifier: workspace:*
+        version: link:../../packages/release
       cn:
         specifier: ^0.5.2
         version: 0.5.2
@@ -367,6 +370,28 @@ importers:
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@22.20.5)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.2)
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.2))
+
+  packages/release:
+    dependencies:
+      github-slugger:
+        specifier: ^2.0.0
+        version: 2.0.0
+      mdast-util-from-markdown:
+        specifier: ^2.1.0
+        version: 2.1.0(supports-color@7.2.0)
+    devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
+      '@types/node':
+        specifier: ^22.20.5
+        version: 22.20.5
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.2))

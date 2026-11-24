@@ -71,23 +71,24 @@ work with the same installation in either deploy order; see
 
 ### Changed
 
-- **`mnemocyte init` in a Next.js app** (with `next` in `package.json`)
-  writes `src/lib/memory.ts`, or `lib/memory.ts` when the app keeps `app/`
-  or `pages/` in the root or has no `src/`, and starts it with
+- **`mnemocyte init` writes the memory file where a Next.js app keeps
+  its code.** In an app with `next` in `package.json`, that is
+  `src/lib/memory.ts`, or `lib/memory.ts` when the app keeps `app/` or
+  `pages/` in the root or has no `src/`, and the file starts with
   `import "server-only"`. Other apps still get `memory.ts` in the root.
   When the app has a `next.config.js`, the `"type": "module"` note says to
   rename it first ([cli.md](docs/guide/cli.md#nextjs)).
-- **The CLI reads `.env.local`, then `.env`,** the order Next.js uses, so
-  a Next.js app no longer needs `--env-file .env.local`. A value in
-  `.env.local` wins over `.env`, and a variable that is already set still
-  wins over both. `.env.local` is skipped when `NODE_ENV` is `test`, as in
-  Next.js. The `.env.$(NODE_ENV)` files are not read, and `--env-file`
-  still replaces both files
+- **The CLI reads `.env.local`, then `.env`.** That is the order Next.js
+  uses, so a Next.js app no longer needs `--env-file .env.local`. A value
+  in `.env.local` wins over `.env`, and a variable that is already set
+  still wins over both. `.env.local` is skipped when `NODE_ENV` is `test`,
+  as in Next.js. The `.env.$(NODE_ENV)` files are not read, and
+  `--env-file` still replaces both files
   ([cli.md](docs/guide/cli.md#environment-variables)).
-- **`mnemocyte init` writes the key to `.env.local`** when the project has
-  that file, else to `.env` as before. A key either file defines is left
-  as is, and the `.gitignore` note checks the file `init` wrote to
-  ([cli.md](docs/guide/cli.md#init)).
+- **`mnemocyte init` writes the key to `.env.local` when the project has
+  that file.** Otherwise it writes to `.env` as before. A key either file
+  defines is left as is, and the `.gitignore` note checks the file `init`
+  wrote to ([cli.md](docs/guide/cli.md#init)).
 - **A clearer error for clients without transactions.** The `"CONFIG"`
   error that `migrate()` and `setTextSearchConfig()` throw for a client
   without interactive transactions names Neon's HTTP driver and how to run
@@ -261,10 +262,10 @@ deploy order; see [upgrading](docs/guide/upgrading.md#11--12).
 
 ### Changed
 
-- **`mnemocyte check` on a schema installed without `migrate`** now says
-  that drizzle-kit installations keep upgrading through
-  `mnemocyte generate --adapter drizzle`, instead of only suggesting
-  `mnemocyte migrate`.
+- **`mnemocyte check` names drizzle-kit's upgrade path.** On a schema
+  installed without `migrate`, it now says that drizzle-kit installations
+  keep upgrading through `mnemocyte generate --adapter drizzle`, instead
+  of only suggesting `mnemocyte migrate`.
 
 ## [1.1.0] - 2026-11-16
 

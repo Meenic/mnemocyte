@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Heading, ListItem, RootContent, Strong } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
+import {
+  parseChangelog as parseSections,
+  type ChangelogSection as Section,
+} from "@mnemocyte/release/changelog";
 import { cacheLife } from "next/cache";
 
 /** A release in the expected shape: heading, summary, bold lead-ins. */
@@ -34,32 +36,21 @@ const FIRST_SHOWN = [1, 0, 0, 1]; // 1.0.0, as parseVersion reads it
  * Reads the sections of a Keep a Changelog file from 1.0.0 up, newest first.
  * "Unreleased" is skipped. A release whose heading or body doesn't match is
  * returned as a `RawSection` instead of throwing, so an odd entry never
- * fails the build.
+ * fails the build. The parsing is shared with the release scripts
+ * (`@mnemocyte/release`), so the release text lists the same lead-ins.
  */
 export function parseChangelog(source: string): ChangelogSection[] {
-  const tree = fromMarkdown(source);
   const sections: ChangelogSection[] = [];
-  const nodes = tree.children;
 
-  for (let i = 0; i < nodes.length; i++) {
-    const heading = nodes[i];
-    if (heading.type !== "heading" || heading.depth !== 2) continue;
-
-    let end = i + 1;
-    while (end < nodes.length && !isSectionBreak(nodes[end])) end++;
-    const body = nodes.slice(i + 1, end);
-
-    const headingText = collapse(sliceInner(source, heading));
-    if (/^\[?unreleased\]?$/i.test(headingText)) continue;
-
-    const version = parseVersion(headingText);
+  for (const section of parseSections(source).releases) {
+    const version = parseVersion(section.heading);
     if (version && compareVersions(version, FIRST_SHOWN) < 0) break;
 
     sections.push(
-      parseRelease(source, headingText, body) ?? {
+      toRelease(section) ?? {
         kind: "raw",
-        heading: headingText,
-        markdown: sliceBody(source, heading, nodes[end]),
+        heading: section.heading,
+        markdown: section.markdown,
       },
     );
   }
@@ -92,24 +83,15 @@ export function formatDate(date: string): string {
 const HEADING =
   /^\[?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\]?\s+[-–—]\s+(\d{4}-\d{2}-\d{2})$/;
 
-function parseRelease(
-  source: string,
-  heading: string,
-  body: RootContent[],
-): Release | undefined {
-  const match = HEADING.exec(heading);
-  if (!match) return undefined;
-
-  const [first, ...rest] = body;
-  if (first?.type !== "paragraph") return undefined;
+function toRelease(section: Section): Release | undefined {
+  const match = HEADING.exec(section.heading);
+  if (!match || section.intro === undefined) return undefined;
 
   const entries: string[] = [];
-  for (const node of rest) {
-    if (node.type !== "list") continue;
-    for (const item of node.children) {
-      const leadIn = readLeadIn(source, item);
-      if (leadIn === undefined) return undefined;
-      entries.push(leadIn);
+  for (const group of section.groups) {
+    for (const entry of group.entries) {
+      if (entry.leadIn === undefined) return undefined;
+      entries.push(entry.leadIn);
     }
   }
   if (entries.length === 0) return undefined;
@@ -118,26 +100,9 @@ function parseRelease(
     kind: "release",
     version: match[1],
     date: match[2],
-    title: collapse(slice(source, first)),
+    title: section.intro,
     entries,
   };
-}
-
-/** The bold text an entry opens with, or undefined when it has none. */
-function readLeadIn(source: string, item: ListItem): string | undefined {
-  const paragraph = item.children[0];
-  if (paragraph?.type !== "paragraph") return undefined;
-  const strong = paragraph.children[0];
-  if (strong?.type !== "strong" || strong.children.length === 0) {
-    return undefined;
-  }
-  const text = collapse(sliceInner(source, strong));
-  return text === "" ? undefined : text;
-}
-
-/** A new `#` or `##` heading ends a release section. */
-function isSectionBreak(node: RootContent): boolean {
-  return node.type === "heading" && node.depth <= 2;
 }
 
 /** `1.2.0` or `1.0.0-rc.2` at the start of a heading, if there is one. */
@@ -154,33 +119,4 @@ function compareVersions(a: number[], b: number[]): number {
     if (a[i] !== b[i]) return a[i] - b[i];
   }
   return 0;
-}
-
-/** The source text of a node. */
-function slice(source: string, node: RootContent): string {
-  return source.slice(node.position?.start.offset, node.position?.end.offset);
-}
-
-/** The source text of a node's children, without its own markers. */
-function sliceInner(source: string, node: Heading | Strong): string {
-  const first = node.children[0];
-  const last = node.children.at(-1);
-  if (!first || !last) return "";
-  return source.slice(first.position?.start.offset, last.position?.end.offset);
-}
-
-/** Everything between a heading and the next section, trimmed. */
-function sliceBody(
-  source: string,
-  heading: Heading,
-  next: RootContent | undefined,
-): string {
-  return source
-    .slice(heading.position?.end.offset, next?.position?.start.offset)
-    .trim();
-}
-
-/** Joins wrapped lines into one: "a\n  b" becomes "a b". */
-function collapse(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
 }

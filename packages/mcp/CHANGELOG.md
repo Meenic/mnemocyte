@@ -8,6 +8,17 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+### Changed
+
+- **The server reads `.env.local`, then `.env`,** from the app's folder,
+  as the `mnemocyte` CLI now does and Next.js does. A value in
+  `.env.local` wins over `.env`, a variable that is already set wins over
+  both, and `.env.local` is skipped when `NODE_ENV` is `test`.
+  `--env-file` still replaces both files.
+- The startup line on standard error ends with the env files the server
+  read, such as `env .env.local, .env`, or `env none`
+  ([the guide](../../docs/guide/mcp.md#environment-variables)).
+
 ## [0.1.0] - 2026-11-23
 
 The first release: an MCP server for Mnemocyte memory.

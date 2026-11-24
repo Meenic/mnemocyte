@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCliArgs, USAGE } from "../src/cli/args.js";
 import { type CliIo, prepare } from "../src/cli/main.js";
 
@@ -99,7 +102,7 @@ describe("prepare", () => {
 		expect(prepared.kind).toBe("serve");
 		expect(io.out).toBe("");
 		expect(io.err).toBe(
-			"mnemocyte-mcp 0.1.0: src/memory.ts, scope namespace=app entityId=u1 sessionId=s1, tools searchMemories, saveMemory\n",
+			"mnemocyte-mcp 0.1.0: src/memory.ts, scope namespace=app entityId=u1 sessionId=s1, tools searchMemories, saveMemory, env none\n",
 		);
 	});
 
@@ -165,7 +168,61 @@ describe("prepare", () => {
 			"x",
 		);
 		expect(prepared.kind).toBe("serve");
-		expect(withFlag.err).toContain("tools searchMemories\n");
+		expect(withFlag.err).toContain("tools searchMemories, env none\n");
+	});
+
+	describe("env files", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		it("reads .env.local, then .env, from --project and names them", async () => {
+			// Vitest sets NODE_ENV to test, which would skip .env.local.
+			vi.stubEnv("NODE_ENV", "development");
+			vi.stubEnv("MCP_TEST_NAMESPACE", undefined);
+			const project = await mkdtemp(join(tmpdir(), "mnemocyte-mcp-env-"));
+			try {
+				await writeFile(
+					join(project, ".env.local"),
+					"MCP_TEST_NAMESPACE=from-local\n",
+				);
+				await writeFile(join(project, ".env"), "MCP_TEST_NAMESPACE=from-env\n");
+				const io = recordingIo(fixtures);
+				const prepared = await prepare(
+					[
+						"--entity-id",
+						"u1",
+						"--project",
+						project,
+						"--config",
+						join(fixtures, "env", "memory.ts"),
+					],
+					io,
+					"0.1.0",
+				);
+				expect(prepared.kind).toBe("serve");
+				expect(io.err).toContain("scope namespace=from-local entityId=u1");
+				expect(io.err).toContain(", env .env.local, .env\n");
+			} finally {
+				await rm(project, { recursive: true, force: true });
+			}
+		});
+
+		it("names the --env-file it read", async () => {
+			const project = await mkdtemp(join(tmpdir(), "mnemocyte-mcp-env-"));
+			try {
+				await writeFile(join(project, "app.env"), "");
+				const io = recordingIo(`${fixtures}app`);
+				await prepare(
+					["--entity-id", "u1", "--env-file", join(project, "app.env")],
+					io,
+					"0.1.0",
+				);
+				expect(io.err).toContain(`, env ${join(project, "app.env")}\n`);
+			} finally {
+				await rm(project, { recursive: true, force: true });
+			}
+		});
 	});
 
 	it("exits 2 when --env-file cannot be read", async () => {

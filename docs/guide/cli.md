@@ -82,10 +82,20 @@ connecting or reading environment variables, happens.
 
 ### Environment variables
 
-Before loading the memory file the command reads `.env` in the current
-folder, when there is one. A variable that is already set keeps its value,
-so real variables in CI or on a server win over the file. `--env-file
-<path>` reads another file instead, and fails when it does not exist.
+Before loading the memory file the command reads `.env.local`, then
+`.env`, from the current folder, each when it exists. This is the order
+Next.js uses, so a Next.js app needs no flag. When both files set a
+variable, `.env.local` wins. A variable that is already set keeps its
+value, so real variables in CI or on a server win over both files.
+
+When `NODE_ENV` is `test`, `.env.local` is skipped, as in Next.js, so tests
+get the same values on every machine. The `.env.development`,
+`.env.production` and `.env.test` files, and their `.local` versions, are
+not read: the command does not run in a mode, and guessing one could pick
+the wrong file.
+
+`--env-file <path>` reads that one file instead, and fails when it does
+not exist.
 
 ### Without a memory file
 
@@ -150,7 +160,8 @@ pnpm exec mnemocyte init [--embedder <openai|openai-compatible>] [--dry-run]
 ```
 
 Writes `memory.ts` in the project root, the file `migrate` and `check`
-then load, and adds `OPENAI_API_KEY=` to `.env`. Run it in the folder with
+then load, and adds `OPENAI_API_KEY=` to `.env.local` when your project
+has one, as a Next.js app does, or else to `.env`. Run it in the folder with
 your `package.json`. For a local model, see
 [A local Ollama](#a-local-ollama).
 
@@ -182,15 +193,18 @@ above is from a pnpm project.
   `openaiEmbedder` and `text-embedding-3-small`, and `namespace` set to
   your package's `name` (`"my-agent"` without one). Change the embedder
   before the first `migrate`: the schema is created for its dimensions.
-- **`.env`.** When `OPENAI_API_KEY` is not defined there (an empty value
-  counts as defined), `init` appends the line, or creates `.env` with it.
-  Other lines are not touched. It prints a note when `.gitignore` does not
-  list `.env`.
+- **The env file.** When neither `.env.local` nor `.env` defines
+  `OPENAI_API_KEY` (an empty value counts as defined), `init` appends the
+  line to `.env.local` if it exists, else to `.env`, which it creates when
+  needed. A key in `.env` counts even when `.env.local` exists, because an
+  empty line in `.env.local` would hide it. Other lines are not touched.
+  `init` prints a note when `.gitignore` has no line for the file it wrote
+  to (`.env*` covers both).
 - **It never overwrites.** A memory file that already exists anywhere
   `migrate` looks (`memory.ts`, `.mts`, `.js` or `.mjs` in the root,
   `lib/`, `src/` or `src/lib/`) is left as is, and so is a defined
   `OPENAI_API_KEY`; a second run changes nothing.
-- **`--dry-run`** prints the file and the `.env` change and writes
+- **`--dry-run`** prints the file and the env file change and writes
   nothing.
 - **`"type": "module"`.** Without it in `package.json`, Node still loads
   `memory.ts` as an ES module but warns on every run, so `init` prints a
@@ -202,7 +216,7 @@ above is from a pnpm project.
 [Use Ollama instead of OpenAI](./getting-started.md#use-ollama-instead-of-openai):
 `openaiCompatibleEmbedder` with `nomic-embed-text` (768 dimensions) at
 `http://localhost:11434/v1`. A local server needs no key, so `init` leaves
-`.env` alone:
+the env files alone:
 
 ```bash
 pnpm exec mnemocyte init --embedder openai-compatible
@@ -578,6 +592,10 @@ deploy would run a migration, using `jq -e`, which exits 1 on `false`:
 - **`--env-file` and Node.** Node also reads `--env-file` from a script's
   arguments, so a file that does not exist is reported by Node itself
   (`node: nope.env: not found`, exit code 9) before the command starts.
+- **`$VAR` in env files.** Next.js expands `$VARIABLE` references inside
+  its env files. The command reads them with Node's parser, which does
+  not, so `URL=https://x.com/$USER` stays as written. Spell the value out
+  in the file the command reads.
 - **Aliases that shadow packages.** The command asks Node to resolve an
   import first and applies `paths` only when Node finds nothing, so a
   `paths` entry with the name of an installed package is ignored.

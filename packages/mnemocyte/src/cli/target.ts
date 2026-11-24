@@ -1,6 +1,5 @@
-import { statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
-import { MEMORY_FILE_NAMES } from "@mnemocyte/loader";
+import { relative, resolve } from "node:path";
+import { loadEnvFiles, MEMORY_FILE_NAMES } from "@mnemocyte/loader";
 import type { MemoryStore } from "../memory/store.js";
 import { createMnemocyteStoreConfig } from "../memory/store-config.js";
 import { resolveStore } from "../memory/store-input.js";
@@ -62,15 +61,13 @@ export interface ResolveTargetOptions {
 	readonly direct?: boolean;
 }
 
-function isFile(path: string): boolean {
-	return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-}
-
 /**
- * Load the project's environment file into `process.env`, before the memory
- * file reads it: `--env-file` when given, which must exist, otherwise
- * `./.env` when there is one. `process.loadEnvFile` keeps a variable that is
- * already set, so the real environment (CI, a deploy) wins over the file.
+ * Load the project's environment files into `process.env`, before the memory
+ * file reads them: `--env-file` when given, which must exist, otherwise
+ * `./.env.local` and then `./.env`, each when it exists (`.env.local` not
+ * when `NODE_ENV` is `test`; see `loadEnvFiles`). `process.loadEnvFile`
+ * keeps a variable that is already set, so the real environment (CI, a
+ * deploy) wins over the files, and `.env.local` over `.env`.
  *
  * @throws {CliError} With exit code 2 when `--env-file` cannot be read.
  */
@@ -79,10 +76,7 @@ export function loadEnvironment(
 	envFile: string | undefined,
 ): void {
 	if (envFile === undefined) {
-		const path = join(cwd, ".env");
-		if (isFile(path)) {
-			process.loadEnvFile(path);
-		}
+		loadEnvFiles({ directory: cwd });
 		return;
 	}
 	try {

@@ -162,15 +162,28 @@ describe("planEnvChange", () => {
 });
 
 test.each([
-	[".env\n", true],
-	["node_modules\r\n/.env\r\n", true],
-	["  .env*  \n", true],
-	["*.env\n", true],
-	[".env.local\n", false],
-	["# .env\n", false],
-	["", false],
-] as const)("ignoresEnvFile(%j) is %s", (gitignore, ignored) => {
-	expect(ignoresEnvFile(gitignore)).toBe(ignored);
+	[".env\n", ".env", true],
+	["node_modules\r\n/.env\r\n", ".env", true],
+	["  .env*  \n", ".env", true],
+	["*.env\n", ".env", true],
+	["*\n", ".env", true],
+	[".env.local\n", ".env", false],
+	[".env.*\n", ".env", false],
+	["# .env\n", ".env", false],
+	["!.env\n", ".env", false],
+	["config/.env\n", ".env", false],
+	["", ".env", false],
+	[".env.local\n", ".env.local", true],
+	["/.env.local\n", ".env.local", true],
+	[".env*\n", ".env.local", true],
+	[".env.*\n", ".env.local", true],
+	[".env*.local\n", ".env.local", true],
+	["*.local\n", ".env.local", true],
+	[".env.loca?\n", ".env.local", true],
+	[".env\n", ".env.local", false],
+	[".env.development.local\n", ".env.local", false],
+] as const)("ignoresEnvFile(%j, %j) is %s", (gitignore, name, ignored) => {
+	expect(ignoresEnvFile(gitignore, name)).toBe(ignored);
 });
 
 describe("mnemocyte init", () => {
@@ -292,6 +305,80 @@ describe("mnemocyte init", () => {
 				"  Put your OpenAI API key after OPENAI_API_KEY= in .env",
 				"",
 			].join("\n"),
+		);
+	});
+
+	test("with .env.local, writes the key there, as in a Next.js app", async () => {
+		await packageJson({
+			name: "web",
+			type: "module",
+			dependencies: { "drizzle-orm": "1", postgres: "3" },
+		});
+		await writeFile(join(cwd, ".env.local"), "DATABASE_URL=x\n");
+		await writeFile(join(cwd, ".env"), "OTHER=1\n");
+		await writeFile(join(cwd, ".gitignore"), ".env*\n");
+		await writeFile(join(cwd, "pnpm-lock.yaml"), "");
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+
+		expect(await read(".env.local")).toBe("DATABASE_URL=x\nOPENAI_API_KEY=\n");
+		expect(await read(".env")).toBe("OTHER=1\n");
+		expect(io.stdout()).toBe(
+			[
+				"Found drizzle-orm, postgres in package.json: using Drizzle on postgres.js.",
+				"Wrote memory.ts",
+				"Added OPENAI_API_KEY= to .env.local",
+				"",
+				"Next:",
+				"  Put your OpenAI API key after OPENAI_API_KEY= in .env.local",
+				"  Create the schema: pnpm exec mnemocyte migrate",
+				"",
+			].join("\n"),
+		);
+	});
+
+	test("a key in .env counts with .env.local present, so it is not hidden", async () => {
+		await packageJson({ type: "module", dependencies: { postgres: "3" } });
+		await writeFile(join(cwd, ".env.local"), "OTHER=1\n");
+		await writeFile(join(cwd, ".env"), "OPENAI_API_KEY=sk-test\n");
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+
+		expect(await read(".env.local")).toBe("OTHER=1\n");
+		const out = io.stdout();
+		expect(out).toContain(".env already defines OPENAI_API_KEY, left as is.\n");
+		expect(out).not.toContain("Put your OpenAI API key");
+		expect(out).toContain("  Add DATABASE_URL=postgres://… to .env.local\n");
+	});
+
+	test("an empty key in .env.local wins over .env and gets the hint", async () => {
+		await packageJson({ type: "module" });
+		await writeFile(join(cwd, ".env.local"), "OPENAI_API_KEY=\n");
+		await writeFile(join(cwd, ".env"), "OPENAI_API_KEY=sk-test\n");
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+
+		const out = io.stdout();
+		expect(out).toContain(
+			".env.local already defines OPENAI_API_KEY, left as is.\n",
+		);
+		expect(out).toContain(
+			"  Put your OpenAI API key after OPENAI_API_KEY= in .env.local\n",
+		);
+	});
+
+	test("notes a .gitignore that lists .env but not .env.local", async () => {
+		await packageJson({ type: "module" });
+		await writeFile(join(cwd, ".env.local"), "");
+		await writeFile(join(cwd, ".gitignore"), ".env\n");
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--dry-run"], io, "1.2.3")).toBe(0);
+
+		expect(await read(".env.local")).toBe("");
+		const out = io.stdout();
+		expect(out).toContain("Would add OPENAI_API_KEY= to .env.local\n");
+		expect(out).toContain(
+			"note: .gitignore does not list .env.local; add it before you put a key in the file.\n",
 		);
 	});
 

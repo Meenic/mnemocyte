@@ -27,14 +27,15 @@ so its flags and tools can still change in a minor release; the
 The server talks MCP over stdio: the client starts it as a child process
 and sends requests on its standard input. On start it:
 
-1. loads `.env` from your app's folder, or the file in `--env-file`;
+1. loads `.env.local`, then `.env`, from your app's folder, as the
+   [CLI does](./cli.md#environment-variables), or the file in `--env-file`;
 2. imports your memory file, the same file and lookup the
    [CLI uses](./cli.md#the-memory-file), TypeScript included;
 3. binds the client to the scope in its flags with `memory.for(...)`;
 4. prints one line to standard error, such as:
 
    ```text
-   mnemocyte-mcp 0.1.0: src/memory.ts, scope namespace=app entityId=user_123, tools searchMemories, saveMemory
+   mnemocyte-mcp 0.2.0: src/memory.ts, scope namespace=app entityId=user_123, tools searchMemories, saveMemory, env .env.local, .env
    ```
 
 The server uses your app's embedder and store, so it reads and writes
@@ -105,9 +106,12 @@ arguments. Give `--project` the absolute path of your app.
 
 Your embedder's API key and your database URL must reach the server.
 Some clients start a server with only a few of your shell's variables, so
-put them in your app's `.env`, which the server loads from `--project`, or
-in the client's own `env` (or `envFile`) setting. A variable that is
-already set wins over `.env`, as in the CLI.
+put them in your app's `.env.local` or `.env`, which the server loads from
+`--project`, or in the client's own `env` (or `envFile`) setting. As in
+the CLI, `.env.local` wins over `.env`, a variable that is already set
+wins over both, and `.env.local` is skipped when `NODE_ENV` is `test`. The
+startup line ends with the files it read (`env none` when there were
+none), so you can tell whether it found your app's files.
 
 ## Choose the scope
 
@@ -163,7 +167,7 @@ can use these hints to decide when to ask you first.
 |---|---|
 | `--project <dir>` | Your app's folder. `--config`, `--env-file` and the memory file lookup are relative to it. Defaults to the working directory. |
 | `--config <file>` | Your memory file, when it is not one of `memory.ts`, `memory.mts`, `memory.js` or `memory.mjs` in the folder, `lib`, `src` or `src/lib`. |
-| `--env-file <file>` | Load this file instead of `.env`. |
+| `--env-file <file>` | Load this file instead of `.env.local` and `.env`. |
 | `--allow-forget` | List `forgetMemory`. |
 | `--read-only` | List only `searchMemories`. |
 | `-h`, `--help` | Print the flags. |

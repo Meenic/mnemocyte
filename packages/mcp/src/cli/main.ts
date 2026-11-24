@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
+import { loadEnvFiles } from "@mnemocyte/loader";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { BoundMemoryClient } from "mnemocyte";
 import { isMnemocyteError } from "mnemocyte";
@@ -28,24 +29,19 @@ export type Prepared =
 /** Exit code for bad flags or a memory file that cannot be used. */
 export const EXIT_USAGE = 2;
 
-function isFile(path: string): boolean {
-	return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-}
-
 /**
- * `--env-file` when given, else `.env` in the app's folder when it exists,
+ * `--env-file` when given, else `.env.local` and then `.env` in the app's
+ * folder, each when it exists (`.env.local` not when `NODE_ENV` is `test`),
  * as the `mnemocyte` CLI does. A variable that is already set is kept.
+ *
+ * @returns The files that were read, for the startup line.
  */
 export function loadEnvironment(
 	cwd: string,
 	envFile: string | undefined,
-): void {
+): string[] {
 	if (envFile === undefined) {
-		const path = join(cwd, ".env");
-		if (isFile(path)) {
-			process.loadEnvFile(path);
-		}
-		return;
+		return loadEnvFiles({ directory: cwd });
 	}
 	try {
 		process.loadEnvFile(resolve(cwd, envFile));
@@ -54,6 +50,7 @@ export function loadEnvironment(
 			cause: error,
 		});
 	}
+	return [envFile];
 }
 
 /**
@@ -117,7 +114,7 @@ export async function prepare(
 
 	try {
 		const project = projectFolder(io.cwd, args.project);
-		loadEnvironment(project, args.envFile);
+		const envFiles = loadEnvironment(project, args.envFile);
 		const file = locateMemoryFile(project, args.config);
 		const client = await loadMemoryClient(file, project);
 		const memory = bind(client, args.scope);
@@ -126,7 +123,7 @@ export async function prepare(
 		createMemoryMcpServer({ memory, allowForget, readOnly });
 		const label = relative(project, file).replaceAll("\\", "/") || file;
 		io.error(
-			`mnemocyte-mcp ${version}: ${label}, scope ${describeScope(memory.scope)}, tools ${toolNames({ allowForget, readOnly }).join(", ")}\n`,
+			`mnemocyte-mcp ${version}: ${label}, scope ${describeScope(memory.scope)}, tools ${toolNames({ allowForget, readOnly }).join(", ")}, env ${envFiles.length === 0 ? "none" : envFiles.join(", ")}\n`,
 		);
 		return {
 			kind: "serve",

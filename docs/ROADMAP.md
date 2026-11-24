@@ -541,13 +541,20 @@ release, since the guide is read from `main`.
   bin's `loader-bundle.test.ts` matches the loader sources in its
   `dist/cli.mjs.map` against `packages/loader/src/`, and CI's Node,
   Package and MCP jobs now run on loader changes (decision 93).
-- [ ] `feat/cli-env-files`: the CLI reads `.env.local`, then `.env`, as
+- [x] `feat/cli-env-files`: the CLI reads `.env.local`, then `.env`, as
   Next.js does, so Next.js users can drop `--env-file .env.local`. `init`
   writes the API key to `.env.local` when that file exists. Decided
   (decision 78): no `.env.$(NODE_ENV)` files, and `.env.local` is skipped
   when `NODE_ENV` is `test`, as in Next.js. `mnemocyte-mcp` loads `.env`
   the same way today (`loadEnvironment` in `packages/mcp/src/cli/main.ts`),
   so change it to match.
+  Landed: `loadEnvFiles` in `@mnemocyte/loader` (`src/env-files.ts`) for
+  both bins, each keeping its own `--env-file` error; `init` counts a key
+  in either file, writes to `.env.local` when it exists and checks
+  `.gitignore` for the file it wrote; `mnemocyte-mcp`'s startup line ends
+  with the files it read, and the CLI prints nothing new. Node's parser
+  does not expand `$VAR` as Next.js does, which the guide lists as a
+  limit (decision 78).
 - [ ] `feat/cli-server-only`: a memory file that imports `server-only`
   loads in the CLI. The package throws at import outside React's
   `react-server` condition, so a Next.js `memory.ts` that guards itself

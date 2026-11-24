@@ -1,117 +1,133 @@
 name: Release
 
+# Releases publish from main after an approval (decisions 99 and 101): a
+# push to main publishes each package whose package.json version is not on
+# npm yet, once CI passes and the maintainer approves the npm environment;
+# then it tags the commit and creates the GitHub releases. A manual run is
+# always a dry run.
 on:
   push:
-    tags:
-      # mnemocyte: vX.Y.Z. @mnemocyte/mcp: mcp-vX.Y.Z (decision 89).
-      - "v*"
-      - "mcp-v*"
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# One release run at a time. A run waiting for approval keeps its place,
+# and a newer push replaces any run still queued behind it; each run plans
+# from scratch, so nothing is lost. Dry runs queue on their own.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Verify tag
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      directory: ${{ steps.package.outputs.directory }}
-      version: ${{ steps.package.outputs.version }}
+      packages: ${{ steps.plan.outputs.packages }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      # The tag names the package: vX.Y.Z is mnemocyte with the root
-      # CHANGELOG.md, mcp-vX.Y.Z is @mnemocyte/mcp with its own.
-      - name: Find the package
-        id: package
+      # Node 24 runs bin/list.ts through type stripping, with no install.
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # A version npm does not have is released. A lookup that fails for
+      # another reason fails the job, so it never reads as nothing to do.
+      # A tag for a version npm does not have was made by hand, so it stops
+      # the run. A version on npm without its tag or release (a release run
+      # that failed after publishing) only warns: re-run that run's failed
+      # job, or finish it by hand (docs/DEVELOPMENT.md, "Releasing").
+      - name: Find versions npm does not have
+        id: plan
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            mcp-v*)
-              directory=packages/mcp
-              changelog=packages/mcp/CHANGELOG.md
-              version="${GITHUB_REF_NAME#mcp-v}"
-              ;;
-            v*)
-              directory=packages/mnemocyte
-              changelog=CHANGELOG.md
-              version="${GITHUB_REF_NAME#v}"
-              ;;
-            *)
-              echo "::error::Tag $GITHUB_REF_NAME names no package"
+          # Its own command, so a failure stops the job before the loop.
+          packages="$(node packages/release/src/bin/list.ts)"
+          plan='[]'
+          while read -r row; do
+            name="$(jq -r .name <<< "$row")"
+            version="$(jq -r .version <<< "$row")"
+            tag="$(jq -r .tag <<< "$row")"
+
+            if out="$(npm view "$name@$version" version --json 2> /dev/null)"; then
+              published=true
+            elif [ "$(jq -r '.error.code? // empty' <<< "$out" 2> /dev/null)" = E404 ]; then
+              published=false
+            else
+              echo "::error::Could not look up $name@$version on npm: $out"
               exit 1
-              ;;
-          esac
-          {
-            echo "directory=$directory"
-            echo "changelog=$changelog"
-            echo "version=$version"
-          } >> "$GITHUB_OUTPUT"
+            fi
 
-      - name: Check tag matches package version
-        env:
-          DIRECTORY: ${{ steps.package.outputs.directory }}
-          VERSION: ${{ steps.package.outputs.version }}
-        run: |
-          actual="$(node -p "require('./$DIRECTORY/package.json').version")"
-          if [ "$VERSION" != "$actual" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match $DIRECTORY/package.json version $actual"
-            exit 1
-          fi
+            status=0
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || status=$?
+            case "$status" in
+              0) tagged=true ;;
+              2) tagged=false ;;
+              *) echo "::error::Could not look up the $tag tag"; exit 1 ;;
+            esac
 
-      # The GitHub release is written from this section and the site shows
-      # mnemocyte's, so the version needs its heading and its compare link.
-      - name: Check the changelog has the version
-        env:
-          CHANGELOG: ${{ steps.package.outputs.changelog }}
-          VERSION: ${{ steps.package.outputs.version }}
-        run: |
-          escaped="${VERSION//./\\.}"
-          if ! grep -qE "^## \[$escaped\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\$" "$CHANGELOG"; then
-            echo "::error::$CHANGELOG has no \"## [$VERSION] - YYYY-MM-DD\" heading"
-            exit 1
-          fi
-          if ! grep -qE "^\[$escaped\]: https://github\.com/Meenic/mnemocyte/" "$CHANGELOG"; then
-            echo "::error::$CHANGELOG has no \"[$VERSION]: https://github.com/Meenic/mnemocyte/...\" link"
-            exit 1
-          fi
+            if [ "$published" = false ]; then
+              if [ "$tagged" = true ]; then
+                echo "::error::$name $version is not on npm, but the $tag tag exists; release.yml did not make it."
+                exit 1
+              fi
+              echo "$name $version: not on npm, releasing"
+              plan="$(jq -c --argjson row "$row" '. + [$row]' <<< "$plan")"
+              continue
+            fi
 
-      - name: Check tagged commit is on main
-        run: |
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME points to a commit that is not on main"
-            exit 1
-          fi
+            if [ "$tagged" = false ]; then
+              echo "::warning::$name $version is on npm but has no $tag tag. Re-run the failed release job, or tag it by hand."
+            elif ! gh release view "$tag" --repo "$REPOSITORY" > /dev/null 2>&1; then
+              echo "::warning::$name $version has no GitHub release for $tag. Re-run the failed release job, or create it by hand."
+            else
+              echo "$name $version: released"
+            fi
+            # A dry run goes through every package.
+            if [ "$DRY_RUN" = true ]; then
+              plan="$(jq -c --argjson row "$row" '. + [$row]' <<< "$plan")"
+            fi
+          done < <(jq -c '.[]' <<< "$packages")
+
+          echo "packages=$plan" >> "$GITHUB_OUTPUT"
 
   # A job that calls a reusable workflow cannot set timeout-minutes; each
   # ci.yml job sets its own.
   ci:
     name: CI
-    needs: verify
+    needs: plan
+    if: needs.plan.outputs.packages != '[]'
     uses: ./.github/workflows/ci.yml
     # Skips the Site job: the site is not in the npm tarball, and the
-    # release PR and the push to main already ran it.
+    # release PR and the push to main already ran it (decision 59).
     with:
       release: true
 
   publish:
     name: Publish to npm
     needs:
-      - verify
+      - plan
       - ci
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Waits here for the maintainer's approval.
     environment: npm
-    # The publish step waits up to 10 minutes for npm.
-    timeout-minutes: 20
+    # The publish waits up to 10 minutes for npm, per package.
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
@@ -135,59 +151,232 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # @mnemocyte/mcp builds against mnemocyte's dist/ (its workspace link),
-      # which pnpm's install does not build.
+      # Before anything is published, so a changelog that cannot give one
+      # stops the run. The tags job reads the files; it does not install.
+      - name: Write the release text
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          mkdir notes
+          for name in $(jq -r '.[].name' <<< "$PACKAGES"); do
+            tag="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .tag' <<< "$PACKAGES")"
+            pnpm --silent release:notes "$name" > "notes/$tag.md"
+          done
+
+      # @mnemocyte/mcp builds against mnemocyte's dist/ (its workspace
+      # link), which pnpm's install does not build.
       - name: Build mnemocyte for @mnemocyte/mcp
-        if: needs.verify.outputs.directory == 'packages/mcp'
+        if: contains(fromJSON(needs.plan.outputs.packages).*.name, '@mnemocyte/mcp')
         run: pnpm --filter mnemocyte build
 
-      # pnpm authenticates with trusted publishing (OIDC) and attaches
-      # provenance. prepublishOnly builds dist/ first, and prepack copies the
-      # root README.md and LICENSE into mnemocyte's folder (only LICENSE for
-      # @mnemocyte/mcp, which has a README of its own). A tag checkout is a
-      # detached HEAD, so pnpm's branch check is replaced by the verify job.
-      # npm scans each upload before it becomes installable; the job waits
-      # up to 10 minutes for the version to appear. The prerelease check
-      # reads the version, not the tag: mcp-v0.1.0 has a hyphen of its own.
+      # In the package list's order, stopping at the first failure; a
+      # re-run skips what npm already has. pnpm authenticates with trusted
+      # publishing (OIDC) and attaches provenance; prepublishOnly builds
+      # dist/ and prepack copies the README and LICENSE. --no-git-checks:
+      # main may have moved on while the run waited for approval. npm scans
+      # each upload before it becomes installable, so pnpm waits up to 10
+      # minutes for it. dist.attestations must not be empty, since pnpm's
+      # trustPolicy: no-downgrade refuses a version with less trust
+      # evidence than earlier ones; npm can show it a little after the
+      # version.
       - name: Publish
-        working-directory: ${{ needs.verify.outputs.directory }}
         env:
-          VERSION: ${{ needs.verify.outputs.version }}
+          PACKAGES: ${{ needs.plan.outputs.packages }}
         run: |
-          dist_tag=latest
-          case "$VERSION" in
-            *-*) dist_tag=next ;;
-          esac
-          pnpm publish --no-git-checks --tag "$dist_tag" --publish-wait-timeout 600000
+          while read -r row; do
+            name="$(jq -r .name <<< "$row")"
+            version="$(jq -r .version <<< "$row")"
+            directory="$(jq -r .directory <<< "$row")"
+            dist_tag=latest
+            case "$version" in
+              *-*) dist_tag=next ;;
+            esac
+
+            if npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "$name $version is already on npm"
+            else
+              (cd "$directory" && pnpm publish --no-git-checks --tag "$dist_tag" --publish-wait-timeout 600000)
+            fi
+
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              attestations="$(npm view "$name@$version" dist.attestations --json 2> /dev/null || true)"
+              [ -n "$attestations" ] && break
+              sleep 10
+            done
+            if [ -z "$attestations" ]; then
+              echo "::error::$name $version has no provenance attestation (dist.attestations is empty)"
+              exit 1
+            fi
+            echo "$name $version has its provenance attestation"
+          done < <(jq -c '.[]' <<< "$PACKAGES")
 
       # After a final release, `next` must not stay on an older version, or
-      # `mnemocyte@next` installs it. A `next` ahead of this release (a
+      # `<package>@next` installs it. A `next` ahead of this release (a
       # prerelease of a later version) stays. pnpm removes the tag over OIDC
       # only when "Allow npm dist-tag" is on for the trusted publisher. The
-      # version is already published, so a failure here only warns.
-      - name: Remove stale next dist-tag
-        if: ${{ !contains(needs.verify.outputs.version, '-') }}
+      # versions are already published, so a failure here only warns.
+      - name: Remove stale next dist-tags
         env:
-          DIRECTORY: ${{ needs.verify.outputs.directory }}
-          VERSION: ${{ needs.verify.outputs.version }}
+          PACKAGES: ${{ needs.plan.outputs.packages }}
         run: |
-          name="$(node -p "require('./$DIRECTORY/package.json').name")"
-          version="$VERSION"
-          if ! next="$(pnpm view "$name" dist-tags.next)"; then
-            echo "::warning::Could not read the next dist-tag; check it with: npm view $name dist-tags"
-            exit 0
-          fi
-          if [ -z "$next" ]; then
-            echo "No next dist-tag"
-            exit 0
-          fi
-          base="${next%%[-+]*}"
-          if [ "$(printf '%s\n%s\n' "$base" "$version" | sort -V | head -n 1)" != "$base" ]; then
-            echo "next ($next) is ahead of $version; keeping it"
-            exit 0
-          fi
-          if pnpm dist-tag rm "$name" next; then
-            echo "Removed next ($next)"
-          else
-            echo "::warning::next still points at $next. Turn on \"Allow npm dist-tag\" for the trusted publisher, or run: npm dist-tag rm $name next"
-          fi
+          while read -r row; do
+            name="$(jq -r .name <<< "$row")"
+            version="$(jq -r .version <<< "$row")"
+            case "$version" in
+              *-*) continue ;;
+            esac
+            if ! next="$(pnpm view "$name" dist-tags.next)"; then
+              echo "::warning::Could not read the next dist-tag; check it with: npm view $name dist-tags"
+              continue
+            fi
+            if [ -z "$next" ]; then
+              echo "$name: no next dist-tag"
+              continue
+            fi
+            base="${next%%[-+]*}"
+            if [ "$(printf '%s\n%s\n' "$base" "$version" | sort -V | head -n 1)" != "$base" ]; then
+              echo "$name: next ($next) is ahead of $version; keeping it"
+              continue
+            fi
+            if pnpm dist-tag rm "$name" next; then
+              echo "$name: removed next ($next)"
+            else
+              echo "::warning::next still points at $next. Turn on \"Allow npm dist-tag\" for the trusted publisher, or run: npm dist-tag rm $name next"
+            fi
+          done < <(jq -c '.[]' <<< "$PACKAGES")
+
+      - name: Upload the release text
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-text
+          path: notes/
+          if-no-files-found: error
+
+  # The manual run: every package through pnpm publish --dry-run, outside
+  # the npm environment and with no id-token, then the tags job prints what
+  # it would do.
+  dry-run:
+    name: Publish (dry run)
+    needs:
+      - plan
+      - ci
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write the release text
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          mkdir notes
+          for name in $(jq -r '.[].name' <<< "$PACKAGES"); do
+            tag="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .tag' <<< "$PACKAGES")"
+            pnpm --silent release:notes "$name" > "notes/$tag.md"
+          done
+
+      - name: Build mnemocyte for @mnemocyte/mcp
+        if: contains(fromJSON(needs.plan.outputs.packages).*.name, '@mnemocyte/mcp')
+        run: pnpm --filter mnemocyte build
+
+      - name: Publish (dry run)
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          while read -r row; do
+            version="$(jq -r .version <<< "$row")"
+            directory="$(jq -r .directory <<< "$row")"
+            dist_tag=latest
+            case "$version" in
+              *-*) dist_tag=next ;;
+            esac
+            (cd "$directory" && pnpm publish --dry-run --no-git-checks --tag "$dist_tag")
+          done < <(jq -c '.[]' <<< "$PACKAGES")
+
+      - name: Upload the release text
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-text
+          path: notes/
+          if-no-files-found: error
+
+  # The only job that can write to the repository: no checkout, no install,
+  # only gh and the release text from the job before. It tags the commit
+  # the run published (an annotated tag, through the API) and creates the
+  # GitHub release; a re-run skips what already exists.
+  tags:
+    name: Tag and release
+    needs:
+      - plan
+      - publish
+      - dry-run
+    if: ${{ !cancelled() && (needs.publish.result == 'success' || needs.dry-run.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the release text
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-text
+          path: notes
+
+      # --verify-tag keeps gh from creating a tag of its own on main.
+      # @mnemocyte/mcp and prereleases are never the latest release.
+      - name: Tag and release
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+          GH_TOKEN: ${{ github.token }}
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          while read -r row; do
+            version="$(jq -r .version <<< "$row")"
+            tag="$(jq -r .tag <<< "$row")"
+            title="$(jq -r .title <<< "$row")"
+            flags=(--latest=false)
+            [ "$(jq -r .latest <<< "$row")" = true ] && flags=(--latest)
+            case "$version" in
+              *-*) flags+=(--prerelease) ;;
+            esac
+            notes="notes/$tag.md"
+            test -s "$notes"
+
+            if [ "$DRY_RUN" = true ]; then
+              echo "$tag: would tag $GITHUB_SHA and run: gh release create $tag --verify-tag --title \"$title\" --notes-file $notes ${flags[*]}"
+              continue
+            fi
+
+            if gh api "repos/$REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
+              echo "$tag exists"
+            else
+              sha="$(gh api "repos/$REPOSITORY/git/tags" -f tag="$tag" -f message="$tag" -f object="$GITHUB_SHA" -f type=commit --jq .sha)"
+              gh api "repos/$REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" > /dev/null
+              echo "Tagged $GITHUB_SHA as $tag"
+            fi
+
+            if gh release view "$tag" --repo "$REPOSITORY" > /dev/null 2>&1; then
+              echo "The $tag release exists"
+            else
+              gh release create "$tag" --repo "$REPOSITORY" --verify-tag --title "$title" --notes-file "$notes" "${flags[@]}"
+            fi
+          done < <(jq -c '.[]' <<< "$PACKAGES")

@@ -106,14 +106,16 @@ workspace package there). Its tests are its own
 the published packages (name, folder, changelog, tag prefix, GitHub
 release title, whether it is the repository's latest release, and the
 oldest release `release:check` reads), `src/changelog.ts` parses a Keep a
-Changelog file, and `src/bin/` holds the three commands ("Releasing").
+Changelog file, and `src/bin/` holds the three commands and `list.ts`,
+which release.yml's plan job runs ("Releasing").
 It is `"private": true` and never published. Node runs its TypeScript
 through type stripping, so files import each other by their `.ts` name.
 The site imports `@mnemocyte/release/changelog`, which imports no file
 of its own because the site type-checks it with its own settings, and
 Turbopack compiles workspace packages without `transpilePackages`.
-`src/packages.ts` imports nothing, so a workflow can read it before
-installing. Its tests are its own (`pnpm test:release`).
+`src/packages.ts` and `src/bin/list.ts` import nothing but Node's own
+modules, so that job runs before installing. Its tests are its own
+(`pnpm test:release`).
 `examples/` stays at the root, where GitHub readers look for it, and
 installs `mnemocyte` from the workspace the way an app installs it from
 npm. Only the root `package.json` sets `packageManager`; `engines` is in
@@ -1032,8 +1034,8 @@ when the release calls it (`workflow_call`). It has these jobs:
 - `Release check` reads only the two changelogs and the two
   `package.json` versions, so a PR that touches none of them cannot
   change its result. `packages/mnemocyte/package.json` is not on its
-  list because it already runs every job. `release.yml` calls `ci.yml`,
-  so a tag push runs it too.
+  list because it already runs every job. `release.yml` calls `ci.yml`
+  before it publishes, so a release runs it too.
 - Lint and the type-level checks give the same result on every Node
   version, so they run once, in `Checks`, and the Node jobs run only the
   build and the Vitest projects. The `contract` project on PGlite still
@@ -1200,8 +1202,10 @@ when the release calls it (`workflow_call`). It has these jobs:
 
 ## Releasing
 
-The maintainer cuts a release; `.github/workflows/release.yml` publishes it
-when a `v*` tag is pushed.
+The maintainer cuts a release by merging a release PR and approving the
+run it starts: `.github/workflows/release.yml` runs on every push to
+`main` and publishes each package whose `package.json` version npm does
+not have yet (decisions 99 and 101).
 
 When to release (agreed 2026-11-15), with no fixed schedule:
 
@@ -1243,71 +1247,102 @@ When to release (agreed 2026-11-15), with no fixed schedule:
    and an empty `[Unreleased]`, a version that is not newer or one the
    changelog already has stops it. Read the diff before committing.
 2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI
-   passes. The tag is created after the merge, because a squash merge gives
-   the commit a new SHA.
-3. Pull `main`, then `git tag -a vX.Y.Z -m vX.Y.Z` and
-   `git push origin vX.Y.Z`.
-4. Once npm has the version, create the GitHub release, titled
-   `mnemocyte vX.Y.Z`, from `pnpm release:notes mnemocyte` ("Release
-   text" below):
-   `pnpm release:notes mnemocyte > notes.md`, then
-   `gh release create vX.Y.Z --title "mnemocyte vX.Y.Z" --notes-file notes.md`.
-   For a version with a prerelease part, add `--prerelease` and say in
-   the notes that it installs with `mnemocyte@next`.
-5. After a final release, the publish job removes a stale `next` (see
-   below). If its `Remove stale next dist-tag` step warns, check
-   `npm view mnemocyte dist-tags`, remove a stale `next` with
+   passes.
+3. The merge starts `release.yml`. After its CI passes, the
+   `Publish to npm` job waits in the `npm` environment: open the run,
+   choose "Review deployments" and approve. Approving is the release,
+   not merging, and agents never approve. GitHub cancels a run whose
+   approval waits more than 30 days; the next push to `main` starts a
+   new one.
+4. The run publishes, tags the merge commit `vX.Y.Z` and creates the
+   GitHub release `mnemocyte vX.Y.Z` from `pnpm release:notes mnemocyte`
+   ("Release text"). If its `Remove stale next dist-tags` step warns,
+   check `npm view mnemocyte dist-tags`, remove a stale `next` with
    `npm dist-tag rm mnemocyte next` from your own npm login, and check
    that "Allow npm dist-tag" is on for the trusted publisher.
 
-The release workflow runs three stages:
+The release workflow has these jobs:
 
-- `verify` fails unless the tag equals `v` + the
-  `packages/mnemocyte/package.json` version,
-  `CHANGELOG.md` has a `## [X.Y.Z] - YYYY-MM-DD` heading and an
-  `[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` compare link for that
-  version, and the tagged commit is on `main`. It runs before `ci`, so a
-  missing section fails in seconds. The heading takes a hyphen, not a
-  dash: entries before 0.1.3 use `—` (`## [0.1.2] — 2026-05-20`), some
-  with no date, and would fail it.
-- `ci` runs `ci.yml` (through `workflow_call`, with `release: true`) on the
-  tagged commit. Path filtering applies only to pull requests, so every
-  job runs except `Site`: the Node matrix, `Checks`, the package lint,
-  `Links`, the four Postgres integration jobs, `libSQL server
-  integration`, `Neon HTTP integration` and the `MCP` matrix, for either
-  package's tag. The site is not in the tarball, and the release PR and
-  the push to `main` already ran it (decision 59). A job that calls a
+- `Plan` runs on every push, before installing anything:
+  `packages/release/src/bin/list.ts` prints each package at its
+  `package.json` version, and `npm view <pkg>@<version>` says whether
+  npm has it. Only an `E404` answer means it does not; any other failure
+  fails the job, so a failed lookup never reads as nothing to do. When
+  npm has every version, the run stops here, so an ordinary merge runs
+  CI once, on its own push. A tag for a version npm does not have stops
+  the run, since the workflow never makes one before publishing. A
+  version on npm without its tag or GitHub release only warns (see
+  "When a release fails" below).
+- `CI` runs `ci.yml` (through `workflow_call`, with `release: true`) on
+  the merge commit. Path filtering applies only to pull requests, so
+  every job runs except `Site`: the Node matrix, `Checks`, the package
+  lint, `Links`, `Release check`, the four Postgres integration jobs,
+  `libSQL server integration`, `Neon HTTP integration` and the `MCP`
+  matrix. The site is not in the tarball, and the release PR and the
+  push to `main` already ran it (decision 59). A job that calls a
   reusable workflow cannot set `timeout-minutes`; each `ci.yml` job has
-  its own, and `verify` and `publish` have theirs.
-- `publish` runs in the `npm` GitHub environment, the only job with
-  `id-token: write`. It installs without a dependency cache and runs
-  `pnpm publish --no-git-checks` in `packages/mnemocyte/`;
-  `prepublishOnly` builds `dist/` and `prepack` copies the root
-  `README.md` and `LICENSE` in ("Structure"). A version
-  with a prerelease part (`0.6.0-rc.1`) gets the `next` dist-tag, any other
-  `latest`, and the other tag stays where it was. `--no-git-checks` is
-  needed because a tag checkout is a detached HEAD; `verify` does the
-  branch check instead.
+  its own, and the release jobs have theirs.
+- `Publish to npm` waits for the approval in the `npm` GitHub
+  environment and is the only job with `id-token: write`. It installs
+  without a dependency cache and writes each package's release text
+  first, so a changelog that cannot give one stops the run before
+  anything is published. It builds `mnemocyte` when `@mnemocyte/mcp` is
+  listed (the workspace link its build needs), then runs
+  `pnpm publish --no-git-checks` in each package's folder, in the
+  package list's order, and stops at the first failure. A package npm
+  already has is skipped, which makes a re-run safe. `prepublishOnly`
+  builds `dist/` and `prepack` copies the root `README.md` and `LICENSE`
+  in ("Structure"). A version with a prerelease part (`0.6.0-rc.1`) gets
+  the `next` dist-tag, any other `latest`, and the other tag stays where
+  it was. `--no-git-checks` is needed because `main` may have moved on
+  while the run waited for approval, and pnpm refuses a branch behind
+  its remote.
   `--publish-wait-timeout 600000` keeps the job running until the version
   is installable: npm scans each upload before it shows up, which took about
   two minutes for 0.5.1. If it is not available after 10 minutes the job
   fails with `ERR_PNPM_PUBLISH_AVAILABILITY_TIMEOUT`, but the upload stays
   accepted and can still appear later, so check npm before retrying.
-- After a final release (no `-` in the tag), `publish` also runs
-  `Remove stale next dist-tag`, which reads `next` with `pnpm view`. When
+  The job then fails when `npm view <pkg>@<version> dist.attestations`
+  stays empty for two minutes: pnpm's `trustPolicy: no-downgrade` refuses
+  a version with less trust evidence than earlier ones, which broke
+  installs of Sanity's codegen 8.3.3.
+- After a final release, `Publish to npm` also runs
+  `Remove stale next dist-tags`, which reads `next` with `pnpm view`. When
   `next` is older than or equal to the version just published once its
   prerelease part is dropped (`1.3.0-rc.2` after `1.3.0`), it runs
-  `pnpm dist-tag rm mnemocyte next`; otherwise `mnemocyte@next` would
+  `pnpm dist-tag rm <package> next`; otherwise `<package>@next` would
   keep installing the old prerelease. A `next` ahead of the release
   (`1.4.0-rc.1` after `1.3.1`) stays. pnpm 12.12.1 and newer does the
   OIDC exchange for `dist-tag` itself, so the npm CLI version on the
   runner does not matter (Node 24.22.3 bundles npm 11.19.1, below the
   11.21.0 npm needs for dist-tags over OIDC). If the read or the removal
-  fails, the step prints a warning and the job still passes: the version
-  is already published, and a re-run would fail on the publish. pnpm
-  does not prompt: against a local registry stub that refused the
-  request with a 403, `pnpm dist-tag rm` exited at once with
-  `ERR_PNPM_FORBIDDEN`.
+  fails, the step prints a warning and the job still passes, since the
+  version is already published. pnpm does not prompt: against a local
+  registry stub that refused the request with a 403, `pnpm dist-tag rm`
+  exited at once with `ERR_PNPM_FORBIDDEN`.
+- `Tag and release` has `contents: write` and no other permission, and
+  runs no checkout and no install: `main` has no branch protection, so
+  this token could push to it. It reads the release text the publish
+  job uploaded, creates each annotated tag (`vX.Y.Z`, `mcp-vX.Y.Z`) on
+  the run's commit through the API, as `git tag -a` would, and runs
+  `gh release create --verify-tag` with the title from `releaseTitle`
+  and that text. A final `mnemocyte` release gets `--latest`;
+  `@mnemocyte/mcp` and prereleases get `--latest=false`, and a version
+  with a prerelease part `--prerelease`. It skips a tag or release that
+  exists. Events made with the job's `GITHUB_TOKEN` start no workflows,
+  so the new tags trigger nothing.
+
+A manual run (Actions, then Release, then "Run workflow", or
+`gh workflow run release.yml`) is always a dry run: `Plan` lists every
+package, CI runs, `Publish (dry run)` writes the release text and runs
+`pnpm publish --dry-run` outside the `npm` environment and without
+`id-token`, and `Tag and release` prints what it would do. It does not
+test the approval, the OIDC exchange, the attestation check or the API
+writes. GitHub takes `workflow_dispatch` only for a workflow on the
+default branch. Release runs queue one at a time: a run waiting for
+approval keeps its place, and a newer push replaces any run still queued
+behind it, which is safe because every run plans from scratch. Dry runs
+queue on their own.
 
 Publishing uses npm trusted publishing: pnpm exchanges the job's GitHub OIDC
 (OpenID Connect) token for a short-lived npm token, so no npm token is
@@ -1319,21 +1354,44 @@ newer does the exchange itself and does not need the npm CLI. Releases up to
 
 Repository and registry settings the workflow depends on:
 
-- GitHub environment `npm` with a deployment rule that allows only `v*`
-  tags.
+- GitHub environment `npm` with a deployment rule that allows only the
+  `main` branch, the maintainer as its required reviewer, and "Prevent
+  self-review" off, since the maintainer's own merge starts the run they
+  approve. Required reviewers work on public repositories on every plan.
 - npm trusted publisher for `mnemocyte`: GitHub Actions, `Meenic` /
-  `mnemocyte`, workflow `release.yml`, environment `npm`. npm does not check
-  it when saved; a mistake shows up as a failed publish. It needs "Allow
-  npm dist-tag" turned on (off by default; publish access does not
-  include it) for the publish job to remove a stale `next`.
+  `mnemocyte`, workflow `release.yml`, environment `npm`. It names no
+  branch or tag, so publishing from `main` needs no change, but the
+  workflow file name must stay. npm does not check it when saved; a
+  mistake shows up as a failed publish. It needs "Allow npm dist-tag"
+  turned on (off by default; publish access does not include it) for
+  the publish job to remove a stale `next`.
 - After the first trusted publish, the package's publishing access is
   "Require two-factor authentication and disallow tokens". Trusted publishing
   keeps working under that setting.
 
-A failed publish can be retried by re-running the workflow; the tag stays.
-If the fix needs a new commit, delete the tag, merge the fix and tag again.
-npm never accepts the same version twice, so once a version is published a
-fix needs a new version.
+### When a release fails
+
+npm never accepts the same version twice, so once a version is published
+a fix needs a new version. Otherwise:
+
+- CI fails before the approval: fix it on a branch and merge; the next
+  push's run plans again.
+- `Publish to npm` fails: "Re-run failed jobs" runs it again after a new
+  approval and skips what npm already has. If the fix needs a commit,
+  merge it, and the next run publishes what npm still lacks. A package
+  that did publish in the failed run is then left without a tag, and the
+  plan warns about it on every run. Tag the commit that run published
+  and create its release by hand, as the tags job would:
+
+  ```bash
+  git tag -a vX.Y.Z -m vX.Y.Z <sha>
+  git push origin vX.Y.Z
+  pnpm release:notes mnemocyte > notes.md
+  gh release create vX.Y.Z --verify-tag --title "mnemocyte vX.Y.Z" --notes-file notes.md
+  ```
+
+  A tag pushed by hand starts no workflow.
+- `Tag and release` fails: re-run it; it skips what exists.
 
 ### `@mnemocyte/mcp`
 
@@ -1354,23 +1412,19 @@ both changelogs and reaches each bin with that package's next release.
    or tag URL in this repository; 0.1.0's links to npm.
 2. Open a PR titled `chore(release): mcp-vX.Y.Z` and squash merge it once
    CI passes.
-3. Pull `main`, then `git tag -a mcp-vX.Y.Z -m mcp-vX.Y.Z` and
-   `git push origin mcp-vX.Y.Z`. `release.yml` reads the package from the
-   tag prefix, checks `packages/mcp/package.json` and its changelog, runs
-   CI, builds `mnemocyte` (the workspace link the build needs) and
-   publishes from `packages/mcp/`. The dist-tag and the stale-`next`
-   check read the version, not the tag, which has a hyphen of its own.
-4. Once npm has it, create a GitHub release titled `@mnemocyte/mcp
-   vX.Y.Z` from `pnpm release:notes @mnemocyte/mcp`, with
-   `--latest=false`, so the repository's latest release stays
-   `mnemocyte`'s.
+3. Approve the run as for `mnemocyte`. It builds `mnemocyte` and
+   publishes from `packages/mcp/`, tags `mcp-vX.Y.Z` and creates the
+   GitHub release `@mnemocyte/mcp vX.Y.Z` with `--latest=false`, so the
+   repository's latest release stays `mnemocyte`'s. The dist-tag and the
+   stale-`next` check read the version, not the tag, which has a hyphen
+   of its own.
 
 When both packages release together, as 1.4.0 and mcp 0.2.0 did, one PR
 can carry both: `pnpm release:prepare mnemocyte @mnemocyte/mcp` prepares
-both and prints the title, `chore(release): vX.Y.Z, mcp-vA.B.C`. Push
-both tags on its merge commit. Each tag runs
-`release.yml` on its own (its concurrency group is the tag), so a failed
-publish of one is retried or re-tagged without touching the other.
+both and prints the title, `chore(release): vX.Y.Z, mcp-vA.B.C`. Its
+merge starts one run with one approval, which publishes `mnemocyte`
+first and tags both on the merge commit. If `@mnemocyte/mcp` fails after
+`mnemocyte` published, re-run the failed job ("When a release fails").
 
 The first version could not go through the workflow: npm configures a
 trusted publisher only for a package that already exists. 0.1.0 was
@@ -1387,7 +1441,7 @@ steps, for the record and for any new package:
    `pnpm publish --access public --no-provenance` in the package folder.
    Provenance needs the workflow's OIDC token, and pnpm's docs name
    `--no-provenance` as the way to publish without it. Push no tag for
-   this version: its workflow would try to publish it again and fail.
+   this version.
 4. Wait a minute or two. A new package first shows only a public
    `0.0.0-stage` placeholder, tagged `latest`; once npm has scanned the
    upload, the real version appears and `latest` moves to it. The
@@ -1399,11 +1453,15 @@ steps, for the record and for any new package:
    workflow runs a plain `pnpm publish`. These fields cannot be changed
    later. Then set publishing access to "Require two-factor
    authentication and disallow tokens".
-6. Add the tag pattern (`mcp-v*`) to the tags the `npm` GitHub
-   environment allows.
+6. Add the package to `packages/release/src/packages.ts` only after this
+   publish. Before it, the plan would find a version npm does not have,
+   and the publish would fail without a trusted publisher. Until its
+   next version, the plan warns on every run that the hand-published
+   one has no tag.
 
-From then on, `mcp-v*` tags publish with provenance. The first such
-release is also the first run of that path, so watch its `publish` job.
+From then on, the package publishes through `release.yml` with
+provenance. Its first such release is also the first run of that path,
+so watch its `Publish to npm` job.
 
 ### Release text
 
@@ -1413,6 +1471,8 @@ one is given (decision 99). It reads the version's section in the
 package's changelog and prints:
 
 - the intro, the section's first paragraph, on one line;
+- for a version with a prerelease part, "This is a prerelease: install it
+  with `npm install <package>@next`.";
 - each `###` heading with its entries' bold lead-ins as a list, without
   the rest of each entry;
 - `Every change in full:` and a link to the section's heading on GitHub;
@@ -1436,8 +1496,9 @@ without a bold lead-in or with one that does not end with `.`, `!` or
 `?`. It reads `[Unreleased]` and the releases from `checkedFrom` up
 (1.0.0 for `mnemocyte`, 0.1.0 for `@mnemocyte/mcp`), and also fails
 when a package's version has no `## [X.Y.Z] - YYYY-MM-DD` heading or
-`[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link, as `verify` does
-on a tag. Write an entry as a lead-in sentence, then the details:
+`[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link, which the
+release text and the site need. Write an entry as a lead-in sentence,
+then the details:
 
 ```markdown
 - **The CLI reads `.env.local`, then `.env`.** That is the order Next.js

@@ -289,8 +289,9 @@ jobs:
         run: pnpm run test:links
 
   # The release scripts' tests and `pnpm release:check`: each package's
-  # version has its changelog heading and link (what release.yml's verify
-  # job checks), and every entry has a lead-in that ends with a period.
+  # version has its changelog heading and link (the release text needs
+  # both; release.yml runs this job too), and every entry has a lead-in
+  # that ends with a period.
   release:
     name: Release check
     needs: changes

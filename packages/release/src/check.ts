@@ -1,5 +1,5 @@
-// `pnpm release:check`, run on pull requests: each package's version has
-// the heading and link release.yml's verify job needs, and every entry from
+// `pnpm release:check`, run on pull requests and in release.yml's CI run:
+// each package's version has its heading and link, and every entry from
 // `checkedFrom` up opens with a bold lead-in that ends a sentence, since
 // the release text and the site show the lead-ins alone.
 import { REPOSITORY_URL, type ReleasePackage } from "./packages.ts";

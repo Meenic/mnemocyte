@@ -1,6 +1,7 @@
 // `pnpm release:notes`: a version's GitHub release text (decision 99): the
-// intro, each entry's bold lead-in under its heading, a link to the full
-// section and a compare link when there is an earlier tag.
+// intro, how to install a prerelease, each entry's bold lead-in under its
+// heading, a link to the full section and a compare link when there is an
+// earlier tag.
 import { REPOSITORY_URL, type ReleasePackage, tagName } from "./packages.ts";
 import {
 	absoluteLinks,
@@ -43,6 +44,12 @@ export function releaseNotes(input: NotesInput): string {
 		`${pkg.changelog}:${section.line}`,
 	);
 	const blocks: string[] = [absoluteLinks(section.intro, pkg)];
+	// release.yml publishes a prerelease under the next dist-tag.
+	if (version.includes("-")) {
+		blocks.push(
+			`This is a prerelease: install it with \`npm install ${pkg.name}@next\`.`,
+		);
+	}
 	for (const group of section.groups) {
 		if (group.entries.length === 0) continue;
 		const lines = group.entries.map((entry) => {

@@ -1,6 +1,6 @@
-// The packages this repository publishes, read by the release scripts
-// (and, from `chore/release-on-main`, by release.yml). This file imports
-// nothing, so a workflow job can read it with Node before installing.
+// The packages this repository publishes, read by the release scripts and
+// by release.yml (through bin/list.ts). This file imports nothing, so a
+// workflow job can read it with Node before installing.
 
 /** The GitHub repository every link and tag belongs to. */
 export const REPOSITORY_URL = "https://github.com/Meenic/mnemocyte";

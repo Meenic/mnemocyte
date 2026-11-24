@@ -2249,7 +2249,7 @@ Dated 2026-10-26 unless noted.
       Only then do CI and the publish job run, and the publish job waits
       in the `npm` environment for the maintainer's approval (required
       reviewers work on public repositories on every plan; a run not
-      approved within 30 days fails). "Prevent self-review" stays off,
+      approved within 30 days is cancelled). "Prevent self-review" stays off,
       since the maintainer's merge starts the run they approve. Tags and
       GitHub releases come from a later job with `contents: write` and no
       `id-token`. Approving is the release, not merging, and agents never
@@ -2318,3 +2318,48 @@ Dated 2026-10-26 unless noted.
       changed, since the site shows those lead-ins on their own and
       neither tarball ships its changelog. Starting the check at the next
       releases instead would have kept the fragments on the site.
+101. **The release workflow stays mostly shell** (2026-11-24, landed in
+    `chore/release-on-main`): the maintainer took these recommendations
+    for decision 99's second item, after a first draft grew to about
+    1,300 lines of TypeScript and tests (fetch-based npm and GitHub
+    lookups, a table of every npm, tag and release state, and the tag
+    commit read from npm's provenance) for cases that rarely happen.
+    Changesets gets the same "publish what npm does not have, then tag"
+    from `changeset publish`; this repository turned it down for its
+    changelog format (decision 99), not to build a release tool of its
+    own.
+    - **The plan starts a run only for a version npm does not have.**
+      `npm view <pkg>@<version>` answers it: `E404` means unpublished,
+      and any other failure fails the job. A version on npm without its
+      tag or release only warns, with "re-run the failed job, or finish
+      it by hand", since every later step skips what exists. A tag for a
+      version npm does not have stops the run: the workflow never makes
+      one, so it was made by hand. Decision 99's "or has no tag or GitHub
+      release yet" is narrowed to that warning, which spares an approval
+      for a run that only creates a tag. The package list reaches the job
+      through `packages/release/src/bin/list.ts`, which imports only
+      `src/packages.ts` and Node's modules, so it runs before installing.
+    - **One publish job loops over the packages** in the list's order,
+      stopping at the first failure, over a matrix: one install and one
+      approval, and GitHub's docs do not say whether one approval
+      releases several jobs waiting on the same environment. `mnemocyte`
+      goes first, since `@mnemocyte/mcp` builds against it and may raise
+      its peer range to the new version.
+    - **Tags go on the run's own commit through the API,** as annotated
+      tags (`POST git/tags`, then `POST git/refs`), from a job with only
+      `contents: write`, no checkout and no install, because `main` has
+      no branch protection. The release text comes from the publish job
+      as an artifact, written before anything is published.
+      `gh release create --verify-tag` keeps gh from making a lightweight
+      tag on `main`. Reading the commit from npm's provenance would only
+      matter after a partial publish whose fix changed the package; that
+      case is tagged by hand (DEVELOPMENT.md, "When a release fails").
+    - **The dry run is every `workflow_dispatch`:** `pnpm publish
+      --dry-run` for every package, outside the `npm` environment and
+      without `id-token`, and a tags job that only prints. GitHub takes
+      the event only for a workflow on the default branch, so the first
+      dry run is on `main` after this merges; until the maintainer moves
+      the environment's rule from tags to `main`, no job on `main` can
+      publish.
+    - **`release:notes` says how to install a prerelease** (`npm install
+      <pkg>@next`), which the release text used to get by hand.

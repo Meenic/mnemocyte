@@ -496,7 +496,7 @@ through the new path rather than migration 0005's 1.6.0.
   `releaseTitle` and `latest` in the list give `gh release create` its
   `--title` and `--latest=false`; see
   [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
-- [ ] `chore/release-on-main`: `release.yml` runs on pushes to `main`
+- [x] `chore/release-on-main`: `release.yml` runs on pushes to `main`
   (decision 99). A plan job lists the packages whose version is not on
   npm, or has no tag or GitHub release; with none it stops there, so an
   ordinary merge does not run CI twice. Otherwise CI runs, then `publish`
@@ -515,6 +515,20 @@ through the new path rather than migration 0005's 1.6.0.
   approve a deployment" (`gh` can, through the API). Rewrite
   DEVELOPMENT.md ("Releasing" and "`@mnemocyte/mcp`"). 1.5.0 is the
   first release through it; watch its runs.
+  Landed (decision 101), mostly as shell in `release.yml`: the plan
+  starts a run only for a version npm does not have (a missing tag or
+  release only warns), one publish job loops over the packages, and a
+  tags job with only `contents: write` and no install tags the run's
+  commit through the API. `packages/release/src/bin/list.ts` gives the
+  plan the package list, and `release:notes` now says how to install a
+  prerelease. Before 1.5.0 merges: run the dry run on `main`
+  (`gh workflow run release.yml`), then change the `npm` environment
+  (only `main`, the maintainer as required reviewer, "Prevent
+  self-review" off). Found: `release:check` wants a GitHub link for the
+  `package.json` version, so a new package added at its hand-published
+  first version, linked to npm as mcp 0.1.0 was, fails it; decide that
+  with the next new package. See
+  [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
 
 ## Drivers, CLI and ORMs
 

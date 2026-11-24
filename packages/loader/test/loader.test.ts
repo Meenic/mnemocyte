@@ -1,9 +1,16 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import type { ResolveHookContext } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { pathToFileURL } from "node:url";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { findMemoryFile } from "../src/memory-file.js";
-import { importCandidates, resolveAppImport } from "../src/resolve-hook.js";
+import {
+	importCandidates,
+	resolveAppImport,
+	resolveHook,
+	SERVER_ONLY_FILE,
+} from "../src/resolve-hook.js";
 import {
 	findTsconfig,
 	loadPathMapping,
@@ -181,6 +188,76 @@ describe("resolveAppImport", () => {
 		expect(resolveAppImport("./missing.js", importer)).toBeNull();
 		expect(resolveAppImport("postgres", importer)).toBeNull();
 		expect(resolveAppImport("node:fs", importer)).toBeNull();
+	});
+});
+
+describe("the hooks", () => {
+	function resolveContext(parent: string): ResolveHookContext {
+		return {
+			conditions: ["node", "import"],
+			importAttributes: {},
+			parentURL: pathToFileURL(parent).href,
+		};
+	}
+
+	function notFound(): never {
+		throw Object.assign(new Error("Cannot find module"), {
+			code: "ERR_MODULE_NOT_FOUND",
+		});
+	}
+
+	test("maps server-only to the file next to the loader before Node resolves it", () => {
+		// Built, the loader is in dist/cli.mjs and the file is dist/server-only.cjs.
+		const url = new URL(`../src/${SERVER_ONLY_FILE}`, import.meta.url).href;
+		const importer = join(root, "app", "src", "lib", "memory.ts");
+		// From an app file and from inside node_modules, Node is never asked,
+		// so whether the package is installed does not matter.
+		for (const parent of [
+			importer,
+			join(root, "node_modules", "lib", "index.js"),
+		]) {
+			const nextResolve = vi.fn(() => ({ url: "file:///installed.js" }));
+			expect(
+				resolveHook("server-only", resolveContext(parent), nextResolve),
+			).toEqual({ url, shortCircuit: true });
+			expect(nextResolve).not.toHaveBeenCalled();
+		}
+	});
+
+	test("leaves every other specifier to Node first", async () => {
+		const base = await write("hooks", {
+			"src/server-only.ts": "",
+			"src/memory.ts": "",
+		});
+		const importer = join(base, "src", "memory.ts");
+		for (const specifier of [
+			"server-only/empty.js",
+			"@acme/server-only",
+			"client-only",
+			"./server-only",
+		]) {
+			const nextResolve = vi.fn((resolved: string) => ({
+				url: `resolved:${resolved}`,
+			}));
+			expect(
+				resolveHook(specifier, resolveContext(importer), nextResolve),
+			).toEqual({ url: `resolved:${specifier}` });
+		}
+
+		// When Node fails, an app import is resolved as before; a package is
+		// left to Node's error.
+		const failing = vi.fn((resolved: string) => {
+			if (resolved.startsWith("file:")) {
+				return { url: resolved };
+			}
+			return notFound();
+		});
+		expect(
+			resolveHook("./server-only", resolveContext(importer), failing),
+		).toEqual({ url: pathToFileURL(join(base, "src", "server-only.ts")).href });
+		expect(() =>
+			resolveHook("server-only/empty.js", resolveContext(importer), failing),
+		).toThrow("Cannot find module");
 	});
 });
 

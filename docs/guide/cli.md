@@ -63,6 +63,13 @@ write that Node alone does not:
 - `paths` from the nearest `tsconfig.json`, such as `@/lib/db`, including a
   `tsconfig.json` that `extends` another.
 
+`import "server-only"`, which Next.js apps put at the top of server code,
+loads as an empty module, whether or not the `server-only` package is
+installed. The package throws when Node loads it outside React Server
+Components. The command runs on the server side, as that code does, so
+it skips the check and prints nothing about it. Every other package,
+`client-only` included, loads the way Node resolves it.
+
 What does not load, and fails with a message that says so:
 
 - `enum`, `namespace` with code, and constructor parameter properties,

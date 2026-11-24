@@ -1,5 +1,5 @@
 import { statSync } from "node:fs";
-import { registerHooks } from "node:module";
+import { type ResolveHookSync, registerHooks } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -85,44 +85,72 @@ export function resolveAppImport(
 	return null;
 }
 
+/**
+ * The file `server-only` resolves to, next to the bundled loader: each
+ * bin's build writes an empty `dist/server-only.cjs` (the
+ * `server-only-stub` plugin in its `tsdown.config.ts`). React's marker
+ * package throws at import outside the `react-server` condition, and an
+ * app's memory file may import it (Next.js's convention for server code).
+ * The bins are server code, so it loads as nothing instead (decisions 81
+ * and 97). A real file, because Node 22.18 skips resolve hooks for
+ * `require()` in CommonJS loaded by `import` once any load hook is
+ * registered, and `require()` cannot load a `data:` URL.
+ */
+export const SERVER_ONLY_FILE = "server-only.cjs";
+
+/**
+ * The resolve hook. `server-only`, the exact bare specifier, maps to
+ * {@link SERVER_ONLY_FILE} before Node resolves it, from any importer, so
+ * an installed copy is not loaded either. Everything else asks Node first
+ * and looks further only when Node fails, for an importer that is a file
+ * outside `node_modules`.
+ */
+export const resolveHook: ResolveHookSync = (
+	specifier,
+	context,
+	nextResolve,
+) => {
+	if (specifier === "server-only") {
+		const url = new URL(SERVER_ONLY_FILE, import.meta.url).href;
+		return { url, shortCircuit: true };
+	}
+	try {
+		return nextResolve(specifier, context);
+	} catch (error) {
+		const parent = context.parentURL;
+		if (parent === undefined || !parent.startsWith("file:")) {
+			throw error;
+		}
+		const importer = fileURLToPath(parent);
+		if (importer.split(/[\\/]/).includes("node_modules")) {
+			throw error;
+		}
+		const found = resolveAppImport(specifier, importer);
+		if (found === null) {
+			throw error;
+		}
+		return nextResolve(pathToFileURL(found).href, context);
+	}
+};
+
 let registered = false;
 
 /**
  * Teach this process the imports a TypeScript app writes that Node's type
  * stripping does not resolve: extensionless and `.js`-for-`.ts` relative
- * imports, and tsconfig `paths`.
+ * imports, and tsconfig `paths`; and load `server-only` as an empty module.
  *
  * `module.registerHooks` installs a synchronous resolve hook on the current
  * thread, for `import` and `require` alike (`module.register`, the
- * asynchronous one, is deprecated from Node 26). The hook asks Node first
- * and only looks further when Node fails, so anything Node resolves, every
- * package included, is untouched. It ignores imports made from inside
- * `node_modules`. Registering twice does nothing.
+ * asynchronous one, is deprecated from Node 26). Apart from `server-only`,
+ * the resolve hook asks Node first and only looks further when Node fails,
+ * so anything Node resolves, every other package included, is untouched.
+ * Registering twice does nothing.
  */
 export function registerAppResolver(): void {
 	if (registered) {
 		return;
 	}
 	registered = true;
-	registerHooks({
-		resolve(specifier, context, nextResolve) {
-			try {
-				return nextResolve(specifier, context);
-			} catch (error) {
-				const parent = context.parentURL;
-				if (parent === undefined || !parent.startsWith("file:")) {
-					throw error;
-				}
-				const importer = fileURLToPath(parent);
-				if (importer.split(/[\\/]/).includes("node_modules")) {
-					throw error;
-				}
-				const found = resolveAppImport(specifier, importer);
-				if (found === null) {
-					throw error;
-				}
-				return nextResolve(pathToFileURL(found).href, context);
-			}
-		},
-	});
+	registerHooks({ resolve: resolveHook });
 }

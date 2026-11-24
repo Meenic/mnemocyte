@@ -30,7 +30,8 @@ and sends requests on its standard input. On start it:
 1. loads `.env.local`, then `.env`, from your app's folder, as the
    [CLI does](./cli.md#environment-variables), or the file in `--env-file`;
 2. imports your memory file, the same file and lookup the
-   [CLI uses](./cli.md#the-memory-file), TypeScript included;
+   [CLI uses](./cli.md#the-memory-file), TypeScript and
+   [`import "server-only"`](./cli.md#typescript-files) included;
 3. binds the client to the scope in its flags with `memory.for(...)`;
 4. prints one line to standard error, such as:
 

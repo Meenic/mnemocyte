@@ -819,7 +819,8 @@ Dated 2026-10-26 unless noted.
     ends with `process.exit`, since it cannot close the app's client.
     `registerHooks` is "active development" on Node 22 and type stripping
     a release candidate there; both are covered by a package test that
-    runs the built bin on every CI Node version.
+    runs the built bin on every CI Node version. (Revised by decision 97:
+    `server-only` is the one specifier mapped before Node resolves it.)
 37. **`init` picks Drizzle first and writes the guide's files** (2026-11-14,
     landed): the maintainer chose, for `mnemocyte init`, that `drizzle-orm`
     wins over a plain driver and wraps the one next to it (`postgres`,
@@ -1738,10 +1739,11 @@ Dated 2026-10-26 unless noted.
     manages only `public`, so a schema of its own does not hide the tables
     from 1.0's push.
 81. **`server-only` loads as an empty module in the CLI** (2026-11-22,
-    queued as `feat/cli-server-only`): the maintainer chose to map that one
-    specifier in the CLI's resolve hook over loading the memory file with
-    React's `react-server` condition, which would change how every package
-    with such an export resolves (React itself among them). `server-only`
+    landed with `feat/cli-server-only`, details in decision 97): the
+    maintainer chose to map that one specifier in the CLI's resolve hook
+    over loading the memory file with React's `react-server` condition,
+    which would change how every package with such an export resolves
+    (React itself among them). `server-only`
     exports `react-server` to an empty file and throws by default.
 82. **HTTP 529 is retried** (2026-11-22, queued as `fix/retry-529`): the
     maintainer chose to add 529 to the built-in retry statuses for every
@@ -2120,3 +2122,42 @@ Dated 2026-10-26 unless noted.
     `feat/cli-server-only`; `chore/shared-scope-sql` after the 1.5.0
     group, before
     the migration 0005 group. Neither needs a release of its own.
+97. **How `server-only` maps** (2026-11-24, landed with
+    `feat/cli-server-only`): carries out decision 81. The maintainer took
+    these recommendations:
+    - **The empty module:** a file in each bin's `dist/`,
+      `server-only.cjs`, which a `server-only-stub` plugin in each
+      `tsdown.config.ts` writes and the resolve hook returns with
+      `shortCircuit: true`. The maintainer chose it the same day, after
+      the first choice failed CI: a synthetic `mnemocyte:server-only` URL
+      with a `load` hook that returned empty source passed on Node 24 and
+      26 but not on 22.18. There, any `registerHooks` load hook makes the
+      ESM loader read CommonJS source (`defaultLoadSync`), and CommonJS
+      that arrives with source runs with the translator's own `require`
+      (`loadCJSModule`), which calls `CJSModule._resolveFilename` and
+      skips resolve hooks. That broke `require("server-only")` in a
+      `.cjs` file the memory file imports, and by the same path would
+      skip the hook's tsconfig `paths` in such `require()` calls (read
+      from the 22.18 source, not run). Node 24.22 uses the real
+      `require()` there (nodejs/node#60380). A `data:text/javascript,`
+      URL fails too: on Node 24 `import` loads it, but `require()` reads
+      it as a file path (`ENOENT`). The cost is one more file in each
+      tarball.
+    - **When it applies:** always, before Node resolves, for the exact bare
+      specifier and from any importer, `node_modules` included. Mapping
+      only when Node fails would leave the common case broken: an
+      installed `server-only` resolves, to the `index.js` that throws.
+      Next.js handles the import itself and calls installing the package
+      optional, so both cases are real. This is the one specifier the hook
+      takes from Node, an exception to decision 36's "cannot change how
+      an installed package resolves". Subpaths, relative imports and
+      scoped look-alikes are untouched.
+    - **`client-only`:** left to Node. Its exports map sends
+      `react-server` to the file that throws and everything else to an
+      empty `index.js`, so under Node's default conditions it already
+      loads as nothing; an error that names it would add behavior the
+      package has only under `react-server`.
+    - **Output:** none. The import is expected in a Next.js app's server
+      code, a line on every run would be noise, and the CLI's `--json`
+      output and the server's startup line stay as they were. The guides
+      say it instead.

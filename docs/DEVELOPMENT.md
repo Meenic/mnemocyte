@@ -711,9 +711,9 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   recording `CliIo` standing in for the terminal, in
   `test/contract/cli.test.ts`; the built `dist/cli.mjs` as a child process
   in temporary projects in `test/package/cli.test.ts`, which is where a
-  TypeScript memory file, the resolve hook and the env files run on each CI Node
-  version; and the `DATABASE_URL` path on real Postgres in
-  `test/integration/cli.test.ts`.
+  TypeScript memory file, the resolve hook (`server-only` included) and
+  the env files run on each CI Node version; and the `DATABASE_URL` path
+  on real Postgres in `test/integration/cli.test.ts`.
 - `test/embedders/voyage.test.ts`, `cohere.test.ts` and `google.test.ts`
   stub `fetch` (helpers in `fetch-mock.ts`) and check each request's URL,
   headers and body per purpose, the dimension rules, response checks and

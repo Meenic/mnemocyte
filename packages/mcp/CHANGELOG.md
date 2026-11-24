@@ -8,6 +8,15 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+### Added
+
+- **Memory files that import `server-only` load.** Next.js apps guard
+  server code with `import "server-only"`, and the package throws when
+  Node loads it outside React Server Components, so the server could not
+  start on such a file. The import now loads as an empty module, whether
+  or not the package is installed, as in the `mnemocyte` CLI
+  ([the guide](../../docs/guide/cli.md#typescript-files)).
+
 ### Changed
 
 - **The server reads `.env.local`, then `.env`,** from the app's folder,

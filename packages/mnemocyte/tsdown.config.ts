@@ -18,6 +18,19 @@ export default defineConfig({
 	dts: { sourcemap: false },
 	plugins: [
 		{
+			// The empty module the bundled loader maps `server-only` to
+			// (SERVER_ONLY_FILE in packages/loader/src/resolve-hook.ts).
+			name: "server-only-stub",
+			generateBundle() {
+				this.emitFile({
+					type: "asset",
+					fileName: "server-only.cjs",
+					source:
+						"// Empty on purpose: the bin loads this file in place of React's\n// server-only package, which throws outside React Server Components.\n",
+				});
+			},
+		},
+		{
 			// The bin is not an export, so its declaration file would be an
 			// empty `export {}` that nothing references.
 			name: "drop-cli-declarations",

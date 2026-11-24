@@ -32,11 +32,20 @@ function runCli(
 	args: readonly string[],
 	env: Record<string, string> = {},
 ): Promise<CliRun> {
+	return runNode(cwd, [CLI, ...args], env);
+}
+
+/** Run Node in `cwd`, without `DATABASE_URL`. */
+function runNode(
+	cwd: string,
+	args: readonly string[],
+	env: Record<string, string> = {},
+): Promise<CliRun> {
 	const { DATABASE_URL: _removed, ...inherited } = process.env;
 	return new Promise((done) => {
 		execFile(
 			process.execPath,
-			[CLI, ...args],
+			args,
 			{ cwd, env: { ...inherited, ...env }, windowsHide: true },
 			(error, stdout, stderr) => {
 				const code =
@@ -72,6 +81,24 @@ async function linkPackage(
 	await mkdir(dirname(link), { recursive: true });
 	await symlink(await realpath(target), link, "junction");
 }
+
+/**
+ * React's `server-only` 0.0.1, the only version published: under any
+ * condition but `react-server`, its entry throws.
+ */
+const SERVER_ONLY_PACKAGE: Record<string, string> = {
+	"node_modules/server-only/package.json": JSON.stringify({
+		name: "server-only",
+		version: "0.0.1",
+		main: "index.js",
+		exports: {
+			".": { "react-server": "./empty.js", default: "./index.js" },
+		},
+	}),
+	"node_modules/server-only/index.js":
+		'throw new Error("This module cannot be imported from a Client Component module. It should only be used from a Server Component.");\n',
+	"node_modules/server-only/empty.js": "",
+};
 
 // Each test starts several Node processes, which is slow when the other
 // package tests pack the tarball at the same time.
@@ -320,6 +347,52 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 		const sql = await runCli(directory, ["sql"]);
 		expect(sql.code).toBe(0);
 		expect(sql.stdout).toContain('"embedding" vector(2)');
+	});
+
+	test("a memory file that imports server-only loads, whether or not it is installed", async () => {
+		const files = {
+			"src/lib/memory.ts": `
+				import "server-only";
+				import { createMemory, type Embedder } from "mnemocyte";
+				import legacy from "./legacy.cjs";
+
+				const embedder: Embedder = {
+					model: legacy.model,
+					dimensions: 2,
+					async embed(texts) {
+						return texts.map(() => [1, 0]);
+					},
+				};
+				export const memory = createMemory({ embedder });
+			`,
+			// require() goes through the same hooks.
+			"src/lib/legacy.cjs": `
+				require("server-only");
+				module.exports = { model: "in-memory" };
+			`,
+		};
+		const missing = await project("server-only-missing", files);
+		const installed = await project("server-only-installed", {
+			...files,
+			...SERVER_ONLY_PACKAGE,
+		});
+		for (const directory of [missing, installed]) {
+			const checked = await runCli(directory, ["check"]);
+			expect(checked.stderr).toBe("");
+			expect(checked.code).toBe(0);
+			expect(checked.stdout).toContain("Using src/lib/memory.ts");
+			expect(checked.stdout).toContain("nothing to check");
+		}
+		// The stand-in throws when Node loads it, so the mapping is what helps.
+		const direct = await runNode(installed, [
+			"--input-type=module",
+			"--eval",
+			'import "server-only";',
+		]);
+		expect(direct.code).not.toBe(0);
+		expect(direct.stderr).toContain(
+			"cannot be imported from a Client Component",
+		);
 	});
 
 	test("--json prints one JSON line last, after what the memory file prints", async () => {

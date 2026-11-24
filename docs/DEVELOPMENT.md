@@ -74,6 +74,7 @@ The repository is a pnpm workspace (`pnpm-workspace.yaml`: `packages/*`,
 packages/mnemocyte/     the published `mnemocyte` package: src/, test/, migrations/, scripts/, its configs and package.json
 packages/mcp/           the published `@mnemocyte/mcp` package: the MCP server and its bin; README.md and CHANGELOG.md of its own
 packages/loader/        the private `@mnemocyte/loader` package: the env file order, the memory file lookup and the resolve hook both bins bundle
+packages/release/       the private `@mnemocyte/release` package: the published packages' list, the changelog parser the site shares, and `release:prepare`, `release:notes` and `release:check`
 apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
 examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
 docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
@@ -101,6 +102,18 @@ and peer and optional dependencies external (decision 93). A
 workspace package there). Its tests are its own
 (`pnpm test:loader`); see
 [features/cli.md](./features/cli.md#loading-the-memory-file).
+`@mnemocyte/release` is `packages/release/`: `src/packages.ts` lists
+the published packages (name, folder, changelog, tag prefix, GitHub
+release title, whether it is the repository's latest release, and the
+oldest release `release:check` reads), `src/changelog.ts` parses a Keep a
+Changelog file, and `src/bin/` holds the three commands ("Releasing").
+It is `"private": true` and never published. Node runs its TypeScript
+through type stripping, so files import each other by their `.ts` name.
+The site imports `@mnemocyte/release/changelog`, which imports no file
+of its own because the site type-checks it with its own settings, and
+Turbopack compiles workspace packages without `transpilePackages`.
+`src/packages.ts` imports nothing, so a workflow can read it before
+installing. Its tests are its own (`pnpm test:release`).
 `examples/` stays at the root, where GitHub readers look for it, and
 installs `mnemocyte` from the workspace the way an app installs it from
 npm. Only the root `package.json` sets `packageManager`; `engines` is in
@@ -978,8 +991,9 @@ when the release calls it (`workflow_call`). It has these jobs:
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | in `packages/mnemocyte/`: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
 | `Neon HTTP integration` | `test:integration:neon` through the local Neon proxy in front of Postgres 17, on Node 24 | the same files as the Postgres jobs |
-| `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
+| `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `packages/release/**` (the changelog parser it uses), `CHANGELOG.md` |
 | `Links` | `checktypes:scripts` (the root `scripts/`), then `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/**`, the root `tsconfig.json`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
+| `Release check` | `checktypes:release`, then `test:release` (the release scripts' tests, then `release:check`) | `packages/release/**`, `CHANGELOG.md`, `packages/mcp/CHANGELOG.md`, `packages/mcp/package.json` |
 | `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/loader/**` (the loader it bundles), `packages/mnemocyte/src/**` (the public API it uses), `LICENSE` |
 
 - A change to `.github/**`, the root `package.json`,
@@ -1015,6 +1029,11 @@ when the release calls it (`workflow_call`). It has these jobs:
   itself. `packages/mcp/package.json` is on the MCP list, not the list
   that runs every job; a dependency change also changes `pnpm-lock.yaml`,
   which is.
+- `Release check` reads only the two changelogs and the two
+  `package.json` versions, so a PR that touches none of them cannot
+  change its result. `packages/mnemocyte/package.json` is not on its
+  list because it already runs every job. `release.yml` calls `ci.yml`,
+  so a tag push runs it too.
 - Lint and the type-level checks give the same result on every Node
   version, so they run once, in `Checks`, and the Node jobs run only the
   build and the Vitest projects. The `contract` project on PGlite still
@@ -1164,7 +1183,8 @@ when the release calls it (`workflow_call`). It has these jobs:
   later, has 10, `Links` 5, `libSQL server integration` 10 and
   `Neon HTTP integration` 15 (the suite takes about 40 s locally; on
   GitHub its first run took 5 minutes, before the changes in the Neon
-  bullet above).
+  bullet above). `Release check` has 5: its tests and the check take
+  about 7 s locally.
 - Both workflows pin each action to a full-length commit SHA with its
   release after it (`actions/checkout@<sha> # v7.0.1`), since the release
   runs `ci.yml` and its publish job holds the npm OIDC token (decision
@@ -1201,22 +1221,39 @@ When to release (agreed 2026-11-15), with no fixed schedule:
 - A question about releasing is not a request for one. Open a release PR
   only when the maintainer asks for it.
 
-1. On a `chore/release-vX.Y.Z` branch, run
-   `pnpm version patch --no-git-tag-version` (or `minor`) in
-   `packages/mnemocyte/`, which changes only its `package.json`, then move
-   the `CHANGELOG.md` `[Unreleased]` entries under the new version. Bump first: pnpm 12 stops with
-   `ERR_PNPM_UNCLEAN_WORKING_TREE` when the tree has changes (or add
-   `--no-git-checks`). For the first release candidate, give the version
-   (`pnpm version 1.0.0-rc.1 --no-git-tag-version`), since `premajor` would
-   produce `rc.0`.
+1. On a `chore/release-vX.Y.Z` branch, run `pnpm release:prepare
+   mnemocyte`. It reads `[Unreleased]` and picks the version: minor when
+   it has an `Added` or `Deprecated` section, else patch. It stops on a
+   `**Breaking…**` lead-in or a `### Breaking…` section, since a major is
+   the maintainer's call; name the version then (`mnemocyte@2.0.0`). A
+   version or `@patch`, `@minor`, `@major` after the name also overrides
+   the proposal, so a release candidate is `mnemocyte@1.5.0-rc.1`. It
+   then:
+   - moves the entries under `## [X.Y.Z] - YYYY-MM-DD` (today's local
+     date), leaving `## [Unreleased]` empty above it;
+   - points the `[Unreleased]` link at `compare/vX.Y.Z...HEAD` and adds
+     `[X.Y.Z]: …/compare/vPREVIOUS...vX.Y.Z` below it;
+   - runs `pnpm version X.Y.Z --no-git-tag-version --no-git-checks` in
+     `packages/mnemocyte/`, which changes only its `package.json`. Without
+     the first flag `pnpm version` commits and tags; without the second
+     it stops with `ERR_PNPM_UNCLEAN_WORKING_TREE` on the changelog edit.
+
+   It prints each version with its reason, the branch name and the PR
+   title. It checks every package it is given before it writes anything,
+   and an empty `[Unreleased]`, a version that is not newer or one the
+   changelog already has stops it. Read the diff before committing.
 2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI
    passes. The tag is created after the merge, because a squash merge gives
    the commit a new SHA.
 3. Pull `main`, then `git tag -a vX.Y.Z -m vX.Y.Z` and
    `git push origin vX.Y.Z`.
-4. Once npm has the version, create the GitHub release. For a version with
-   a prerelease part, mark it as a prerelease and say it installs with
-   `mnemocyte@next`.
+4. Once npm has the version, create the GitHub release, titled
+   `mnemocyte vX.Y.Z`, from `pnpm release:notes mnemocyte` ("Release
+   text" below):
+   `pnpm release:notes mnemocyte > notes.md`, then
+   `gh release create vX.Y.Z --title "mnemocyte vX.Y.Z" --notes-file notes.md`.
+   For a version with a prerelease part, add `--prerelease` and say in
+   the notes that it installs with `mnemocyte@next`.
 5. After a final release, the publish job removes a stale `next` (see
    below). If its `Remove stale next dist-tag` step warns, check
    `npm view mnemocyte dist-tags`, remove a stale `next` with
@@ -1308,12 +1345,13 @@ peer range and waits for that `mnemocyte` release. Both bins bundle
 `packages/loader/`, so a user-visible change there needs an entry in
 both changelogs and reaches each bin with that package's next release.
 
-1. On a `chore/release-mcp-vX.Y.Z` branch, run
-   `pnpm version patch --no-git-tag-version` (or `minor`) in
-   `packages/mcp/`, then move its `[Unreleased]` entries under
-   `## [X.Y.Z] - YYYY-MM-DD` and add an
-   `[X.Y.Z]: https://github.com/Meenic/mnemocyte/releases/tag/mcp-vX.Y.Z`
-   link at the end of that file.
+1. On a `chore/release-mcp-vX.Y.Z` branch, run `pnpm release:prepare
+   @mnemocyte/mcp`, which works as for `mnemocyte` in
+   `packages/mcp/CHANGELOG.md` and `packages/mcp/`. That changelog has no
+   `[Unreleased]` link, so the version's link goes above the others: a
+   compare from the last `mcp-v` tag, or `releases/tag/mcp-vX.Y.Z` when
+   there is none. A version counts as tagged when its link is a compare
+   or tag URL in this repository; 0.1.0's links to npm.
 2. Open a PR titled `chore(release): mcp-vX.Y.Z` and squash merge it once
    CI passes.
 3. Pull `main`, then `git tag -a mcp-vX.Y.Z -m mcp-vX.Y.Z` and
@@ -1323,13 +1361,14 @@ both changelogs and reaches each bin with that package's next release.
    publishes from `packages/mcp/`. The dist-tag and the stale-`next`
    check read the version, not the tag, which has a hyphen of its own.
 4. Once npm has it, create a GitHub release titled `@mnemocyte/mcp
-   vX.Y.Z`, not marked as latest, so the repository's latest release stays
+   vX.Y.Z` from `pnpm release:notes @mnemocyte/mcp`, with
+   `--latest=false`, so the repository's latest release stays
    `mnemocyte`'s.
 
 When both packages release together, as 1.4.0 and mcp 0.2.0 did, one PR
-can carry both: bump the second package with `--no-git-checks`, since the
-first bump leaves the tree unclean, title the PR `chore(release): vX.Y.Z,
-mcp-vA.B.C`, and push both tags on its merge commit. Each tag runs
+can carry both: `pnpm release:prepare mnemocyte @mnemocyte/mcp` prepares
+both and prints the title, `chore(release): vX.Y.Z, mcp-vA.B.C`. Push
+both tags on its merge commit. Each tag runs
 `release.yml` on its own (its concurrency group is the tag), so a failed
 publish of one is retried or re-tagged without touching the other.
 
@@ -1368,14 +1407,39 @@ release is also the first run of that path, so watch its `publish` job.
 
 ### Release text
 
-GitHub release title: `mnemocyte vX.Y.Z`. Description:
+`pnpm release:notes <package> [<version>]` prints a version's GitHub
+release text, for the version in the package's `package.json` unless
+one is given (decision 99). It reads the version's section in the
+package's changelog and prints:
+
+- the intro, the section's first paragraph, on one line;
+- each `###` heading with its entries' bold lead-ins as a list, without
+  the rest of each entry;
+- `Every change in full:` and a link to the section's heading on GitHub;
+- `**Full Changelog**:` and a compare link from the package's previous
+  tag, when it has one (decided as in `release:prepare` above).
+
+Relative links become GitHub URLs on `main`, as the README's do in the
+tarball (decision 74): from the changelog's folder, so `../../docs/…` in
+`packages/mcp/CHANGELOG.md` works, and `#anchor` to the changelog itself.
+A link outside the repository, a reference-style link (`[text][label]`,
+or `[1.4.0]` alone, since the text carries no link definitions), an
+entry without a lead-in or a section without an intro stops it. For `mnemocyte` the intro and lead-ins are
+what the site's changelog page shows; both read them with
+`@mnemocyte/release/changelog`. pnpm prints its `$ node …` line on
+standard error, so `pnpm release:notes mnemocyte > notes.md` holds only
+the text.
+
+The text only reads well when each lead-in is a whole sentence, so
+`pnpm release:check`, in the `Release check` CI job, fails on an entry
+without a bold lead-in or with one that does not end with `.`, `!` or
+`?`. It reads `[Unreleased]` and the releases from `checkedFrom` up
+(1.0.0 for `mnemocyte`, 0.1.0 for `@mnemocyte/mcp`), and also fails
+when a package's version has no `## [X.Y.Z] - YYYY-MM-DD` heading or
+`[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link, as `verify` does
+on a tag. Write an entry as a lead-in sentence, then the details:
 
 ```markdown
-### Category
-- **Short label**: concise description of the change
-
-**Full Changelog**: https://github.com/Meenic/mnemocyte/compare/vPREVIOUS...vCURRENT
+- **The CLI reads `.env.local`, then `.env`.** That is the order Next.js
+  uses, so a Next.js app no longer needs `--env-file .env.local`.
 ```
-
-Categories: Performance, Accuracy, Reliability, Embedders, Documentation,
-Tooling, API. Keep it factual, with no validation section.

@@ -25,13 +25,13 @@ range is unchanged (`mnemocyte` `^1.1.0`).
 
 ### Changed
 
-- **The server reads `.env.local`, then `.env`,** from the app's folder,
-  as the `mnemocyte` CLI now does and Next.js does. A value in
-  `.env.local` wins over `.env`, a variable that is already set wins over
-  both, and `.env.local` is skipped when `NODE_ENV` is `test`.
+- **The server reads `.env.local`, then `.env`.** It reads them from the
+  app's folder, as the `mnemocyte` CLI now does and Next.js does. A value
+  in `.env.local` wins over `.env`, a variable that is already set wins
+  over both, and `.env.local` is skipped when `NODE_ENV` is `test`.
   `--env-file` still replaces both files.
-- The startup line on standard error ends with the env files the server
-  read, such as `env .env.local, .env`, or `env none`
+- **The startup line names the env files it read.** The line on standard
+  error ends with them, such as `env .env.local, .env`, or `env none`
   ([the guide](../../docs/guide/mcp.md#environment-variables)).
 
 ## [0.1.0] - 2026-11-23
@@ -48,8 +48,9 @@ The first release: an MCP server for Mnemocyte memory.
   memory tools' names, inputs and outputs; `--allow-forget` adds
   `forgetMemory` and `--read-only` leaves only search. No tool input can
   name a scope. See [the guide](../../docs/guide/mcp.md).
-- **`createMemoryMcpServer({ memory })`** returns the same server over a
-  bound client, without a transport, for apps that serve MCP themselves.
+- **`createMemoryMcpServer({ memory })` for apps that serve MCP
+  themselves.** It returns the same server over a bound client, without a
+  transport.
 
 [0.2.0]: https://github.com/Meenic/mnemocyte/releases/tag/mcp-v0.2.0
 [0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0

@@ -1,0 +1,29 @@
+{
+	"name": "@mnemocyte/release",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The release scripts: the list of published packages, the changelog parser the site shares, release:prepare, release:notes and release:check. Never published.",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		"./changelog": "./src/changelog.ts",
+		"./packages": "./src/packages.ts"
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"checktypes": "tsc --noEmit",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"github-slugger": "^2.0.0",
+		"mdast-util-from-markdown": "^2.1.0"
+	},
+	"devDependencies": {
+		"@types/mdast": "^4.0.4",
+		"@types/node": "^22.20.5",
+		"typescript": "^6.0.3",
+		"vitest": "5.0.5"
+	}
+}

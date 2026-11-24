@@ -465,7 +465,7 @@ of "Drivers, CLI and ORMs", so 1.5.0, a small release, is the first one
 through the new path rather than migration 0005's 1.6.0.
 `docs/nextjs-recipe` shares no files with them and can run alongside.
 
-- [ ] `chore/release-prepare`: one list of the published packages (name,
+- [x] `chore/release-prepare`: one list of the published packages (name,
   folder, changelog, tag prefix, GitHub release title, whether it is the
   repository's latest release), for example `scripts/release/packages.ts`,
   which the scripts below and later `release.yml` read. `pnpm
@@ -485,6 +485,17 @@ through the new path rather than migration 0005's 1.6.0.
   "Release text") and AGENTS.md's "draft release text in the format in
   `docs/DEVELOPMENT.md`" switch to the scripts and `release:notes`; the
   tag push stays until the next item.
+  Landed (decision 100): `@mnemocyte/release` in `packages/release/`
+  with `src/packages.ts` (the list, importing nothing, so the next
+  item's plan job can read it before installing), the changelog parser
+  the site now uses, and `pnpm release:prepare`, `release:notes` and
+  `release:check`, run by the `Release check` CI job. The check also
+  fails on an entry with no lead-in, so mcp 0.2.0's startup-line entry
+  got one. For the next item: `pnpm release:notes <package> > file` gives
+  only the text (pnpm's `$ node …` line goes to standard error), and
+  `releaseTitle` and `latest` in the list give `gh release create` its
+  `--title` and `--latest=false`; see
+  [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
 - [ ] `chore/release-on-main`: `release.yml` runs on pushes to `main`
   (decision 99). A plan job lists the packages whose version is not on
   npm, or has no tag or GitHub release; with none it stops there, so an

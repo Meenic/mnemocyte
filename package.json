@@ -5,10 +5,11 @@
 	"scripts": {
 		"build": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp build",
 		"dev": "pnpm --filter mnemocyte dev",
-		"checktypes": "pnpm run checktypes:scripts && pnpm run checktypes:loader && pnpm --filter mnemocyte checktypes && pnpm run checktypes:mcp",
+		"checktypes": "pnpm run checktypes:scripts && pnpm run checktypes:loader && pnpm run checktypes:release && pnpm --filter mnemocyte checktypes && pnpm run checktypes:mcp",
 		"checktypes:loader": "pnpm --filter @mnemocyte/loader checktypes",
+		"checktypes:release": "pnpm --filter @mnemocyte/release checktypes",
 		"checktypes:scripts": "tsc --noEmit",
-		"test": "pnpm run test:links && pnpm run test:loader && pnpm --filter mnemocyte test && pnpm --filter @mnemocyte/mcp test && pnpm run test:examples",
+		"test": "pnpm run test:links && pnpm run test:release && pnpm run test:loader && pnpm --filter mnemocyte test && pnpm --filter @mnemocyte/mcp test && pnpm run test:examples",
 		"test:checks": "pnpm --filter mnemocyte test:checks && pnpm run test:examples",
 		"test:ci": "pnpm --filter mnemocyte test:ci",
 		"test:unit": "pnpm --filter mnemocyte test:unit",
@@ -18,6 +19,7 @@
 		"test:jsdoc": "pnpm --filter mnemocyte test:jsdoc",
 		"test:links": "node scripts/check-links.ts",
 		"test:loader": "pnpm --filter @mnemocyte/loader test",
+		"test:release": "pnpm --filter @mnemocyte/release test && pnpm run release:check",
 		"test:examples": "pnpm --filter @mnemocyte/examples typecheck",
 		"test:integration": "pnpm --filter mnemocyte test:integration",
 		"test:integration:libsql": "pnpm --filter mnemocyte test:integration:libsql",
@@ -35,7 +37,10 @@
 		"checktypes:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp checktypes",
 		"test:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp test",
 		"lint:package:mcp": "pnpm --filter mnemocyte build && pnpm --filter @mnemocyte/mcp lint:package",
-		"pack:check:mcp": "pnpm --filter @mnemocyte/mcp pack:check"
+		"pack:check:mcp": "pnpm --filter @mnemocyte/mcp pack:check",
+		"release:prepare": "node packages/release/src/bin/prepare.ts",
+		"release:notes": "node packages/release/src/bin/notes.ts",
+		"release:check": "node packages/release/src/bin/check.ts"
 	},
 	"engines": {
 		"node": ">=22.18"

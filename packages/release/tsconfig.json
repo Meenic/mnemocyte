@@ -1,0 +1,28 @@
+{
+	// The whole package: src, tests and config. Node runs src/ as .ts
+	// through type stripping (`pnpm release:*`), so imports between files
+	// name the .ts file and only erasable syntax is allowed. src/changelog.ts
+	// imports no file of its own, since the site type-checks it with its own
+	// settings.
+	"compilerOptions": {
+		"module": "nodenext",
+		"target": "es2024",
+		"lib": ["es2024"],
+		"types": ["node"],
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+
+		"strict": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+		"isolatedModules": true,
+		"noUncheckedSideEffectImports": true,
+		"moduleDetection": "force",
+		"skipLibCheck": true
+	},
+	"include": ["src", "test/**/*.ts", "vitest.config.ts"],
+	"exclude": ["node_modules"]
+}

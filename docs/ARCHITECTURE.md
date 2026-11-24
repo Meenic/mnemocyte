@@ -2280,3 +2280,41 @@ Dated 2026-10-26 unless noted.
     - **A new package's first publish stays by hand** (DEVELOPMENT.md,
       "`@mnemocyte/mcp`"): npm's trusted-publisher page still assumes the
       package exists.
+100. **The release scripts are a private workspace package** (2026-11-24,
+    landed in `chore/release-prepare`): the maintainer took these
+    recommendations for decision 99's first item.
+    - **One changelog parser, shared with the site.** It lives in
+      `@mnemocyte/release` (`packages/release/`, private, TypeScript
+      source as `@mnemocyte/loader` is), and the site's changelog page
+      reads its sections from `@mnemocyte/release/changelog` instead of
+      its own mdast walk; both gave the same output on `main`'s
+      `CHANGELOG.md`, this branch's and the site's fixture. The site's parser could not be imported as it was (it
+      imports `next/cache`), and a second, line-based parser in
+      `scripts/` could read lead-ins differently from the page the
+      release text has to match. The package also holds the package list,
+      which `release.yml` will read, and the commands, so they get a
+      tsconfig and Vitest of their own, which the root `scripts/` lack.
+    - **`release:prepare` applies the bump.** It proposes the version
+      (minor for `Added` or `Deprecated`, else patch), writes the
+      changelogs and runs `pnpm version`, then prints what it chose and
+      why; the result is a diff to review, and a version or bump after
+      the name overrides the proposal. A **Breaking** entry or section
+      stops it until the version is named. Printing only would leave the
+      changelog move and the links to be done by hand.
+    - **A `Release check` job of its own in `ci.yml`,** with a path list
+      of both changelogs, `packages/mcp/package.json` and
+      `packages/release/`, over adding it to `Links`, which does not run
+      on `packages/mcp/package.json` and checks Markdown links only.
+    - **Commands name packages by their npm name:** `pnpm release:prepare
+      <package>[@<version|patch|minor|major>] ...`, `pnpm release:notes
+      <package> [<version>]` and `pnpm release:check`; usage errors exit
+      2, release errors 1. Links in the release text point at `main`, as
+      decision 74's do.
+    - **Every checked entry needs a lead-in that ends a sentence,** not
+      only one ending with a period: an entry without one would drop out
+      of the release text. The six lead-ins that were not sentences and
+      `@mnemocyte/mcp` 0.2.0's entry without one were reworded in the
+      released 1.2.0, 1.4.0, mcp 0.1.0 and 0.2.0 sections, with no fact
+      changed, since the site shows those lead-ins on their own and
+      neither tarball ships its changelog. Starting the check at the next
+      releases instead would have kept the fragments on the site.

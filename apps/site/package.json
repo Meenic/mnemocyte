@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mnemocyte/release": "workspace:*",
     "cn": "^0.5.2",
     "geist": "^1.9.2",
     "hast-util-to-jsx-runtime": "^2.3.7",

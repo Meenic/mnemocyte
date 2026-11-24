@@ -1,8 +1,24 @@
-import { appendFile, readFile, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { findMemoryFile } from "@mnemocyte/loader";
+import {
+	findMemoryFile,
+	findTsconfig,
+	loadModuleOptions,
+} from "@mnemocyte/loader";
 import type { CliArgs } from "./args.js";
+import {
+	type AppClient,
+	CLIENT_PLACES,
+	type ClientImport,
+	clientImport,
+	displayPath,
+	findDrizzleClients,
+	importSpecifier,
+	nextMemoryFolder,
+	readClientFile,
+	SUPPORTED_DRIVER_NAMES,
+} from "./init-app.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 
 /** The memory files `init` writes, one per driver setup. */
@@ -228,19 +244,42 @@ const TEMPLATES: Readonly<Record<InitDriver, Template>> = {
 	"in-memory": { imports: MNEMOCYTE_IMPORTS },
 };
 
-/** The `memory.ts` `init` writes for a driver, namespace and embedder. */
-export function renderMemoryFile(input: {
-	driver: InitDriver;
-	namespace: string;
-	/** Defaults to `openai`. */
-	embedder?: InitEmbedder;
-}): string {
-	const { imports, setup, store } = TEMPLATES[input.driver];
+/** The line a Next.js app's memory file starts with. */
+export const SERVER_ONLY_IMPORT = 'import "server-only";';
+
+/**
+ * Where the memory file gets its database: a driver template, which creates
+ * the client, or the app's own client, which it imports.
+ */
+export type MemoryFileSource =
+	| { readonly driver: InitDriver }
+	| { readonly client: ClientImport };
+
+/** The `memory.ts` `init` writes for a source, namespace and embedder. */
+export function renderMemoryFile(
+	input: MemoryFileSource & {
+		readonly namespace: string;
+		/** Defaults to `openai`. */
+		readonly embedder?: InitEmbedder;
+		/** Start with `import "server-only"`, for a Next.js app. */
+		readonly serverOnly?: boolean;
+	},
+): string {
+	const { imports, setup, store }: Template =
+		"client" in input
+			? {
+					imports: [...MNEMOCYTE_IMPORTS, input.client.line],
+					store: input.client.local,
+				}
+			: TEMPLATES[input.driver];
 	const embedder = EMBEDDERS[input.embedder ?? "openai"];
 	const lines = [
-		imports
-			.map((line) => (line === OPENAI_IMPORT ? embedder.import : line))
-			.join("\n"),
+		[
+			...(input.serverOnly === true ? [SERVER_ONLY_IMPORT] : []),
+			...imports.map((line) =>
+				line === OPENAI_IMPORT ? embedder.import : line,
+			),
+		].join("\n"),
 		"",
 		...(setup === undefined ? [] : [setup, ""]),
 		"export const memory = createMemory({",
@@ -504,45 +543,102 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 	const dryRun = args.dryRun;
 	const embedder = EMBEDDERS[args.embedder ?? "openai"];
 	const pkg = await readPackageJson(cwd);
+	const packages = packageNames(pkg);
 	const out: string[] = [];
 	const next: string[] = [];
 
 	// The memory file. One that already exists anywhere the CLI looks is
 	// kept: a new ./memory.ts would hide src/memory.ts from the CLI.
 	const existing = findMemoryFile(cwd);
+	// What the written file uses: a driver template or the app's client.
 	let choice: DriverChoice | undefined;
+	let client: AppClient | undefined;
+	let written: string | undefined;
+	const nextApp = packages.has("next");
 	if (existing !== null) {
 		out.push(`${displayPath(cwd, existing)} exists, left as is.`);
 	} else {
-		choice = chooseDriver(packageNames(pkg));
+		// A Next.js app keeps it in its lib folder, guarded for the server.
+		const folder = nextApp ? await nextMemoryFolder(cwd) : "";
+		const file = join(cwd, folder, INIT_FILE);
+		const shown = displayPath(cwd, file);
+		if (nextApp) {
+			out.push(
+				`Found next in package.json: a Next.js app, so the file goes in ${folder}/ with import "server-only".`,
+			);
+		}
+		client =
+			args.db === undefined
+				? await findAppClient(cwd, out)
+				: await clientFromFlag(cwd, args.db);
 		const namespace =
 			typeof pkg.name === "string" && pkg.name !== ""
 				? pkg.name
 				: DEFAULT_NAMESPACE;
-		const content = renderMemoryFile({
-			driver: choice.driver,
+		const options = {
 			namespace,
+			serverOnly: nextApp,
 			...(args.embedder === undefined ? {} : { embedder: args.embedder }),
-		});
-		if (choice.driver === "in-memory") {
+		};
+		let content: string;
+		if (client !== undefined) {
+			const clientFile = displayPath(cwd, client.file);
 			out.push(
-				`No database driver in package.json (${DRIVER_PACKAGES.join(", ")}): using the in-memory backend, whose memories are gone when the process exits. To use Postgres later, install a driver, delete ${INIT_FILE} and run mnemocyte init again.`,
+				`Found the app's Drizzle client: ${describeClient(cwd, client)} (${client.label}).`,
 			);
+			if (client.driver === "pglite" && !client.pgvector) {
+				out.push(
+					`note: ${clientFile} does not import @electric-sql/pglite-pgvector. migrate needs pgvector: create the client with extensions: { vector } (see the getting-started guide).`,
+				);
+			}
+			const extensions = await usesImportExtensions(cwd, pkg, nextApp);
+			content = renderMemoryFile({
+				client: clientImport(
+					client.name,
+					importSpecifier({
+						fromDirectory: dirname(file),
+						to: client.file,
+						extensions,
+					}),
+				),
+				...options,
+			});
 		} else {
-			out.push(
-				`Found ${choice.found.join(", ")} in package.json: using ${choice.label}.`,
-			);
+			choice = chooseDriver(packages);
+			if (choice.driver === "in-memory") {
+				out.push(
+					`No database driver in package.json (${DRIVER_PACKAGES.join(", ")}): using the in-memory backend, whose memories are gone when the process exits. To use Postgres later, install a driver, delete ${shown} and run mnemocyte init again.`,
+				);
+			} else {
+				out.push(
+					`Found ${choice.found.join(", ")} in package.json: using ${choice.label}.`,
+				);
+			}
+			if (choice.found.includes("drizzle-orm")) {
+				out.push(
+					`No Drizzle client to import in ${CLIENT_PLACES}, so ${shown} creates one. To use yours, run mnemocyte init --db <file>.`,
+				);
+			}
+			content = renderMemoryFile({ driver: choice.driver, ...options });
 		}
 		if (embedder.note !== undefined) {
 			out.push(embedder.note);
 		}
 		if (dryRun) {
-			out.push(`Would write ${INIT_FILE}:`, "", content);
-		} else if (await createFile(join(cwd, INIT_FILE), content)) {
-			out.push(`Wrote ${INIT_FILE}`);
+			out.push(`Would write ${shown}:`, "", content);
+			written = shown;
 		} else {
-			out.push(`${INIT_FILE} exists, left as is.`);
-			choice = undefined;
+			await mkdir(dirname(file), { recursive: true });
+			if (await createFile(file, content)) {
+				out.push(
+					`Wrote ${shown}${client === undefined ? "" : ", which imports it."}`,
+				);
+				written = shown;
+			} else {
+				out.push(`${shown} exists, left as is.`);
+				choice = undefined;
+				client = undefined;
+			}
 		}
 	}
 
@@ -597,9 +693,15 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 		}
 	}
 
-	if (choice !== undefined && pkg.type !== "module") {
+	if (written !== undefined && pkg.type !== "module") {
+		// A CommonJS next.config.js stops loading under "type": "module", and
+		// Next.js does not take next.config.cjs.
+		const nextConfig =
+			nextApp && (await isFile(join(cwd, "next.config.js")))
+				? " First rename next.config.js to next.config.mjs (or .ts) if it uses module.exports, and any other .js config that does to .cjs."
+				: "";
 		out.push(
-			`note: package.json has no "type": "module". Node still loads ${INIT_FILE} as an ES module but warns on every run; set it with: npm pkg set type=module`,
+			`note: package.json has no "type": "module". Node still loads ${written} as an ES module but warns on every run; set it with: npm pkg set type=module.${nextConfig}`,
 		);
 	}
 
@@ -621,10 +723,24 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 			next.push(`Add DATABASE_URL=postgres://… to ${target}`);
 		}
 	}
-	if (choice !== undefined && embedder.next !== undefined) {
+	// The variables the client's file reads, when neither env file has them.
+	for (const name of client?.variables ?? []) {
+		if (env[name] === undefined && name !== "NODE_ENV") {
+			next.push(
+				`Add ${name}=… to ${target} (${displayPath(cwd, client?.file ?? "")} reads it)`,
+			);
+		}
+	}
+	if (
+		(choice !== undefined || client !== undefined) &&
+		embedder.next !== undefined
+	) {
 		next.push(embedder.next);
 	}
-	if (choice !== undefined && choice.driver !== "in-memory") {
+	if (
+		client !== undefined ||
+		(choice !== undefined && choice.driver !== "in-memory")
+	) {
 		next.push(`Create the schema: ${await runnerCommand(cwd, pkg)} migrate`);
 	}
 
@@ -650,6 +766,130 @@ async function createFile(path: string, content: string): Promise<boolean> {
 	}
 }
 
-function displayPath(cwd: string, file: string): string {
-	return relative(cwd, file).replaceAll("\\", "/") || file;
+async function isFile(path: string): Promise<boolean> {
+	try {
+		return (await stat(path)).isFile();
+	} catch {
+		return false;
+	}
+}
+
+function describeClient(cwd: string, client: AppClient): string {
+	const where = displayPath(cwd, client.file);
+	return client.name === "default"
+		? `the default export of ${where}`
+		: `${client.name} in ${where}`;
+}
+
+/**
+ * The app's one Drizzle client in the places `init` reads, or undefined.
+ * Clients over drivers Mnemocyte does not take are skipped with a line; a
+ * file that creates a client without exporting it gets a line too.
+ *
+ * @throws {CliError} With exit code 2 when there are several, so `--db`
+ * picks one rather than `init` guessing which database memories go to.
+ */
+async function findAppClient(
+	cwd: string,
+	out: string[],
+): Promise<AppClient | undefined> {
+	const search = await findDrizzleClients(cwd);
+	const usable = search.clients.filter((client) => client.label !== undefined);
+	for (const client of search.clients) {
+		if (client.label === undefined) {
+			out.push(
+				`Skipped ${describeClient(cwd, client)}: drizzle-orm/${client.driver} is not a driver Mnemocyte supports.`,
+			);
+		}
+	}
+	if (usable.length > 1) {
+		throw new CliError(
+			`Found ${usable.length} Drizzle clients: ${usable.map((client) => describeClient(cwd, client)).join(", ")}. Name the file of the one memories should use: mnemocyte init --db <file>.`,
+			EXIT_USAGE,
+		);
+	}
+	if (usable[0] !== undefined) {
+		return usable[0];
+	}
+	for (const file of search.unexported) {
+		out.push(
+			`${displayPath(cwd, file)} creates a Drizzle client but does not export it.`,
+		);
+	}
+	return undefined;
+}
+
+/**
+ * The client in the file `--db` names: its only `drizzle(...)` export, else
+ * the one named `db`.
+ *
+ * @throws {CliError} With exit code 2 when the file cannot be read, exports
+ * no client, exports several and none is `db`, or uses a driver Mnemocyte
+ * does not take.
+ */
+async function clientFromFlag(cwd: string, path: string): Promise<AppClient> {
+	const file = resolve(cwd, path);
+	const result = await readClientFile(file);
+	const shown = displayPath(cwd, file);
+	if (result === null) {
+		throw new CliError(
+			`--db ${path} is not a file. Name the file that exports the client.`,
+			EXIT_USAGE,
+		);
+	}
+	if (result.clients.length === 0) {
+		throw new CliError(
+			`${shown} exports no drizzle(...) client that init can find. Export it, as in export const db = drizzle(...), or write the memory file by hand.`,
+			EXIT_USAGE,
+		);
+	}
+	const client =
+		result.clients.length === 1
+			? result.clients[0]
+			: result.clients.find((entry) => entry.name === "db");
+	if (client === undefined) {
+		throw new CliError(
+			`${shown} exports several Drizzle clients (${result.clients.map((entry) => entry.name).join(", ")}) and none is named db. Write the memory file by hand.`,
+			EXIT_USAGE,
+		);
+	}
+	if (client.label === undefined) {
+		throw new CliError(
+			`${shown} uses drizzle-orm/${client.driver}, which Mnemocyte does not support. Supported: ${SUPPORTED_DRIVER_NAMES.map((name) => `drizzle-orm/${name}`).join(", ")}.`,
+			EXIT_USAGE,
+		);
+	}
+	return client;
+}
+
+/** The TypeScript `module` values whose ES modules need import extensions. */
+const NODE_MODULES: ReadonlySet<string> = new Set([
+	"node16",
+	"node18",
+	"node20",
+	"nodenext",
+]);
+
+/**
+ * Whether the memory file's import of the client needs an extension: in an
+ * ES module package whose tsconfig sets `module` or `moduleResolution` to a
+ * Node mode, or, without a tsconfig, outside Next.js, where Node itself
+ * runs the import. Next.js's tsconfig uses `bundler` resolution.
+ */
+async function usesImportExtensions(
+	cwd: string,
+	pkg: PackageJson,
+	nextApp: boolean,
+): Promise<boolean> {
+	if (pkg.type !== "module") {
+		return false;
+	}
+	const tsconfig = findTsconfig(cwd);
+	if (tsconfig === null) {
+		return !nextApp;
+	}
+	const { module, moduleResolution } = loadModuleOptions(tsconfig);
+	return [module, moduleResolution].some(
+		(value) => value !== undefined && NODE_MODULES.has(value),
+	);
 }

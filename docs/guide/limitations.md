@@ -87,8 +87,9 @@ them.
   or a libSQL server. Plain SQLite, `@tursodatabase/database` and
   `@tursodatabase/serverless` are not supported.
 - **The CLI needs a memory file.** Without one it connects to
-  `DATABASE_URL` with postgres.js. `sql`, `generate --adapter drizzle` and
-  `init` are Postgres only, and `--dimensions` stops at 4,000.
+  `DATABASE_URL` with postgres.js. `sql` and `generate --adapter drizzle`
+  are Postgres only, `init` writes a libSQL file only around an existing
+  Drizzle libSQL client, and `--dimensions` stops at 4,000.
 - **Concurrent writers on one file.** Writes run one at a time; a write
   that meets another process's lock fails with `"DB"` (`SQLITE_BUSY`)
   instead of waiting.

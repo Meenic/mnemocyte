@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
 	chooseDriver,
@@ -10,7 +10,9 @@ import {
 	planEnvChange,
 	renderMemoryFile,
 	runnerCommand,
+	SERVER_ONLY_IMPORT,
 } from "../../src/cli/init.js";
+import { CLIENT_PLACES, clientImport } from "../../src/cli/init-app.js";
 import { main } from "../../src/cli/main.js";
 import { createTestIo } from "./io.js";
 
@@ -23,6 +25,9 @@ const DRIVERS: readonly InitDriver[] = [
 	"pglite",
 	"in-memory",
 ];
+
+/** The line init prints when drizzle-orm is listed but no client is found. */
+const NO_CLIENT = `No Drizzle client to import in ${CLIENT_PLACES}, so memory.ts creates one. To use yours, run mnemocyte init --db <file>.`;
 
 describe("chooseDriver", () => {
 	test.each([
@@ -229,6 +234,7 @@ describe("mnemocyte init", () => {
 		expect(io.stdout()).toBe(
 			[
 				"Found drizzle-orm, pg in package.json: using Drizzle on node-postgres.",
+				NO_CLIENT,
 				"Wrote memory.ts",
 				"Created .env with OPENAI_API_KEY=",
 				"note: .gitignore does not list .env; add it before you put a key in the file.",
@@ -326,6 +332,7 @@ describe("mnemocyte init", () => {
 		expect(io.stdout()).toBe(
 			[
 				"Found drizzle-orm, postgres in package.json: using Drizzle on postgres.js.",
+				NO_CLIENT,
 				"Wrote memory.ts",
 				"Added OPENAI_API_KEY= to .env.local",
 				"",
@@ -503,6 +510,277 @@ describe("mnemocyte init", () => {
 		);
 		expect(await exists("memory.ts")).toBe(false);
 		expect(await exists(".env")).toBe(false);
+	});
+
+	async function files(entries: Record<string, string>): Promise<void> {
+		for (const [name, content] of Object.entries(entries)) {
+			await mkdir(dirname(join(cwd, name)), { recursive: true });
+			await writeFile(join(cwd, name), content);
+		}
+	}
+
+	const NEON_DB =
+		'import { drizzle } from "drizzle-orm/neon-http";\n\nexport const db = drizzle(process.env.DATABASE_URL!);\n';
+
+	test("a Next.js app on Neon gets src/lib/memory.ts that imports its db", async () => {
+		await packageJson({
+			name: "web",
+			dependencies: {
+				next: "16",
+				"drizzle-orm": "0",
+				"@neondatabase/serverless": "1",
+			},
+		});
+		await files({
+			"src/app/page.tsx": "",
+			"src/db/drizzle.ts": NEON_DB,
+			"src/db/schema.ts": "",
+			".env.local": "DATABASE_URL=postgres://x\n",
+			".gitignore": ".env*\n",
+			"next.config.ts": "",
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+
+		expect(await read("src/lib/memory.ts")).toBe(
+			[
+				'import "server-only";',
+				'import { createMemory } from "mnemocyte";',
+				'import { openaiEmbedder } from "mnemocyte/embedders";',
+				'import { db } from "../db/drizzle";',
+				"",
+				"export const memory = createMemory({",
+				'  namespace: "web",',
+				"  store: db,",
+				'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+				"});",
+				"",
+			].join("\n"),
+		);
+		expect(await exists("memory.ts")).toBe(false);
+		expect(io.stdout()).toBe(
+			[
+				'Found next in package.json: a Next.js app, so the file goes in src/lib/ with import "server-only".',
+				"Found the app's Drizzle client: db in src/db/drizzle.ts (Drizzle on Neon's HTTP driver).",
+				"Wrote src/lib/memory.ts, which imports it.",
+				"Added OPENAI_API_KEY= to .env.local",
+				'note: package.json has no "type": "module". Node still loads src/lib/memory.ts as an ES module but warns on every run; set it with: npm pkg set type=module.',
+				"",
+				"Next:",
+				"  Put your OpenAI API key after OPENAI_API_KEY= in .env.local",
+				"  Create the schema: npx mnemocyte migrate",
+				"",
+			].join("\n"),
+		);
+		expect(io.stderr()).toBe("");
+
+		// The CLI guide shows this run: its output, and the file with the
+		// guide's namespace.
+		const guide = (
+			await readFile(resolve("../../docs/guide/cli.md"), "utf8")
+		).replaceAll("\r\n", "\n");
+		const section = guide.slice(guide.indexOf("### Your Drizzle client"));
+		const shownOutput = /```txt\n([\s\S]*?)```/.exec(section)?.[1] ?? "";
+		expect(shownOutput).not.toBe("");
+		expect(io.stdout().startsWith(shownOutput)).toBe(true);
+		expect(/```ts\n([\s\S]*?)```/.exec(section)?.[1]).toBe(
+			renderMemoryFile({
+				client: clientImport("db", "../db/drizzle"),
+				namespace: "my-app",
+				serverOnly: true,
+			}),
+		);
+
+		const again = createTestIo(cwd);
+		expect(await main(["init"], again, "1.2.3")).toBe(0);
+		expect(again.stdout()).toContain("src/lib/memory.ts exists, left as is.\n");
+	});
+
+	test("every template takes the server-only line first", () => {
+		for (const driver of DRIVERS) {
+			expect(
+				renderMemoryFile({ driver, namespace: "web", serverOnly: true }),
+			).toBe(
+				`${SERVER_ONLY_IMPORT}\n${renderMemoryFile({ driver, namespace: "web" })}`,
+			);
+		}
+	});
+
+	test("a Next.js app without a client gets the template in lib/, and a note about next.config.js", async () => {
+		await packageJson({
+			name: "web",
+			dependencies: { next: "16", "drizzle-orm": "0", postgres: "3" },
+		});
+		await files({
+			"app/page.tsx": "",
+			"src/util.ts": "",
+			"next.config.js": "",
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--dry-run"], io, "1.2.3")).toBe(0);
+
+		const out = io.stdout();
+		expect(out).toContain(
+			'so the file goes in lib/ with import "server-only".\n',
+		);
+		expect(out).toContain(
+			"No Drizzle client to import in src/db/, db/, src/lib/db/, lib/db/, src/server/db/, server/db/, src/{db,drizzle}.*, src/lib/{db,drizzle}.*, lib/{db,drizzle}.*, src/server/{db,drizzle}.*, server/{db,drizzle}.*, db.*, so lib/memory.ts creates one. To use yours, run mnemocyte init --db <file>.\n",
+		);
+		expect(out).toContain(
+			`Would write lib/memory.ts:\n\n${renderMemoryFile({ driver: "drizzle-postgres", namespace: "web", serverOnly: true })}`,
+		);
+		expect(out).toContain(
+			"set it with: npm pkg set type=module. First rename next.config.js to next.config.mjs (or .ts) if it uses module.exports, and any other .js config that does to .cjs.\n",
+		);
+		expect(out).toContain("  Add DATABASE_URL=postgres://… to .env\n");
+		expect(await exists("lib")).toBe(false);
+	});
+
+	test("an app outside Next.js keeps memory.ts in the root and names the variables its client reads", async () => {
+		await packageJson({
+			name: "api",
+			type: "module",
+			dependencies: { "drizzle-orm": "0", pg: "8" },
+		});
+		await files({
+			"tsconfig.json":
+				'{ "compilerOptions": { "module": "NodeNext", "moduleResolution": "NodeNext" } }',
+			"src/server/db/index.ts":
+				'import { drizzle } from "drizzle-orm/node-postgres";\nexport const db = drizzle(process.env.PG_URL!, { logger: process.env.NODE_ENV === "development" });\n',
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+
+		expect(await read("memory.ts")).toContain(
+			'import { db } from "./src/server/db/index.js";\n',
+		);
+		expect(await read("memory.ts")).not.toContain("server-only");
+		const out = io.stdout();
+		expect(out).toContain(
+			"Found the app's Drizzle client: db in src/server/db/index.ts (Drizzle on node-postgres).\n",
+		);
+		expect(out).not.toContain("type");
+		expect(out).toContain(
+			"  Add PG_URL=… to .env (src/server/db/index.ts reads it)\n",
+		);
+		expect(out).not.toContain("DATABASE_URL");
+		expect(out).not.toContain("NODE_ENV");
+	});
+
+	test("a PGlite client without pgvector gets a note", async () => {
+		await packageJson({ type: "module", dependencies: { "drizzle-orm": "0" } });
+		await files({
+			"src/db.ts":
+				'import { drizzle } from "drizzle-orm/pglite";\nexport default drizzle("./data");\n',
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(0);
+		expect(await read("memory.ts")).toContain(
+			'import db from "./src/db.js";\n',
+		);
+		expect(io.stdout()).toContain(
+			"Found the app's Drizzle client: the default export of src/db.ts (Drizzle on PGlite).\nnote: src/db.ts does not import @electric-sql/pglite-pgvector. migrate needs pgvector: create the client with extensions: { vector } (see the getting-started guide).\n",
+		);
+	});
+
+	test("skips a client over a driver Mnemocyte does not take", async () => {
+		await packageJson({ dependencies: { "drizzle-orm": "0", postgres: "3" } });
+		await files({
+			"src/db/index.ts":
+				'import { drizzle } from "drizzle-orm/mysql2";\nexport const db = drizzle(process.env.DATABASE_URL!);\n',
+			"src/lib/db.ts":
+				'import { drizzle } from "drizzle-orm/postgres-js";\nconst db = drizzle(process.env.DATABASE_URL!);\n',
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--dry-run"], io, "1.2.3")).toBe(0);
+		expect(io.stdout()).toMatch(
+			/^Skipped db in src\/db\/index\.ts: drizzle-orm\/mysql2 is not a driver Mnemocyte supports\.\nsrc\/lib\/db\.ts creates a Drizzle client but does not export it\.\nFound drizzle-orm, postgres in package\.json: using Drizzle on postgres\.js\.\nNo Drizzle client to import in /,
+		);
+	});
+
+	test("several clients exit 2 and write nothing; --db picks one", async () => {
+		await packageJson({ dependencies: { "drizzle-orm": "0" } });
+		await files({
+			"src/db/drizzle.ts": NEON_DB,
+			"src/lib/db.ts":
+				'import { drizzle } from "drizzle-orm/postgres-js";\nexport const db = drizzle(process.env.DATABASE_URL!);\n',
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init"], io, "1.2.3")).toBe(2);
+		expect(io.stdout()).toBe("");
+		expect(io.stderr()).toBe(
+			"mnemocyte: Found 2 Drizzle clients: db in src/db/drizzle.ts, db in src/lib/db.ts. Name the file of the one memories should use: mnemocyte init --db <file>.\n",
+		);
+		expect(await exists("memory.ts")).toBe(false);
+		expect(await exists(".env")).toBe(false);
+
+		const picked = createTestIo(cwd);
+		expect(await main(["init", "--db", "src/lib/db.ts"], picked, "1.2.3")).toBe(
+			0,
+		);
+		expect(picked.stdout()).toContain(
+			"Found the app's Drizzle client: db in src/lib/db.ts (Drizzle on postgres.js).\n",
+		);
+		expect(await read("memory.ts")).toContain(
+			'import { db } from "./src/lib/db";\n',
+		);
+	});
+
+	test.each([
+		[
+			{},
+			"nope.ts",
+			"--db nope.ts is not a file. Name the file that exports the client.",
+		],
+		[
+			{ "src/db/index.ts": "" },
+			"src/db",
+			"--db src/db is not a file. Name the file that exports the client.",
+		],
+		[
+			{ "src/client.ts": "export const db = 1;\n" },
+			"src/client.ts",
+			"src/client.ts exports no drizzle(...) client that init can find. Export it, as in export const db = drizzle(...), or write the memory file by hand.",
+		],
+		[
+			{
+				"src/client.ts":
+					'import { drizzle } from "drizzle-orm/postgres-js";\nexport const primary = drizzle("a");\nexport const replica = drizzle("b");\n',
+			},
+			"src/client.ts",
+			"src/client.ts exports several Drizzle clients (primary, replica) and none is named db. Write the memory file by hand.",
+		],
+		[
+			{
+				"src/client.ts":
+					'import { drizzle } from "drizzle-orm/better-sqlite3";\nexport const db = drizzle("a");\n',
+			},
+			"./src/client.ts",
+			"src/client.ts uses drizzle-orm/better-sqlite3, which Mnemocyte does not support. Supported: drizzle-orm/postgres-js, drizzle-orm/node-postgres, drizzle-orm/pglite, drizzle-orm/neon-http, drizzle-orm/neon-serverless, drizzle-orm/libsql.",
+		],
+	])("--db exits 2 for %j", async (entries, path, message) => {
+		await packageJson({});
+		await files(entries);
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--db", path], io, "1.2.3")).toBe(2);
+		expect(io.stderr()).toBe(`mnemocyte: ${message}\n`);
+		expect(await exists("memory.ts")).toBe(false);
+	});
+
+	test("--db takes the one named db among several, from any file", async () => {
+		await packageJson({ type: "module" });
+		await files({
+			"src/index.ts":
+				'import { drizzle } from "drizzle-orm/libsql";\nexport const db = drizzle("file:a.db");\nexport const logs = drizzle("file:b.db");\n',
+		});
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--db", "src/index.ts"], io, "1.2.3")).toBe(0);
+		expect(io.stdout()).toContain(
+			"Found the app's Drizzle client: db in src/index.ts (Drizzle on libSQL).\n",
+		);
+		expect(await read("memory.ts")).toContain(
+			'import { db } from "./src/index.js";\n',
+		);
 	});
 });
 

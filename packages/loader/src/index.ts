@@ -10,3 +10,8 @@ export {
 	MEMORY_FILE_NAMES,
 } from "./memory-file.js";
 export { registerAppResolver } from "./resolve-hook.js";
+export {
+	findTsconfig,
+	loadModuleOptions,
+	type ModuleOptions,
+} from "./tsconfig.js";

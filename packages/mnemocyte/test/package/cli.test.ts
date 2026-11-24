@@ -661,4 +661,100 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 			expect(again.stdout).toContain("memory.ts exists, left as is.\n");
 		}
 	}, 180_000);
+
+	test("init in a Next.js app imports its Drizzle client from src/lib/memory.ts", async () => {
+		// Shaped like create-next-app with --src-dir: no "type" field, `next`
+		// listed but not installed, an @/* alias, and the app's own db in
+		// src/db that imports server-only and its schema through the alias.
+		const dependencies = {
+			next: "16.0.0",
+			"drizzle-orm": "*",
+			"@electric-sql/pglite": "*",
+			"@electric-sql/pglite-pgvector": "*",
+		};
+		const directory = await project("init-next", {
+			"package.json": JSON.stringify({
+				name: "next-app",
+				private: true,
+				dependencies,
+			}),
+			"tsconfig.json": JSON.stringify({
+				compilerOptions: {
+					module: "esnext",
+					moduleResolution: "bundler",
+					paths: { "@/*": ["./src/*"] },
+				},
+			}),
+			"next.config.ts": "export default {};\n",
+			"src/app/page.tsx":
+				"export default function Page() {\n  return <main />;\n}\n",
+			"src/db/schema.ts":
+				'import { pgTable, text } from "drizzle-orm/pg-core";\n\nexport const notes = pgTable("notes", { id: text().primaryKey() });\n',
+			"src/db/index.ts": [
+				'import "server-only";',
+				'import { PGlite } from "@electric-sql/pglite";',
+				'import { vector } from "@electric-sql/pglite-pgvector";',
+				'import { drizzle } from "drizzle-orm/pglite";',
+				'import * as schema from "@/db/schema";',
+				"",
+				'const client = new PGlite("./memory-data", { extensions: { vector } });',
+				"export const db = drizzle({ client, schema });",
+				"",
+			].join("\n"),
+		});
+		for (const dependency of Object.keys(dependencies)) {
+			if (dependency !== "next") {
+				await linkPackage(
+					directory,
+					dependency,
+					resolve("node_modules", dependency),
+				);
+			}
+		}
+
+		const init = await runCli(directory, ["init"]);
+		expect(init.stderr).toBe("");
+		expect(init.code).toBe(0);
+		expect(init.stdout).toContain(
+			'Found next in package.json: a Next.js app, so the file goes in src/lib/ with import "server-only".\n',
+		);
+		expect(init.stdout).toContain(
+			"Found the app's Drizzle client: db in src/db/index.ts (Drizzle on PGlite).\n",
+		);
+		expect(init.stdout).toContain(
+			"Wrote src/lib/memory.ts, which imports it.\n",
+		);
+		const written = await readFile(
+			join(directory, "src/lib/memory.ts"),
+			"utf8",
+		);
+		expect(written).toMatch(/^import "server-only";\n/);
+		expect(written).toContain('import { db } from "../db";\n');
+		expect(written).toContain("  store: db,\n");
+		// The app's client is the only one: the file creates none.
+		expect(written).not.toContain("PGlite");
+		expect(written).not.toContain("drizzle(");
+
+		// The embedder is never called; it only needs a key to be created.
+		const env = { OPENAI_API_KEY: "sk-test" };
+		const plan = await runCli(directory, ["migrate", "--dry-run"], env);
+		expect(plan.code).toBe(0);
+		expect(plan.stdout).toContain("Using src/lib/memory.ts");
+		expect(plan.stdout).toContain(`Would apply: ${ALL_MIGRATIONS}`);
+
+		const before = await runCli(directory, ["check"], env);
+		expect(before.code).toBe(1);
+		expect(before.stdout).toContain("migrations  not installed");
+
+		const migrated = await runCli(directory, ["migrate", "--yes"], env);
+		expect(migrated.code).toBe(0);
+		expect(migrated.stdout).toContain(`Applied: ${ALL_MIGRATIONS}`);
+
+		const checked = await runCli(directory, ["check"], env);
+		expect(checked.code).toBe(0);
+		expect(checked.stdout).toContain("dimensions  1536 (vector)");
+		expect(checked.stdout.trimEnd().endsWith("ok")).toBe(true);
+		// Without "type": "module", Node warns but loads both files.
+		expect(checked.stderr).not.toMatch(/Error/);
+	}, 180_000);
 });

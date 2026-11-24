@@ -41,6 +41,7 @@ src/cli/
   target.ts              the env files, then a memory file or DATABASE_URL → what a command runs against
   direct.ts              the CLI's own connection for a store that cannot migrate, and the installation comparison
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
+  init-app.ts            what init reads of the app: readDrizzleSource, findDrizzleClients, nextMemoryFolder, importSpecifier
   migrate.ts             migrateTarget / migrateCommand
   check.ts               evaluateInstallation, describeInstallation, installationJson, checkTarget / checkCommand
   sql.ts                 resolveSchemaShape (shared with generate), sqlCommand
@@ -242,10 +243,11 @@ libSQL has one schema per database.
 
 ## `init`
 
-`initCommand` reads `package.json` and nothing else of the app: it loads
-no memory file and no `.env` into the environment, and it connects to
-nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
-`--env-file` and `--dimensions` are usage errors).
+`initCommand` reads `package.json`, the env files, `tsconfig.json` and the
+text of the files where an app keeps its Drizzle client. It imports
+nothing of the app, loads nothing into the environment and connects to
+nothing, so it takes only `--dry-run`, `--embedder` and `--db`
+(`--config`, `--env-file` and `--dimensions` are usage errors).
 
 - **Driver.** `chooseDriver` (pure) looks at the keys of `dependencies`
   and `devDependencies`. `drizzle-orm` wins and wraps `postgres`, else
@@ -254,14 +256,71 @@ nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
   it is the in-memory file (the maintainer's choices, decision 37). A
   PGlite file without `@electric-sql/pglite-pgvector` listed gets an
   install hint too, in the package manager the lockfile names.
+- **The app's client** (ARCHITECTURE decision 98). `findDrizzleClients`
+  (`src/cli/init-app.ts`) reads, in `clientCandidates` order, every
+  `.ts`, `.mts`, `.js` and `.mjs` file directly in `CLIENT_DIRECTORIES`
+  (`src/db`, `db`, `src/lib/db`, `lib/db`, `src/server/db`, `server/db`),
+  then `db.*` and `drizzle.*` in `src`, `src/lib`, `lib`, `src/server` and
+  `server`, then `db.*` in the root; `.d.ts`, `.test.*` and `.spec.*` are
+  skipped. Other files in the root and `src`, such as `src/index.ts`, are
+  not read, since a memory file that imports an entry file starts the
+  app. `readDrizzleSource` works on text: `stripComments` (strings and
+  template literals copied whole), then the local names of `drizzle`
+  imported from `drizzle-orm/<driver>`, then `topLevelStatements` (a `;`
+  outside brackets, or a line break outside brackets before a column-0
+  character that cannot continue an expression). A client is an
+  `export const|let|var` whose initializer calls that name (not as a
+  method, and not after a `=>` or `function` in the initializer, which
+  puts the call in a function, as in `cache(() => drizzle())`), an
+  `export default` of such a call or of such a local, or a local listed
+  in `export { … }`. A local exported both ways counts once, under its
+  name. It also collects the `process.env` names the file
+  reads and whether it imports
+  `@electric-sql/pglite-pgvector`. `driverLabel` accepts `postgres-js`,
+  `node-postgres`, `pglite`, `neon-http`, `neon-serverless`, `libsql` and
+  `libsql/{http,node,sqlite3,wasm,web,ws}`, every one of which sets
+  `db.$client`, which the store reads, in the string forms such as
+  `drizzle(url)` too (drizzle-orm 0.45.4: each driver's `driver.js`, and
+  `libsql/driver-core.js`, which the libSQL subpaths call). Other drivers
+  are printed as skipped. Several usable clients throw `CliError` (exit 2)
+  before anything is written; one is used; none falls back to the
+  templates below, with a line naming the places read when `drizzle-orm`
+  is listed.
+- **`--db`.** `clientFromFlag` reads the named file, from any folder, and
+  takes its only client or the one named `db`. A file it cannot read, one
+  with no client, several without a `db`, and an unsupported driver each
+  exit 2 with nothing written.
+- **Next.js.** `next` in `dependencies` or `devDependencies` (where
+  create-next-app puts it) makes the app a Next.js app; folders only decide
+  the place. `nextMemoryFolder` returns `lib` for a root `app` or `pages`
+  (Next.js then ignores `src/app` and `src/pages`), else `src/lib` for
+  `src/app`, `src/pages` or any `src`, else `lib`; both are in
+  `MEMORY_FILE_DIRECTORIES`, and the folder is created with `mkdir
+  { recursive: true }`. The file starts with `SERVER_ONLY_IMPORT`, for a
+  template too, and `server-only` is not added to `package.json`: Next.js
+  calls installing it optional, and the CLI maps it (decision 97).
+- **The import.** `importSpecifier` writes a relative path with `/`.
+  `usesImportExtensions` decides whether it ends in `.js` (`.mjs` for
+  `.mts`): only with `"type": "module"`, and then when the nearest
+  `tsconfig.json` (`findTsconfig`, which walks up) sets `module` or
+  `moduleResolution` to `node16`, `node18`, `node20` or `nodenext`, read
+  with `loadModuleOptions` from `@mnemocyte/loader` through `extends`, or
+  when there is no `tsconfig.json` and the app is not Next.js. Without an
+  extension a trailing `/index` goes too. In a package without `"type"`,
+  TypeScript treats `.ts` files as CommonJS under `nodenext`, where
+  extensionless imports compile. `clientImport` names the import: a
+  default export, and an export named like something the memory file
+  declares (`memory`, `createMemory`, the embedder functions), become
+  `db`.
 - **Templates.** `renderMemoryFile` builds each file from its imports,
   client setup (exported, so a script can end the client) and `store`
-  expression.
+  expression, or, given a `ClientImport`, from the import alone.
   `test/cli/init.test.ts` takes every `memory.ts` block from
   `docs/guide/getting-started.md` and checks that the seven templates,
   with namespace `"my-agent"`, are exactly those blocks, so the guide and
-  `init` cannot drift. The namespace is `package.json` `name` through
-  `JSON.stringify`.
+  `init` cannot drift; it also holds the output and file in the CLI
+  guide's "Your Drizzle client" to a run. The namespace is
+  `package.json` `name` through `JSON.stringify`.
 - **Embedder.** `--embedder` takes `openai` (the default) or
   `openai-compatible` (`INIT_EMBEDDERS`; anything else exits 2, and the
   flag on another command is a usage error). Each entry of `EMBEDDERS`
@@ -304,11 +363,16 @@ nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
   negations (`!`) and lines with a `/` inside are skipped.
 - **`"type"`.** Without `"type": "module"`, Node loads an ESM `memory.ts`
   through syntax detection and prints `MODULE_TYPELESS_PACKAGE_JSON` on
-  every run (observed on 24.22), so `init` prints a note.
+  every run (observed on 24.22), so `init` prints a note. create-next-app
+  writes no `"type"` field. In a Next.js app with a `next.config.js` the
+  note adds the renames first: the docs show that file as CommonJS, which
+  stops loading under `"type": "module"`, and Next.js does not take
+  `next.config.cjs`.
 - **Output.** One line per change or kept file on stdout, then a "Next"
   list built from what is missing: install hints, an empty key,
   `DATABASE_URL` for a server driver when neither file has it (naming the
-  file `init` writes to), the embedder's
+  file `init` writes to), each `process.env` name the app's client file
+  reads that neither file has (`NODE_ENV` aside), the embedder's
   own step (`ollama pull nomic-embed-text`), `migrate`.
   `--dry-run` prints the file's content instead of writing it. The exit
   code is 0 unless `package.json` is missing or not a JSON object (2).
@@ -539,7 +603,8 @@ Windows and an immediate exit can cut output short.
 ## Tests
 
 - `packages/loader/test/loader.test.ts` (`pnpm test:loader`):
-  `parseJsonc`, `paths` through `extends`, import candidates and
+  `parseJsonc`, `paths` and `module`/`moduleResolution` through
+  `extends`, import candidates and
   `resolveAppImport` on temporary folders, `resolveHook` with a stub
   `nextResolve` (`server-only` mapped to `SERVER_ONLY_FILE` next to the
   hook without asking Node, from an app file and from `node_modules`;
@@ -551,7 +616,13 @@ Windows and an immediate exit can cut output short.
   `$VAR` expansion.
 - `test/cli/` (unit): argument parsing, `init` (driver choice, templates
   against the guide, env file plans, `.env.local` and `.gitignore`
-  patterns, runs in temporary folders), `--config`
+  patterns, runs in temporary folders), what `init` reads of the app
+  (`init-app.test.ts`: each `db` shape from Drizzle's guides and
+  create-t3-app, what does not count, the files read, the Next.js folder,
+  import paths; `init.test.ts`: a Next.js app on Neon, a template with
+  `server-only`, the `next.config.js` note, `nodenext` imports, a PGlite
+  client without pgvector, a skipped driver, several clients and each
+  `--db` error), `--config`
   (`memory-file.test.ts`), every `check` verdict and its code,
   `installationJson`,
   `main` for help, usage errors, `sql` and errors under `--json`, and error
@@ -601,11 +672,16 @@ Windows and an immediate exit can cut output short.
   file `init` wrote, and `init` again. A project whose `memory.mjs` throws
   with the values it sees checks the env file order through the built bin:
   `.env.local` over `.env`, a set variable over both, `NODE_ENV=test` and
-  `--env-file`. Two in-memory projects whose `memory.ts` imports
-  `server-only` and a `.cjs` file that `require()`s it run `check`: one
-  without the package, one with a stand-in of 0.0.1 (its `exports` map and
-  throwing `index.js`), which plain Node is shown to fail on. An in-memory
-  project whose memory
+  `--env-file`. A Next.js-shaped project (no `"type"`, `next` listed but
+  not installed, `src/app`, an `@/*` alias, and a Drizzle client on PGlite
+  in `src/db/index.ts` that imports `server-only` and its schema through
+  the alias) runs `init`, then `migrate --dry-run`, `check`,
+  `migrate --yes` and `check` on the `src/lib/memory.ts` it wrote, which
+  imports that client and creates none. Two in-memory projects whose
+  `memory.ts` imports `server-only` and a `.cjs` file that `require()`s
+  it run `check`: one without the package, one with a stand-in of 0.0.1
+  (its `exports` map and throwing `index.js`), which plain Node is shown
+  to fail on. An in-memory project whose memory
   file prints a line runs `check --json` and `migrate --dry-run --json`
   and reads the JSON from the last line. A Drizzle project runs
   `generate --adapter drizzle`, with and without `--schema` and `--out`
@@ -635,9 +711,10 @@ Windows and an immediate exit can cut output short.
 
 - The interactive prompt itself (a real terminal) is not tested; the code
   behind `io.confirm` is.
-- libSQL: only through a memory file; `sql`, `generate` and `init` are
-  Postgres only, and `--dimensions` (parsed before the store is known)
-  stops at Postgres's 4,000. `text-search` on libSQL asks before
+- libSQL: only through a memory file; `sql` and `generate` are Postgres
+  only, `init` writes a libSQL file only around a Drizzle libSQL client,
+  and `--dimensions` (parsed before the store is known) stops at
+  Postgres's 4,000. `text-search` on libSQL asks before
   rebuilding the keyword index and prints no 1.1 warning.
 - Imports made from inside `node_modules` get no fallback; only the
   `server-only` mapping applies to them.

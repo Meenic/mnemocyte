@@ -13,6 +13,7 @@ import {
 } from "../src/resolve-hook.js";
 import {
 	findTsconfig,
+	loadModuleOptions,
 	loadPathMapping,
 	mapSpecifier,
 	parseJsonc,
@@ -119,6 +120,32 @@ describe("tsconfig paths", () => {
 		expect(loadPathMapping(join(base, "loop", "tsconfig.json"))).toBeNull();
 		expect(loadPathMapping(join(base, "broken", "tsconfig.json"))).toBeNull();
 		expect(loadPathMapping(join(base, "missing", "tsconfig.json"))).toBeNull();
+	});
+
+	test("reads module and moduleResolution through extends, in lower case", async () => {
+		const base = await write("module-options", {
+			"configs/node.json":
+				'{ "compilerOptions": { "module": "NodeNext", "moduleResolution": "NodeNext" } }',
+			"inherits/tsconfig.json": '{ "extends": "../configs/node" }',
+			"own/tsconfig.json": `{
+				"extends": "../configs/node.json",
+				// A config's own value wins over the inherited one.
+				"compilerOptions": { "moduleResolution": "bundler", },
+			}`,
+			"none/tsconfig.json": "{}",
+		});
+		expect(loadModuleOptions(join(base, "inherits", "tsconfig.json"))).toEqual({
+			module: "nodenext",
+			moduleResolution: "nodenext",
+		});
+		expect(loadModuleOptions(join(base, "own", "tsconfig.json"))).toEqual({
+			module: "nodenext",
+			moduleResolution: "bundler",
+		});
+		expect(loadModuleOptions(join(base, "none", "tsconfig.json"))).toEqual({});
+		expect(loadModuleOptions(join(base, "missing", "tsconfig.json"))).toEqual(
+			{},
+		);
 	});
 
 	test("finds the nearest tsconfig.json above a folder", async () => {

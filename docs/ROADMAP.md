@@ -572,11 +572,20 @@ release, since the guide is read from `main`.
   tests run the built dist on a memory file that imports it and a `.cjs`
   file that requires it, with and without a stand-in of the package; see
   [features/cli.md](./features/cli.md#loading-the-memory-file).
-- [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
+- [x] `feat/init-detect-app`: `init` finds the app's own Drizzle client
   (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
   or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`
   for a Next.js app, with `import "server-only"`. Needs
   `feat/neon-http-driver`, `feat/cli-env-files` and `feat/cli-server-only`.
+  Landed: `src/cli/init-app.ts` reads the text of a fixed list of files
+  (exports only, entry files never), takes postgres.js, node-postgres,
+  PGlite, Neon HTTP and `Pool`, and libSQL clients, exits 2 for several,
+  and `--db` takes a path. `next` in `package.json` puts the file in
+  `src/lib/` or `lib/` with `server-only`, templates included. The import
+  ends in `.js` only for a Node-mode tsconfig in a `"type": "module"`
+  package (`loadModuleOptions` in `@mnemocyte/loader`). Decision 98; see
+  [features/cli.md](./features/cli.md#init). This was the last 1.4.0
+  item: 1.4.0 and `@mnemocyte/mcp` 0.2.0 are next.
 - [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
   on Neon, `withMemory` in a route handler, extraction kept alive with
   `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a

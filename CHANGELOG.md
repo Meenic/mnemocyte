@@ -48,8 +48,24 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   or not the package is installed, for `import` and `require()` alike.
   Every other package resolves as before, `client-only` included
   ([cli.md](docs/guide/cli.md#typescript-files)).
+- **`mnemocyte init` imports your app's Drizzle client.** When a file
+  where apps keep it (`src/db/`, `src/lib/db.ts`, `src/server/db/` and the
+  like) exports a `drizzle(...)` client over
+  postgres.js, node-postgres, PGlite, Neon (HTTP or `Pool`) or libSQL, the
+  memory file imports it instead of creating a second client. `--db
+  <path>` names the file when `init` does not find it, or finds several,
+  which now exits 2 with nothing written. A client over another driver is
+  skipped, and `init` writes its own as before
+  ([cli.md](docs/guide/cli.md#your-drizzle-client)).
 
 ### Changed
+
+- **`mnemocyte init` in a Next.js app** (with `next` in `package.json`)
+  writes `src/lib/memory.ts`, or `lib/memory.ts` when the app keeps `app/`
+  or `pages/` in the root or has no `src/`, and starts it with
+  `import "server-only"`. Other apps still get `memory.ts` in the root.
+  When the app has a `next.config.js`, the `"type": "module"` note says to
+  rename it first ([cli.md](docs/guide/cli.md#nextjs)).
 
 - **The CLI reads `.env.local`, then `.env`,** the order Next.js uses, so
   a Next.js app no longer needs `--env-file .env.local`. A value in

@@ -663,11 +663,23 @@ release, since the guide is read from `main`.
   package (`loadModuleOptions` in `@mnemocyte/loader`). Decision 98; see
   [features/cli.md](./features/cli.md#init). This was the last 1.4.0
   item, released in 1.4.0 with `@mnemocyte/mcp` 0.2.0.
-- [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
+- [x] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
   on Neon, `withMemory` in a route handler, extraction kept alive with
   `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a
   callback), and `mnemocyte migrate --yes` in the build script. Write it
   after the items above, against the code as it then is.
+  Landed: "Next.js on Neon", second in the recipes, showing the files that
+  differ from getting-started and linking the rest. The build script runs
+  `mnemocyte migrate --yes && next build`, and `.env.local` holds Neon's
+  pooled `DATABASE_URL` for the app and the direct
+  `DATABASE_URL_UNPOOLED` the CLI takes first, the names Neon's Vercel
+  integration sets. Extraction calls `waitUntil` once the stream has
+  finished, when the response may already be closed. The `after` page on
+  Next.js's canary docs does not cover that case; Next.js 16.4.6's
+  `after-context.js` does (it runs callbacks added after the request
+  closed), and with `next start` the callback ran and saved the memory.
+  The same source also accepts a promise, but the docs name only a
+  callback, so the recipe keeps `() => promise`. Not tried on Vercel.
 - [ ] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
   docs name 529 for an overloaded provider (its error list does not), and
   the built-in rule retries 408, 429, 500, 502, 503 and 504 only.

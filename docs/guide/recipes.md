@@ -37,6 +37,124 @@ The memories are added to what the model receives and not to `messages`.
 To let the model also save and forget, add `memoryTools`; to store facts
 from each turn, add `save: { model }`. See [the AI SDK guide](./ai-sdk.md).
 
+## Next.js on Neon
+
+A Next.js app on Drizzle and Neon's HTTP driver, with memory in a chat
+route and the schema created on every deploy. It needs Next.js 15.1 or
+newer, for `after`.
+
+```bash
+pnpm add mnemocyte drizzle-orm @neondatabase/serverless ai @ai-sdk/openai
+```
+
+Put both of Neon's connection strings in `.env.local`. The app uses the
+pooled one (`-pooler` after the endpoint id), and `mnemocyte migrate`
+takes the direct one first, which Neon recommends for schema changes:
+
+```txt
+DATABASE_URL=postgresql://…@ep-…-pooler.….neon.tech/neondb?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://…@ep-….….neon.tech/neondb?sslmode=require
+OPENAI_API_KEY=sk-...
+```
+
+On Vercel, Neon's integration sets both variables. With only
+`DATABASE_URL`, the command uses that one.
+
+The Drizzle client, `src/db/drizzle.ts`:
+
+```ts
+import { drizzle } from "drizzle-orm/neon-http";
+
+export const db = drizzle(process.env.DATABASE_URL!);
+```
+
+The memory client, `src/lib/memory.ts`. `pnpm exec mnemocyte init` writes
+this file when it finds the `db` above, with the `name` from your
+`package.json` as the namespace:
+
+```ts
+import "server-only";
+import { createMemory } from "mnemocyte";
+import { openaiEmbedder } from "mnemocyte/embedders";
+import { db } from "../db/drizzle";
+
+export const memory = createMemory({
+  namespace: "my-app",
+  store: db,
+  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
+});
+```
+
+Memories go through the app's own `db`. `server-only` makes the build fail
+when a Client Component imports the file, and the `mnemocyte` command
+loads it as an empty module.
+
+The route, `src/app/api/chat/route.ts`:
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { streamText } from "ai";
+import { withMemory } from "mnemocyte/ai-sdk";
+import { after } from "next/server";
+import { memory } from "@/lib/memory";
+
+export async function POST(request: Request) {
+  const session = await getSession(request); // your auth
+  const { messages } = await request.json();
+
+  const result = streamText({
+    model: withMemory({
+      model: openai("gpt-6.1-sol"),
+      memory: memory.for({ entityId: session.userId }),
+      save: {
+        model: openai("gpt-6.1-mini"),
+        waitUntil: (promise) => after(() => promise),
+      },
+      onError: ({ phase, error }) => console.warn({ phase, error }),
+    }),
+    instructions: "You are a helpful assistant.",
+    messages,
+  });
+
+  return result.toTextStreamResponse();
+}
+```
+
+Extraction starts once the stream has finished, after the handler has
+returned. Next.js documents `after` as taking a callback, so `waitUntil`
+wraps the promise in one. Next.js then keeps the function running until
+the promise settles, up to the route's `maxDuration`. Extraction itself
+gives up after 30 seconds by default (`timeoutMs`).
+
+Create the schema in the build script:
+
+```json
+{
+  "scripts": {
+    "build": "mnemocyte migrate --yes && next build"
+  }
+}
+```
+
+- `migrate` applies only what is missing, and two builds at once take
+  turns, so every deploy can run it. When Neon's Vercel integration
+  creates a database branch for each preview, that branch is migrated
+  before its build.
+- The command opens Neon's `Pool` on `DATABASE_URL_UNPOOLED`, since HTTP
+  cannot run migrations. It first compares what that connection and the
+  app's `db` see, and stops when they differ
+  ([stores that cannot migrate](./cli.md#stores-that-cannot-migrate)).
+- `--yes` enables pgvector without asking, which needs Neon's
+  `neon_superuser` role. The role a Neon project is created with has it;
+  a role created with SQL does not
+  ([enabling pgvector](./postgres.md#enabling-pgvector)).
+- The build loads `src/lib/memory.ts`, so `OPENAI_API_KEY` must be set
+  where it runs. No request is made with it.
+- A local `pnpm build` migrates the database `.env.local` points at.
+
+create-next-app's `package.json` has no `"type": "module"`, so Node warns
+on every `mnemocyte` command; see [Next.js](./cli.md#nextjs).
+
 ## Save a preference that changes
 
 Give the memory a `key`. Adding the same key again updates the memory in

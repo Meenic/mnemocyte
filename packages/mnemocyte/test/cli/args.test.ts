@@ -70,6 +70,9 @@ describe("parseCliArgs", () => {
 			parseCliArgs(["init", "--embedder", "openai-compatible"]).embedder,
 		).toBe("openai-compatible");
 		expect(parseCliArgs(["init", "--embedder=openai"]).embedder).toBe("openai");
+		expect(parseCliArgs(["init", "--db", "src/db/index.ts"]).db).toBe(
+			"src/db/index.ts",
+		);
 	});
 
 	test("--json goes with check and with migrate --dry-run", () => {
@@ -273,6 +276,9 @@ describe("parseCliArgs", () => {
 		],
 		[["init", "--embedder="], 'Unknown embedder "".'],
 		[["init", "--embedder"], "--embedder"],
+		[["migrate", "--db", "src/db.ts"], "--db applies to init, not to migrate."],
+		[["init", "--db="], "--db needs a path."],
+		[["init", "--db"], "--db"],
 		[["migrate", "--json"], "--json on migrate needs --dry-run."],
 		[["migrate", "--json", "--yes"], "--json on migrate needs --dry-run."],
 	])("rejects %j with exit code 2", (argv, message) => {

@@ -20,6 +20,14 @@ interface RawOptions {
 	baseUrl?: string;
 	paths?: PathPattern[];
 	pathsDirectory?: string;
+	module?: string;
+	moduleResolution?: string;
+}
+
+/** `compilerOptions.module` and `moduleResolution`, in lower case. */
+export interface ModuleOptions {
+	readonly module?: string;
+	readonly moduleResolution?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,6 +188,12 @@ function readOptions(file: string, seen: Set<string>): RawOptions {
 			options.paths = toPatterns(compilerOptions.paths);
 			options.pathsDirectory = dirname(file);
 		}
+		for (const key of ["module", "moduleResolution"] as const) {
+			const value = compilerOptions[key];
+			if (typeof value === "string") {
+				options[key] = value.toLowerCase();
+			}
+		}
 	}
 	return options;
 }
@@ -197,6 +211,21 @@ export function loadPathMapping(tsconfigPath: string): PathMapping | null {
 	return {
 		base: options.baseUrl ?? options.pathsDirectory,
 		patterns: options.paths,
+	};
+}
+
+/**
+ * `module` and `moduleResolution` of a tsconfig file, with what it extends
+ * underneath, as `mnemocyte init` needs them to spell an import. A file
+ * that cannot be read contributes nothing.
+ */
+export function loadModuleOptions(tsconfigPath: string): ModuleOptions {
+	const options = readOptions(tsconfigPath, new Set());
+	return {
+		...(options.module === undefined ? {} : { module: options.module }),
+		...(options.moduleResolution === undefined
+			? {}
+			: { moduleResolution: options.moduleResolution }),
 	};
 }
 

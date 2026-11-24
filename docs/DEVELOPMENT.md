@@ -138,7 +138,7 @@ src/
     middleware.ts       memoryMiddleware and withMemory: context in the prompt, save hook or extraction
     extraction.ts       extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
-  cli/                  main, args, io, memory-file, target, init, migrate, check, sql, generate, drizzle, text-search (the resolve hook is in packages/loader/)
+  cli/                  main, args, io, memory-file, target, init, init-app, migrate, check, sql, generate, drizzle, text-search (the resolve hook is in packages/loader/)
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   observability.ts      onEvent lifecycle (start / success / error)

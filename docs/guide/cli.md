@@ -152,8 +152,9 @@ own client.
 
 A libSQL database needs a memory file: the command has no libSQL
 connection of its own. `migrate`, `check` and `text-search` work with one
-([libsql.md](./libsql.md#install-the-schema)); `sql`, `generate` and
-`init` are Postgres only.
+([libsql.md](./libsql.md#install-the-schema)); `sql` and `generate` are
+Postgres only, and `init` writes a libSQL file only around a Drizzle
+libSQL client it finds ([Your Drizzle client](#your-drizzle-client)).
 
 If the tables live in [a schema of their own](./postgres.md#keep-the-tables-in-their-own-schema),
 add `--schema <name>` to `migrate`, `check`, `sql` and `text-search`. With
@@ -163,13 +164,16 @@ and `--schema` may only repeat it; a different name exits 2.
 ## `init`
 
 ```bash
-pnpm exec mnemocyte init [--embedder <openai|openai-compatible>] [--dry-run]
+pnpm exec mnemocyte init [--db <path>] [--embedder <openai|openai-compatible>] [--dry-run]
 ```
 
-Writes `memory.ts` in the project root, the file `migrate` and `check`
-then load, and adds `OPENAI_API_KEY=` to `.env.local` when your project
-has one, as a Next.js app does, or else to `.env`. Run it in the folder with
-your `package.json`. For a local model, see
+Writes the memory file that `migrate` and `check` then load, and adds
+`OPENAI_API_KEY=` to `.env.local` when your project has one, as a Next.js
+app does, or else to `.env`. Run it in the folder with your
+`package.json`. When your app already has a Drizzle client, the file
+imports it ([Your Drizzle client](#your-drizzle-client)). In a Next.js app
+the file is `src/lib/memory.ts` ([Next.js](#nextjs)); otherwise it is
+`memory.ts` in the project root. For a local model, see
 [A local Ollama](#a-local-ollama).
 
 ```txt
@@ -188,7 +192,8 @@ takes it from `devEngines.packageManager` or `packageManager` in
 `package.json`, else from the lockfile, else it names `npx`. The example
 above is from a pnpm project.
 
-- **The driver** comes from `dependencies` and `devDependencies`. With
+- **The driver**, when there is no Drizzle client to import, comes from
+  `dependencies` and `devDependencies`. With
   `drizzle-orm`, the file uses Drizzle over the driver next to it:
   `postgres`, else `pg`, else `@electric-sql/pglite` (`postgres` when there
   is none, with an install hint). Without Drizzle the order is `postgres`,
@@ -216,6 +221,86 @@ above is from a pnpm project.
 - **`"type": "module"`.** Without it in `package.json`, Node still loads
   `memory.ts` as an ES module but warns on every run, so `init` prints a
   note with `npm pkg set type=module`.
+
+### Your Drizzle client
+
+When your app already exports a Drizzle `db`, `init` writes a file that
+imports it, so memories use the app's own connection instead of a second
+one. In a Next.js app on Neon, with the `db` from Drizzle's Next.js
+tutorial in `src/db/drizzle.ts`:
+
+```txt
+Found next in package.json: a Next.js app, so the file goes in src/lib/ with import "server-only".
+Found the app's Drizzle client: db in src/db/drizzle.ts (Drizzle on Neon's HTTP driver).
+Wrote src/lib/memory.ts, which imports it.
+Added OPENAI_API_KEY= to .env.local
+```
+
+```ts
+import "server-only";
+import { createMemory } from "mnemocyte";
+import { openaiEmbedder } from "mnemocyte/embedders";
+import { db } from "../db/drizzle";
+
+export const memory = createMemory({
+  namespace: "my-app",
+  store: db,
+  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),
+});
+```
+
+- **Where it looks.** Every file directly in `src/db/`, `db/`,
+  `src/lib/db/`, `lib/db/`, `src/server/db/` and `server/db/`; files named
+  `db` or `drizzle` in `src/`, `src/lib/`, `lib/`, `src/server/` and
+  `server/`; and `db` in the root. Each as `.ts`, `.mts`, `.js` or `.mjs`.
+  Entry files such as `src/index.ts` are not read: importing one would
+  start your app.
+- **What counts.** A file that imports `drizzle` from `drizzle-orm/<driver>`
+  and exports what it returns: `export const db = drizzle(…)`,
+  `export default drizzle(…)`, or `const db = drizzle(…)` with
+  `export { db }`. `init` reads the text and runs nothing, so it does not
+  find a function that returns a client (`export const getDb = () =>
+  drizzle(…)`, or one wrapped in `cache(…)`) or a re-export
+  (`export { db } from "./client"`). A file that creates a client without
+  exporting it gets a line saying so.
+- **Drivers.** `postgres-js`, `node-postgres`, `pglite`, `neon-http`,
+  `neon-serverless`, and `libsql` with its subpaths (`libsql/web`, …). A
+  client over another driver is skipped with a line, and `init` writes a
+  file for the driver in `package.json` instead.
+- **Several clients** stop `init` with exit code 2, and nothing is written.
+  Name the one memories should use with `--db`.
+- **`--db <path>`** names the file when `init` does not find it or finds
+  several. It takes the file's only Drizzle export, or the one named `db`,
+  and exits 2 when the file has none, has several and none is `db`, or uses
+  another driver.
+- **The import** is relative, without an extension: `../db` for
+  `src/db/index.ts`, as Next.js and other bundlers resolve it. With
+  `"type": "module"` and `module` or `moduleResolution` set to `node16`,
+  `node18`, `node20` or `nodenext` in `tsconfig.json`, or with no
+  `tsconfig.json` outside Next.js, it ends in `.js`
+  (`./src/db/index.js`), as TypeScript and Node need there.
+- **Next steps** name the `process.env` variables the client's file reads
+  when neither env file sets them. A file that reads them another way,
+  such as `env.DATABASE_URL` from create-t3-app's `~/env`, gets no hint.
+- **PGlite.** A PGlite client whose file does not import
+  `@electric-sql/pglite-pgvector` gets a note: `migrate` needs pgvector.
+
+### Next.js
+
+With `next` in `dependencies` or `devDependencies`, the file goes in
+`src/lib/memory.ts` and starts with `import "server-only"`, so importing
+it from a Client Component fails the build. It goes in `lib/memory.ts`
+instead when `app/` or `pages/` sits in the project root (Next.js then
+ignores `src/app`), or when there is no `src/` folder. Both are folders
+`migrate` looks in. The command loads `server-only` as an empty module
+([TypeScript files](#typescript-files)), and Next.js does not need the
+package installed.
+
+create-next-app does not set `"type": "module"`, so Node warns on every
+command (`MODULE_TYPELESS_PACKAGE_JSON`) and `init` prints the note above.
+When the app has a `next.config.js`, the note adds that it must become
+`next.config.mjs` or `.ts` first if it uses `module.exports`, since Next.js
+does not read `next.config.cjs`.
 
 ### A local Ollama
 
@@ -585,6 +670,11 @@ deploy would run a migration, using `jq -e`, which exits 1 on `false`:
 
 ## Limits
 
+- **Finding your Drizzle client.** `init` reads the text of the files in
+  [a fixed list of places](#your-drizzle-client). It does not find a client
+  that a function returns, that a file re-exports from another, or that
+  lives elsewhere, such as in a workspace package. Pass `--db` for a file
+  that creates and exports it, or write the memory file by hand.
 - **PGlite.** A PGlite data folder opens in one process at a time, so run
   the command while the app is stopped, or call
   `migrate({ memory, createExtension: true })` when the app starts.

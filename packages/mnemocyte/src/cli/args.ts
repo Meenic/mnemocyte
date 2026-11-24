@@ -55,6 +55,8 @@ export interface CliArgs {
 	readonly out?: string;
 	/** `--embedder`: the embedder `init` writes; `openai` when left out. */
 	readonly embedder?: InitEmbedder;
+	/** `--db`: the file with the app's Drizzle client, for `init`. */
+	readonly db?: string;
 	/** `--adapter`: the schema format `generate` writes. */
 	readonly adapter?: GenerateAdapter;
 }
@@ -67,7 +69,8 @@ export type GenerateAdapter = (typeof GENERATE_ADAPTERS)[number];
 export const USAGE: string = `Usage: mnemocyte <command> [options]
 
 Commands
-  init                Write a memory.ts for the driver in package.json
+  init                Write a memory.ts that uses the app's Drizzle client,
+                      or one for the driver in package.json
   migrate             Create or upgrade the Mnemocyte schema
   check               Report pgvector, migrations and dimensions; exit 1 on
                       a problem
@@ -95,6 +98,8 @@ Options
                          change nothing; generate: print the file
       --embedder <name>  init: openai (default) or openai-compatible, such
                          as a local Ollama
+      --db <path>        init: the file that exports the app's Drizzle
+                         client, when init does not find it
       --json             check, migrate --dry-run, text-search --dry-run:
                          print the result as JSON
       --out <file>       sql: write to a file instead of standard output;
@@ -124,6 +129,7 @@ const COMMAND_FLAGS = {
 	json: ["check", "migrate", "text-search"],
 	out: ["sql", "generate"],
 	embedder: ["init"],
+	db: ["init"],
 	adapter: ["generate"],
 	"text-search-config": ["migrate", "check", "sql", "generate"],
 	schema: ["migrate", "check", "sql", "generate", "text-search"],
@@ -225,6 +231,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 		"json",
 		"out",
 		"embedder",
+		"db",
 		"adapter",
 		"text-search-config",
 		"schema",
@@ -258,7 +265,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 	if (command === "text-search" && values.dimensions !== undefined) {
 		throw usageError("--dimensions does not apply to text-search.");
 	}
-	for (const flag of ["config", "env-file", "out"] as const) {
+	for (const flag of ["config", "env-file", "out", "db"] as const) {
 		if (values[flag] === "") {
 			throw usageError(`--${flag} needs a path.`);
 		}
@@ -305,6 +312,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 			: { dimensions: parseDimensions(values.dimensions) }),
 		...(values.out === undefined ? {} : { out: values.out }),
 		...(embedder === undefined ? {} : { embedder }),
+		...(values.db === undefined ? {} : { db: values.db }),
 		...(adapter === undefined ? {} : { adapter }),
 		...(textSearchConfig === undefined ? {} : { textSearchConfig }),
 		...(values.schema === undefined
@@ -337,6 +345,7 @@ function parse(argv: readonly string[]) {
 			json: { type: "boolean" },
 			out: { type: "string" },
 			embedder: { type: "string" },
+			db: { type: "string" },
 			adapter: { type: "string" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },

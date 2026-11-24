@@ -235,9 +235,12 @@ The flow is three steps: install, export `memory` from a `memory.ts`, run
 - **CLI.** Landed: the `mnemocyte` bin with `init`, `migrate`, `check` and `sql`
   loads the app's own memory file, or connects to `DATABASE_URL` without
   one (decision 36); see [features/cli.md](./features/cli.md).
-- **`init`.** Landed: `mnemocyte init` writes a `memory.ts` for the
-  driver found in `package.json` and adds `OPENAI_API_KEY=` to `.env`
-  (decision 37); see [features/cli.md](./features/cli.md#init).
+- **`init`.** Landed: `mnemocyte init` writes a `memory.ts` that imports
+  the app's own Drizzle client when it finds one (decision 98), else one
+  for the driver found in `package.json` (decision 37), in `src/lib/` or
+  `lib/` with `import "server-only"` for a Next.js app, and adds
+  `OPENAI_API_KEY=` to `.env.local` or `.env`; see
+  [features/cli.md](./features/cli.md#init).
 - **`--json`.** Landed: `check --json` and `migrate --dry-run --json`
   print one JSON result for CI (decision 47); see
   [features/cli.md](./features/cli.md#--json).
@@ -2161,3 +2164,58 @@ Dated 2026-10-26 unless noted.
       code, a line on every run would be noise, and the CLI's `--json`
       output and the server's startup line stay as they were. The guides
       say it instead.
+98. **`init` imports the app's Drizzle client** (2026-11-24, landed with
+    `feat/init-detect-app`): for a Next.js app on Drizzle, a second client
+    in `memory.ts` means a second pool, or a second Neon driver, beside
+    the app's. The maintainer took these recommendations:
+    - **Finding it:** file names plus the text of each file, no parser.
+      A TypeScript parser would be a new dependency, and an approximate
+      one would still miss re-exports. Every file directly in `src/db`,
+      `db`, `src/lib/db`, `lib/db`, `src/server/db` and `server/db`
+      (create-t3-app writes `src/server/db/index.ts`), `db.*` and
+      `drizzle.*` in `src`, `src/lib`, `lib`, `src/server` and `server`,
+      and `db.*` in the root. Drizzle's get-started guides keep an
+      unexported `const db` in `src/index.ts`, and only its Next.js + Neon
+      tutorial exports one (`src/db/drizzle.ts`), so only exports count,
+      and entry files are never read: importing one would start the app.
+      A function that returns a client is not one.
+    - **Next.js:** `next` in `dependencies` or `devDependencies`; an `app`
+      folder alone is also Remix's. Folders only pick the place:
+      `lib/memory.ts` beside a root `app` or `pages`, else
+      `src/lib/memory.ts` when there is a `src`, else `lib/`. The file
+      starts with `import "server-only"`, templates included, and the
+      package is not added. An app outside Next.js keeps the root, as
+      decision 37 set.
+    - **Several clients, or one it cannot classify:** several exit 2 with
+      nothing written and point to `--db`, since picking the first would
+      decide which database memories go to and a template would create
+      the client this item avoids. The drivers are `postgres-js`,
+      `node-postgres`, `pglite`, `neon-http`, `neon-serverless` and
+      `libsql` with its subpaths (libSQL too: the file only imports the
+      client). Any other is skipped with a line, and `init` falls back to
+      the templates as before.
+    - **`--db <path>`:** a path only, like `--config`. It takes the file's
+      only client, else the one named `db`, and exits 2 for a file it
+      cannot read, one with no client, several without a `db`, or another
+      driver. A `path#export` form would be syntax almost no one needs.
+    - **Output:** one line for a Next.js app, one naming the client and
+      its driver, `Wrote …, which imports it.`, a line per skipped client
+      or unexported one, and, when `drizzle-orm` is listed and nothing is
+      found, the places it read and `--db`. "Next" names the `process.env`
+      variables the client's file reads that neither env file sets, and a
+      PGlite client file without pgvector gets a note.
+    - **The `"type"` note** (found while planning): create-next-app writes
+      no `"type"`, so the note shows in most Next.js apps. Its own
+      template writes `next.config.ts`, but an older app's
+      `next.config.js` is CommonJS in Next.js's docs, which do not support
+      `next.config.cjs`; with that file present the note says to rename
+      it first.
+
+    Also decided while planning: the import is relative and has no
+    extension, except in a `"type": "module"` package whose tsconfig sets
+    `module` or `moduleResolution` to a Node mode (or that has no tsconfig,
+    outside Next.js), where TypeScript needs `.js`. `@mnemocyte/loader`
+    gained `loadModuleOptions` for it, next to `loadPathMapping`. No test
+    runs `migrate` on an `init`-written file over Drizzle `neon-http`; the
+    Neon suite covers that store, and the package test covers the written
+    file on PGlite.

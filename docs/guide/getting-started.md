@@ -106,9 +106,10 @@ export const memory = createMemory({
 - The database client stays yours. A script ends it when it is done, and a
   server keeps it open. The memory client has no `close()`.
 
-`pnpm exec mnemocyte init` can write this file for you. It picks the
-version for the driver in your `package.json` and never overwrites a file;
-see [`init`](./cli.md#init).
+`pnpm exec mnemocyte init` can write this file for you. It imports your
+app's Drizzle client when it finds one, otherwise it picks the version for
+the driver in your `package.json`, and it never overwrites a file; see
+[`init`](./cli.md#init).
 
 ### Use Ollama instead of OpenAI
 

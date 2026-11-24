@@ -2128,20 +2128,21 @@ Dated 2026-10-26 unless noted.
     - **The empty module:** a file in each bin's `dist/`,
       `server-only.cjs`, which a `server-only-stub` plugin in each
       `tsdown.config.ts` writes and the resolve hook returns with
-      `shortCircuit: true`. First chosen and revised the same day: a
-      synthetic `mnemocyte:server-only` URL with a `load` hook that
-      returned empty source passed on Node 24 and 26 but failed CI on
-      22.18. Any `registerHooks` load hook makes Node 22's ESM loader read
-      CommonJS source (`defaultLoadSync`), and CommonJS that arrives with
-      source runs with the translator's own `require` (`loadCJSModule`),
-      which calls `CJSModule._resolveFilename` and skips resolve hooks.
-      So on Node 22 it broke `require("server-only")` in a `.cjs` file
-      the memory file imports, and with it tsconfig `paths` and
-      extensionless names in such `require()` calls, which worked before.
-      Node 24.22 uses the real `require()` there (nodejs/node#60380). A
-      `data:text/javascript,` URL fails too: on Node 24 `import` loads
-      it, but `require()` reads it as a file path (`ENOENT`). The cost is
-      one more file in each tarball.
+      `shortCircuit: true`. The maintainer chose it the same day, after
+      the first choice failed CI: a synthetic `mnemocyte:server-only` URL
+      with a `load` hook that returned empty source passed on Node 24 and
+      26 but not on 22.18. There, any `registerHooks` load hook makes the
+      ESM loader read CommonJS source (`defaultLoadSync`), and CommonJS
+      that arrives with source runs with the translator's own `require`
+      (`loadCJSModule`), which calls `CJSModule._resolveFilename` and
+      skips resolve hooks. That broke `require("server-only")` in a
+      `.cjs` file the memory file imports, and by the same path would
+      skip the hook's tsconfig `paths` in such `require()` calls (read
+      from the 22.18 source, not run). Node 24.22 uses the real
+      `require()` there (nodejs/node#60380). A `data:text/javascript,`
+      URL fails too: on Node 24 `import` loads it, but `require()` reads
+      it as a file path (`ENOENT`). The cost is one more file in each
+      tarball.
     - **When it applies:** always, before Node resolves, for the exact bare
       specifier and from any importer, `node_modules` included. Mapping
       only when Node fails would leave the common case broken: an

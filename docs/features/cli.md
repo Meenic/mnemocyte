@@ -103,8 +103,8 @@ readable by the bin's copy.
   that file, a comment and nothing else, with its `server-only-stub`
   plugin. It is a real file because the other two ways fail somewhere:
   `require()` reads a `data:` URL as a file path (`ENOENT` on Node 24),
-  and on Node 22 any `registerHooks` load hook makes the ESM loader read
-  CommonJS source, which sends `require()` inside CommonJS loaded by
+  and on Node 22.18 any `registerHooks` load hook makes the ESM loader
+  read CommonJS source, which sends `require()` inside CommonJS loaded by
   `import` through `CJSModule._resolveFilename`, past every resolve hook
   (`loadCJSModule` in 22.18's `lib/internal/modules/esm/translators.js`;
   24.22 uses the real `require()` there, nodejs/node#60380).

@@ -92,9 +92,9 @@ export function resolveAppImport(
  * package throws at import outside the `react-server` condition, and an
  * app's memory file may import it (Next.js's convention for server code).
  * The bins are server code, so it loads as nothing instead (decisions 81
- * and 97). A real file, because Node 22 skips resolve hooks for `require()`
- * in CommonJS loaded by `import` once any load hook is registered, and
- * `require()` cannot load a `data:` URL.
+ * and 97). A real file, because Node 22.18 skips resolve hooks for
+ * `require()` in CommonJS loaded by `import` once any load hook is
+ * registered, and `require()` cannot load a `data:` URL.
  */
 export const SERVER_ONLY_FILE = "server-only.cjs";
 

@@ -565,7 +565,7 @@ release, since the guide is read from `main`.
   Landed: `resolveHook` maps the bare `server-only` to an empty
   `dist/server-only.cjs` that each bin's build writes, before Node
   resolves it, from any importer. A load hook broke `require()` in
-  imported CommonJS on Node 22, and a `data:` URL failed under
+  imported CommonJS on Node 22.18, and a `data:` URL failed under
   `require()`. Decided (decision 97): always rather than only when Node
   fails (an installed copy resolves to the file that throws),
   `client-only` left to Node, and nothing printed. Both bins' package

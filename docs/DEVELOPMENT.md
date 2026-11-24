@@ -113,9 +113,9 @@ through type stripping, so files import each other by their `.ts` name.
 The site imports `@mnemocyte/release/changelog`, which imports no file
 of its own because the site type-checks it with its own settings, and
 Turbopack compiles workspace packages without `transpilePackages`.
-`src/packages.ts` and `src/bin/list.ts` import nothing but Node's own
-modules, so that job runs before installing. Its tests are its own
-(`pnpm test:release`).
+`src/packages.ts` imports nothing and `src/bin/list.ts` only it and
+Node's own modules, so that job runs before installing. Its tests are
+its own (`pnpm test:release`).
 `examples/` stays at the root, where GitHub readers look for it, and
 installs `mnemocyte` from the workspace the way an app installs it from
 npm. Only the root `package.json` sets `packageManager`; `engines` is in
@@ -1294,9 +1294,10 @@ The release workflow has these jobs:
   builds `dist/` and `prepack` copies the root `README.md` and `LICENSE`
   in ("Structure"). A version with a prerelease part (`0.6.0-rc.1`) gets
   the `next` dist-tag, any other `latest`, and the other tag stays where
-  it was. `--no-git-checks` is needed because `main` may have moved on
-  while the run waited for approval, and pnpm refuses a branch behind
-  its remote.
+  it was. `--no-git-checks` is needed because the release text in the
+  untracked `notes/` folder fails pnpm's clean-tree check
+  (`ERR_PNPM_GIT_UNCLEAN`); the checkout is the `main` branch, not a
+  detached HEAD.
   `--publish-wait-timeout 600000` keeps the job running until the version
   is installable: npm scans each upload before it shows up, which took about
   two minutes for 0.5.1. If it is not available after 10 minutes the job
@@ -1336,7 +1337,10 @@ A manual run (Actions, then Release, then "Run workflow", or
 `gh workflow run release.yml`) is always a dry run: `Plan` lists every
 package, CI runs, `Publish (dry run)` writes the release text and runs
 `pnpm publish --dry-run` outside the `npm` environment and without
-`id-token`, and `Tag and release` prints what it would do. It does not
+`id-token`, and `Tag and release` makes the same checks for existing
+tags and releases and prints what it would do. pnpm warns
+`Skipped OIDC: ERR_PNPM_ID_TOKEN_GITHUB_WORKFLOW_INCORRECT_PERMISSIONS`
+for each package, which is expected without `id-token`. It does not
 test the approval, the OIDC exchange, the attestation check or the API
 writes. GitHub takes `workflow_dispatch` only for a workflow on the
 default branch. Release runs queue one at a time: a run waiting for
@@ -1457,7 +1461,9 @@ steps, for the record and for any new package:
    publish. Before it, the plan would find a version npm does not have,
    and the publish would fail without a trusted publisher. Until its
    next version, the plan warns on every run that the hand-published
-   one has no tag.
+   one has no tag, and `release:check` fails on its npm link (see
+   ROADMAP.md, "Release automation"; to decide with the next new
+   package).
 
 From then on, the package publishes through `release.yml` with
 provenance. Its first such release is also the first run of that path,
@@ -1496,9 +1502,10 @@ without a bold lead-in or with one that does not end with `.`, `!` or
 `?`. It reads `[Unreleased]` and the releases from `checkedFrom` up
 (1.0.0 for `mnemocyte`, 0.1.0 for `@mnemocyte/mcp`), and also fails
 when a package's version has no `## [X.Y.Z] - YYYY-MM-DD` heading or
-`[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link, which the
-release text and the site need. Write an entry as a lead-in sentence,
-then the details:
+`[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link: the release
+text reads the heading, and the next release's text finds this
+version's tag through the link for its compare link. Write an entry
+as a lead-in sentence, then the details:
 
 ```markdown
 - **The CLI reads `.env.local`, then `.env`.** That is the order Next.js

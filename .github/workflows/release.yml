@@ -173,9 +173,10 @@ jobs:
       # re-run skips what npm already has. pnpm authenticates with trusted
       # publishing (OIDC) and attaches provenance; prepublishOnly builds
       # dist/ and prepack copies the README and LICENSE. --no-git-checks:
-      # main may have moved on while the run waited for approval. npm scans
-      # each upload before it becomes installable, so pnpm waits up to 10
-      # minutes for it. dist.attestations must not be empty, since pnpm's
+      # the untracked notes/ folder fails pnpm's clean-tree check
+      # (ERR_PNPM_GIT_UNCLEAN). npm scans each upload before it becomes
+      # installable, so pnpm waits up to 10 minutes for it.
+      # dist.attestations must not be empty, since pnpm's
       # trustPolicy: no-downgrade refuses a version with less trust
       # evidence than earlier ones; npm can show it a little after the
       # version.
@@ -361,13 +362,11 @@ jobs:
             notes="notes/$tag.md"
             test -s "$notes"
 
-            if [ "$DRY_RUN" = true ]; then
-              echo "$tag: would tag $GITHUB_SHA and run: gh release create $tag --verify-tag --title \"$title\" --notes-file $notes ${flags[*]}"
-              continue
-            fi
-
+            # The same checks in a dry run, which only says what it would do.
             if gh api "repos/$REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
-              echo "$tag exists"
+              echo "$tag exists; skipping it"
+            elif [ "$DRY_RUN" = true ]; then
+              echo "$tag: would tag $GITHUB_SHA"
             else
               sha="$(gh api "repos/$REPOSITORY/git/tags" -f tag="$tag" -f message="$tag" -f object="$GITHUB_SHA" -f type=commit --jq .sha)"
               gh api "repos/$REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" > /dev/null
@@ -375,7 +374,9 @@ jobs:
             fi
 
             if gh release view "$tag" --repo "$REPOSITORY" > /dev/null 2>&1; then
-              echo "The $tag release exists"
+              echo "The $tag release exists; skipping it"
+            elif [ "$DRY_RUN" = true ]; then
+              echo "$tag: would run gh release create $tag --verify-tag --title \"$title\" --notes-file $notes ${flags[*]}"
             else
               gh release create "$tag" --repo "$REPOSITORY" --verify-tag --title "$title" --notes-file "$notes" "${flags[@]}"
             fi

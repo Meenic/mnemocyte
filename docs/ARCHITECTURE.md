@@ -2350,8 +2350,8 @@ Dated 2026-10-26 unless noted.
       `contents: write`, no checkout and no install, because `main` has
       no branch protection. The release text comes from the publish job
       as an artifact, written before anything is published.
-      `gh release create --verify-tag` keeps gh from making a lightweight
-      tag on `main`. Reading the commit from npm's provenance would only
+      `gh release create --verify-tag` keeps gh from creating a tag of
+      its own on `main`. Reading the commit from npm's provenance would only
       matter after a partial publish whose fix changed the package; that
       case is tagged by hand (DEVELOPMENT.md, "When a release fails").
     - **The dry run is every `workflow_dispatch`:** `pnpm publish

@@ -363,7 +363,7 @@ Dated 2026-10-26 unless noted.
     for Postgres 17 and 18, plus PGlite for fast local runs.
 15. **Releases:** manual `pnpm version`, then a tag-triggered GitHub Actions
     workflow publishes with provenance. Changesets only once there are
-    several packages.
+    several packages. (Superseded by 99.)
 
 16. **Atomic statements over interactive transactions** (2026-10-27): write
     paths are designed as single statements where possible. `transaction(fn)`
@@ -2219,3 +2219,64 @@ Dated 2026-10-26 unless noted.
     runs `migrate` on an `init`-written file over Drizzle `neon-http`; the
     Neon suite covers that store, and the package test covers the written
     file on PGlite.
+
+99. **Releases publish from `main` after an approval** (2026-11-24,
+    planned in `docs/release-automation`): 1.4.0 and `@mnemocyte/mcp`
+    0.2.0 took about nine manual steps, and each new package adds a branch
+    in `release.yml`, a tag prefix, a changelog link format, a
+    DEVELOPMENT.md section and GitHub release rules. Compared on
+    2026-11-24 (re-read the sources in each item's PR): Changesets (the AI
+    SDK, Better Auth, the MCP TypeScript SDK, Mastra, Effect, TanStack
+    Query, graphile-worker), release-please, a release commit on `main`
+    (Vitest), a check for versions missing from npm (Drizzle, and the MCP
+    SDK on top of Changesets), and tag pushes (Kysely, pg-boss and this
+    repository). The maintainer took these recommendations:
+    - **Not Changesets or release-please.** Changesets v3 (2026-08-11)
+      writes a `## 1.4.0` heading and `### Minor Changes` sections into
+      each package's own `CHANGELOG.md` (`get-changelog-entry.ts`; only
+      the lines are customizable) and tags `pkg@version`, which breaks the
+      Keep a Changelog layout, the site's changelog page and `verify`.
+      Its Version PR, like release-please's PRs, runs no CI without a
+      personal or GitHub App token, since `GITHUB_TOKEN` events start no
+      workflows, and release-please writes the changelog from commit
+      titles. Revisit Changesets at about five published packages with
+      dependencies between them, or with regular outside contributors
+      whose `[Unreleased]` entries conflict. This replaces decision 15's
+      "several packages".
+    - **Trigger:** a push to `main`. A plan job lists the packages whose
+      version is not on npm, or has no tag or GitHub release yet; a failed
+      npm lookup fails the job instead of meaning there is nothing to do.
+      Only then do CI and the publish job run, and the publish job waits
+      in the `npm` environment for the maintainer's approval (required
+      reviewers work on public repositories on every plan; a run not
+      approved within 30 days fails). "Prevent self-review" stays off,
+      since the maintainer's merge starts the run they approve. Tags and
+      GitHub releases come from a later job with `contents: write` and no
+      `id-token`. Approving is the release, not merging, and agents never
+      approve. A failed publish is fixed by merging the fix: the next run
+      publishes what is still missing, with no tag to delete.
+    - **npm side unchanged.** A trusted publisher names the organization,
+      repository, workflow file, environment and allowed actions, and no
+      branch or tag, so `release.yml` and `npm` keep working from `main`
+      (Sanity's packages publish from `refs/heads/main` with provenance).
+      The file name must stay: npm cannot change an existing connection,
+      and a new one defaults to staged publishing only. The environment's
+      deployment rule moves from the `v*` and `mcp-v*` tags to `main`,
+      and gains the required reviewer.
+    - **Release text from the changelog:** the version's intro, each
+      entry's bold lead-in under its heading, a link to the full section,
+      and a compare link when the package has an earlier tag, with
+      relative links made absolute. For `mnemocyte` that is what the
+      site's changelog page shows. It retires the category format in
+      DEVELOPMENT.md ("Release text"). Lead-ins must read on their own,
+      so the six that do not end with a period get fixed and a check
+      keeps new ones whole.
+    - **Staged publishing later,** as its own item once a release has gone
+      through this workflow. `pnpm stage publish` (Kysely publishes that
+      way since 2026-07-17) leaves a version unpublished until the
+      maintainer approves it on npmjs.com or with `npm stage approve`,
+      with 2FA. The workflow can wait for that only until its job time
+      limit runs out, so tags and releases would need a second run.
+    - **A new package's first publish stays by hand** (DEVELOPMENT.md,
+      "`@mnemocyte/mcp`"): npm's trusted-publisher page still assumes the
+      package exists.

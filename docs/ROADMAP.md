@@ -456,6 +456,55 @@ The items, in order:
   folder names stay; the Postgres and libSQL scope predicates become one
   (`chore/shared-scope-sql`). No code changed.
 
+## Release automation
+
+Planned on 2026-11-24, after 1.4.0 and `@mnemocyte/mcp` 0.2.0 went out
+from one PR with about nine manual steps; decision 99 has the comparison
+with other libraries and the choices. These come first, before the rest
+of "Drivers, CLI and ORMs", so 1.5.0, a small release, is the first one
+through the new path rather than migration 0005's 1.6.0.
+`docs/nextjs-recipe` shares no files with them and can run alongside.
+
+- [ ] `chore/release-prepare`: one list of the published packages (name,
+  folder, changelog, tag prefix, GitHub release title, whether it is the
+  repository's latest release), for example `scripts/release/packages.ts`,
+  which the scripts below and later `release.yml` read. `pnpm
+  release:prepare` bumps the packages it is given (`pnpm version` with
+  `--no-git-checks`), moves each `[Unreleased]` under `## [X.Y.Z] - date`
+  with its links, and proposes the bump from the entries: minor for an
+  `Added` or `Deprecated` entry, else patch. It stops on **Breaking**,
+  since a major is the maintainer's call. `pnpm release:notes <package>`
+  prints a version's release text (decision 99) with relative links made
+  absolute. A release check on every PR fails on what `verify` fails on
+  today (a bumped version without its heading or link) and on a lead-in
+  that does not end with a period; fix the six that do not (four in
+  `CHANGELOG.md` from 1.0.0 on, two in `packages/mcp/CHANGELOG.md`).
+  Decide while planning whether the scripts reuse the site's changelog
+  parser (`apps/site/src/lib/changelog.ts`). Vitest tests over fixture
+  changelogs. No release of its own. DEVELOPMENT.md ("Releasing" and
+  "Release text") and AGENTS.md's "draft release text in the format in
+  `docs/DEVELOPMENT.md`" switch to the scripts and `release:notes`; the
+  tag push stays until the next item.
+- [ ] `chore/release-on-main`: `release.yml` runs on pushes to `main`
+  (decision 99). A plan job lists the packages whose version is not on
+  npm, or has no tag or GitHub release; with none it stops there, so an
+  ordinary merge does not run CI twice. Otherwise CI runs, then `publish`
+  waits in the `npm` environment for approval, publishes each package
+  with `pnpm publish` as today, fails when `npm view <pkg>@<version>
+  dist.attestations` is empty (pnpm's `trustPolicy: no-downgrade` refuses
+  a version with less trust evidence than earlier ones, which broke
+  installs of Sanity's codegen 8.3.3) and keeps the stale-`next` step. A
+  last job with only `contents: write` pushes the `v…` and `mcp-v…` tags
+  and creates the GitHub releases from `pnpm release:notes`,
+  `@mnemocyte/mcp` with `--latest=false`. A `workflow_dispatch` dry run
+  (`pnpm publish --dry-run`, no tags or releases) tests it before the
+  first real release. The PR lists the maintainer's settings steps: the
+  `npm` environment's deployment rule from tags to `main`, a required
+  reviewer, and "Prevent self-review" left off. AGENTS.md gains "never
+  approve a deployment" (`gh` can, through the API). Rewrite
+  DEVELOPMENT.md ("Releasing" and "`@mnemocyte/mcp`"). 1.5.0 is the
+  first release through it; watch its runs.
+
 ## Drivers, CLI and ORMs
 
 Planned on 2026-11-22 from a walk through adding Mnemocyte to a Next.js
@@ -474,7 +523,8 @@ release, since the guide is read from `main`.
   no release, comes before them). `docs/nextjs-recipe` follows once
   1.4.0 is on npm.
 - **1.5.0, OpenRouter:** `fix/retry-529` and `feat/openrouter-embedder`.
-  `chore/shared-scope-sql` follows it and needs no release.
+  `chore/shared-scope-sql` follows it and needs no release. It is the
+  first release through "Release automation" above (decision 99).
 - **1.6.0, migration 0005:** `chore/release-schema-notes` first, since this
   release's text needs its schema line, then
   `feat/installation-from-catalog`, `feat/migrate-sql-plans` (so teams on
@@ -622,12 +672,14 @@ release, since the guide is read from `main`.
   Decided (decision 96): the queries themselves stay per dialect. The
   generated SQL must not change: compare it before and after, and run the
   contract suite on PGlite and libSQL. No release of its own.
-- [ ] `chore/release-schema-notes`: the release text format in
-  DEVELOPMENT.md ("Releasing") gains a line for each schema change: what
-  `drizzle-kit generate` will write after `mnemocyte generate`, and whether
-  it rewrites a table or drops a column, because drizzle-kit compares
-  schemas and knows nothing about the data Mnemocyte's own migrations
-  carry over.
+- [ ] `chore/release-schema-notes`: the release text gains a line for each
+  schema change: what `drizzle-kit generate` will write after `mnemocyte
+  generate`, and whether it rewrites a table or drops a column, because
+  drizzle-kit compares schemas and knows nothing about the data
+  Mnemocyte's own migrations carry over. The release text is generated
+  from the changelog since decision 99, so the line goes in the
+  version's changelog section, in a form `pnpm release:notes` and the
+  site show.
 - [ ] `feat/installation-from-catalog`: read the embedding size from the
   embedding column's type modifier, as `inspect.ts` and `runner.ts` already
   do, instead of failing with `"INSTALLATION_INVALID"` when the
@@ -832,6 +884,12 @@ deploys it on Vercel).
 ## Later
 
 Not queued. Each one comes back as an item when its condition holds.
+
+- npm staged publishing, once a release has gone through
+  `chore/release-on-main` (decision 99): `pnpm stage publish`, the
+  maintainer's approval on npmjs.com or with `npm stage approve` (with
+  2FA), trusted publishers set to stage-only as npm recommends, and the
+  tags and GitHub releases in a later run once the version is on npm.
 
 - `@mnemocyte/mcp` over Streamable HTTP for many users, when someone asks
   for a hosted server: the scope taken from authentication (OAuth 2.1 as

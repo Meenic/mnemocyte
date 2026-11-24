@@ -63,6 +63,22 @@ describe("releaseNotes", () => {
 		);
 	});
 
+	it("says how to install a prerelease after the intro", () => {
+		const root = makeRepo({
+			rootChangelog: ROOT_CHANGELOG.replace(
+				"## [1.1.0] - 2026-11-16",
+				"## [1.1.0-rc.1] - 2026-11-16",
+			),
+		});
+		const notes = releaseNotes({ root, pkg: mnemocyte, version: "1.1.0-rc.1" });
+		expect(notes.split("\n\n")[1]).toBe(
+			"This is a prerelease: install it with `npm install mnemocyte@next`.",
+		);
+		expect(releaseNotes({ root: makeRepo(), pkg: mnemocyte })).not.toContain(
+			"prerelease",
+		);
+	});
+
 	it("points an anchor at the changelog itself", () => {
 		const root = makeRepo({
 			rootChangelog: ROOT_CHANGELOG.replace(

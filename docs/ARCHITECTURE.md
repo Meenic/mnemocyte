@@ -1647,7 +1647,7 @@ Dated 2026-10-26 unless noted.
     [features/postgres.md](./features/postgres.md#client-detection) and
     DEVELOPMENT.md ("What CI runs").
 77. **`migrate` opens its own connection for HTTP stores** (2026-11-22,
-    queued as `feat/cli-migrate-direct-connection`): the maintainer chose
+    landed with `feat/cli-migrate-direct-connection`): the maintainer chose
     this over a clear error. When the memory file's store has no
     `transaction`, the CLI connects with a Neon `Pool` on
     `DATABASE_URL_UNPOOLED` (set by Neon's Vercel integration), falling
@@ -1656,6 +1656,25 @@ Dated 2026-10-26 unless noted.
     name and text search configuration still come from the memory file, so
     the app and the migration agree. `migrate({ memory })` in code keeps
     throwing for such a store: it cannot know a connection string.
+    The memory file holds no text search configuration (it is an input of
+    `migrate()` and `setTextSearchConfig()`, read back from the
+    installation), so that part still comes from `--text-search-config`
+    and the installation. (2026-11-24, landed) The maintainer chose, with
+    the PR: with neither variable set the command exits 2 and names them,
+    opening nothing, as it does for a missing driver package; since
+    `neon()` hides its URL, the CLI compares `inspectInstallation()`
+    through both connections before any change (exit 2 when they differ,
+    nothing changed) and again after a real run (exit 1 when the app's
+    client does not see the change), because a new Neon branch and its
+    parent look the same until then, over a sentence in the guide only,
+    which would let a wrong `.env.local` migrate another branch silently;
+    `check` keeps reading through the app's client, since it only reads
+    and that client is the one the app runs on; and a connection failure
+    stays exit 1, as `migrate` on `DATABASE_URL` already is, named by the
+    variable and never the URL. The store says what it needs through the
+    internal `MemoryStore.directConnection` (`"neon"` or `"postgres"`), and
+    `--json` plans gained `connection`. The rest is in
+    [features/cli.md](./features/cli.md#stores-without-transactions).
 78. **The CLI reads `.env.local` before `.env`** (2026-11-22, queued as
     `feat/cli-env-files`): the maintainer chose Next.js's order for these
     two files, skipping `.env.local` when `NODE_ENV` is `test` as Next.js

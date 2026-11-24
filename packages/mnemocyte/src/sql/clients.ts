@@ -44,6 +44,16 @@ export function executorFor(detected: DetectedClient): SqlExecutor {
  * node-postgres `Client`.
  */
 export function toSqlExecutor(client: unknown): SqlExecutor {
+	return executorFor(detectSqlClient(client));
+}
+
+/**
+ * {@link detectClient} for a value passed as `client`, which must be
+ * recognised.
+ *
+ * @throws {MnemocyteError} `"CONFIG"` as {@link toSqlExecutor} does.
+ */
+export function detectSqlClient(client: unknown): DetectedClient {
 	const detected = detectClient(client, "client");
 	if (!detected) {
 		throw new MnemocyteError({
@@ -52,5 +62,5 @@ export function toSqlExecutor(client: unknown): SqlExecutor {
 			reason: "INVALID_OPTION",
 		});
 	}
-	return executorFor(detected);
+	return detected;
 }

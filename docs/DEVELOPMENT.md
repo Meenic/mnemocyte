@@ -155,8 +155,8 @@ src/
     records.ts          ids, tag normalization, cloning
   sql/
     executor.ts         SqlExecutor: query, optional transaction and batch
-    detect.ts           detectClient, detectLibsqlClient: shape checks, PostgresClient and LibsqlClient types (no adapters, in the root entry)
-    clients.ts          executorFor / toSqlExecutor: detected client → its adapter
+    detect.ts           detectClient, detectLibsqlClient, directConnectionFor: shape checks, PostgresClient and LibsqlClient types (no adapters, in the root entry)
+    clients.ts          executorFor / toSqlExecutor / detectSqlClient: detected client → its adapter
     postgres-js.ts      the postgres.js adapter (internal)
     node-postgres.ts    the node-postgres Pool adapter
     neon-http.ts        the Neon HTTP adapter (neon() from @neondatabase/serverless): query plus batch, no transaction
@@ -801,7 +801,11 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   over `neon()` (`neon-http`) gets a smoke test (save and search through
   `db.$client`) instead of a third run: Mnemocyte runs on the same
   function through the same adapter, so a second run would repeat the
-  first. It reads only
+  first. Last, it runs the CLI's `migrate`, `check` and `text-search` on
+  a `neon()` memory file, whose own `Pool` the CLI opens on
+  `DATABASE_URL_UNPOOLED` (features/cli.md, "Stores without
+  transactions"); that part drops the Mnemocyte tables in `public` first,
+  so the database must be disposable. It reads only
   `NEON_DATABASE_URL`, `NEON_FETCH_ENDPOINT` and `NEON_WS_PROXY`, never
   `.env`, and skips without the first, so it also runs against a real
   Neon branch by hand. For a client without `transaction` the suite

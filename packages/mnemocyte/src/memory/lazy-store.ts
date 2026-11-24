@@ -1,4 +1,5 @@
 import { MnemocyteError } from "../errors.js";
+import type { DirectConnection } from "../sql/detect.js";
 import type { MnemocyteBackend } from "../types.js";
 import type { MemoryStore, StoreCapabilities } from "./store.js";
 
@@ -10,6 +11,8 @@ export interface LazyStoreInput {
 	readonly capabilities: StoreCapabilities;
 	/** {@link MemoryStore.schemaName}, known before loading. */
 	readonly schemaName?: string;
+	/** {@link MemoryStore.directConnection}, known before loading. */
+	readonly directConnection?: DirectConnection;
 	/** Loads the backend, typically with a dynamic `import()`. */
 	readonly load: () => Promise<MemoryStore>;
 }
@@ -42,6 +45,9 @@ export function createLazyStore(input: LazyStoreInput): MemoryStore {
 		backend: input.backend,
 		capabilities: input.capabilities,
 		...(input.schemaName === undefined ? {} : { schemaName: input.schemaName }),
+		...(input.directConnection === undefined
+			? {}
+			: { directConnection: input.directConnection }),
 		migrate: async (value) => (await load()).migrate(value),
 		setTextSearchConfig: async (value) =>
 			(await load()).setTextSearchConfig(value),

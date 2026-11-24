@@ -84,11 +84,20 @@ export interface CheckJson extends JsonBase {
 	readonly notes: readonly CheckFinding<CheckNoteCode>[];
 }
 
+/**
+ * The variable whose URL the CLI connected to: `DATABASE_URL` without a
+ * memory file, `DATABASE_URL_UNPOOLED` or `DATABASE_URL` when the memory
+ * file's store has no interactive transactions; `null` when the memory
+ * file's own client ran the command.
+ */
+export type JsonConnection = "DATABASE_URL" | "DATABASE_URL_UNPOOLED" | null;
+
 /** `mnemocyte migrate --dry-run --json`: `migrate()`'s dry-run result. */
 export interface MigratePlanJson extends JsonBase {
 	readonly command: "migrate";
 	readonly ok: true;
 	readonly dryRun: true;
+	readonly connection: JsonConnection;
 	/** Migrations a real run would apply. */
 	readonly applied: readonly string[];
 	/** Migrations a real run would record as already applied. */
@@ -109,6 +118,7 @@ export interface TextSearchPlanJson extends JsonBase {
 	readonly command: "text-search";
 	readonly ok: true;
 	readonly dryRun: true;
+	readonly connection: JsonConnection;
 	/** The configuration keyword search uses now. */
 	readonly previous: string | null;
 	/** The configuration it would use after a real run. */

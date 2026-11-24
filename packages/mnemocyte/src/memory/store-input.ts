@@ -2,6 +2,7 @@ import { MnemocyteError } from "../errors.js";
 import {
 	detectClient,
 	detectLibsqlClient,
+	directConnectionFor,
 	SUPPORTED_CLIENTS,
 } from "../sql/detect.js";
 import { LIBSQL_CAPABILITIES, POSTGRES_CAPABILITIES } from "./capabilities.js";
@@ -53,12 +54,14 @@ export function resolveStore(
 			reason: "INVALID_OPTION",
 		});
 	}
+	const directConnection = directConnectionFor(detected);
 	return createLazyStore({
 		backend: "postgres",
 		capabilities: POSTGRES_CAPABILITIES,
 		...(settings.schemaName === undefined
 			? {}
 			: { schemaName: settings.schemaName }),
+		...(directConnection === undefined ? {} : { directConnection }),
 		load: async () =>
 			(await import("./postgres-backend.js")).createClientStore(
 				detected,

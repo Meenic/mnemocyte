@@ -2,9 +2,14 @@ import { DEFAULT_TEXT_SEARCH_CONFIG } from "../db/text-search.js";
 import { setTextSearchConfig } from "../migrate.js";
 import type { TextSearchConfigResult } from "../types.js";
 import type { CliArgs } from "./args.js";
+import {
+	assertSameInstallation,
+	confirmSameInstallation,
+	describeDirectConnection,
+} from "./direct.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 import { type TextSearchPlanJson, writeJson } from "./json.js";
-import { type CliTarget, resolveTarget } from "./target.js";
+import { type CliTarget, resolveTarget, targetConnection } from "./target.js";
 
 const REWRITE_WARNING =
 	"This rewrites the memories table and rebuilds every index on it, the HNSW index included. Reads and writes of memories wait until it finishes, which can take minutes on a large installation.";
@@ -67,6 +72,27 @@ function run(
 }
 
 /**
+ * The `Using …` line and, for a direct connection, what it connected with
+ * and the check that it reaches the app's database. `--json` prints
+ * neither line.
+ */
+async function introduce(
+	target: CliTarget,
+	args: CliArgs,
+	io: CliIo,
+): Promise<void> {
+	if (!args.json) {
+		io.write(`Using ${target.label}\n`);
+	}
+	if (target.kind === "direct") {
+		if (!args.json) {
+			io.write(describeDirectConnection(target));
+		}
+		await assertSameInstallation(target);
+	}
+}
+
+/**
  * `mnemocyte text-search <name>` against a resolved target: change the text
  * search configuration of keyword search.
  *
@@ -91,6 +117,7 @@ export async function textSearchTarget(
 			EXIT_USAGE,
 		);
 	}
+	await introduce(target, args, io);
 	const plan = await run(target, name, true);
 	if (args.json) {
 		writeJson(io, {
@@ -99,13 +126,13 @@ export async function textSearchTarget(
 			dryRun: true,
 			target: target.label,
 			backend: target.store.backend,
+			connection: targetConnection(target),
 			previous: plan.previous,
 			current: plan.current,
 			changed: plan.changed,
 		} satisfies TextSearchPlanJson);
 		return 0;
 	}
-	io.write(`Using ${target.label}\n`);
 	if (target.store.backend === "in-memory") {
 		io.write(
 			"This client uses the in-memory backend, whose keyword search matches substrings; there is no text search configuration to change.\n",
@@ -155,6 +182,12 @@ export async function textSearchTarget(
 			? `Changed keyword search from "${result.previous}" to "${result.current}". Restart other app processes so their keyword search uses it.${olderWarning(target, result.current)}${untracked && result.current !== null ? untrackedNote(result.current, "after") : ""}\n`
 			: `Keyword search already uses the "${result.current}" text search configuration.\n`,
 	);
+	if (
+		target.kind === "direct" &&
+		!(await confirmSameInstallation(target, io, "Changed keyword search in"))
+	) {
+		return 1;
+	}
 	return 0;
 }
 
@@ -163,7 +196,7 @@ export async function textSearchCommand(
 	args: CliArgs,
 	io: CliIo,
 ): Promise<number> {
-	const target = await resolveTarget(args, io);
+	const target = await resolveTarget(args, io, { direct: true });
 	try {
 		return await textSearchTarget(target, args, io);
 	} finally {

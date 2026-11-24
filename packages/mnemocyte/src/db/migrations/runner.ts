@@ -760,7 +760,7 @@ export async function runPostgresMigrations(
 	if (transaction === undefined) {
 		throw new MnemocyteError({
 			message:
-				"migrate needs interactive transactions (SqlExecutor.transaction), which stateless HTTP drivers such as Neon's neon() function do not have. Migrate over a Pool on the same database (from @neondatabase/serverless or pg), or run mnemocyte migrate --dimensions <n> on DATABASE_URL without a memory file.",
+				"migrate needs interactive transactions (SqlExecutor.transaction), which stateless HTTP drivers such as Neon's neon() function do not have. Migrate over a Pool on the same database (from @neondatabase/serverless or pg), or run mnemocyte migrate, which opens its own connection on DATABASE_URL_UNPOOLED (Neon) or DATABASE_URL.",
 			code: "CONFIG",
 			reason: "INVALID_OPTION",
 		});

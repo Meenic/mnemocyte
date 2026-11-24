@@ -1,10 +1,15 @@
-import { isMnemocyteError } from "../errors.js";
+import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import { migrate } from "../migrate.js";
 import type { MigrateResult } from "../types.js";
 import type { CliArgs } from "./args.js";
+import {
+	assertSameInstallation,
+	confirmSameInstallation,
+	describeDirectConnection,
+} from "./direct.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 import { type MigratePlanJson, writeJson } from "./json.js";
-import { type CliTarget, resolveTarget } from "./target.js";
+import { type CliTarget, resolveTarget, targetConnection } from "./target.js";
 
 const CREATE_EXTENSION_HELP = `have a database admin run:
 
@@ -30,9 +35,26 @@ function runMigrate(
 			? {}
 			: { textSearchConfig: args.textSearchConfig }),
 	};
-	return target.kind === "memory"
-		? migrate({ memory: target.memory, ...shared })
-		: migrate({ store: target.storeConfig, ...shared });
+	switch (target.kind) {
+		case "memory":
+			return migrate({ memory: target.memory, ...shared });
+		case "database-url":
+			return migrate({ store: target.storeConfig, ...shared });
+		case "direct": {
+			// The memory file's embedder decides, as migrate({ memory }) does.
+			const dimensions = target.embedder.dimensions;
+			if (args.dimensions !== undefined && args.dimensions !== dimensions) {
+				return Promise.reject(
+					new MnemocyteError({
+						message: `--dimensions is ${args.dimensions}, but the embedder in ${target.label} has dimensions ${dimensions}. Drop --dimensions, or fix the embedder.`,
+						code: "CONFIG",
+						reason: "INVALID_OPTION",
+					}),
+				);
+			}
+			return migrate({ store: target.storeConfig, ...shared, dimensions });
+		}
+	}
 }
 
 function describe(
@@ -124,6 +146,7 @@ async function printPlanJson(
 		dryRun: true,
 		target: target.label,
 		backend: target.store.backend,
+		connection: targetConnection(target),
 		applied: plan.applied,
 		adopted: plan.adopted,
 		extensionCreated: plan.extensionCreated,
@@ -156,9 +179,16 @@ export async function migrateTarget(
 	io: CliIo,
 ): Promise<number> {
 	if (args.json) {
+		if (target.kind === "direct") {
+			await assertSameInstallation(target);
+		}
 		return printPlanJson(target, args, io);
 	}
 	io.write(`Using ${target.label}\n`);
+	if (target.kind === "direct") {
+		io.write(describeDirectConnection(target));
+		await assertSameInstallation(target);
+	}
 	if (target.store.backend === "in-memory") {
 		io.write(
 			"This client uses the in-memory backend; there is no schema to migrate.\n",
@@ -198,6 +228,12 @@ export async function migrateTarget(
 		dryRun: false,
 	});
 	io.write(describe(result, false, target.store.schemaName));
+	if (
+		target.kind === "direct" &&
+		!(await confirmSameInstallation(target, io, "Migrated"))
+	) {
+		return 1;
+	}
 	return 0;
 }
 
@@ -206,7 +242,7 @@ export async function migrateCommand(
 	args: CliArgs,
 	io: CliIo,
 ): Promise<number> {
-	const target = await resolveTarget(args, io);
+	const target = await resolveTarget(args, io, { direct: true });
 	try {
 		return await migrateTarget(target, args, io);
 	} finally {

@@ -3,7 +3,7 @@
 // entry's static graph and in-memory users never load it.
 
 import { executorFor } from "../sql/clients.js";
-import type { DetectedClient } from "../sql/detect.js";
+import { type DetectedClient, directConnectionFor } from "../sql/detect.js";
 import { createPostgresStore, type PostgresStoreSettings } from "./postgres.js";
 import type { MemoryStore } from "./store.js";
 
@@ -12,5 +12,11 @@ export function createClientStore(
 	detected: DetectedClient,
 	settings: PostgresStoreSettings = {},
 ): MemoryStore {
-	return createPostgresStore(executorFor(detected), settings);
+	const directConnection = directConnectionFor(detected);
+	return createPostgresStore(
+		executorFor(detected),
+		directConnection === undefined
+			? settings
+			: { ...settings, directConnection },
+	);
 }

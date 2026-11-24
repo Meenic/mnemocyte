@@ -47,6 +47,7 @@ import {
 import { isMnemocyteError, MnemocyteError } from "../errors.js";
 import { throwIfAborted } from "../resilience.js";
 import { toVectorScore } from "../retrieval/scorer.js";
+import type { DirectConnection } from "../sql/detect.js";
 import type { SqlExecutor } from "../sql/executor.js";
 import type {
 	Embedder,
@@ -300,6 +301,11 @@ function compatibilityKey(embedder: Embedder): string {
 export interface PostgresStoreSettings {
 	/** The schema of the tables; omitted, they resolve through `search_path`. */
 	readonly schemaName?: string;
+	/**
+	 * {@link MemoryStore.directConnection}, from the detected client. Left
+	 * out, a `client` without `transaction` gets `"postgres"`.
+	 */
+	readonly directConnection?: DirectConnection;
 }
 
 export function createPostgresStore(
@@ -308,6 +314,9 @@ export function createPostgresStore(
 ): MemoryStore {
 	assertSqlExecutor(client);
 	const tables = postgresTables(settings.schemaName ?? null);
+	const directConnection: DirectConnection | undefined =
+		settings.directConnection ??
+		(typeof client.transaction === "function" ? undefined : "postgres");
 	const missingSchema = (error: unknown): MnemocyteError =>
 		missingSchemaError(error, tables.schema);
 	const normalize = (error: unknown): MnemocyteError =>
@@ -634,6 +643,7 @@ export function createPostgresStore(
 		backend: "postgres",
 		capabilities: POSTGRES_CAPABILITIES,
 		...(tables.schema === null ? {} : { schemaName: tables.schema }),
+		...(directConnection === undefined ? {} : { directConnection }),
 		migrate(input) {
 			return runPostgresMigrations(client, { ...input, tables });
 		},

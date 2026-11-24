@@ -27,12 +27,27 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   of its own ([postgres.md](docs/guide/postgres.md#neon)). An aborted
   `signal` rejects with `"ABORTED"` at once, but the statement may still
   finish on the server.
+- **`mnemocyte migrate` and `text-search` on Neon's HTTP driver.** With a
+  memory file whose store is `neon()`, a Drizzle `neon-http` `db` or
+  another `batch`-only `SqlExecutor`, they open a connection of their own
+  instead of failing: Neon's `Pool` on `DATABASE_URL_UNPOOLED`, falling
+  back to `DATABASE_URL`, or the `postgres` package on `DATABASE_URL` for
+  other stores. The embedding size and schema name come from the memory
+  file. The command names the variable it used, never the URL, and stops
+  with nothing changed (exit 2) when that connection sees a different
+  installation than the app's client; it exits 1 when the app's client
+  does not see the change afterwards. `migrate --dry-run --json` and
+  `text-search --dry-run --json` gained `connection`: the variable the
+  command connected with, or `null` when the memory file's own client ran
+  it
+  ([cli.md](docs/guide/cli.md#stores-that-cannot-migrate)).
 
 ### Changed
 
 - The `"CONFIG"` error that `migrate()` and `setTextSearchConfig()` throw
   for a client without interactive transactions names Neon's HTTP driver
-  and how to run them instead.
+  and how to run them instead: over a `Pool`, or with `mnemocyte migrate`
+  and `mnemocyte text-search`.
 
 ## [1.3.0] - 2026-11-21
 

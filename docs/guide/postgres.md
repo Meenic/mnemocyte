@@ -145,9 +145,9 @@ most 2,000 dimensions of `vector`, so above 2,000 the column is `halfvec`
 larger. The choice is recorded in `mnemocyte_meta.vector_type` and fixed
 for the installation; a different `dimensions` later throws `"CONFIG"`.
 
-`migrate` needs a driver with interactive transactions. Run it over a
-regular connection, even if the app itself uses Neon's HTTP driver
-([Neon](#neon) shows how).
+`migrate` needs a driver with interactive transactions. When the app uses
+Neon's HTTP driver, `mnemocyte migrate` opens Neon's `Pool` for it, and
+`migrate()` in code needs a `Pool` of your own ([Neon](#neon) shows both).
 
 ### Apply the SQL files yourself
 
@@ -422,24 +422,37 @@ as one `sql.transaction([...])`: one request that commits or rolls back as
 a unit. Rows come back as plain objects whatever `arrayMode` or
 `fullResults` you gave `neon()`, and your `fetchOptions` stay in place.
 
-HTTP has no interactive transactions, so `migrate` and
-`setTextSearchConfig` throw `"CONFIG"` on a `neon()` store. Run them over
-Neon's `Pool` on the same database, with the same `schemaName` and
+HTTP has no interactive transactions, which `migrate` and
+`setTextSearchConfig` need. The CLI handles that for you: with a memory
+file whose store is `neon()`, `mnemocyte migrate` and `mnemocyte
+text-search` open Neon's `Pool` on `DATABASE_URL_UNPOOLED` (the direct
+connection string Neon's Vercel integration sets), or on `DATABASE_URL`
+when it is not set, and close it when they are done:
+
+```bash
+pnpm exec mnemocyte migrate --yes
+```
+
+The embedding size and `schemaName` come from the memory file. Neon's
+docs list schema migrations under the direct connection; the pooled one
+works too, since each migration's lock lasts one transaction
+([What `migrate` does](#what-migrate-does)). The CLI first compares the
+installation it sees with what the memory file's client sees, and stops
+when they differ ([cli.md](./cli.md#stores-that-cannot-migrate)).
+`mnemocyte check` reads over HTTP.
+
+In code, `migrate()` and `setTextSearchConfig()` throw `"CONFIG"` on a
+`neon()` store, because they cannot know a connection string. Run them
+over Neon's `Pool` on the same database, with the same `schemaName` and
 `textSearchConfig` as the app:
 
 ```ts
 import { Pool } from "@neondatabase/serverless";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL_UNPOOLED });
 await migrate({ store: pool, dimensions: 1536 });
 await pool.end();
 ```
-
-`mnemocyte migrate` and `mnemocyte text-search` fail the same way with a
-memory file whose store is `neon()`. Point `--config` at a second memory
-file whose store is a `Pool`, or run them without a memory file
-([cli.md](./cli.md#without-a-memory-file)). `mnemocyte check` works over
-HTTP.
 
 Neon's `Pool` (over WebSockets) is detected as a node-postgres pool and
 has interactive transactions. In edge runtimes such as Cloudflare Workers
@@ -544,9 +557,11 @@ the other two (`"CONFIG"` otherwise):
   the built-in Neon adapter does with `sql.transaction([...])`.
 
 When both exist, Mnemocyte uses `batch`. `migrate` needs `transaction`, so
-run it over a regular connection. Drivers are checked first, so an
-executor object must not also have PGlite's `exec` or a pool's `connect`
-and `totalCount`.
+run it over a regular connection; `mnemocyte migrate` with a memory file
+whose executor has only `batch` opens one on `DATABASE_URL` with the
+`postgres` package ([cli.md](./cli.md#stores-that-cannot-migrate)).
+Drivers are checked first, so an executor object must not also have
+PGlite's `exec` or a pool's `connect` and `totalCount`.
 
 ## Upgrade an existing installation
 

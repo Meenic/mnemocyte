@@ -504,13 +504,21 @@ release, since the guide is read from `main`.
   `"CONFIG"` message for `migrate` and `setTextSearchConfig` that names
   Neon's `Pool` until the next item; see
   [features/postgres.md](./features/postgres.md#client-detection).
-- [ ] `feat/cli-migrate-direct-connection`: when the memory file's store
+- [x] `feat/cli-migrate-direct-connection`: when the memory file's store
   has no interactive transactions (Neon HTTP, a `batch`-only
   `SqlExecutor`), `migrate` and `text-search` connect on their own instead
   of failing, and take the dimensions, schema name and text search
   configuration from the memory file. Decided (decision 77): a Neon `Pool`
   on `DATABASE_URL_UNPOOLED`, falling back to `DATABASE_URL`, for Neon
   stores; the `postgres` package as today for others.
+  Landed: `src/cli/direct.ts` and the internal
+  `MemoryStore.directConnection`; the dimensions and schema come from the
+  memory file, the text search configuration from the flag and the
+  installation as before (the file holds none). A missing variable or
+  driver and a URL that reaches another installation exit 2, a change the
+  app's client does not see afterwards exits 1, `check` reads through the
+  app's client, and `--json` plans carry `connection`; see
+  [features/cli.md](./features/cli.md#stores-without-transactions).
 - [ ] `chore/shared-loader`: move what the CLI and `mnemocyte-mcp` share
   to load a memory file (`src/cli/resolve-hook.ts`, `src/cli/tsconfig.ts`
   and `MEMORY_FILE_NAMES`) into a private workspace package under

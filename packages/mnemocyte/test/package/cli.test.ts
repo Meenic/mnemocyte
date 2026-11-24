@@ -338,6 +338,7 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 			dryRun: true,
 			target: "memory.ts",
 			backend: "in-memory",
+			connection: null,
 			applied: [],
 			adopted: [],
 			extensionCreated: false,

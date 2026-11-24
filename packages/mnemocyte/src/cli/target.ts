@@ -1,7 +1,5 @@
 import { statSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { MemoryStore } from "../memory/store.js";
 import { createMnemocyteStoreConfig } from "../memory/store-config.js";
 import { resolveStore } from "../memory/store-input.js";
@@ -13,7 +11,13 @@ import type {
 	MnemocyteStoreConfig,
 } from "../types.js";
 import type { CliArgs } from "./args.js";
+import {
+	type DirectTarget,
+	importPostgres,
+	openDirectTarget,
+} from "./direct.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
+import type { JsonConnection } from "./json.js";
 import {
 	loadMemoryFile,
 	locateMemoryFile,
@@ -43,13 +47,23 @@ export interface DatabaseUrlTarget extends TargetBase {
 	readonly storeConfig: MnemocyteStoreConfig;
 }
 
-export type CliTarget = MemoryTarget | DatabaseUrlTarget;
+export type { DirectTarget } from "./direct.js";
 
-/** The part of postgres.js the CLI calls. */
-type PostgresFactory = (
-	url: string,
-	options: { max: number; onnotice: () => void },
-) => PostgresJsClient & { end(options?: { timeout?: number }): Promise<void> };
+/**
+ * The memory file's client, a connection on `DATABASE_URL` without one, or
+ * the CLI's own connection for a memory file whose store cannot migrate.
+ */
+export type CliTarget = MemoryTarget | DatabaseUrlTarget | DirectTarget;
+
+/** Options for {@link resolveTarget}. */
+export interface ResolveTargetOptions {
+	/**
+	 * Open the CLI's own connection when the memory file's store has no
+	 * interactive transactions (`migrate`, `text-search`). `check` reads
+	 * through the app's client instead.
+	 */
+	readonly direct?: boolean;
+}
 
 function isFile(path: string): boolean {
 	return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
@@ -86,43 +100,18 @@ export function loadEnvironment(
 }
 
 /**
- * The app's `postgres` package: looked up from the project first, then from
- * where Mnemocyte is installed (under pnpm an optional peer is linked next
- * to the package, not above it). It is resolved at run time and imported by
- * path, so the build has no `postgres` import and the package keeps zero
- * dependencies.
- */
-async function importPostgres(cwd: string): Promise<PostgresFactory> {
-	for (const from of [join(cwd, "package.json"), import.meta.url]) {
-		let path: string;
-		try {
-			path = createRequire(from).resolve("postgres");
-		} catch {
-			continue;
-		}
-		const module = (await import(pathToFileURL(path).href)) as {
-			default?: unknown;
-		};
-		if (typeof module.default === "function") {
-			// postgres.js exports its factory as the default export.
-			return module.default as PostgresFactory;
-		}
-	}
-	throw new CliError(
-		'Connecting to DATABASE_URL needs the "postgres" package, which is not installed here. Install it (npm install postgres), or pass --config <path> to use your app\'s own client.',
-		EXIT_USAGE,
-	);
-}
-
-/**
- * What `migrate` and `check` run against: the client the app's memory file
- * exports, or, without a memory file, a connection to `DATABASE_URL`.
+ * What a command runs against: the client the app's memory file exports,
+ * or, without a memory file, a connection to `DATABASE_URL`. With
+ * `direct`, a memory file whose store has no interactive transactions gets
+ * a connection of the CLI's own ({@link openDirectTarget}).
  *
- * @throws {CliError} With exit code 2 when there is neither.
+ * @throws {CliError} With exit code 2 when there is neither, or when a
+ * direct connection has no URL or driver.
  */
 export async function resolveTarget(
 	args: CliArgs,
 	io: CliIo,
+	options: ResolveTargetOptions = {},
 ): Promise<CliTarget> {
 	loadEnvironment(io.cwd, args.envFile);
 	const file = locateMemoryFile(io.cwd, args.config);
@@ -130,6 +119,16 @@ export async function resolveTarget(
 		const loaded = await loadMemoryFile(file, io.cwd);
 		const label = relative(io.cwd, file).replaceAll("\\", "/") || file;
 		assertSchemaFlag(args.schema, loaded.store, label);
+		const connection = loaded.store.directConnection;
+		if (options.direct === true && connection !== undefined) {
+			return openDirectTarget({
+				label,
+				appStore: loaded.store,
+				embedder: loaded.embedder,
+				connection,
+				io,
+			});
+		}
 		return {
 			kind: "memory",
 			label,
@@ -147,7 +146,10 @@ export async function resolveTarget(
 			EXIT_USAGE,
 		);
 	}
-	const postgres = await importPostgres(io.cwd);
+	const postgres = await importPostgres(
+		io.cwd,
+		", or pass --config <path> to use your app's own client.",
+	);
 	// One connection is enough, and notices would print over the output.
 	const client = postgres(url, { max: 1, onnotice() {} });
 	const store = resolveStore(
@@ -162,6 +164,18 @@ export async function resolveTarget(
 		storeConfig: createMnemocyteStoreConfig(store),
 		close: () => client.end({ timeout: 5 }),
 	};
+}
+
+/** {@link JsonConnection} for a target. */
+export function targetConnection(target: CliTarget): JsonConnection {
+	switch (target.kind) {
+		case "memory":
+			return null;
+		case "database-url":
+			return "DATABASE_URL";
+		case "direct":
+			return target.variable;
+	}
 }
 
 /**

@@ -101,6 +101,38 @@ DATABASE_URL=postgres://… pnpm exec mnemocyte migrate --dimensions 1536
 installation and `check` work without it. Without the `postgres` package
 the command stops with an install hint.
 
+### Stores that cannot migrate
+
+Neon's `neon()` function, a Drizzle `neon-http` `db` and other
+batch-only `SqlExecutor`s have no interactive transactions, which
+`migrate` and `text-search` need. With such a memory file they open a
+connection of their own, run there, and close it:
+
+- for Neon, Neon's `Pool` on `DATABASE_URL_UNPOOLED`, the direct
+  connection string Neon's Vercel integration sets, or on `DATABASE_URL`
+  when that one is not set;
+- for any other store, the `postgres` package on `DATABASE_URL`.
+
+The embedding size and the schema name still come from the memory file,
+so the app and the migration agree. The command says which variable it
+used and never prints the URL:
+
+```txt
+Using src/lib/memory.ts
+Connecting with Neon's Pool on DATABASE_URL_UNPOOLED: The store in src/lib/memory.ts uses Neon's HTTP driver, which cannot run migrations: they need a transaction on one connection.
+Applied: 0000_initial, …
+```
+
+Before it changes anything, the command reads the installation through
+both connections. When they differ, the URL points at another database:
+it exits 2 with nothing changed and prints what each one sees. Two
+identical installations, such as a new Neon branch and its parent, look
+the same, so after the change it reads again through the memory file's
+client and exits 1 when that client does not see it. Without the URL
+variable, or without the driver package, the command exits 2 and says
+what to set or install. `check` only reads, so it uses the memory file's
+own client.
+
 A libSQL database needs a memory file: the command has no libSQL
 connection of its own. `migrate`, `check` and `text-search` work with one
 ([libsql.md](./libsql.md#install-the-schema)); `sql`, `generate` and
@@ -407,6 +439,10 @@ pnpm exec mnemocyte check --json
 
 - **`ok`** is true exactly when the exit code is 0.
 - **`target`** is the memory file the command loaded, or `DATABASE_URL`.
+  `migrate` and `text-search` also print **`connection`**: the variable
+  the command connected with (`DATABASE_URL`, or `DATABASE_URL_UNPOOLED`
+  for [a store that cannot migrate](#stores-that-cannot-migrate)), or
+  `null` when the memory file's own client ran it.
   **`backend`** is `"postgres"`, `"libsql"`, `"in-memory"` or `"custom"`;
   on the in-memory backend and a custom store `installation` is `null`
   and `ok` is true.
@@ -443,21 +479,22 @@ pnpm exec mnemocyte check --json
 [`migrate()`](./postgres.md#what-migrate-does) returns:
 
 ```json
-{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","applied":["0004_audit_memory_id"],"adopted":[],"extensionCreated":false,"schemaCreated":false,"upToDate":false}
+{"command":"migrate","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","connection":null,"applied":["0004_audit_memory_id"],"adopted":[],"extensionCreated":false,"schemaCreated":false,"upToDate":false}
 ```
 
 `applied` is what a real run would apply, `adopted` what it would record
 as already applied (a schema installed with `psql`), and
 `extensionCreated` whether it would ask to enable pgvector, and
 `schemaCreated` whether it would create the store's schema. `upToDate` is
-true when a real run would change nothing. `--json` works only with
+true when a real run would change nothing. `connection` is described
+under `target` above. `--json` works only with
 `--dry-run`, because a real `migrate` may stop to ask a question.
 
 `text-search <name> --dry-run --json` prints what
 [`setTextSearchConfig()`](./api.md#settextsearchconfig) would return:
 
 ```json
-{"command":"text-search","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","previous":"english","current":"simple","changed":true}
+{"command":"text-search","ok":true,"dryRun":true,"target":"memory.ts","backend":"postgres","connection":null,"previous":"english","current":"simple","changed":true}
 ```
 
 `previous` and `current` are `null` on the in-memory backend. `--json`
@@ -490,8 +527,8 @@ Good to know:
 | Code | Meaning |
 |---|---|
 | 0 | Done; `check` found no problem; `init` also when it left existing files as they were. |
-| 1 | `check` found a problem, `migrate` or `text-search` failed, pgvector was not enabled, or the rewrite was not confirmed. |
-| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, a file `generate` would not replace, or, for `check`, a database it cannot read. |
+| 1 | `check` found a problem, `migrate` or `text-search` failed, pgvector was not enabled, the rewrite was not confirmed, or the memory file's client does not see the change made over the command's own connection. |
+| 2 | The command could not run: an unknown flag, no memory file and no `DATABASE_URL`, a memory file that does not load, no readable `package.json` for `init`, a file `generate` would not replace, for `check` a database it cannot read, or, for a [store that cannot migrate](#stores-that-cannot-migrate), no URL variable, no driver package or a URL that reaches another installation. |
 
 Errors go to standard error as `mnemocyte: <message>`, followed by the
 database driver's own message as `cause:`. With `--json` they also go to
@@ -530,14 +567,11 @@ deploy would run a migration, using `jq -e`, which exits 1 on `false`:
 - **PGlite.** A PGlite data folder opens in one process at a time, so run
   the command while the app is stopped, or call
   `migrate({ memory, createExtension: true })` when the app starts.
-- **HTTP drivers.** `migrate` and `text-search` need interactive
-  transactions, so a memory file whose store is Neon's `neon()` (or another
-  batch-only `SqlExecutor`) makes them exit 1 with `"CONFIG"`. Point
-  `--config` at a second memory file whose store is Neon's `Pool`, or run
-  them against
-  `DATABASE_URL` from a folder with no memory file (with `--dimensions` for
-  a fresh install, and the `postgres` package installed). `check` works
-  over HTTP.
+- **HTTP drivers.** With a memory file whose store is Neon's `neon()` (or
+  another batch-only `SqlExecutor`), `migrate` and `text-search` need a
+  URL variable to open [a connection of their own](#stores-that-cannot-migrate).
+  The check that it reaches the app's database compares installations, so
+  two identical ones are told apart only after the change.
 - **libSQL.** Only through a memory file, for `migrate`, `check` and
   `text-search`. `--schema` exits 2 with a libSQL store, and
   `--dimensions` stops at 4,000.

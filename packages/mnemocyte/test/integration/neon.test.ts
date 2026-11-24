@@ -1,13 +1,19 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { neon, neonConfig, Pool } from "@neondatabase/serverless";
 import { drizzle as drizzleNeonHttp } from "drizzle-orm/neon-http";
 import { createMemory, migrate, setTextSearchConfig } from "mnemocyte";
-import { beforeAll, describe, expect, test } from "vitest";
+import { postgresStore } from "mnemocyte/postgres";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { main } from "../../src/cli/main.js";
 import { inspectPostgresInstallation } from "../../src/db/migrations/inspect.js";
 import { toSqlExecutor } from "../../src/sql/clients.js";
 import {
 	createContractEmbedder,
 	uniqueNamespace,
 } from "../../src/store-test/contract.js";
+import { createTestIo, type TestIo } from "../cli/io.js";
 import {
 	CONTRACT_DIMENSIONS,
 	type ContractTarget,
@@ -130,4 +136,126 @@ describe.skipIf(skip)("Neon HTTP outside the contract", () => {
 		});
 		expect(report.pgvectorVersion).toMatch(/^\d+\.\d+\.\d+$/);
 	});
+});
+
+/**
+ * `mnemocyte migrate`, `check` and `text-search` through `main` with a
+ * memory file whose store is `neon()`: the CLI opens Neon's `Pool` on
+ * `DATABASE_URL_UNPOOLED`, or `DATABASE_URL` without it (ARCHITECTURE
+ * decision 77). The file takes its client from `globalThis`, so it imports
+ * nothing. The CLI imports the same `@neondatabase/serverless` copy as this
+ * file, so its `Pool` gets the `neonConfig` set above. Everything goes into
+ * a schema of its own, dropped at the end.
+ */
+describe.skipIf(skip)("CLI with a neon() memory file", () => {
+	const schemaName = "mnemocyte_cli_neon";
+	const key = "__mnemocyteCliNeonMemory";
+	const saved = {
+		DATABASE_URL: process.env.DATABASE_URL,
+		DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+	};
+	let cwd: string;
+
+	async function dropSchema(): Promise<void> {
+		const admin = pool();
+		try {
+			await admin.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+		} finally {
+			await admin.end();
+		}
+	}
+
+	beforeAll(async () => {
+		await dropSchema();
+		// A schemaName install refuses while public holds one, which the
+		// suites above leave. The database is disposable and this runs last.
+		const admin = pool();
+		try {
+			await admin.query(
+				'DROP TABLE IF EXISTS public."mnemocyte_migrations", public."mnemocyte_events", public."mnemocyte_memories", public."mnemocyte_meta" CASCADE',
+			);
+		} finally {
+			await admin.end();
+		}
+		cwd = await mkdtemp(join(tmpdir(), "mnemocyte-cli-neon-"));
+		await writeFile(
+			join(cwd, "memory.mjs"),
+			`export const memory = globalThis.${key};\n`,
+		);
+		(globalThis as Record<string, unknown>)[key] = createMemory({
+			store: postgresStore({ client: neon(url), schemaName }),
+			embedder: createContractEmbedder(),
+		});
+	});
+
+	afterAll(async () => {
+		for (const [name, value] of Object.entries(saved)) {
+			if (value === undefined) {
+				delete process.env[name];
+			} else {
+				process.env[name] = value;
+			}
+		}
+		delete (globalThis as Record<string, unknown>)[key];
+		await rm(cwd, { recursive: true, force: true });
+		await dropSchema();
+	});
+
+	async function run(argv: string[]): Promise<{ code: number; io: TestIo }> {
+		const io = createTestIo(cwd);
+		const code = await main(argv, io, "0.0.0-test");
+		// The connection string, password included, is never printed.
+		expect(io.stdout()).not.toContain(url);
+		expect(io.stderr()).not.toContain(url);
+		return { code, io };
+	}
+
+	test("migrate, check and text-search over DATABASE_URL_UNPOOLED", async () => {
+		process.env.DATABASE_URL_UNPOOLED = url;
+		delete process.env.DATABASE_URL;
+
+		const migrated = await run(["migrate", "--yes"]);
+		expect(migrated.io.stderr()).toBe("");
+		expect(migrated.code).toBe(0);
+		expect(migrated.io.stdout()).toContain(
+			"Connecting with Neon's Pool on DATABASE_URL_UNPOOLED: The store in memory.mjs uses Neon's HTTP driver",
+		);
+		expect(migrated.io.stdout()).toContain(`Created the schema ${schemaName}.`);
+
+		// check reads over HTTP, through the memory file's own client.
+		const checked = await run(["check", "--json"]);
+		expect(checked.code).toBe(0);
+		expect(JSON.parse(checked.io.stdout())).toMatchObject({
+			installation: {
+				schema: schemaName,
+				migrations: { state: "tracked", pending: [] },
+				dimensions: CONTRACT_DIMENSIONS,
+			},
+		});
+
+		const changed = await run(["text-search", "simple", "--yes"]);
+		expect(changed.io.stderr()).toBe("");
+		expect(changed.code).toBe(0);
+		expect(changed.io.stdout()).toContain(
+			'Changed keyword search from "english" to "simple".',
+		);
+	}, 120_000);
+
+	test("without DATABASE_URL_UNPOOLED it falls back to DATABASE_URL", async () => {
+		delete process.env.DATABASE_URL_UNPOOLED;
+		process.env.DATABASE_URL = url;
+		const planned = await run(["migrate", "--dry-run"]);
+		expect(planned.io.stderr()).toBe("");
+		expect(planned.code).toBe(0);
+		expect(planned.io.stdout()).toContain(
+			"Connecting with Neon's Pool on DATABASE_URL (DATABASE_URL_UNPOOLED is not set): ",
+		);
+		expect(planned.io.stdout()).toContain("The schema is up to date.");
+
+		const json = await run(["migrate", "--dry-run", "--json"]);
+		expect(JSON.parse(json.io.stdout())).toMatchObject({
+			connection: "DATABASE_URL",
+			upToDate: true,
+		});
+	}, 60_000);
 });

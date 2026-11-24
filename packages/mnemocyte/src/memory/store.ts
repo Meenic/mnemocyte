@@ -1,5 +1,6 @@
 import type { InstallationReport } from "../db/migrations/inspect.js";
 import { MnemocyteError } from "../errors.js";
+import type { DirectConnection } from "../sql/detect.js";
 import type {
 	MemoryRecordScope,
 	MigrateResult,
@@ -162,6 +163,14 @@ export interface MemoryStore
 	 * a `migrate` of its own. The CLI reads it for its messages.
 	 */
 	readonly custom?: { readonly name: string; readonly migrates: boolean };
+	/**
+	 * Set on a Postgres store whose client has no interactive transactions
+	 * (Neon's HTTP driver, a `batch`-only `SqlExecutor`), so `migrate` and
+	 * `setTextSearchConfig` cannot run on it: the connection the CLI opens
+	 * for them instead. Known before a lazy store loads. A store from an
+	 * older copy of the package has none.
+	 */
+	readonly directConnection?: DirectConnection;
 
 	/**
 	 * Applies the store's pending schema migrations. This is the only method

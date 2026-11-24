@@ -407,8 +407,9 @@ loaded backend of `store: client`.
   [cli.md](./cli.md#check).
 - **Limits.** Stateless HTTP drivers (Neon's `neon()`, a batch-only
   `SqlExecutor`) have no `transaction`, so they cannot migrate or dry-run;
-  the `"CONFIG"` message names Neon's `Pool` and the CLI without a memory
-  file as the ways out, until `feat/cli-migrate-direct-connection`.
+  the `"CONFIG"` message names Neon's `Pool` and the CLI, which opens a
+  connection of its own for such a store (`MemoryStore.directConnection`;
+  see [cli.md](./cli.md#stores-without-transactions)).
   There is no `lock_timeout`: `0003` and `0004` wait for their
   `ACCESS EXCLUSIVE` locks as long as the server allows, and while one
   waits, statements queued behind it on the same table wait too.
@@ -893,6 +894,17 @@ caller's client. Everything else throws `"CONFIG"` listing the accepted
 clients. Messages name what the caller passed: `client` for
 `postgresStore` and `toSqlExecutor`, `store` for `createMemory` and
 `migrate`, whose unrecognised-value message also names `postgresStore()`.
+
+`directConnectionFor` (also in `detect.ts`) marks the clients that cannot
+migrate: `"neon"` for Neon's HTTP driver (on its own or as a Drizzle
+`$client`), `"postgres"` for an executor without `transaction`. The value
+becomes the internal `MemoryStore.directConnection`, set by
+`postgresStore()`, by `resolveStore` on the lazy store before it loads,
+and by `createPostgresStore` (from the executor's shape when the caller
+gives none); the CLI reads it to pick its own connection
+([cli.md](./cli.md#stores-without-transactions)). `detectSqlClient` in
+`clients.ts` is `toSqlExecutor` without the adapter, so `postgresStore()`
+sees the driver tag.
 
 The public types are structural (`PostgresJsClient`, a union of the
 `begin` and `savepoint` shapes, `NodePostgresPool`,

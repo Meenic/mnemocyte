@@ -2,7 +2,12 @@ import { assertSchemaName } from "./db/tables.js";
 import { createPostgresStore } from "./memory/postgres.js";
 import { createMnemocyteStoreConfig } from "./memory/store-config.js";
 import { assertKnownKeys } from "./options.js";
-import { type PostgresClient, toSqlExecutor } from "./sql/clients.js";
+import {
+	detectSqlClient,
+	executorFor,
+	type PostgresClient,
+} from "./sql/clients.js";
+import { directConnectionFor } from "./sql/detect.js";
 import type { MnemocyteStoreConfig } from "./types.js";
 
 export type {
@@ -81,10 +86,12 @@ export function postgresStore(
 	if (schemaName !== undefined) {
 		assertSchemaName(schemaName, "schemaName");
 	}
+	const detected = detectSqlClient(options.client);
+	const directConnection = directConnectionFor(detected);
 	return createMnemocyteStoreConfig(
-		createPostgresStore(
-			toSqlExecutor(options.client),
-			schemaName === undefined ? {} : { schemaName },
-		),
+		createPostgresStore(executorFor(detected), {
+			...(schemaName === undefined ? {} : { schemaName }),
+			...(directConnection === undefined ? {} : { directConnection }),
+		}),
 	);
 }

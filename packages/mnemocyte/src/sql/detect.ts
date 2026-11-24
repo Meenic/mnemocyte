@@ -63,6 +63,33 @@ export type DetectedClient =
 	| { readonly driver: "executor"; readonly client: SqlExecutor };
 
 /**
+ * The connection the CLI opens for `migrate` and `text-search` when the
+ * memory file's client has no interactive transactions (ARCHITECTURE
+ * decision 77): a Neon `Pool` for Neon's HTTP driver, the `postgres`
+ * package for a `batch`-only {@link SqlExecutor}.
+ */
+export type DirectConnection = "neon" | "postgres";
+
+/**
+ * {@link DirectConnection} for a recognised client, or `undefined` when it
+ * has interactive transactions and migrates on its own.
+ */
+export function directConnectionFor(
+	detected: DetectedClient,
+): DirectConnection | undefined {
+	if (detected.driver === "neon-http") {
+		return "neon";
+	}
+	if (
+		detected.driver === "executor" &&
+		typeof detected.client.transaction !== "function"
+	) {
+		return "postgres";
+	}
+	return undefined;
+}
+
+/**
  * The part of an `@libsql/client` `Client` Mnemocyte checks for, from any of
  * its entry points (`@libsql/client`, `/web`, `/http`, `/ws`) and any URL
  * (`file:`, `libsql:`, `http:`, `ws:`). Only the presence of these members

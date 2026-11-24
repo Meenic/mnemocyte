@@ -38,6 +38,7 @@ src/cli/
   resolve-hook.ts        the resolve hook for a TypeScript app's imports
   tsconfig.ts            JSON with comments, `extends`, `paths`
   target.ts              .env, then a memory file or DATABASE_URL → what a command runs against
+  direct.ts              the CLI's own connection for a store that cannot migrate, and the installation comparison
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
   migrate.ts             migrateTarget / migrateCommand
   check.ts               evaluateInstallation, describeInstallation, installationJson, checkTarget / checkCommand
@@ -133,6 +134,58 @@ as the store's `schemaName`), and ended by the command. `migrate` and
 no libSQL counterpart: a libSQL database is reached only through a memory
 file, whose store `migrate`, `check` and `text-search` call like any
 other.
+
+## Stores without transactions
+
+A memory file whose store has no interactive transactions (Neon's HTTP
+driver, a `batch`-only `SqlExecutor`) cannot run `migrate()` or
+`setTextSearchConfig()`. For `migrate` and `text-search`, `resolveTarget`
+gets `{ direct: true }` and, when the loaded store has a
+`directConnection` (see
+[postgres.md](./postgres.md#client-detection)), returns a `DirectTarget`
+from `openDirectTarget` instead of the memory target (ARCHITECTURE
+decision 77). `check` does not pass the option: it only reads, which
+works over HTTP, and reading through the app's own client is what says
+whether the app will work.
+
+- **URL.** `chooseDirectUrl` (pure) takes `DATABASE_URL_UNPOOLED`, then
+  `DATABASE_URL`, for `"neon"`, and `DATABASE_URL` alone for
+  `"postgres"`; an empty value counts as unset. Neither set is exit 2,
+  naming the variables, before anything is opened. The URL is never
+  printed: the second line of output names the variable and the driver,
+  and `--json` carries the variable as `connection`.
+- **Driver.** `"neon"` opens a `Pool` from `@neondatabase/serverless` with
+  `max: 1` and a no-op `error` listener (an idle client's error would
+  otherwise be an unhandled `error` event; a query in flight still
+  rejects). The package is imported by a name held in a variable, so the
+  build has no driver import; that resolves from the bin, which in npm's
+  and pnpm's layouts is the copy the memory file imports, so the
+  `neonConfig` the file sets (`wsProxy` for local development) applies,
+  which the Neon integration test relies on. Failing that, it is resolved
+  from the project with `createRequire`, a CommonJS copy with a
+  `neonConfig` of its own. `"postgres"` opens postgres.js with
+  `importPostgres`, as without a memory file. A missing package is exit 2.
+  Node 22 has a global `WebSocket`, so the Pool needs no `ws`.
+- **Store.** `resolveStore` over that client with the memory file's
+  `schemaName`; the embedder's dimensions go to `migrate()` as
+  `dimensions`, and a different `--dimensions` is `"CONFIG"` (exit 1), as
+  `migrate({ memory })` does. `close()` ends the pool or client; the
+  commands call it in `finally`.
+- **Same database.** `neon()` does not expose its connection string, so
+  the two connections are compared by what they see.
+  `assertSameInstallation` reads `inspectInstallation()` through both and
+  compares `summarizeInstallation` of each (migrations and their state,
+  pgvector, the embedding column, the installation row's model, the text
+  search configuration; stored models are left out, since the app may
+  record one between the reads). It runs before the dry run, `--json`
+  included; a difference is exit 2 with both summaries and nothing
+  changed. After a real run, `confirmSameInstallation` reads both again;
+  a difference writes the problem to standard error and the command
+  returns 1. That second read catches two identical installations (a new
+  Neon branch and its parent), which the first cannot tell apart. A
+  failure of the first read over the CLI's connection becomes
+  "Connecting over *variable* failed." with the driver's error as the
+  cause (exit 1).
 
 ## `--schema`
 
@@ -383,6 +436,10 @@ without changing what the bare command means.
 `src/cli/json.ts`: `CheckJson`, `MigratePlanJson`, `TextSearchPlanJson` and
 `ErrorJson`.
 
+- **`connection`.** `migrate` and `text-search` plans carry
+  `targetConnection(target)`: `null` for a memory target,
+  `"DATABASE_URL"` without a memory file, and the chosen variable for a
+  direct target.
 - **One line, last.** `writeJson` prints `JSON.stringify(value)` and a
   newline, and the `Using …` line is skipped. Loading the memory file runs
   it, so a top-level `console.log` in the app still reaches stdout first;
@@ -441,6 +498,15 @@ Windows and an immediate exit can cut output short.
   comparing it, and `text-search` with a yes, a no, no terminal, `--yes`,
   `--dry-run` and `--dry-run --json`; a memory file whose store has a
   `schemaName` through `migrate` and `check`, and `assertSchemaFlag`.
+- `test/contract/cli-direct.test.ts` (PGlite, in process):
+  `directConnection` for `neon()`, Drizzle over it, a batch-only executor
+  and a transactional one; `chooseDirectUrl`; `migrateTarget` and
+  `textSearchTarget` on a hand-built `DirectTarget` whose app store is a
+  batch-only executor over one PGlite (output, the fallback line, the
+  schema name, `--dimensions`, `--json`), both mismatch checks against a
+  second PGlite, and `main` with a memory file that takes a batch-only
+  client from `globalThis` and no URL variable (exit 2, also as JSON;
+  `check` opens nothing).
 - `test/cli/generate.test.ts` (unit): the rendered text (`vector` and
   `halfvec`, `pgSchema`, a configuration name with a backtick, `${` and a
   backslash evaluated through a stand-in `sql` tag), the setup SQL, and
@@ -479,7 +545,13 @@ Windows and an immediate exit can cut output short.
   unreachable database, also with `check --json`. Like `migrate.test.ts` it drops the Mnemocyte
   tables and the extension, and leaves a tracked 1536-dimension schema.
   `test/integration/schema-name.test.ts` runs `migrate`, `check`,
-  `text-search` and `sql` with `--schema` through `DATABASE_URL`.
+  `text-search` and `sql` with `--schema` through `DATABASE_URL`. The same
+  `cli.test.ts` runs a batch-only postgres.js memory file in a schema of
+  its own through the `postgres` fallback, and an unreachable
+  `DATABASE_URL` for it. `test/integration/neon.test.ts` runs `migrate`,
+  `check` and `text-search` on a `neon()` memory file through Neon's
+  `Pool` on `DATABASE_URL_UNPOOLED`, then the fallback to `DATABASE_URL`,
+  checking that the URL is never printed.
 
 ## Known limits
 
@@ -490,6 +562,10 @@ Windows and an immediate exit can cut output short.
   stops at Postgres's 4,000. `text-search` on libSQL asks before
   rebuilding the keyword index and prints no 1.1 warning.
 - The hook is not consulted for imports made from inside `node_modules`.
+- For a store without transactions, the check that the URL reaches the
+  app's database compares installations, so two identical ones are told
+  apart only after the change. When the Neon package does not resolve
+  from the bin, the CLI's `Pool` has its own `neonConfig`.
 - `module.registerHooks` is "active development" on Node 22 and a release
   candidate from 24.13.1 and 25.4; type stripping is a release candidate on
   Node 22.

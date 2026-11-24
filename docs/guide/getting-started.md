@@ -155,7 +155,10 @@ Enabled pgvector.
 Applied: 0000_initial, 0001_add_mnemocyte_meta, 0002_add_embedding_model, 0003_schema_v2, 0004_audit_memory_id
 ```
 
-`migrate` applies only what is missing, so run it on every deploy. Enabling
+`migrate` applies only what is missing, so run it on every deploy. With
+Neon's `neon()` as the store, it connects through `DATABASE_URL_UNPOOLED`,
+or `DATABASE_URL`, since HTTP cannot run migrations
+([Neon](./postgres.md#neon)). Enabling
 pgvector needs a superuser, which the Docker image's `postgres` user is; on
 a managed database, see [enabling pgvector](./postgres.md#enabling-pgvector).
 The [Postgres guide](./postgres.md#install-the-schema) covers upgrades and

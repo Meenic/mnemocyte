@@ -8,6 +8,12 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
+For Next.js apps: the server reads `.env.local` and loads memory files
+that import `server-only`, as the `mnemocyte` 1.4 CLI does. The peer
+range is unchanged (`mnemocyte` `^1.1.0`).
+
 ### Added
 
 - **Memory files that import `server-only` load.** Next.js apps guard
@@ -45,4 +51,5 @@ The first release: an MCP server for Mnemocyte memory.
 - **`createMemoryMcpServer({ memory })`** returns the same server over a
   bound client, without a transport, for apps that serve MCP themselves.
 
+[0.2.0]: https://github.com/Meenic/mnemocyte/releases/tag/mcp-v0.2.0
 [0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0

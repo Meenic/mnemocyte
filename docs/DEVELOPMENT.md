@@ -1236,8 +1236,9 @@ The release workflow runs three stages:
 - `ci` runs `ci.yml` (through `workflow_call`, with `release: true`) on the
   tagged commit. Path filtering applies only to pull requests, so every
   job runs except `Site`: the Node matrix, `Checks`, the package lint,
-  `Links`, the four Postgres integration jobs and `libSQL server
-  integration`. The site is not in the tarball, and the release PR and
+  `Links`, the four Postgres integration jobs, `libSQL server
+  integration`, `Neon HTTP integration` and the `MCP` matrix, for either
+  package's tag. The site is not in the tarball, and the release PR and
   the push to `main` already ran it (decision 59). A job that calls a
   reusable workflow cannot set `timeout-minutes`; each `ci.yml` job has
   its own, and `verify` and `publish` have theirs.
@@ -1324,6 +1325,13 @@ both changelogs and reaches each bin with that package's next release.
 4. Once npm has it, create a GitHub release titled `@mnemocyte/mcp
    vX.Y.Z`, not marked as latest, so the repository's latest release stays
    `mnemocyte`'s.
+
+When both packages release together, as 1.4.0 and mcp 0.2.0 did, one PR
+can carry both: bump the second package with `--no-git-checks`, since the
+first bump leaves the tree unclean, title the PR `chore(release): vX.Y.Z,
+mcp-vA.B.C`, and push both tags on its merge commit. Each tag runs
+`release.yml` on its own (its concurrency group is the tag), so a failed
+publish of one is retried or re-tagged without touching the other.
 
 The first version could not go through the workflow: npm configures a
 trusted publisher only for a package that already exists. 0.1.0 was

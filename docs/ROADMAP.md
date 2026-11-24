@@ -519,7 +519,7 @@ release, since the guide is read from `main`.
   app's client does not see afterwards exits 1, `check` reads through the
   app's client, and `--json` plans carry `connection`; see
   [features/cli.md](./features/cli.md#stores-without-transactions).
-- [ ] `chore/shared-loader`: move what the CLI and `mnemocyte-mcp` share
+- [x] `chore/shared-loader`: move what the CLI and `mnemocyte-mcp` share
   to load a memory file (`src/cli/resolve-hook.ts`, `src/cli/tsconfig.ts`
   and `MEMORY_FILE_NAMES`) into a private workspace package under
   `packages/` (`"private": true`, for example `@mnemocyte/loader`), a
@@ -534,6 +534,13 @@ release, since the guide is read from `main`.
   still does not reach the loader. Update DEVELOPMENT.md ("Structure"),
   features/cli.md and features/mcp.md. No release of its own: users see
   no change.
+  Landed: `@mnemocyte/loader` in `packages/loader/`, exporting its
+  TypeScript source with no build, holding the hook, the tsconfig reader,
+  both lookup lists and `findMemoryFile`, with its tests in
+  `packages/loader/test/` (`pnpm test:loader`, on each Node job). Each
+  bin's `loader-bundle.test.ts` matches the loader sources in its
+  `dist/cli.mjs.map` against `packages/loader/src/`, and CI's Node,
+  Package and MCP jobs now run on loader changes (decision 93).
 - [ ] `feat/cli-env-files`: the CLI reads `.env.local`, then `.env`, as
   Next.js does, so Next.js users can drop `--env-file .env.local`. `init`
   writes the API key to `.env.local` when that file exists. Decided

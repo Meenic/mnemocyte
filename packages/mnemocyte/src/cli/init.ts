@@ -1,9 +1,9 @@
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { parseEnv } from "node:util";
+import { findMemoryFile } from "@mnemocyte/loader";
 import type { CliArgs } from "./args.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
-import { findMemoryFile } from "./memory-file.js";
 
 /** The memory files `init` writes, one per driver setup. */
 export type InitDriver =

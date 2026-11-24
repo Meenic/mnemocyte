@@ -73,6 +73,7 @@ The repository is a pnpm workspace (`pnpm-workspace.yaml`: `packages/*`,
 ```txt
 packages/mnemocyte/     the published `mnemocyte` package: src/, test/, migrations/, scripts/, its configs and package.json
 packages/mcp/           the published `@mnemocyte/mcp` package: the MCP server and its bin; README.md and CHANGELOG.md of its own
+packages/loader/        the private `@mnemocyte/loader` package: the memory file lookup and the resolve hook both bins bundle
 apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
 examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
 docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
@@ -87,6 +88,18 @@ Libraries go under `packages/`, things that are run or deployed under
 `mnemocyte` as a peer and a `workspace:*` dev dependency, so it builds and
 tests against `packages/mnemocyte/dist/`; see
 [features/mcp.md](./features/mcp.md).
+`@mnemocyte/loader` is `packages/loader/`: what both bins need to find
+and load an app's memory file (`src/memory-file.ts`: the folders and
+names searched and `findMemoryFile`; `src/resolve-hook.ts`;
+`src/tsconfig.ts`). It is `"private": true` and never published. Its
+`exports` point at its TypeScript source, so it has no build: both
+packages list it as a `workspace:*` dev dependency, and tsdown bundles
+it into their `dist/cli.mjs`, since tsdown leaves only `dependencies`
+and peer and optional dependencies external (decision 93). A
+`dependencies` entry would not publish (pnpm refuses a private
+workspace package there). Its tests are its own
+(`pnpm test:loader`); see
+[features/cli.md](./features/cli.md#loading-the-memory-file).
 `examples/` stays at the root, where GitHub readers look for it, and
 installs `mnemocyte` from the workspace the way an app installs it from
 npm. Only the root `package.json` sets `packageManager`; `engines` is in
@@ -124,7 +137,7 @@ src/
     middleware.ts       memoryMiddleware and withMemory: context in the prompt, save hook or extraction
     extraction.ts       extractMemories: the user's model extracts keyed memories from a turn
   cli.ts                the `mnemocyte` bin (not an export): version, process I/O, exit
-  cli/                  main, args, io, memory-file, resolve-hook, tsconfig, target, init, migrate, check, sql, generate, drizzle, text-search
+  cli/                  main, args, io, memory-file, target, init, migrate, check, sql, generate, drizzle, text-search (the resolve hook is in packages/loader/)
   types.ts              every public type
   errors.ts             MnemocyteError and its codes, ProviderError
   observability.ts      onEvent lifecycle (start / success / error)
@@ -208,7 +221,10 @@ runtime, the only source files that do, and a package test follows
 the static imports of every other entry to check that none reaches it.
 `vitest` is an optional peer (`^5.0.0`) the same way: `src/store-test.ts`
 and `src/store-test/` import it at runtime, and a package test checks that
-no entry but `mnemocyte/store/test` reaches it.
+no entry but `mnemocyte/store/test` reaches it. The bundled
+`@mnemocyte/loader` is for the bin alone: a package test checks that no
+export reaches `registerHooks`, so an app that imports the library never
+installs a module hook.
 
 TypeScript compiles against `target` and `lib` `es2024`, the newest edition
 Node 22.18 fully supports. There are two configs:
@@ -552,11 +568,15 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   `dist/` through the package's own `exports` (package self-reference), the
   way a consumer resolves it.
 
-- `pnpm test` at the root runs `pnpm test:links`, the package's `test`
+- `pnpm test` at the root runs `pnpm test:links`, `pnpm test:loader`
+  (`@mnemocyte/loader`'s Vitest: the lookup, `parseJsonc`, `paths`
+  through `extends`, import candidates and `resolveAppImport` on
+  temporary folders), the package's `test`
   (`test:checks`, then `test:ci`), `@mnemocyte/mcp`'s `test` (its build
   and Vitest, against the `mnemocyte` build just made), then
-  `pnpm test:examples`. `pnpm checktypes` and `pnpm build` cover both
-  packages too, and `checktypes` the root `scripts/` as well;
+  `pnpm test:examples`. `pnpm checktypes` covers all three packages and
+  `pnpm build` the two published ones (the loader has no build), and
+  `checktypes` the root `scripts/` as well;
   `checktypes` builds `mnemocyte` first, because
   `@mnemocyte/mcp` type-checks against its `dist/`. The `*:mcp` scripts
   (`build:mcp`, `checktypes:mcp`, `test:mcp`, `lint:package:mcp`,
@@ -567,9 +587,9 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   type-level checks `test:types`, `test:readme` and `test:jsdoc`, then
   `pnpm test:examples`. `test:ci` builds again (under a second) and runs
   `unit`, `contract` and `package`. CI runs `test:links` in the Links
-  job, `test:checks` once, in the Checks job, and `test:ci` on each Node
-  version ("What CI runs" below). `pnpm test:exports` builds and runs
-  `test:types` and `package` alone.
+  job, `test:checks` once, in the Checks job, and `test:ci` and
+  `test:loader` on each Node version ("What CI runs" below).
+  `pnpm test:exports` builds and runs `test:types` and `package` alone.
 - `pnpm test:types` runs `tsc --noEmit -p test/package/tsconfig.json`, which
   type-checks every public export in `test/package/exports-types.test-d.ts`
   against the built `dist/*.d.mts`, so it needs a build first. The file has
@@ -951,15 +971,15 @@ when the release calls it (`workflow_call`). It has these jobs:
 
 | Job | Runs | A PR runs it when it changes |
 |---|---|---|
-| `Node 22.18`, `Node 24`, `Node 26` | `test:ci` (build, then `unit`, `contract` and `package`) | `packages/mnemocyte/**`, `examples/**`, `README.md`, `LICENSE`, `docs/guide/getting-started.md` |
+| `Node 22.18`, `Node 24`, `Node 26` | `test:ci` (build, then `unit`, `contract` and `package`), then `test:loader` | `packages/mnemocyte/**`, `packages/loader/**`, `examples/**`, `README.md`, `LICENSE`, `docs/guide/getting-started.md` |
 | `Checks` | `checktypes`, `lint`, `test:checks` (build, then `test:types`, `test:readme`, `test:jsdoc`, `test:examples`), on Node 24 | the same files as the Node jobs |
-| `Package` | `lint:package` (build, pack, publint, attw) | in `packages/mnemocyte/`: `src/**`, `migrations/**`, `scripts/**`, `tsconfig*.json`, `tsdown.config.ts`; and `README.md`, `LICENSE` |
+| `Package` | `lint:package` (build, pack, publint, attw) | in `packages/mnemocyte/`: `src/**`, `migrations/**`, `scripts/**`, `tsconfig*.json`, `tsdown.config.ts`; `packages/loader/src/**` and `packages/loader/package.json`; and `README.md`, `LICENSE` |
 | `Postgres 17/18 integration (postgres.js 3/4)` | `test:integration`, four jobs | in `packages/mnemocyte/`: `src/**`, `test/**`, `migrations/**`, `vitest.config.ts` |
 | `libSQL server integration` | `test:integration:libsql` on a libSQL server (sqld) container, on Node 24 | the same files as the Postgres jobs |
 | `Neon HTTP integration` | `test:integration:neon` through the local Neon proxy in front of Postgres 17, on Node 24 | the same files as the Postgres jobs |
 | `Site` | the root `lint`, then the site's typecheck, test and build | `apps/site/**`, `CHANGELOG.md` |
 | `Links` | `checktypes:scripts` (the root `scripts/`), then `test:links` (relative links and anchors in the Markdown) | `docs/**`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `AGENTS.md`, `LICENSE`, `examples/README.md`, `apps/site/AGENTS.md`, `scripts/**`, the root `tsconfig.json`, `packages/mcp/README.md`, `packages/mcp/CHANGELOG.md` |
-| `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/mnemocyte/src/**` (the public API it uses and the CLI loader it copies), `LICENSE` |
+| `MCP (Node 22.18/24/26)` | `test:mcp` (build `mnemocyte`, then `@mnemocyte/mcp`'s build and tests); on Node 24 also `checktypes:mcp`, `lint` and `lint:package:mcp` | `packages/mcp/**`, `packages/loader/**` (the loader it bundles), `packages/mnemocyte/src/**` (the public API it uses), `LICENSE` |
 
 - A change to `.github/**`, the root `package.json`,
   `packages/mnemocyte/package.json`, `examples/package.json`,
@@ -985,8 +1005,11 @@ when the release calls it (`workflow_call`). It has these jobs:
   `mnemocyte init` templates. A test or script that starts reading another
   file needs that file on its job's list.
 - The MCP list has `packages/mnemocyte/src/**` because `@mnemocyte/mcp`
-  builds against that source's `dist/` and `test/loader-copy.test.ts`
-  compares the CLI's loader with its copy. A change to only
+  builds against that source's `dist/`. `packages/loader/**` is on the
+  Node, Package and MCP lists because both bins bundle it: each package's
+  `loader-bundle.test.ts` compares the loader sources embedded in its
+  `dist/cli.mjs.map` with `packages/loader/src/`, so the two tarballs are
+  shown to carry the same, current loader. A change to only
   `packages/mcp/**` runs no `Checks` job, so the MCP job runs `lint`
   itself. `packages/mcp/package.json` is on the MCP list, not the list
   that runs every job; a dependency change also changes `pnpm-lock.yaml`,
@@ -1279,7 +1302,9 @@ fix needs a new version.
 (`packages/mcp/CHANGELOG.md`) and releases on its own, whenever its
 `[Unreleased]` has entries, with the same rules for patch and minor
 (decisions 84 and 89). A change that needs a newer `mnemocyte` raises the
-peer range and waits for that `mnemocyte` release.
+peer range and waits for that `mnemocyte` release. Both bins bundle
+`packages/loader/`, so a user-visible change there needs an entry in
+both changelogs and reaches each bin with that package's next release.
 
 1. On a `chore/release-mcp-vX.Y.Z` branch, run
    `pnpm version patch --no-git-tag-version` (or `minor`) in

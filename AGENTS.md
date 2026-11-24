@@ -132,6 +132,7 @@ pnpm build             # tsdown to dist/
 pnpm run pack:check    # pnpm pack --dry-run
 pnpm lint:package      # build, pack, publint and attw on the tarball
 pnpm test:mcp          # @mnemocyte/mcp alone; see the other *:mcp scripts
+pnpm test:loader       # @mnemocyte/loader, the loader both bins bundle
 ```
 
 `pnpm lint:fix` and `pnpm format` write files. `pnpm test:integration` needs

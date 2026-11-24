@@ -59,13 +59,13 @@ jobs:
           RELEASE: ${{ inputs.release }}
         run: |
           everything='^(\.github/|\.gitignore$|\.gitattributes$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|biome\.json$|packages/mnemocyte/package\.json$|examples/package\.json$)'
-          node='^(packages/mnemocyte/|examples/|README\.md$|LICENSE$|docs/guide/getting-started\.md$)'
-          package='^(packages/mnemocyte/(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)|README\.md$|LICENSE$)'
+          node='^(packages/mnemocyte/|packages/loader/|examples/|README\.md$|LICENSE$|docs/guide/getting-started\.md$)'
+          package='^(packages/mnemocyte/(src/|migrations/|scripts/|tsconfig[^/]*\.json$|tsdown\.config\.ts$)|packages/loader/(src/|package\.json$)|README\.md$|LICENSE$)'
           postgres='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           libsql='^packages/mnemocyte/(src/|test/|migrations/|vitest\.config\.ts$)'
           site='^(apps/site/|CHANGELOG\.md$)'
           links='^(docs/|README\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|SECURITY\.md$|AGENTS\.md$|LICENSE$|examples/README\.md$|apps/site/AGENTS\.md$|scripts/|tsconfig\.json$|packages/mcp/(README|CHANGELOG)\.md$)'
-          mcp='^(packages/mcp/|packages/mnemocyte/src/|LICENSE$)'
+          mcp='^(packages/mcp/|packages/loader/|packages/mnemocyte/src/|LICENSE$)'
 
           files=''
           all=true
@@ -140,6 +140,11 @@ jobs:
       # Lint and the type-level checks run once, in the Checks job.
       - name: Test
         run: pnpm run test:ci
+
+      # @mnemocyte/loader, which both bins bundle: its unit tests, on each
+      # Node version the bins support.
+      - name: Test the memory file loader
+        run: pnpm run test:loader
 
   # Lint and type checks do not depend on the Node version, so they run
   # once here instead of in each Node job.

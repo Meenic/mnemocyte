@@ -1,27 +1,11 @@
 import { statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { findMemoryFile, registerAppResolver } from "@mnemocyte/loader";
 import { readMemoryClientInternals } from "../memory/client-internals.js";
 import type { MemoryStore } from "../memory/store.js";
 import type { BoundMemoryClient, Embedder, MemoryClient } from "../types.js";
 import { CliError, EXIT_USAGE } from "./io.js";
-import { registerAppResolver } from "./resolve-hook.js";
-
-/** Folders searched for a memory file, in order, relative to the project. */
-export const MEMORY_FILE_DIRECTORIES: readonly string[] = [
-	"",
-	"lib",
-	"src",
-	"src/lib",
-];
-
-/** File names tried in each folder, in order. */
-export const MEMORY_FILE_NAMES: readonly string[] = [
-	"memory.ts",
-	"memory.mts",
-	"memory.js",
-	"memory.mjs",
-];
 
 /** What the CLI takes from the app's memory file. */
 export interface LoadedMemory {
@@ -34,19 +18,6 @@ export interface LoadedMemory {
 
 function isFile(path: string): boolean {
 	return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-}
-
-/** The first memory file in the project, or null. */
-export function findMemoryFile(cwd: string): string | null {
-	for (const directory of MEMORY_FILE_DIRECTORIES) {
-		for (const name of MEMORY_FILE_NAMES) {
-			const candidate = join(cwd, directory, name);
-			if (isFile(candidate)) {
-				return candidate;
-			}
-		}
-	}
-	return null;
 }
 
 /**

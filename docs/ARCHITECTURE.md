@@ -290,8 +290,9 @@ it needs dependencies of its own or its own release cadence:
   bin, and `mnemocyte` as a peer (`^1.1.0`), the way `@mastra/pg` takes
   `@mastra/core`; it uses only the public API, so it needs no exact pins.
   See [features/mcp.md](./features/mcp.md). The memory file loader it
-  shares with the CLI moves to a private workspace package that tsdown
-  bundles into both (decision 93, queued as `chore/shared-loader`).
+  shares with the CLI is the private workspace package
+  `@mnemocyte/loader`, which tsdown bundles into both (decision 93;
+  [DEVELOPMENT.md](./DEVELOPMENT.md#structure)).
 - **A first-party split.** If first-party code ever splits
   (`@mnemocyte/core`, `@mnemocyte/postgres`), `mnemocyte` stays an umbrella
   package that depends on them with exact pins, releases with them, and
@@ -1842,7 +1843,8 @@ Dated 2026-10-26 unless noted.
     `memory.ts` too: the lookup of `memory.mjs` is tested on the CLI's
     copy (`packages/mnemocyte/test/cli/resolve.test.ts`), and
     `packages/mcp/test/loader-copy.test.ts` keeps the server's list of
-    file names equal to it. The migrations stay
+    file names equal to it (since `chore/shared-loader`, one lookup in
+    `packages/loader/`, tested there; decision 93). The migrations stay
     `.sql`: they ship in the tarball for teams that run them with `psql`
     (guide/postgres.md), and the bundle scripts generate the code copy
     from them. With the scripts the site's static reference
@@ -1923,7 +1925,7 @@ Dated 2026-10-26 unless noted.
     `mnemocyte` exactly. Nothing changes for users: no import path, bin
     or shipped file.
 93. **One loader, bundled into both packages** (2026-11-23,
-    `docs/architecture-review`, queued as `chore/shared-loader`): revises
+    `docs/architecture-review`, landed with `chore/shared-loader`): revises
     decision 85's copy. The maintainer chose a private workspace package,
     never published, for the code `mnemocyte`'s CLI and `mnemocyte-mcp`
     share to load a memory file (the resolve hook, the tsconfig reader
@@ -1941,6 +1943,40 @@ Dated 2026-10-26 unless noted.
     devDependencies of `@mastra/core`, listed in its tsdown
     `deps.alwaysBundle`. `@mnemocyte/mcp` still needs a release to ship a
     loader change, as with the copy.
+    Landed with `chore/shared-loader` (2026-11-24); the maintainer took
+    these recommendations:
+    - **Name and folder:** `@mnemocyte/loader` in `packages/loader/`,
+      `"private": true`, version `0.0.0`, in the scope the maintainer
+      already owns on npm. Its `exports` point at `src/index.ts`, with no
+      build of its own: tsdown, tsc and Vitest read the TypeScript through
+      the workspace link, so the root build order is unchanged. The link
+      resolves to `packages/loader/src/`, outside `node_modules`, so
+      tsdown bundles it as source and needs neither `deps.alwaysBundle`
+      nor a `deps.onlyBundle` entry. pnpm refuses a private workspace
+      package in `dependencies` (`ERR_PNPM_PRIVATE_WORKSPACE_DEPENDENCY`)
+      and, when it packs, writes the dev dependency as `0.0.0`.
+    - **What moved:** the resolve hook, the tsconfig reader, both lookup
+      lists (`MEMORY_FILE_DIRECTORIES` with `MEMORY_FILE_NAMES`, since
+      the search is one over the other) and `findMemoryFile`, which was
+      the same in both packages. `locateMemoryFile`, the load error
+      messages and reading the client stay in each package: they differ
+      (`CliError` and exit codes against `UsageError`; the CLI's internal
+      symbol against the public API). `.env` loading stays for
+      `feat/cli-env-files`.
+    - **Tests:** the loader's unit tests are in `packages/loader/test/`
+      (`pnpm test:loader`), on each CI Node version in the Node jobs.
+      Each bin's tests that run its built `dist/cli.mjs` on a TypeScript
+      memory file stay where they were.
+    - **Same code in both `dist/`:** comparing the bundled JavaScript is
+      fragile, since rolldown names and orders modules per build. Both
+      `dist/cli.mjs.map` files embed their sources, so a test in each
+      package (`loader-bundle.test.ts`) checks that the loader files the
+      map lists are exactly `packages/loader/src/` (the re-exporting
+      index aside) with the same content. Built from the current source,
+      the two bins carry the same loader; a stale build fails. A package
+      test in each also checks that no library export reaches
+      `registerHooks`. `packages/loader/**` joined the Node, Package and
+      MCP change lists in CI, which matched none of it before.
 94. **Migrations ship as they are** (2026-11-23, `docs/architecture-review`):
     the maintainer kept the numbered `.sql` files as the source, the
     generated `bundled.ts` committed next to the code, and the files in

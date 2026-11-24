@@ -2,22 +2,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { findMemoryFile, locateMemoryFile } from "../../src/cli/memory-file.js";
-import {
-	importCandidates,
-	resolveAppImport,
-} from "../../src/cli/resolve-hook.js";
+import { findMemoryFile } from "../src/memory-file.js";
+import { importCandidates, resolveAppImport } from "../src/resolve-hook.js";
 import {
 	findTsconfig,
 	loadPathMapping,
 	mapSpecifier,
 	parseJsonc,
-} from "../../src/cli/tsconfig.js";
+} from "../src/tsconfig.js";
 
 let root: string;
 
 beforeAll(async () => {
-	root = await mkdtemp(join(tmpdir(), "mnemocyte-cli-unit-"));
+	root = await mkdtemp(join(tmpdir(), "mnemocyte-loader-"));
 });
 
 afterAll(async () => {
@@ -201,21 +198,5 @@ describe("memory file lookup", () => {
 		await write("lookup", { "memory.ts": "" });
 		expect(findMemoryFile(base)).toBe(join(base, "memory.ts"));
 		expect(findMemoryFile(join(base, "other", "nested"))).toBeNull();
-	});
-
-	test("--config names any file, and must exist", async () => {
-		const base = await write("config", {
-			"app/clients/mem.ts": "",
-			"memory.ts": "",
-		});
-		expect(locateMemoryFile(base, "app/clients/mem.ts")).toBe(
-			join(base, "app", "clients", "mem.ts"),
-		);
-		expect(locateMemoryFile(base, undefined)).toBe(join(base, "memory.ts"));
-		expect(() => locateMemoryFile(base, "app/nope.ts")).toThrow(
-			"--config: app/nope.ts is not a file.",
-		);
-		// A folder is not a memory file.
-		expect(() => locateMemoryFile(base, "app")).toThrow("is not a file");
 	});
 });

@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { MEMORY_FILE_NAMES } from "@mnemocyte/loader";
 import type { MemoryStore } from "../memory/store.js";
 import { createMnemocyteStoreConfig } from "../memory/store-config.js";
 import { resolveStore } from "../memory/store-input.js";
@@ -18,11 +19,7 @@ import {
 } from "./direct.js";
 import { CliError, type CliIo, EXIT_USAGE } from "./io.js";
 import type { JsonConnection } from "./json.js";
-import {
-	loadMemoryFile,
-	locateMemoryFile,
-	MEMORY_FILE_NAMES,
-} from "./memory-file.js";
+import { loadMemoryFile, locateMemoryFile } from "./memory-file.js";
 
 interface TargetBase {
 	/** What the command names in its first line of output. */

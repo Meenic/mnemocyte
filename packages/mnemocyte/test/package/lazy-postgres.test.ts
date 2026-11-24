@@ -105,6 +105,29 @@ describe("lazy Postgres package loading", () => {
 		}
 	});
 
+	test.each(
+		Object.entries(
+			JSON.parse(readFileSync(resolve("package.json"), "utf8"))
+				.exports as Record<string, string | { default: string }>,
+		)
+			.filter(([key]) => key !== "./package.json")
+			.map(([, target]) =>
+				typeof target === "string" ? target : target.default,
+			),
+	)(
+		"keeps the memory file loader out of the static import graph of %s",
+		async (entry) => {
+			// The resolve hook (@mnemocyte/loader) is for the bin alone: an app
+			// that imports the library must never get a module hook.
+			for (const file of await staticImportGraph(resolve(entry))) {
+				const source = await readFile(file, "utf8");
+				expect(source, file).not.toMatch(
+					/\bregisterHooks\b|\bregisterAppResolver\b/,
+				);
+			}
+		},
+	);
+
 	test("imports vitest statically from the store/test entry only", async () => {
 		const source = await readFile(resolve("dist/store-test.mjs"), "utf8");
 		expect(source).toMatch(/^import\s+[^"']+\s+from\s+["']vitest["'];?\s*$/m);

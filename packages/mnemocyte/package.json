@@ -171,6 +171,7 @@
 		"@electric-sql/pglite": "^0.5.16",
 		"@electric-sql/pglite-pgvector": "^0.0.17",
 		"@libsql/client": "^0.18.0",
+		"@mnemocyte/loader": "workspace:*",
 		"@neondatabase/serverless": "^1.2.1",
 		"@types/node": "^22.20.5",
 		"@types/pg": "^8.23.1",

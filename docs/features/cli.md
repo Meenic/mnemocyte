@@ -34,9 +34,7 @@ src/cli/
   args.ts                parseCliArgs, USAGE
   io.ts                  CliIo (cwd, write, error, confirm), CliError, errorCauses, the process's own CliIo
   json.ts                what --json prints: CheckJson, MigratePlanJson, TextSearchPlanJson, ErrorJson, writeJson, errorJson
-  memory-file.ts         where the memory file is looked up, loading it, reading the client
-  resolve-hook.ts        the resolve hook for a TypeScript app's imports
-  tsconfig.ts            JSON with comments, `extends`, `paths`
+  memory-file.ts         --config, loading the memory file, reading the client (the lookup and resolve hook are in packages/loader/src/)
   target.ts              .env, then a memory file or DATABASE_URL → what a command runs against
   direct.ts              the CLI's own connection for a store that cannot migrate, and the installation comparison
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
@@ -99,10 +97,18 @@ readable by the bin's copy.
   The longest matching prefix wins. A config that cannot be read or parsed
   contributes nothing. `baseUrl` on its own (bare imports relative to it)
   is not resolved.
-- **A copy in `@mnemocyte/mcp`.** `resolve-hook.ts` and `tsconfig.ts`
-  are copied byte for byte into `packages/mcp/src/loader/`, and the lookup
-  lists into its `memory-file.ts`; a test there fails when they differ, so
-  a change here is copied in the same PR (decision 85).
+- **Shared with `@mnemocyte/mcp`.** The lookup (`MEMORY_FILE_DIRECTORIES`,
+  `MEMORY_FILE_NAMES`, `findMemoryFile`), the resolve hook and the
+  tsconfig reader live in the private `@mnemocyte/loader` package
+  (`packages/loader/src/`: `memory-file.ts`, `resolve-hook.ts`,
+  `tsconfig.ts`), which both bins bundle into `dist/cli.mjs` (decision
+  93). A change there is made once for both bins, and each ships it with
+  its package's next release. Each package's
+  `loader-bundle.test.ts` checks that the loader sources in its
+  `dist/cli.mjs.map` match `packages/loader/src/`. `locateMemoryFile`
+  (`--config`), the error messages and reading the client stay in each
+  package's `memory-file.ts`, since the CLI reads the store and embedder
+  and the server only the public API.
 - **Errors.** `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` (enum, namespace,
   parameter properties), `ERR_UNKNOWN_FILE_EXTENSION` (`.tsx`, or type
   stripping turned off) and `ERR_MODULE_NOT_FOUND` each get a message that
@@ -484,10 +490,13 @@ Windows and an immediate exit can cut output short.
 
 ## Tests
 
+- `packages/loader/test/loader.test.ts` (`pnpm test:loader`):
+  `parseJsonc`, `paths` through `extends`, import candidates and
+  `resolveAppImport` on temporary folders, and the memory file lookup.
 - `test/cli/` (unit): argument parsing, `init` (driver choice, templates
-  against the guide, `.env` plans, runs in temporary folders), `parseJsonc`, `paths` through
-  `extends`, import candidates and `resolveAppImport` on temporary folders,
-  memory file lookup, every `check` verdict and its code, `installationJson`,
+  against the guide, `.env` plans, runs in temporary folders), `--config`
+  (`memory-file.test.ts`), every `check` verdict and its code,
+  `installationJson`,
   `main` for help, usage errors, `sql` and errors under `--json`, and error
   printing.
 - `test/contract/cli.test.ts` (PGlite, in process): `migrateTarget` with a
@@ -539,6 +548,11 @@ Windows and an immediate exit can cut output short.
   in a folder that does not exist, and type-checks both files with `tsc`
   (strict, `exactOptionalPropertyTypes`) against drizzle-orm 0.45.4. It also checks the shebang, the `bin` field, that the bin
   imports no driver, and the load errors.
+- `test/package/loader-bundle.test.ts`: the `@mnemocyte/loader` sources
+  embedded in `dist/cli.mjs.map` are exactly the files in
+  `packages/loader/src/` (index aside, which only re-exports), so the bin
+  was built from the current loader. `lazy-postgres.test.ts` checks that
+  no export's static imports reach `registerHooks`.
 - `test/integration/cli.test.ts`: `main` in process against real Postgres
   through `DATABASE_URL`: fresh install, the missing `--dimensions`,
   `halfvec`, the extension question after `DROP EXTENSION vector`, and an

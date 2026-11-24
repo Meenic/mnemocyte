@@ -1,0 +1,23 @@
+{
+	"name": "@mnemocyte/loader",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Finds an app's memory file and resolves its imports for the mnemocyte and mnemocyte-mcp bins. Never published: tsdown bundles it into both.",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"checktypes": "tsc --noEmit --project tsconfig.build.json && tsc --noEmit",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.5",
+		"typescript": "^6.0.3",
+		"vitest": "5.0.5"
+	}
+}

@@ -39,9 +39,8 @@ How `@mnemocyte/mcp` (`packages/mcp/`) is built (ARCHITECTURE decisions
 | `src/cli.ts` | The bin: redirects `console`, runs `prepare`, then `serveStdio`, and exits when stdin ends. |
 | `src/cli/args.ts` | `parseCliArgs` (`node:util` `parseArgs`, strict), `USAGE`, `UsageError`. |
 | `src/cli/main.ts` | `prepare(argv, io, version)`: `--project`, `.env`, the memory file, `memory.for(scope)`, the startup line. Never rejects. |
-| `src/cli/memory-file.ts` | The memory file lookup (the CLI's lists) and `loadMemoryClient`. |
+| `src/cli/memory-file.ts` | `locateMemoryFile` (`--config`, else `findMemoryFile` from `@mnemocyte/loader`) and `loadMemoryClient`. |
 | `src/cli/console.ts` | `redirectConsoleToStderr`. |
-| `src/loader/resolve-hook.ts`, `src/loader/tsconfig.ts` | Byte-for-byte copies of the CLI's `src/cli/` files. |
 
 ## Tools
 
@@ -95,7 +94,7 @@ them, since this package does not depend on `ai`.
    `--env-file`, because MCP clients do not document which folder they
    start a server in. `.env` loading matches the CLI's `loadEnvironment`.
 3. `loadMemoryClient` imports the memory file as the CLI does: Node's type
-   stripping plus `registerAppResolver` from the copied resolve hook. It
+   stripping plus `registerAppResolver` from the shared loader. It
    takes the `memory` export, else the default export's `memory`, else
    the default export, and accepts the first value with `for`, `search`,
    `add` and `delete` functions. A bound client (a `scope` and no `for`)
@@ -110,17 +109,20 @@ them, since this package does not depend on `ai`.
    process alive. A usage problem exits 2 with the message and, for bad
    flags, the usage; anything unexpected exits 1.
 
-### The copied loader
+### The shared loader
 
-`src/loader/resolve-hook.ts` and `src/loader/tsconfig.ts` are copies of
-`packages/mnemocyte/src/cli/`, so a TypeScript memory file loads the same
-way in both bins; see [features/cli.md](./cli.md#loading-the-memory-file)
-for how they work. `test/loader-copy.test.ts` fails when the two differ
-(line endings aside) and when the memory file lookup lists differ, so a
-change to the CLI's loader, such as `feat/cli-server-only`, must copy the
-files here in the same PR. Exporting the loader from `mnemocyte` would
-remove the copy but add public API that only tools use and tie this
-package to a newer `mnemocyte` (decision 85).
+The memory file lookup, the resolve hook and the tsconfig reader come
+from `@mnemocyte/loader` (`packages/loader/`), a private workspace package
+that this package and `mnemocyte` list as a `workspace:*` dev dependency
+and tsdown bundles into `dist/cli.mjs` (decision 93). A TypeScript memory
+file therefore loads the same way in both bins; see
+[features/cli.md](./cli.md#loading-the-memory-file) for how it works. The
+published `package.json` gains no dependency (pnpm writes the dev
+dependency as `0.0.0` when it packs). A change to the loader, such as
+`feat/cli-server-only`, is made once, but reaches this bin's users only
+with this package's next release. Exporting the loader from `mnemocyte`
+would add public API that only tools use and tie this package to a newer
+`mnemocyte` (decision 85).
 
 ## Tests
 
@@ -135,7 +137,7 @@ embedder (`test/fixtures/app/src/embedder.ts`).
 | `test/server.test.ts` | `tools/list` per option, schemas and annotations; save, search and forget over `InMemoryTransport` with the SDK's `Client`; scope fields and bad input rejected as tool errors; another entity's memories invisible and not deletable; an embedder failure as a tool error; a client's cancel reaching the embedder's signal; `createMemoryMcpServer`'s option checks. |
 | `test/cli.test.ts` | `parseCliArgs`; `prepare` in process with a recording `CliIo`: help, usage errors on stderr only, the lookup and `--project`, a bound export, a file without a client, a missing namespace, `--env-file`. |
 | `test/bin.test.ts` | The built `dist/cli.mjs` over real stdio with `StdioClientTransport`: Node loads `test/fixtures/app/src/memory.ts` with an extensionless import, which needs the resolve hook, and its `console.log` must not break the stream; exit 2 on bad flags with nothing on stdout; exit 0 when stdin closes. |
-| `test/loader-copy.test.ts` | The copied loader and lookup lists match the CLI's. |
+| `test/loader-bundle.test.ts` | The loader sources embedded in `dist/cli.mjs.map` are exactly `packages/loader/src/` (index aside), and `dist/index.mjs` does not reach `registerHooks`. The loader's own tests are in `packages/loader/test/`. |
 
 The `prepare` tests import memory files inside Vitest, which transforms
 them itself, so only `test/bin.test.ts` exercises Node's own loading.

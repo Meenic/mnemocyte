@@ -1,49 +1,20 @@
 import { statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { findMemoryFile, registerAppResolver } from "@mnemocyte/loader";
 import type { MemoryClient } from "mnemocyte";
-import { registerAppResolver } from "../loader/resolve-hook.js";
 import { UsageError } from "./args.js";
 
-// The lookup is the `mnemocyte` CLI's (src/cli/memory-file.ts there), so
-// both bins find the same file; a test compares the lists. Reading the
-// client uses only the public API: the CLI's symbol for the store and
-// embedder is not needed to call `for`.
-
-/** Folders searched for a memory file, in order, relative to the project. */
-export const MEMORY_FILE_DIRECTORIES: readonly string[] = [
-	"",
-	"lib",
-	"src",
-	"src/lib",
-];
-
-/** File names tried in each folder, in order. */
-export const MEMORY_FILE_NAMES: readonly string[] = [
-	"memory.ts",
-	"memory.mts",
-	"memory.js",
-	"memory.mjs",
-];
+// The lookup and the resolve hook come from @mnemocyte/loader, the private
+// package the `mnemocyte` CLI bundles too, so both bins find and load the
+// same file. Reading the client uses only the public API: the CLI's symbol
+// for the store and embedder is not needed to call `for`.
 
 /** An unbound client, as `createMemory` returns it. */
 export type UnboundMemoryClient = MemoryClient<boolean>;
 
 function isFile(path: string): boolean {
 	return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-}
-
-/** The first memory file in the project, or null. */
-export function findMemoryFile(cwd: string): string | null {
-	for (const directory of MEMORY_FILE_DIRECTORIES) {
-		for (const name of MEMORY_FILE_NAMES) {
-			const candidate = join(cwd, directory, name);
-			if (isFile(candidate)) {
-				return candidate;
-			}
-		}
-	}
-	return null;
 }
 
 /**
@@ -138,8 +109,8 @@ function isBoundClient(value: unknown): boolean {
  * Import the app's memory file and return its client: the `memory` export,
  * else the default export's `memory`, else the default export, as the
  * `mnemocyte` CLI reads it. A `.ts` file loads through Node's type stripping
- * with the CLI's resolve hook for extensionless, `.js`-for-`.ts` and
- * tsconfig `paths` imports.
+ * with the shared resolve hook (`@mnemocyte/loader`) for extensionless,
+ * `.js`-for-`.ts` and tsconfig `paths` imports.
  *
  * @throws {UsageError} When the file does not load, or exports a bound
  * client or no client.

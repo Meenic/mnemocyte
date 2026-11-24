@@ -14,6 +14,9 @@ The user reference is
   `drop-cli-declarations` plugin in `tsdown.config.ts` deletes the empty
   `dist/cli.d.mts` tsdown would write, which nothing references; a
   separate build for the bin would instead duplicate the shared chunks.
+- The `server-only-stub` plugin writes `dist/server-only.cjs`, the empty
+  module the loader maps `server-only` to (see "Loading the memory
+  file").
 - No new dependency. Arguments are parsed with `node:util` `parseArgs`,
   the prompt is `node:readline`, the env files are read with
   `process.loadEnvFile`.
@@ -73,9 +76,8 @@ readable by the bin's copy.
   only the app's own files are TypeScript.
 - **The resolve hook.** Type stripping needs full specifiers and reads no
   `tsconfig.json`, so `./db`, `./db.js` for `db.ts` and `@/lib/db` fail.
-  `registerAppResolver` installs synchronous `resolve` and `load` hooks
-  with `module.registerHooks` (see decision 36 for why not
-  `module.register`); the `load` hook only serves `server-only`.
+  `registerAppResolver` installs a synchronous `resolve` hook with
+  `module.registerHooks` (see decision 36 for why not `module.register`).
   The hook calls Node's resolution first and only acts when that throws,
   for an importer that is a file outside `node_modules`:
   - a relative specifier is resolved against the importer and tried as
@@ -95,15 +97,21 @@ readable by the bin's copy.
   `index.js` that throws, and Next.js apps import it to guard server code
   (Next.js handles the import itself, so installing it is optional). The
   resolve hook maps the exact bare specifier `server-only` to
-  `mnemocyte:server-only` before calling Node, from any importer,
-  `node_modules` included, so an installed copy is never loaded; the
-  `load` hook in the same `registerHooks` call returns it as an empty ES
-  module (`format: "module"`, `source: ""`). Not a `data:` URL: on Node
-  24, `import` loads one, but `require()` reads it as a file path and
-  fails with `ENOENT`. `server-only/…`, `./server-only` and other names
-  go through Node as before, and nothing is printed (decision 97).
-  `client-only` is left alone: outside `react-server` it already
-  resolves to its empty `index.js`.
+  `dist/server-only.cjs` (`SERVER_ONLY_FILE`, next to the bundled loader)
+  before calling Node, from any importer, `node_modules` included, so an
+  installed copy is never loaded. Each bin's `tsdown.config.ts` writes
+  that file, a comment and nothing else, with its `server-only-stub`
+  plugin. It is a real file because the other two ways fail somewhere:
+  `require()` reads a `data:` URL as a file path (`ENOENT` on Node 24),
+  and on Node 22 any `registerHooks` load hook makes the ESM loader read
+  CommonJS source, which sends `require()` inside CommonJS loaded by
+  `import` through `CJSModule._resolveFilename`, past every resolve hook
+  (`loadCJSModule` in 22.18's `lib/internal/modules/esm/translators.js`;
+  24.22 uses the real `require()` there, nodejs/node#60380).
+  `server-only/…`, `./server-only` and other names go through Node as
+  before, and nothing is printed (decision 97). `client-only` is left
+  alone: outside `react-server` it already resolves to its empty
+  `index.js`.
 - **`tsconfig.json`.** `parseJsonc` drops comments and trailing commas with
   a scanner that copies string literals whole. `extends` is followed for
   relative paths (with or without `.json`) and for packages (through
@@ -532,11 +540,12 @@ Windows and an immediate exit can cut output short.
 
 - `packages/loader/test/loader.test.ts` (`pnpm test:loader`):
   `parseJsonc`, `paths` through `extends`, import candidates and
-  `resolveAppImport` on temporary folders, `resolveHook` and `loadHook`
-  with stub `next` functions (`server-only` mapped without asking Node,
-  from an app file and from `node_modules`; `server-only/empty.js`,
-  `@acme/server-only`, `client-only` and `./server-only` passed to Node,
-  and the fallback as before), and the memory file lookup;
+  `resolveAppImport` on temporary folders, `resolveHook` with a stub
+  `nextResolve` (`server-only` mapped to `SERVER_ONLY_FILE` next to the
+  hook without asking Node, from an app file and from `node_modules`;
+  `server-only/empty.js`, `@acme/server-only`, `client-only` and
+  `./server-only` passed to Node, and the fallback as before), and the
+  memory file lookup;
   `packages/loader/test/env-files.test.ts` holds the env file order, the
   first value winning, a set variable winning, `NODE_ENV=test` and no
   `$VAR` expansion.

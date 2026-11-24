@@ -562,10 +562,11 @@ release, since the guide is read from `main`.
   maps `server-only` alone to an empty module. After `chore/shared-loader`
   the hook is in the shared loader package, which `@mnemocyte/mcp`
   bundles too, so the change is made once (decision 93).
-  Landed: `resolveHook` maps the bare `server-only` to
-  `mnemocyte:server-only` before Node resolves it, from any importer, and
-  `loadHook` returns an empty ES module for it; a `data:` URL failed under
-  `require()` on Node 24. Decided (decision 97): always rather than only when Node
+  Landed: `resolveHook` maps the bare `server-only` to an empty
+  `dist/server-only.cjs` that each bin's build writes, before Node
+  resolves it, from any importer. A load hook broke `require()` in
+  imported CommonJS on Node 22, and a `data:` URL failed under
+  `require()`. Decided (decision 97): always rather than only when Node
   fails (an installed copy resolves to the file that throws),
   `client-only` left to Node, and nothing printed. Both bins' package
   tests run the built dist on a memory file that imports it and a `.cjs`

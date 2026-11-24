@@ -20,7 +20,8 @@ How `@mnemocyte/mcp` (`packages/mcp/`) is built (ARCHITECTURE decisions
 - `dist/index.mjs` exports `createMemoryMcpServer` and the tool types.
   `dist/cli.mjs` is the `mnemocyte-mcp` bin, not an export; tsdown keeps
   its `#!/usr/bin/env node` line, and the `drop-cli-declarations` plugin
-  deletes its empty declaration file, as in `mnemocyte`.
+  deletes its empty declaration file, as in `mnemocyte`. The
+  `server-only-stub` plugin writes `dist/server-only.cjs`, as there too.
 - `prepack` copies the root `LICENSE` in (gitignored). The package has a
   committed README of its own with absolute links, and its own
   `CHANGELOG.md`, which does not ship.

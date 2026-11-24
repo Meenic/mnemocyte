@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import type { LoadHookContext, ResolveHookContext } from "node:module";
+import type { ResolveHookContext } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,10 +7,9 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { findMemoryFile } from "../src/memory-file.js";
 import {
 	importCandidates,
-	loadHook,
 	resolveAppImport,
 	resolveHook,
-	SERVER_ONLY_URL,
+	SERVER_ONLY_FILE,
 } from "../src/resolve-hook.js";
 import {
 	findTsconfig,
@@ -207,7 +206,9 @@ describe("the hooks", () => {
 		});
 	}
 
-	test("maps server-only to an empty module before Node resolves it", () => {
+	test("maps server-only to the file next to the loader before Node resolves it", () => {
+		// Built, the loader is in dist/cli.mjs and the file is dist/server-only.cjs.
+		const url = new URL(`../src/${SERVER_ONLY_FILE}`, import.meta.url).href;
 		const importer = join(root, "app", "src", "lib", "memory.ts");
 		// From an app file and from inside node_modules, Node is never asked,
 		// so whether the package is installed does not matter.
@@ -218,30 +219,9 @@ describe("the hooks", () => {
 			const nextResolve = vi.fn(() => ({ url: "file:///installed.js" }));
 			expect(
 				resolveHook("server-only", resolveContext(parent), nextResolve),
-			).toEqual({
-				url: SERVER_ONLY_URL,
-				shortCircuit: true,
-			});
+			).toEqual({ url, shortCircuit: true });
 			expect(nextResolve).not.toHaveBeenCalled();
 		}
-
-		const context: LoadHookContext = {
-			conditions: ["node", "import"],
-			format: undefined,
-			importAttributes: {},
-		};
-		const nextLoad = vi.fn(() => ({ format: "module", source: "x" }));
-		expect(loadHook(SERVER_ONLY_URL, context, nextLoad)).toEqual({
-			format: "module",
-			source: "",
-			shortCircuit: true,
-		});
-		expect(nextLoad).not.toHaveBeenCalled();
-		expect(loadHook("file:///a.js", context, nextLoad)).toEqual({
-			format: "module",
-			source: "x",
-		});
-		expect(nextLoad).toHaveBeenCalledWith("file:///a.js", context);
 	});
 
 	test("leaves every other specifier to Node first", async () => {

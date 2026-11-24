@@ -90,9 +90,13 @@ them, since this package does not depend on `ai`.
    calls are not caught: the SDK's transport writes through that same
    stream.
 2. `prepare` parses the flags. `--project` (default: the working
-   directory) is the folder for `.env`, the lookup, `--config` and
+   directory) is the folder for the env files, the lookup, `--config` and
    `--env-file`, because MCP clients do not document which folder they
-   start a server in. `.env` loading matches the CLI's `loadEnvironment`.
+   start a server in. `loadEnvironment` reads `--env-file`, else calls
+   `loadEnvFiles` from the shared loader, the CLI's own order:
+   `.env.local`, then `.env`, no `.env.local` when `NODE_ENV` is `test`
+   (decision 78). It returns the files it read, and the startup line ends
+   with them (`env .env.local, .env`, or `env none`).
 3. `loadMemoryClient` imports the memory file as the CLI does: Node's type
    stripping plus `registerAppResolver` from the shared loader. It
    takes the `memory` export, else the default export's `memory`, else
@@ -111,11 +115,12 @@ them, since this package does not depend on `ai`.
 
 ### The shared loader
 
-The memory file lookup, the resolve hook and the tsconfig reader come
-from `@mnemocyte/loader` (`packages/loader/`), a private workspace package
-that this package and `mnemocyte` list as a `workspace:*` dev dependency
-and tsdown bundles into `dist/cli.mjs` (decision 93). A TypeScript memory
-file therefore loads the same way in both bins; see
+The env file order, the memory file lookup, the resolve hook and the
+tsconfig reader come from `@mnemocyte/loader` (`packages/loader/`), a
+private workspace package that this package and `mnemocyte` list as a
+`workspace:*` dev dependency and tsdown bundles into `dist/cli.mjs`
+(decision 93). The env files and a TypeScript memory file therefore load
+the same way in both bins; see
 [features/cli.md](./cli.md#loading-the-memory-file) for how it works. The
 published `package.json` gains no dependency (pnpm writes the dev
 dependency as `0.0.0` when it packs). A change to the loader, such as
@@ -135,7 +140,7 @@ embedder (`test/fixtures/app/src/embedder.ts`).
 | File | Covers |
 |---|---|
 | `test/server.test.ts` | `tools/list` per option, schemas and annotations; save, search and forget over `InMemoryTransport` with the SDK's `Client`; scope fields and bad input rejected as tool errors; another entity's memories invisible and not deletable; an embedder failure as a tool error; a client's cancel reaching the embedder's signal; `createMemoryMcpServer`'s option checks. |
-| `test/cli.test.ts` | `parseCliArgs`; `prepare` in process with a recording `CliIo`: help, usage errors on stderr only, the lookup and `--project`, a bound export, a file without a client, a missing namespace, `--env-file`. |
+| `test/cli.test.ts` | `parseCliArgs`; `prepare` in process with a recording `CliIo`: help, usage errors on stderr only, the lookup and `--project`, a bound export, a file without a client, a missing namespace, `--env-file`; the env files from `--project`, with `test/fixtures/env/memory.ts` taking its namespace from the environment, and the files named on the startup line. |
 | `test/bin.test.ts` | The built `dist/cli.mjs` over real stdio with `StdioClientTransport`: Node loads `test/fixtures/app/src/memory.ts` with an extensionless import, which needs the resolve hook, and its `console.log` must not break the stream; exit 2 on bad flags with nothing on stdout; exit 0 when stdin closes. |
 | `test/loader-bundle.test.ts` | The loader sources embedded in `dist/cli.mjs.map` are exactly `packages/loader/src/` (index aside), and `dist/index.mjs` does not reach `registerHooks`. The loader's own tests are in `packages/loader/test/`. |
 

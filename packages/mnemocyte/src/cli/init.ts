@@ -111,10 +111,13 @@ interface EmbedderTemplate {
 	readonly import: string;
 	/** The `embedder:` property, unindented, as the guide shows it. */
 	readonly property: string;
-	/** The `.env` variable `init` adds, or none for a local server. */
+	/** The env file variable `init` adds, or none for a local server. */
 	readonly envVariable?: string;
-	/** The "Next" line while `envVariable` is empty. */
-	readonly keyHint?: string;
+	/**
+	 * What the "Next" line calls the key while `envVariable` is empty, as in
+	 * "Put your *OpenAI API key* after OPENAI_API_KEY= in .env".
+	 */
+	readonly keyName?: string;
 	/** A line printed once the file is chosen, or none. */
 	readonly note?: string;
 	/** A "Next" line after the file is written, or none. */
@@ -131,7 +134,7 @@ const EMBEDDERS: Readonly<Record<InitEmbedder, EmbedderTemplate>> = {
 		import: OPENAI_IMPORT,
 		property: 'embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
 		envVariable: "OPENAI_API_KEY",
-		keyHint: "Put your OpenAI API key after OPENAI_API_KEY= in .env",
+		keyName: "OpenAI API key",
 	},
 	"openai-compatible": {
 		import: 'import { openaiCompatibleEmbedder } from "mnemocyte/embedders";',
@@ -249,17 +252,17 @@ export function renderMemoryFile(input: {
 	return `${lines.join("\n")}\n`;
 }
 
-/** What `init` does to `.env`. */
+/** What `init` does to its env file. */
 export type EnvChange =
 	| { readonly action: "none" }
 	| { readonly action: "create"; readonly text: string }
 	| { readonly action: "append"; readonly text: string };
 
 /**
- * Plan adding `variable=` to `.env` for its current content, or `null` when
- * there is no file: nothing when the variable is defined (even empty), else
- * one line in the file's own line ending, after a line break when the last
- * line has none.
+ * Plan adding `variable=` to an env file for its current content, or `null`
+ * when there is no file: nothing when the variable is defined (even empty),
+ * else one line in the file's own line ending, after a line break when the
+ * last line has none.
  */
 export function planEnvChange(
 	content: string | null,
@@ -276,11 +279,44 @@ export function planEnvChange(
 	return { action: "append", text: `${separator}${variable}=${eol}` };
 }
 
-/** Whether a `.gitignore` has a line that ignores `.env` in the root. */
-export function ignoresEnvFile(gitignore: string): boolean {
+/**
+ * A `.gitignore` line as a regular expression for a file in the root, or
+ * null for a comment, a negation, a folder-only line or one that names a
+ * path below the root. `*` and `?` match within a name, as in Git; the
+ * rest is literal.
+ */
+function gitignorePattern(line: string): RegExp | null {
+	const trimmed = line.trim();
+	const pattern = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+	if (
+		pattern === "" ||
+		pattern.startsWith("#") ||
+		pattern.startsWith("!") ||
+		pattern.includes("/")
+	) {
+		return null;
+	}
+	const source = [...pattern]
+		.map((char) =>
+			char === "*"
+				? "[^/]*"
+				: char === "?"
+					? "[^/]"
+					: char.replace(/[\\^$.|+()[\]{}]/g, "\\$&"),
+		)
+		.join("");
+	return new RegExp(`^${source}$`);
+}
+
+/**
+ * Whether a `.gitignore` has a line that ignores `name` (`.env` or
+ * `.env.local`) in the root: `.env`, `.env*`, `*.env` or `*` for `.env`;
+ * `.env.local`, `.env*`, `.env*.local` or `*.local` for `.env.local`.
+ */
+export function ignoresEnvFile(gitignore: string, name: string): boolean {
 	return gitignore
 		.split(/\r?\n/)
-		.some((line) => /^\/?(\.env\*?|\*\.env|\*)$/.test(line.trim()));
+		.some((line) => gitignorePattern(line)?.test(name) === true);
 }
 
 type PackageManager = "pnpm" | "yarn" | "bun" | "npm";
@@ -452,8 +488,8 @@ function packageNames(pkg: PackageJson): Set<string> {
 /**
  * `mnemocyte init`: write a `memory.ts` for the driver in `package.json`
  * and the embedder `--embedder` names, and add the embedder's key variable
- * (`OPENAI_API_KEY=`; none for `openai-compatible`) to `.env` when it is
- * not defined there. It
+ * (`OPENAI_API_KEY=`; none for `openai-compatible`) to `.env.local` when the
+ * project has one, else to `.env`, when neither file defines it. It
  * never overwrites a file: an existing memory file anywhere the CLI looks
  * is left as is, and `memory.ts` is created with `O_EXCL` (`flag: "wx"`),
  * so a file that appears in the meantime is not replaced either. Every
@@ -510,37 +546,53 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 		}
 	}
 
-	// .env, for an embedder that reads a key from it. A local server needs
-	// none, so .env is not touched.
-	const envPath = join(cwd, ".env");
-	const envContent = await readText(envPath);
-	const env = envContent === null ? {} : parseEnv(envContent);
+	// The env file, for an embedder that reads a key from it. A local server
+	// needs none, so no file is touched. With `.env.local`, as in a Next.js
+	// app, the key goes there. A variable either file defines counts: the
+	// CLI reads `.env.local` first and keeps the first value, so an empty
+	// line there would hide a key in `.env`.
+	const localContent = await readText(join(cwd, ".env.local"));
+	const baseContent = await readText(join(cwd, ".env"));
+	const localEnv = localContent === null ? {} : parseEnv(localContent);
+	const baseEnv = baseContent === null ? {} : parseEnv(baseContent);
+	const env = { ...baseEnv, ...localEnv };
+	const target = localContent === null ? ".env" : ".env.local";
+	const targetContent = target === ".env.local" ? localContent : baseContent;
 	const variable = embedder.envVariable;
-	const change: EnvChange =
+	const definedIn =
 		variable === undefined
+			? undefined
+			: localEnv[variable] !== undefined
+				? ".env.local"
+				: baseEnv[variable] !== undefined
+					? ".env"
+					: undefined;
+	const change: EnvChange =
+		variable === undefined || definedIn !== undefined
 			? { action: "none" }
-			: planEnvChange(envContent, variable);
-	if (variable !== undefined && change.action === "none") {
-		out.push(`.env already defines ${variable}, left as is.`);
+			: planEnvChange(targetContent, variable);
+	if (variable !== undefined && definedIn !== undefined) {
+		out.push(`${definedIn} already defines ${variable}, left as is.`);
 	} else if (variable !== undefined && change.action !== "none") {
-		const verb = change.action === "create" ? "create .env with" : "add";
+		const targetPath = join(cwd, target);
+		const verb = change.action === "create" ? `create ${target} with` : "add";
 		if (dryRun) {
 			out.push(
-				`Would ${verb} ${variable}=${change.action === "append" ? " to .env" : ""}`,
+				`Would ${verb} ${variable}=${change.action === "append" ? ` to ${target}` : ""}`,
 			);
 		} else {
 			if (change.action === "create") {
-				await writeFile(envPath, change.text, { flag: "wx" });
-				out.push(`Created .env with ${variable}=`);
+				await writeFile(targetPath, change.text, { flag: "wx" });
+				out.push(`Created ${target} with ${variable}=`);
 			} else {
-				await appendFile(envPath, change.text);
-				out.push(`Added ${variable}= to .env`);
+				await appendFile(targetPath, change.text);
+				out.push(`Added ${variable}= to ${target}`);
 			}
 		}
 		const gitignore = await readText(join(cwd, ".gitignore"));
-		if (gitignore === null || !ignoresEnvFile(gitignore)) {
+		if (gitignore === null || !ignoresEnvFile(gitignore, target)) {
 			out.push(
-				"note: .gitignore does not list .env; add it before you put a key in the file.",
+				`note: .gitignore does not list ${target}; add it before you put a key in the file.`,
 			);
 		}
 	}
@@ -557,14 +609,16 @@ export async function initCommand(args: CliArgs, io: CliIo): Promise<number> {
 	}
 	if (
 		variable !== undefined &&
-		embedder.keyHint !== undefined &&
+		embedder.keyName !== undefined &&
 		!env[variable]
 	) {
-		next.push(embedder.keyHint);
+		next.push(
+			`Put your ${embedder.keyName} after ${variable}= in ${definedIn ?? target}`,
+		);
 	}
 	if (choice !== undefined && usesDatabaseUrl(choice.driver)) {
 		if (env.DATABASE_URL === undefined) {
-			next.push("Add DATABASE_URL=postgres://… to .env");
+			next.push(`Add DATABASE_URL=postgres://… to ${target}`);
 		}
 	}
 	if (choice !== undefined && embedder.next !== undefined) {

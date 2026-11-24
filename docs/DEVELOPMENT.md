@@ -30,7 +30,7 @@ Feature areas (their source and test paths are relative to
   observability.
 - [features/cli.md](./features/cli.md): the `mnemocyte` bin: loading the
   app's memory file (type stripping, the resolve hook, tsconfig `paths`),
-  `.env`, the `DATABASE_URL` fallback, `init`, `migrate`, `check` and
+  the env files, the `DATABASE_URL` fallback, `init`, `migrate`, `check` and
   `sql`.
 - [features/ai-sdk.md](./features/ai-sdk.md): `memoryTools`, its schemas,
   validation and scope boundary; `memoryMiddleware` and `withMemory`;
@@ -62,8 +62,8 @@ Mnemocyte is a library with a small CLI; there is no app to run. Try changes
 through the tests or from a consuming project. After `pnpm build`,
 `node packages/mnemocyte/dist/cli.mjs sql --dimensions 768` runs the bin
 without a database;
-`migrate` and `check` read `.env` in the current folder, so run them from
-a scratch project, never from this repository's root.
+`migrate` and `check` read `.env.local` and `.env` in the current folder,
+so run them from a scratch project, never from this repository's root.
 
 ## Structure
 
@@ -73,7 +73,7 @@ The repository is a pnpm workspace (`pnpm-workspace.yaml`: `packages/*`,
 ```txt
 packages/mnemocyte/     the published `mnemocyte` package: src/, test/, migrations/, scripts/, its configs and package.json
 packages/mcp/           the published `@mnemocyte/mcp` package: the MCP server and its bin; README.md and CHANGELOG.md of its own
-packages/loader/        the private `@mnemocyte/loader` package: the memory file lookup and the resolve hook both bins bundle
+packages/loader/        the private `@mnemocyte/loader` package: the env file order, the memory file lookup and the resolve hook both bins bundle
 apps/site/              the website (Next.js), the private `@mnemocyte/site` package; rules in apps/site/AGENTS.md
 examples/               runnable scripts, the private `@mnemocyte/examples` package on "mnemocyte": "workspace:*"
 docs/                   the user guide, these contributor docs, ARCHITECTURE.md and ROADMAP.md
@@ -88,9 +88,10 @@ Libraries go under `packages/`, things that are run or deployed under
 `mnemocyte` as a peer and a `workspace:*` dev dependency, so it builds and
 tests against `packages/mnemocyte/dist/`; see
 [features/mcp.md](./features/mcp.md).
-`@mnemocyte/loader` is `packages/loader/`: what both bins need to find
-and load an app's memory file (`src/memory-file.ts`: the folders and
-names searched and `findMemoryFile`; `src/resolve-hook.ts`;
+`@mnemocyte/loader` is `packages/loader/`: what both bins need to read
+an app's env files and find and load its memory file
+(`src/env-files.ts`: `.env.local`, then `.env`; `src/memory-file.ts`: the
+folders and names searched and `findMemoryFile`; `src/resolve-hook.ts`;
 `src/tsconfig.ts`). It is `"private": true` and never published. Its
 `exports` point at its TypeScript source, so it has no build: both
 packages list it as a `workspace:*` dev dependency, and tsdown bundles
@@ -569,9 +570,9 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   way a consumer resolves it.
 
 - `pnpm test` at the root runs `pnpm test:links`, `pnpm test:loader`
-  (`@mnemocyte/loader`'s Vitest: the lookup, `parseJsonc`, `paths`
-  through `extends`, import candidates and `resolveAppImport` on
-  temporary folders), the package's `test`
+  (`@mnemocyte/loader`'s Vitest: the env file order, the lookup,
+  `parseJsonc`, `paths` through `extends`, import candidates and
+  `resolveAppImport` on temporary folders), the package's `test`
   (`test:checks`, then `test:ci`), `@mnemocyte/mcp`'s `test` (its build
   and Vitest, against the `mnemocyte` build just made), then
   `pnpm test:examples`. `pnpm checktypes` covers all three packages and
@@ -710,7 +711,7 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   recording `CliIo` standing in for the terminal, in
   `test/contract/cli.test.ts`; the built `dist/cli.mjs` as a child process
   in temporary projects in `test/package/cli.test.ts`, which is where a
-  TypeScript memory file, the resolve hook and `.env` run on each CI Node
+  TypeScript memory file, the resolve hook and the env files run on each CI Node
   version; and the `DATABASE_URL` path on real Postgres in
   `test/integration/cli.test.ts`.
 - `test/embedders/voyage.test.ts`, `cohere.test.ts` and `google.test.ts`

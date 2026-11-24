@@ -15,7 +15,7 @@ The user reference is
   `dist/cli.d.mts` tsdown would write, which nothing references; a
   separate build for the bin would instead duplicate the shared chunks.
 - No new dependency. Arguments are parsed with `node:util` `parseArgs`,
-  the prompt is `node:readline`, the `.env` file is read with
+  the prompt is `node:readline`, the env files are read with
   `process.loadEnvFile`.
 - The entry has no top-level `await`, like the rest of `dist/`, and reads
   the version from `../package.json`, which is the package root from both
@@ -35,7 +35,7 @@ src/cli/
   io.ts                  CliIo (cwd, write, error, confirm), CliError, errorCauses, the process's own CliIo
   json.ts                what --json prints: CheckJson, MigratePlanJson, TextSearchPlanJson, ErrorJson, writeJson, errorJson
   memory-file.ts         --config, loading the memory file, reading the client (the lookup and resolve hook are in packages/loader/src/)
-  target.ts              .env, then a memory file or DATABASE_URL → what a command runs against
+  target.ts              the env files, then a memory file or DATABASE_URL → what a command runs against
   direct.ts              the CLI's own connection for a store that cannot migrate, and the installation comparison
   init.ts                chooseDriver, renderMemoryFile, planEnvChange, initCommand
   migrate.ts             migrateTarget / migrateCommand
@@ -115,11 +115,21 @@ readable by the bin's copy.
   names the file and points to `--config <built .js>`; anything else is
   "Loading *file* failed" with the first line of the error. All exit 2.
 
-## `.env`
+## Env files
 
 `loadEnvironment` runs before the memory file is imported: `--env-file`
-when given, else `./.env` when it exists. `process.loadEnvFile` does not
-override a variable that is already set. Node also scans a script's own
+when given, else `loadEnvFiles` from `@mnemocyte/loader`
+(`packages/loader/src/env-files.ts`, shared with `mnemocyte-mcp`), which
+reads `./.env.local` and then `./.env`, each when it is a file, and skips
+`.env.local` when `NODE_ENV` is `test` (decision 78). The check reads
+`process.env.NODE_ENV` before either file is loaded, so only the real
+environment's value counts. `process.loadEnvFile` does not override a
+variable that is already set. Node's docs say so only on `main` since
+nodejs/node#67276 (2026-11-07), not yet in the 22, 24 or 26 docs, so
+the loader's tests hold it on each CI Node version. That gives the
+order: the real environment, then `.env.local`, then `.env`, as in
+Next.js. Node's parser does not expand `$VAR` references, which Next.js
+does; the guide lists that as a limit. Node also scans a script's own
 arguments for `--env-file` (observed on 24.22 and 26.5): with a missing
 file Node exits 9 with its own message before the bin's code runs, and
 with an existing file it does not apply it, so the bin still loads it. The
@@ -231,8 +241,9 @@ nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
 - **Embedder.** `--embedder` takes `openai` (the default) or
   `openai-compatible` (`INIT_EMBEDDERS`; anything else exits 2, and the
   flag on another command is a usage error). Each entry of `EMBEDDERS`
-  holds the import, the `embedder:` property, the `.env` variable (none
-  for `openai-compatible`) and its output lines. `renderMemoryFile` swaps
+  holds the import, the `embedder:` property, the env file variable (none
+  for `openai-compatible`), the key's name for the "Next" line and its
+  output lines. `renderMemoryFile` swaps
   the `openaiEmbedder` import and property, so every driver template
   works with every embedder. The guide has whole files only for
   `openaiEmbedder`; for the other, the test takes the Ollama block of
@@ -245,22 +256,35 @@ nothing, so it takes only `--dry-run` and `--embedder` (`--config`,
   `writeFile(…, { flag: "wx" })`, which is `O_CREAT | O_EXCL`: the
   operating system refuses if the file appeared after the check. An
   `EEXIST` on `memory.ts` is reported as "exists, left as is".
-- **`.env`.** `planEnvChange` (pure) parses the file with `util.parseEnv`
+- **Env file.** `init` reads `.env.local` and `.env` and writes to
+  `.env.local` when it exists, else to `.env` (created when missing), so
+  a Next.js app gets its key where Next.js reads it. A variable either file
+  defines counts as defined: the CLI keeps the first value it reads, so an
+  empty line added to `.env.local` would hide a key in `.env`. The output
+  names the file that defines it, `.env.local` first. `NODE_ENV` is
+  ignored here, since `init` only writes files.
+  `planEnvChange` (pure) parses the target file with `util.parseEnv`
   (from Node 20.12; no longer experimental from 22.21 and 24.10, and
   Node's own `.env` parser, so `export` and quotes read as
   `process.loadEnvFile` reads them). A defined variable (`OPENAI_API_KEY`
   for the default embedder), even empty, means no change; otherwise one
   line is appended in the file's own line ending (CRLF when the file has
   one), after a line break when the last line has none. With an embedder
-  that has no variable, `init` never writes `.env` and prints nothing
-  about it; it still reads it for the `DATABASE_URL` hint. `.gitignore` is only read: a line `.env`, `/.env`, `.env*`,
-  `*.env` or `*` counts as ignoring it.
+  that has no variable, `init` writes neither file and prints nothing
+  about them; it still reads them for the `DATABASE_URL` hint.
+  `.gitignore` is only read, for the file `init` wrote to:
+  `ignoresEnvFile` turns each line into a pattern for a file in the root
+  (`*` and `?` within a name, an optional leading `/`), so `.env*`, `*`
+  and the file's own name count for both, `*.env` for `.env`, and
+  `.env.*`, `.env*.local` and `*.local` for `.env.local`. Comments,
+  negations (`!`) and lines with a `/` inside are skipped.
 - **`"type"`.** Without `"type": "module"`, Node loads an ESM `memory.ts`
   through syntax detection and prints `MODULE_TYPELESS_PACKAGE_JSON` on
   every run (observed on 24.22), so `init` prints a note.
 - **Output.** One line per change or kept file on stdout, then a "Next"
   list built from what is missing: install hints, an empty key,
-  `DATABASE_URL` for a server driver when `.env` has none, the embedder's
+  `DATABASE_URL` for a server driver when neither file has it (naming the
+  file `init` writes to), the embedder's
   own step (`ollama pull nomic-embed-text`), `migrate`.
   `--dry-run` prints the file's content instead of writing it. The exit
   code is 0 unless `package.json` is missing or not a JSON object (2).
@@ -492,9 +516,13 @@ Windows and an immediate exit can cut output short.
 
 - `packages/loader/test/loader.test.ts` (`pnpm test:loader`):
   `parseJsonc`, `paths` through `extends`, import candidates and
-  `resolveAppImport` on temporary folders, and the memory file lookup.
+  `resolveAppImport` on temporary folders, and the memory file lookup;
+  `packages/loader/test/env-files.test.ts` holds the env file order, the
+  first value winning, a set variable winning, `NODE_ENV=test` and no
+  `$VAR` expansion.
 - `test/cli/` (unit): argument parsing, `init` (driver choice, templates
-  against the guide, `.env` plans, runs in temporary folders), `--config`
+  against the guide, env file plans, `.env.local` and `.gitignore`
+  patterns, runs in temporary folders), `--config`
   (`memory-file.test.ts`), every `check` verdict and its code,
   `installationJson`,
   `main` for help, usage errors, `sql` and errors under `--json`, and error
@@ -541,7 +569,10 @@ Windows and an immediate exit can cut output short.
   size. This is the test of type stripping and the resolve hook on each CI
   Node version. Two more projects (PGlite, and Drizzle on PGlite) run
   `init --dry-run`, `init`, then `sql`, `migrate --yes` and `check` on the
-  file `init` wrote, and `init` again. An in-memory project whose memory
+  file `init` wrote, and `init` again. A project whose `memory.mjs` throws
+  with the values it sees checks the env file order through the built bin:
+  `.env.local` over `.env`, a set variable over both, `NODE_ENV=test` and
+  `--env-file`. An in-memory project whose memory
   file prints a line runs `check --json` and `migrate --dry-run --json`
   and reads the JSON from the last line. A Drizzle project runs
   `generate --adapter drizzle`, with and without `--schema` and `--out`

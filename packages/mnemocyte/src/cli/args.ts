@@ -22,7 +22,7 @@ export interface CliArgs {
 	readonly command: CliCommand;
 	/** `--config`: the memory file, relative to the working directory. */
 	readonly config?: string;
-	/** `--env-file`: loaded instead of `./.env`. */
+	/** `--env-file`: loaded instead of `./.env.local` and `./.env`. */
 	readonly envFile?: string;
 	/** `--dimensions`: 1 to 4,000. */
 	readonly dimensions?: number;
@@ -88,7 +88,7 @@ Options
       --schema <name>    The Postgres schema of the tables, when no memory
                          file names one (default: search_path, usually
                          public)
-      --env-file <path>  Load this file instead of ./.env
+      --env-file <path>  Load this file instead of ./.env.local and ./.env
   -y, --yes              migrate: enable pgvector without asking;
                          text-search: rewrite without asking
       --dry-run          migrate, init, text-search: show what would run and

@@ -269,6 +269,30 @@ describe("mnemocyte bin", { timeout: 60_000 }, () => {
 		expect(run.stderr).toContain("nope.env");
 	});
 
+	test("reads .env.local before .env, but not when NODE_ENV is test", async () => {
+		// The memory file throws with the values it sees, so the command
+		// stops at loading and needs no database.
+		const directory = await project("env-files", {
+			".env.local": "CLI_ENV_A=local\n",
+			".env": "CLI_ENV_A=base\nCLI_ENV_B=base\n",
+			"memory.mjs": `throw new Error(\`A=\${process.env.CLI_ENV_A} B=\${process.env.CLI_ENV_B} C=\${process.env.CLI_ENV_C}\`);\n`,
+		});
+		const run = await runCli(directory, ["check"], {
+			NODE_ENV: "development",
+			CLI_ENV_C: "shell",
+		});
+		expect(run.code).toBe(2);
+		expect(run.stderr).toContain("A=local B=base C=shell");
+
+		const testRun = await runCli(directory, ["check"], { NODE_ENV: "test" });
+		expect(testRun.stderr).toContain("A=base B=base");
+
+		const flag = await runCli(directory, ["check", "--env-file", ".env"], {
+			NODE_ENV: "development",
+		});
+		expect(flag.stderr).toContain("A=base B=base");
+	});
+
 	test("a memory file on the in-memory backend has nothing to migrate or check", async () => {
 		const directory = await project("in-memory", {
 			"lib/memory.ts": `

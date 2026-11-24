@@ -1682,6 +1682,33 @@ Dated 2026-10-26 unless noted.
     does, and set variables still win. The `.env.$(NODE_ENV)` files are
     left out: the CLI runs outside a mode, and guessing one would pick a
     file the user did not mean. `--env-file` still replaces both.
+    Landed with `feat/cli-env-files` (2026-11-24); the maintainer took
+    these recommendations:
+    - **Shared:** the order is `loadEnvFiles` in `@mnemocyte/loader`, used
+      by both bins, which keep their own `--env-file` branch since their
+      errors differ (`CliError` against `UsageError`), as decision 93 kept
+      the load errors per package. `process.loadEnvFile` keeps a variable
+      that is already set, so loading `.env.local` first makes it win
+      over `.env`. Node's docs state this only on `main` since
+      nodejs/node#67276 (2026-11-07), not yet in the 22, 24 or 26 docs,
+      so the loader's tests hold it on each CI Node version. Only the
+      real environment's `NODE_ENV` counts.
+    - **`init` and a defined key:** a key either file defines is left as
+      is, since an empty line added to `.env.local` would hide a key in
+      `.env`. The output names the file that defines it, `.env.local`
+      first; the key goes to `.env.local` when it exists, else to `.env`.
+    - **`.gitignore` note:** checks the file `init` wrote to, with Git's
+      `*` and `?` on a root-level line (`.env*`, `.env*.local`,
+      `*.local`); negations are not followed.
+    - **Saying which files were read:** `mnemocyte-mcp`'s startup line on
+      standard error ends with them (`env .env.local, .env`, or `env
+      none`), since MCP clients do not say which folder they start a
+      server in. The CLI prints nothing new, so its output and `--json`
+      stay as they were.
+
+    Found while building: Next.js expands `$VAR` in its env files and
+    Node's parser does not, so such a value reaches the CLI as written;
+    the CLI guide lists it as a limit.
 79. **The installation's size comes from the column** (2026-11-22, queued
     as `feat/installation-from-catalog`): the maintainer chose to read the
     embedding size and vector type from the embedding column's type
@@ -1934,7 +1961,8 @@ Dated 2026-10-26 unless noted.
     chosen over the tested copy, whose resolve hook `feat/cli-server-only`
     would change twice, and over a public export, which decision 85
     rejected. `feat/cli-env-files` changes the `.env` loading each package
-    writes for itself, which can move into the shared package then.
+    writes for itself, which can move into the shared package then (it
+    did; see decision 78).
     tsdown 0.23.1 keeps `dependencies`, `peerDependencies` and
     `optionalDependencies` external and bundles everything else
     (`getProductionDeps` in its source; `deps.alwaysBundle` forces
@@ -1962,7 +1990,8 @@ Dated 2026-10-26 unless noted.
       messages and reading the client stay in each package: they differ
       (`CliError` and exit codes against `UsageError`; the CLI's internal
       symbol against the public API). `.env` loading stays for
-      `feat/cli-env-files`.
+      `feat/cli-env-files`, which moved the file order here (decision
+      78).
     - **Tests:** the loader's unit tests are in `packages/loader/test/`
       (`pnpm test:loader`), on each CI Node version in the Node jobs.
       Each bin's tests that run its built `dist/cli.mjs` on a TypeScript

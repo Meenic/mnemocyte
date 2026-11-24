@@ -42,8 +42,9 @@ Memory file:
                         are relative to it. Default: the working directory.
   --config <file>       The app's memory file. Default: the first of memory.ts,
                         memory.mts, memory.js, memory.mjs in ., lib, src, src/lib.
-  --env-file <file>     Load this file into the environment first. Default: .env
-                        in the app's folder when it exists.
+  --env-file <file>     Load this file into the environment first. Default:
+                        .env.local, then .env, in the app's folder, each when
+                        it exists (no .env.local when NODE_ENV is test).
 
 Tools:
   --allow-forget        Also list forgetMemory, which deletes for good.

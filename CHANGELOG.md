@@ -44,6 +44,17 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ### Changed
 
+- **The CLI reads `.env.local`, then `.env`,** the order Next.js uses, so
+  a Next.js app no longer needs `--env-file .env.local`. A value in
+  `.env.local` wins over `.env`, and a variable that is already set still
+  wins over both. `.env.local` is skipped when `NODE_ENV` is `test`, as in
+  Next.js. The `.env.$(NODE_ENV)` files are not read, and `--env-file`
+  still replaces both files
+  ([cli.md](docs/guide/cli.md#environment-variables)).
+- **`mnemocyte init` writes the key to `.env.local`** when the project has
+  that file, else to `.env` as before. A key either file defines is left
+  as is, and the `.gitignore` note checks the file `init` wrote to
+  ([cli.md](docs/guide/cli.md#init)).
 - The `"CONFIG"` error that `migrate()` and `setTextSearchConfig()` throw
   for a client without interactive transactions names Neon's HTTP driver
   and how to run them instead: over a `Pool`, or with `mnemocyte migrate`

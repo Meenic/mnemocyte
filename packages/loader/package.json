@@ -2,7 +2,7 @@
 	"name": "@mnemocyte/loader",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Finds an app's memory file and resolves its imports for the mnemocyte and mnemocyte-mcp bins. Never published: tsdown bundles it into both.",
+	"description": "Loads an app's env files, finds its memory file and resolves its imports for the mnemocyte and mnemocyte-mcp bins. Never published: tsdown bundles it into both.",
 	"type": "module",
 	"sideEffects": false,
 	"exports": {

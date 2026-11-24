@@ -310,3 +310,29 @@ Nothing in your database has to change, and code changes only for a
   copy, older than 1.3, now makes `createMemory` throw `"CONFIG"` at once
   instead of failing on its first call. `npm ls mnemocyte` lists the
   copies.
+
+## 1.3 → 1.4
+
+Nothing in your code or database has to change. Check which database the
+CLI connects to if your project has both `.env.local` and `.env`.
+
+- **No migration.** 1.3 and 1.4 clients share a Postgres installation, so
+  deploy in either order.
+- **The CLI reads `.env.local` first.** Before loading the memory file,
+  the CLI reads `.env.local`, then `.env`, and a value in `.env.local`
+  wins. 1.3 read only `.env`, so when `.env.local` sets a different
+  `DATABASE_URL` (in a Next.js app often a development database),
+  `mnemocyte migrate` now connects there. Pass `--env-file .env` to read
+  only `.env` as before, or set the variable in the environment, which
+  wins over both files
+  ([environment variables](./cli.md#environment-variables)).
+  `mnemocyte-mcp` 0.2 reads them in the same order.
+- **`init` looks at your app first.** It imports the app's Drizzle client
+  when it finds one, and stops with exit code 2, writing nothing, when it
+  finds several; name one with `--db <path>`
+  ([your Drizzle client](./cli.md#your-drizzle-client)). In a Next.js app
+  it writes `src/lib/memory.ts` or `lib/memory.ts` instead of `memory.ts`
+  in the root ([Next.js](./cli.md#nextjs)). A memory file you already have
+  is left as is, and the CLI still finds it where it is.
+- **`--json` plans gain `connection`.** `migrate --dry-run --json` and
+  `text-search --dry-run --json` add a field; no field is removed.

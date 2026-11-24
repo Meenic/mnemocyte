@@ -12,6 +12,17 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-24
+
+The fourth minor release, for Next.js apps on Neon: `store` takes Neon's
+HTTP driver, `mnemocyte migrate` and `text-search` open a connection of
+their own for it, the CLI reads `.env.local` and loads memory files that
+import `server-only`, and `init` writes a memory file that imports the
+app's Drizzle client. `@mnemocyte/mcp` 0.2.0 reads env files and memory
+files the same way. Postgres has no migration, so 1.3 and 1.4 clients
+work with the same installation in either deploy order; see
+[upgrading](docs/guide/upgrading.md#13--14).
+
 ### Added
 
 - **Neon's serverless driver.** `createMemory({ store })` and
@@ -66,7 +77,6 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   `import "server-only"`. Other apps still get `memory.ts` in the root.
   When the app has a `next.config.js`, the `"type": "module"` note says to
   rename it first ([cli.md](docs/guide/cli.md#nextjs)).
-
 - **The CLI reads `.env.local`, then `.env`,** the order Next.js uses, so
   a Next.js app no longer needs `--env-file .env.local`. A value in
   `.env.local` wins over `.env`, and a variable that is already set still
@@ -78,10 +88,11 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   that file, else to `.env` as before. A key either file defines is left
   as is, and the `.gitignore` note checks the file `init` wrote to
   ([cli.md](docs/guide/cli.md#init)).
-- The `"CONFIG"` error that `migrate()` and `setTextSearchConfig()` throw
-  for a client without interactive transactions names Neon's HTTP driver
-  and how to run them instead: over a `Pool`, or with `mnemocyte migrate`
-  and `mnemocyte text-search`.
+- **A clearer error for clients without transactions.** The `"CONFIG"`
+  error that `migrate()` and `setTextSearchConfig()` throw for a client
+  without interactive transactions names Neon's HTTP driver and how to run
+  them instead: over a `Pool`, or with `mnemocyte migrate` and
+  `mnemocyte text-search`.
 
 ## [1.3.0] - 2026-11-21
 
@@ -1772,7 +1783,8 @@ coherent surface.
 
 - Initial project setup.
 
-[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Meenic/mnemocyte/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Meenic/mnemocyte/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Meenic/mnemocyte/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/Meenic/mnemocyte/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Meenic/mnemocyte/compare/v1.1.0...v1.2.0

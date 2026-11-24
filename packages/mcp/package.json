@@ -1,6 +1,6 @@
 {
 	"name": "@mnemocyte/mcp",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "An MCP server for Mnemocyte memory: search, save and forget for one fixed scope.",
 	"type": "module",
 	"sideEffects": false,

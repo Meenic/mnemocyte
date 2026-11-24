@@ -10,10 +10,12 @@ it.
 ## Done
 
 1.0.0 and 1.0.1 shipped on 2026-11-15, 1.1.0 and 1.2.0 on 2026-11-16,
-1.2.1 on 2026-11-20, 1.3.0 on 2026-11-21. What each release changed is in
-[CHANGELOG.md](../CHANGELOG.md), and why is in the ARCHITECTURE.md
-decisions. The finished queue that led to 1.0 (phases 0 to 4) is in the
-[roadmap at v1.0.1](https://github.com/Meenic/mnemocyte/blob/v1.0.1/docs/ROADMAP.md).
+1.2.1 on 2026-11-20, 1.3.0 on 2026-11-21, 1.4.0 on 2026-11-24.
+`@mnemocyte/mcp` 0.1.0 shipped on 2026-11-23 and 0.2.0 on 2026-11-24.
+What each release changed is in [CHANGELOG.md](../CHANGELOG.md) and
+[packages/mcp/CHANGELOG.md](../packages/mcp/CHANGELOG.md), and why is in
+the ARCHITECTURE.md decisions. The finished queue that led to 1.0 (phases
+0 to 4) is in the [roadmap at v1.0.1](https://github.com/Meenic/mnemocyte/blob/v1.0.1/docs/ROADMAP.md).
 
 ## API polish
 
@@ -585,7 +587,7 @@ release, since the guide is read from `main`.
   ends in `.js` only for a Node-mode tsconfig in a `"type": "module"`
   package (`loadModuleOptions` in `@mnemocyte/loader`). Decision 98; see
   [features/cli.md](./features/cli.md#init). This was the last 1.4.0
-  item: 1.4.0 and `@mnemocyte/mcp` 0.2.0 are next.
+  item, released in 1.4.0 with `@mnemocyte/mcp` 0.2.0.
 - [ ] `docs/nextjs-recipe`: a Next.js recipe in `guide/recipes.md`: Drizzle
   on Neon, `withMemory` in a route handler, extraction kept alive with
   `waitUntil: (promise) => after(() => promise)` (Next.js's `after` takes a

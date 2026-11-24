@@ -41,6 +41,13 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   command connected with, or `null` when the memory file's own client ran
   it
   ([cli.md](docs/guide/cli.md#stores-that-cannot-migrate)).
+- **Memory files that import `server-only` load in the CLI.** Next.js apps
+  guard server code with `import "server-only"`, and the package throws
+  when Node loads it outside React Server Components, so the CLI could
+  not load such a file. The import now loads as an empty module, whether
+  or not the package is installed, for `import` and `require()` alike.
+  Every other package resolves as before, `client-only` included
+  ([cli.md](docs/guide/cli.md#typescript-files)).
 
 ### Changed
 

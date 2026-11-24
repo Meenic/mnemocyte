@@ -73,8 +73,9 @@ readable by the bin's copy.
   only the app's own files are TypeScript.
 - **The resolve hook.** Type stripping needs full specifiers and reads no
   `tsconfig.json`, so `./db`, `./db.js` for `db.ts` and `@/lib/db` fail.
-  `registerAppResolver` installs a synchronous `resolve` hook with
-  `module.registerHooks` (see decision 36 for why not `module.register`).
+  `registerAppResolver` installs synchronous `resolve` and `load` hooks
+  with `module.registerHooks` (see decision 36 for why not
+  `module.register`); the `load` hook only serves `server-only`.
   The hook calls Node's resolution first and only acts when that throws,
   for an importer that is a file outside `node_modules`:
   - a relative specifier is resolved against the importer and tried as
@@ -86,8 +87,23 @@ readable by the bin's copy.
     target gets the same candidates.
 
   Because Node goes first, the hook cannot change how a package or an
-  existing file resolves. The price is that a `paths` entry named like an
-  installed package is ignored, where TypeScript would prefer it.
+  existing file resolves, with the one exception below. The price is that
+  a `paths` entry named like an installed package is ignored, where
+  TypeScript would prefer it.
+- **`server-only`.** React's marker package (0.0.1, the only version)
+  exports `react-server` to an empty `empty.js` and everything else to an
+  `index.js` that throws, and Next.js apps import it to guard server code
+  (Next.js handles the import itself, so installing it is optional). The
+  resolve hook maps the exact bare specifier `server-only` to
+  `mnemocyte:server-only` before calling Node, from any importer,
+  `node_modules` included, so an installed copy is never loaded; the
+  `load` hook in the same `registerHooks` call returns it as an empty ES
+  module (`format: "module"`, `source: ""`). Not a `data:` URL: on Node
+  24, `import` loads one, but `require()` reads it as a file path and
+  fails with `ENOENT`. `server-only/…`, `./server-only` and other names
+  go through Node as before, and nothing is printed (decision 97).
+  `client-only` is left alone: outside `react-server` it already
+  resolves to its empty `index.js`.
 - **`tsconfig.json`.** `parseJsonc` drops comments and trailing commas with
   a scanner that copies string literals whole. `extends` is followed for
   relative paths (with or without `.json`) and for packages (through
@@ -516,7 +532,11 @@ Windows and an immediate exit can cut output short.
 
 - `packages/loader/test/loader.test.ts` (`pnpm test:loader`):
   `parseJsonc`, `paths` through `extends`, import candidates and
-  `resolveAppImport` on temporary folders, and the memory file lookup;
+  `resolveAppImport` on temporary folders, `resolveHook` and `loadHook`
+  with stub `next` functions (`server-only` mapped without asking Node,
+  from an app file and from `node_modules`; `server-only/empty.js`,
+  `@acme/server-only`, `client-only` and `./server-only` passed to Node,
+  and the fallback as before), and the memory file lookup;
   `packages/loader/test/env-files.test.ts` holds the env file order, the
   first value winning, a set variable winning, `NODE_ENV=test` and no
   `$VAR` expansion.
@@ -572,7 +592,11 @@ Windows and an immediate exit can cut output short.
   file `init` wrote, and `init` again. A project whose `memory.mjs` throws
   with the values it sees checks the env file order through the built bin:
   `.env.local` over `.env`, a set variable over both, `NODE_ENV=test` and
-  `--env-file`. An in-memory project whose memory
+  `--env-file`. Two in-memory projects whose `memory.ts` imports
+  `server-only` and a `.cjs` file that `require()`s it run `check`: one
+  without the package, one with a stand-in of 0.0.1 (its `exports` map and
+  throwing `index.js`), which plain Node is shown to fail on. An in-memory
+  project whose memory
   file prints a line runs `check --json` and `migrate --dry-run --json`
   and reads the JSON from the last line. A Drizzle project runs
   `generate --adapter drizzle`, with and without `--schema` and `--out`
@@ -606,7 +630,8 @@ Windows and an immediate exit can cut output short.
   Postgres only, and `--dimensions` (parsed before the store is known)
   stops at Postgres's 4,000. `text-search` on libSQL asks before
   rebuilding the keyword index and prints no 1.1 warning.
-- The hook is not consulted for imports made from inside `node_modules`.
+- Imports made from inside `node_modules` get no fallback; only the
+  `server-only` mapping applies to them.
 - For a store without transactions, the check that the URL reaches the
   app's database compares installations, so two identical ones are told
   apart only after the change. When the Neon package does not resolve

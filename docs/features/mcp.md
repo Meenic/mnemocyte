@@ -124,8 +124,9 @@ the same way in both bins; see
 [features/cli.md](./cli.md#loading-the-memory-file) for how it works. The
 published `package.json` gains no dependency (pnpm writes the dev
 dependency as `0.0.0` when it packs). A change to the loader, such as
-`feat/cli-server-only`, is made once, but reaches this bin's users only
-with this package's next release. Exporting the loader from `mnemocyte`
+mapping `import "server-only"` to an empty module (decision 97), is made
+once, but reaches this bin's users only with this package's next
+release. Exporting the loader from `mnemocyte`
 would add public API that only tools use and tie this package to a newer
 `mnemocyte` (decision 85).
 
@@ -141,7 +142,7 @@ embedder (`test/fixtures/app/src/embedder.ts`).
 |---|---|
 | `test/server.test.ts` | `tools/list` per option, schemas and annotations; save, search and forget over `InMemoryTransport` with the SDK's `Client`; scope fields and bad input rejected as tool errors; another entity's memories invisible and not deletable; an embedder failure as a tool error; a client's cancel reaching the embedder's signal; `createMemoryMcpServer`'s option checks. |
 | `test/cli.test.ts` | `parseCliArgs`; `prepare` in process with a recording `CliIo`: help, usage errors on stderr only, the lookup and `--project`, a bound export, a file without a client, a missing namespace, `--env-file`; the env files from `--project`, with `test/fixtures/env/memory.ts` taking its namespace from the environment, and the files named on the startup line. |
-| `test/bin.test.ts` | The built `dist/cli.mjs` over real stdio with `StdioClientTransport`: Node loads `test/fixtures/app/src/memory.ts` with an extensionless import, which needs the resolve hook, and its `console.log` must not break the stream; exit 2 on bad flags with nothing on stdout; exit 0 when stdin closes. |
+| `test/bin.test.ts` | The built `dist/cli.mjs` over real stdio with `StdioClientTransport`: Node loads `test/fixtures/app/src/memory.ts` with an extensionless import, which needs the resolve hook, and its `console.log` must not break the stream; `test/fixtures/server-only/memory.ts`, which imports `server-only` and a `.cjs` file that `require()`s it, starting without the package and with a stand-in of 0.0.1 written to its `node_modules` (removed afterwards); exit 2 on bad flags with nothing on stdout; exit 0 when stdin closes. |
 | `test/loader-bundle.test.ts` | The loader sources embedded in `dist/cli.mjs.map` are exactly `packages/loader/src/` (index aside), and `dist/index.mjs` does not reach `registerHooks`. The loader's own tests are in `packages/loader/test/`. |
 
 The `prepare` tests import memory files inside Vitest, which transforms

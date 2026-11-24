@@ -555,13 +555,22 @@ release, since the guide is read from `main`.
   with the files it read, and the CLI prints nothing new. Node's parser
   does not expand `$VAR` as Next.js does, which the guide lists as a
   limit (decision 78).
-- [ ] `feat/cli-server-only`: a memory file that imports `server-only`
+- [x] `feat/cli-server-only`: a memory file that imports `server-only`
   loads in the CLI. The package throws at import outside React's
   `react-server` condition, so a Next.js `memory.ts` that guards itself
   fails every command today. Decided (decision 81): the CLI's resolve hook
   maps `server-only` alone to an empty module. After `chore/shared-loader`
   the hook is in the shared loader package, which `@mnemocyte/mcp`
   bundles too, so the change is made once (decision 93).
+  Landed: `resolveHook` maps the bare `server-only` to
+  `mnemocyte:server-only` before Node resolves it, from any importer, and
+  `loadHook` returns an empty ES module for it; a `data:` URL failed under
+  `require()` on Node 24. Decided (decision 97): always rather than only when Node
+  fails (an installed copy resolves to the file that throws),
+  `client-only` left to Node, and nothing printed. Both bins' package
+  tests run the built dist on a memory file that imports it and a `.cjs`
+  file that requires it, with and without a stand-in of the package; see
+  [features/cli.md](./features/cli.md#loading-the-memory-file).
 - [ ] `feat/init-detect-app`: `init` finds the app's own Drizzle client
   (a `drizzle(...)` export in `src/db`, `db`, `src/lib/db` and the like,
   or `--db <path>`) and writes a `memory.ts` that imports it, in `src/lib/`

@@ -141,11 +141,12 @@ other area passed. The first item should land before 1.5.0 is cut.
   (`embedding` is its deprecated alias). Fix the example and check the
   other OpenRouter snippets against the package's types. A unit test now
   runs the example against the real package (decision 103).
-- [ ] `feat/init-openrouter`: `init --embedder openrouter` writes
+- [x] `feat/init-openrouter`: `init --embedder openrouter` writes
   `openrouterEmbedder({ model: "openai/text-embedding-3-small" })` and
   appends `OPENROUTER_API_KEY=` to `.env`, like the `openai` path. Today
   it fails with "Unknown embedder", and `guide/cli.md` says other
-  embedders are not offered yet.
+  embedders are not offered yet. No other hosted embedders for `init`
+  (decision 104).
 - [ ] `feat/forget-returns-content`: `forgetMemory` returns
   `{ forgotten: true }` only, so a wrong id goes unnoticed. In the run,
   gpt-4.1-nano asked to forget "vegetarian" passed the id of "Works as a

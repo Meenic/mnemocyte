@@ -470,6 +470,7 @@ const TAKEN_NAMES: ReadonlySet<string> = new Set([
 	"createMemory",
 	"openaiEmbedder",
 	"openaiCompatibleEmbedder",
+	"openrouterEmbedder",
 ]);
 
 /** How the memory file imports a client and names it. */

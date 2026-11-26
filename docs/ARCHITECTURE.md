@@ -2459,3 +2459,19 @@ Dated 2026-10-26 unless noted.
     The cost is one dev dependency to keep current. The guide's other AI
     SDK examples (`google.embedding`, `cohere.embedding`) are not guarded
     this way.
+104. **`init --embedder openrouter`** (2026-11-27, landed with
+    `feat/init-openrouter`): the 1.5 real-app run reached for it and got
+    "Unknown embedder", so the maintainer took these recommendations:
+    - **The model is `openai/text-embedding-3-small`.** It is the model
+      the run used, it reports `text-embedding-3-small` like
+      `openaiEmbedder` (decision 102), so an installation can move between
+      the two, and its 1536 dimensions fit a plain `vector` column. Qwen3
+      or Gemini would mean `halfvec` and, for Qwen3, several hosts.
+    - **No `app` and no `routing` in the file.** `app.url` is required
+      and `init` cannot know it; a pinned host would turn the one-line
+      property into a block. The guide links to "Pinning a host", since
+      OpenRouter lists OpenAI and Azure for this model.
+    - **The key is `OPENROUTER_API_KEY=`**, handled like the default's.
+    - **No other hosted embedders yet,** as decision 48 said. OpenRouter
+      already reaches Voyage, Cohere and Gemini models with one key; a
+      value of their own stays additive and waits until someone asks.

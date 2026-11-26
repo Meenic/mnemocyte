@@ -126,6 +126,29 @@ describe("renderMemoryFile", () => {
 		}
 	});
 
+	test("each openrouter template is the OpenAI one with the same model through OpenRouter", () => {
+		for (const driver of DRIVERS) {
+			const openai = renderMemoryFile({ driver, namespace: "my-agent" });
+			const expected = openai
+				.replace(
+					'import { openaiEmbedder } from "mnemocyte/embedders";',
+					'import { openrouterEmbedder } from "mnemocyte/embedders";',
+				)
+				.replace(
+					'  embedder: openaiEmbedder({ model: "text-embedding-3-small" }),',
+					'  embedder: openrouterEmbedder({ model: "openai/text-embedding-3-small" }),',
+				);
+			expect(expected).not.toBe(openai);
+			expect(
+				renderMemoryFile({
+					driver,
+					namespace: "my-agent",
+					embedder: "openrouter",
+				}),
+			).toBe(expected);
+		}
+	});
+
 	test("openai is the default embedder", () => {
 		expect(
 			renderMemoryFile({
@@ -458,6 +481,77 @@ describe("mnemocyte init", () => {
 		expect(out).toContain(
 			"Next, after a real run:\n  Pull the model: ollama pull nomic-embed-text",
 		);
+	});
+
+	test("--embedder openrouter writes the OpenRouter file and OPENROUTER_API_KEY=", async () => {
+		await packageJson({
+			name: "router-bot",
+			type: "module",
+			dependencies: { postgres: "3" },
+		});
+		await writeFile(join(cwd, ".gitignore"), ".env*\n");
+		await writeFile(join(cwd, "pnpm-lock.yaml"), "");
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--embedder", "openrouter"], io, "1.2.3")).toBe(
+			0,
+		);
+
+		expect(await read("memory.ts")).toBe(
+			renderMemoryFile({
+				driver: "postgres",
+				namespace: "router-bot",
+				embedder: "openrouter",
+			}),
+		);
+		expect(await read(".env")).toBe("OPENROUTER_API_KEY=\n");
+		expect(io.stdout()).toBe(
+			[
+				"Found postgres in package.json: using postgres.js.",
+				"Wrote memory.ts",
+				"Created .env with OPENROUTER_API_KEY=",
+				"",
+				"Next:",
+				"  Put your OpenRouter API key after OPENROUTER_API_KEY= in .env",
+				"  Add DATABASE_URL=postgres://… to .env",
+				"  Create the schema: pnpm exec mnemocyte migrate",
+				"",
+			].join("\n"),
+		);
+		expect(io.stderr()).toBe("");
+	});
+
+	test("--embedder openrouter keeps a defined OPENROUTER_API_KEY and adds no OPENAI_API_KEY", async () => {
+		await packageJson({ type: "module" });
+		await writeFile(join(cwd, ".env"), "OPENROUTER_API_KEY=sk-or-test\n");
+		const io = createTestIo(cwd);
+		expect(await main(["init", "--embedder=openrouter"], io, "1.2.3")).toBe(0);
+
+		expect(await read(".env")).toBe("OPENROUTER_API_KEY=sk-or-test\n");
+		const out = io.stdout();
+		expect(out).toContain(
+			".env already defines OPENROUTER_API_KEY, left as is.\n",
+		);
+		expect(out).not.toContain("OPENAI_API_KEY");
+		expect(out).not.toContain("Put your");
+	});
+
+	test("--embedder openrouter --dry-run prints the file and writes nothing", async () => {
+		await packageJson({ name: "demo", type: "module" });
+		const io = createTestIo(cwd);
+		expect(
+			await main(
+				["init", "--dry-run", "--embedder", "openrouter"],
+				io,
+				"1.2.3",
+			),
+		).toBe(0);
+		expect(await exists("memory.ts")).toBe(false);
+		expect(await exists(".env")).toBe(false);
+		const out = io.stdout();
+		expect(out).toContain(
+			`Would write memory.ts:\n\n${renderMemoryFile({ driver: "in-memory", namespace: "demo", embedder: "openrouter" })}`,
+		);
+		expect(out).toContain("Would create .env with OPENROUTER_API_KEY=\n");
 	});
 
 	test("a second run changes nothing", async () => {

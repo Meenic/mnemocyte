@@ -321,18 +321,21 @@ nothing, so it takes only `--dry-run`, `--embedder` and `--db`
   `init` cannot drift; it also holds the output and file in the CLI
   guide's "Your Drizzle client" to a run. The namespace is
   `package.json` `name` through `JSON.stringify`.
-- **Embedder.** `--embedder` takes `openai` (the default) or
-  `openai-compatible` (`INIT_EMBEDDERS`; anything else exits 2, and the
-  flag on another command is a usage error). Each entry of `EMBEDDERS`
-  holds the import, the `embedder:` property, the env file variable (none
-  for `openai-compatible`), the key's name for the "Next" line and its
+- **Embedder.** `--embedder` takes `openai` (the default),
+  `openai-compatible` or `openrouter` (`INIT_EMBEDDERS`; anything else
+  exits 2, and the flag on another command is a usage error). Each entry
+  of `EMBEDDERS` holds the import, the `embedder:` property, the env file
+  variable (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, none for
+  `openai-compatible`), the key's name for the "Next" line and its
   output lines. `renderMemoryFile` swaps
   the `openaiEmbedder` import and property, so every driver template
   works with every embedder. The guide has whole files only for
-  `openaiEmbedder`; for the other, the test takes the Ollama block of
-  getting-started (an import and an `embedder:` property) and checks that
-  each `openai-compatible` file is the `openai` one with those two
-  swapped. Decision 48 has the maintainer's choices.
+  `openaiEmbedder`; for the others, the tests check that each
+  `openai-compatible` file is the `openai` one with the Ollama block of
+  getting-started (an import and an `embedder:` property) swapped in, and
+  each `openrouter` file the same with
+  `openrouterEmbedder({ model: "openai/text-embedding-3-small" })`.
+  Decisions 48 and 104 have the maintainer's choices.
 - **No overwrite.** `findMemoryFile` runs first: a file anywhere the CLI
   looks is kept, because a new `./memory.ts` would hide `src/memory.ts`
   from `migrate`. `memory.ts` and a new `.env` are then created with

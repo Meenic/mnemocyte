@@ -1,3 +1,4 @@
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { APICallError, createGateway, customProvider } from "ai";
 import { MockEmbeddingModelV4 } from "ai/test";
 import { createMemory, ProviderError } from "mnemocyte";
@@ -774,5 +775,54 @@ describe("aiSdkEmbedder through the AI Gateway provider", () => {
 			message:
 				"AI SDK embeddings request failed with status 429 (rate_limit_exceeded).",
 		});
+	});
+});
+
+// The guide's OpenRouter example, run against the real provider package.
+// Its types declare embeddingModel (from ProviderV4) but it is missing at
+// runtime, so a one-argument call would type-check and still throw.
+describe("aiSdkEmbedder with @openrouter/ai-sdk-provider", () => {
+	test("runs the guide's example", async () => {
+		const fetchMock = vi.fn<typeof fetch>(
+			async () =>
+				new Response(
+					JSON.stringify({
+						object: "list",
+						data: [{ object: "embedding", embedding: [0.5, 0.5], index: 0 }],
+						model: "qwen/qwen3-embedding-8b",
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } },
+				),
+		);
+		const openrouter = createOpenRouter({
+			appName: "My App",
+			appUrl: "https://myapp.example",
+			apiKey: "test-openrouter-key",
+			fetch: fetchMock,
+		});
+		const embedder = aiSdkEmbedder({
+			model: openrouter.textEmbeddingModel("qwen/qwen3-embedding-8b", {
+				provider: { order: ["deepinfra"], allow_fallbacks: false },
+			}),
+		});
+
+		expect(embedder).toMatchObject({
+			model: "qwen/qwen3-embedding-8b",
+			dimensions: 4096,
+		});
+		await expect(
+			embedder.embed(["a"], { purpose: "document" }),
+		).resolves.toEqual([[0.5, 0.5]]);
+
+		const [url, init] = fetchMock.mock.calls[0] ?? [];
+		expect(String(url)).toBe("https://openrouter.ai/api/v1/embeddings");
+		expect(JSON.parse(String(init?.body))).toMatchObject({
+			model: "qwen/qwen3-embedding-8b",
+			input: ["a"],
+			provider: { order: ["deepinfra"], allow_fallbacks: false },
+		});
+		const headers = new Headers(init?.headers);
+		expect(headers.get("x-openrouter-title")).toBe("My App");
+		expect(headers.get("http-referer")).toBe("https://myapp.example");
 	});
 });

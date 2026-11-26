@@ -134,12 +134,13 @@ through OpenRouter: `openrouterEmbedder` and `aiSdkEmbedder` with
 `openai/gpt-4.1-nano` through `@openrouter/ai-sdk-provider` 3.1.0. Every
 other area passed. The first item should land before 1.5.0 is cut.
 
-- [ ] `docs/openrouter-embedding-method`: the `aiSdkEmbedder` example in
+- [x] `docs/openrouter-embedding-method`: the `aiSdkEmbedder` example in
   `guide/embedders.md` calls `openrouter.embeddingModel(…)`, which
   `@openrouter/ai-sdk-provider` 3.1.0 (the release for AI SDK 7) does not
   have, so it throws a `TypeError`. The method is `textEmbeddingModel`
   (`embedding` is its deprecated alias). Fix the example and check the
-  other OpenRouter snippets against the package's types.
+  other OpenRouter snippets against the package's types. A unit test now
+  runs the example against the real package (decision 103).
 - [ ] `feat/init-openrouter`: `init --embedder openrouter` writes
   `openrouterEmbedder({ model: "openai/text-embedding-3-small" })` and
   appends `OPENROUTER_API_KEY=` to `.env`, like the `openai` path. Today

@@ -509,7 +509,7 @@ const openrouter = createOpenRouter({
   appUrl: "https://myapp.example",
 });
 const embedder = aiSdkEmbedder({
-  model: openrouter.embeddingModel("qwen/qwen3-embedding-8b", {
+  model: openrouter.textEmbeddingModel("qwen/qwen3-embedding-8b", {
     provider: { order: ["deepinfra"], allow_fallbacks: false },
   }),
 });

@@ -680,10 +680,14 @@ release, since the guide is read from `main`.
   closed), and with `next start` the callback ran and saved the memory.
   The same source also accepts a promise, but the docs name only a
   callback, so the recipe keeps `() => promise`. Not tried on Vercel.
-- [ ] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
+- [x] `fix/retry-529`: retry HTTP 529 like 503. OpenRouter's embeddings
   docs name 529 for an overloaded provider (its error list does not), and
   the built-in rule retries 408, 429, 500, 502, 503 and 504 only.
   Decided (decision 82): for every embedder, in `resilience.ts`.
+  Landed: 529 in `RETRYABLE_STATUSES`, with the same backoff and
+  `Retry-After` handling as 503 (pinned over HTTP in
+  `openai-compatible.test.ts`); the guide says a custom `shouldRetry`
+  must list 529 itself. Ships in 1.5.0 with `feat/openrouter-embedder`.
 - [ ] `feat/openrouter-embedder`: `openrouterEmbedder` in
   `mnemocyte/embedders`, on `fetch` like the others: `OPENROUTER_API_KEY`,
   `https://openrouter.ai/api/v1`, OpenRouter's `provider` object as

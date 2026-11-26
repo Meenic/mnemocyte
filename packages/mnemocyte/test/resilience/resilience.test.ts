@@ -25,7 +25,7 @@ describe("resilience", () => {
 	test("decides retries from status and error codes, not messages", () => {
 		const withStatus = (status: number) =>
 			Object.assign(new Error("failed"), { status });
-		for (const status of [408, 429, 500, 502, 503, 504]) {
+		for (const status of [408, 429, 500, 502, 503, 504, 529]) {
 			expect(defaultShouldRetry(withStatus(status)), String(status)).toBe(true);
 		}
 		for (const status of [400, 401, 403, 404, 409, 422, 501, 505]) {

@@ -18,9 +18,10 @@ const DEFAULT_MAX_RETRY_AFTER_MS = 60_000;
 /**
  * HTTP statuses retried by default: request timeout, rate limit, and the
  * server errors that mean "try again" (not 501 Not Implemented or 505).
+ * 529 is OpenRouter's "provider overloaded".
  */
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
-	408, 429, 500, 502, 503, 504,
+	408, 429, 500, 502, 503, 504, 529,
 ]);
 
 /**
@@ -86,7 +87,7 @@ function hasRetryableNetworkCode(error: unknown): boolean {
  * Default rule for whether an error should be retried. Decisions rest on
  * structured fields, never on message text:
  *
- * - a numeric `status` of 408, 429, 500, 502, 503 or 504 (such as a
+ * - a numeric `status` of 408, 429, 500, 502, 503, 504 or 529 (such as a
  *   `ProviderError`);
  * - a transient network `code` (`ECONNRESET`, `ETIMEDOUT`, undici socket
  *   and timeout codes…) on the error or along its `cause` chain;

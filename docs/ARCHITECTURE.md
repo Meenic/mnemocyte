@@ -2424,7 +2424,8 @@ Dated 2026-10-26 unless noted.
       change its vectors. The maintainer chose this
       over shipping the break in 1.5.0; the full decision 83 behaviour is
       queued for 2.0 in ROADMAP.md, "Later". Its tests use a fake v4 model
-      with provider `openrouter`, so there is no new dev dependency.
+      with provider `openrouter`, so there is no new dev dependency
+      (decision 103 later added one for the guide's example).
     - **Responses are read with or without `index`,** since OpenRouter's
       schema makes it optional (every live response had it). The host is
       not recorded. The schema has no field for it, but every live
@@ -2438,3 +2439,23 @@ Dated 2026-10-26 unless noted.
       attribution counts on `/embeddings`, which only the maintainer's
       OpenRouter activity page shows. The unit tests run against a mocked
       `fetch`.
+
+103. **The guide's OpenRouter AI SDK example runs in a unit test**
+    (2026-11-27, landed with `docs/openrouter-embedding-method`): the
+    guide called `openrouter.embeddingModel(…)`, which
+    `@openrouter/ai-sdk-provider` 3.1.0 does not implement, and the 1.5
+    real-app run hit the `TypeError`. Its `OpenRouterProvider` extends AI
+    SDK 7's `ProviderV4`, which declares a one-argument
+    `embeddingModel`, so that call type-checks and still throws; the
+    guide's call, with settings as a second argument, would have failed
+    `tsc`. A typed example and a runtime test both need the package as a
+    dev dependency (`^3.1.0`) for its types, and `pnpm checktypes` covers
+    the test file too, so the maintainer took the recommendation to run
+    the example in `test/embedders/ai-sdk.test.ts` over a mocked `fetch`.
+    The test checks the size from the shared table, the request's
+    `provider` object and the attribution headers. It also covers the
+    real model's `provider` value, `openrouter`, which `aiSdkEmbedder`
+    reads to recognise these models and which the other tests only fake.
+    The cost is one dev dependency to keep current. The guide's other AI
+    SDK examples (`google.embedding`, `cohere.embedding`) are not guarded
+    this way.

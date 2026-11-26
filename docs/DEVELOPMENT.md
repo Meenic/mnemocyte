@@ -738,6 +738,8 @@ where pnpm runs the package's scripts; `docs/`, `examples/` and the root
   `MockEmbeddingModelV4` and `customProvider` (as the global provider for
   string ids), and with a real `createGateway` provider over a mocked
   `fetch`, which checks the gateway request body and its error mapping.
+  It also runs the guide's `@openrouter/ai-sdk-provider` example over a
+  mocked `fetch` (decision 103).
 - `test/ai-sdk/tools.test.ts`, `middleware.test.ts` and
   `extraction.test.ts` drive the tools, the middleware and extraction
   directly and through `generateText` and `streamText` with

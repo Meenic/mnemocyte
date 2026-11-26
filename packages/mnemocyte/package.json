@@ -177,6 +177,7 @@
 		"@libsql/client": "^0.18.0",
 		"@mnemocyte/loader": "workspace:*",
 		"@neondatabase/serverless": "^1.2.1",
+		"@openrouter/ai-sdk-provider": "^3.1.0",
 		"@types/node": "^22.20.5",
 		"@types/pg": "^8.23.1",
 		"ai": "^7.0.170",

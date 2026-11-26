@@ -12,6 +12,15 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **HTTP 529 is retried like 503.** The built-in retry rule now also
+  retries 529, which OpenRouter returns when a provider is overloaded,
+  with the same backoff and `Retry-After` handling, for every embedder. A
+  custom `provider.shouldRetry` replaces the built-in rule, so add 529 to
+  it if you list statuses yourself
+  ([embedders](docs/guide/embedders.md#timeouts-and-retries)).
+
 ## [1.4.0] - 2026-11-24
 
 The fourth minor release, for Next.js apps on Neon: `store` takes Neon's

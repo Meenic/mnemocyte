@@ -1748,12 +1748,18 @@ Dated 2026-10-26 unless noted.
     which would change how every package with such an export resolves
     (React itself among them). `server-only`
     exports `react-server` to an empty file and throws by default.
-82. **HTTP 529 is retried** (2026-11-22, queued as `fix/retry-529`): the
+82. **HTTP 529 is retried** (2026-11-22, landed with `fix/retry-529`): the
     maintainer chose to add 529 to the built-in retry statuses for every
     embedder, not just OpenRouter's. OpenRouter's embeddings docs name 529
     for an overloaded provider, though its error list does not, and the
     status means "overloaded" wherever it is used, so retrying it is as
-    safe as retrying 503.
+    safe as retrying 503. (2026-11-26) It reads `Retry-After` as 503 does:
+    the wait comes from the error's `retryAfterMs` whatever its status,
+    though OpenRouter documents the header only for 429, 503 and 402. The
+    OpenAI, Voyage, Cohere and Gemini error pages do not list 529. A custom
+    `shouldRetry` replaces the built-in rule, so the guide tells apps that
+    list statuses to add 529 themselves; exporting `defaultShouldRetry`
+    was left out as new public API.
 83. **OpenRouter model ids drop the vendor prefix** (2026-11-22, queued as
     `feat/openrouter-embedder`): the maintainer chose to report
     `openai/text-embedding-3-small` as `text-embedding-3-small`, as

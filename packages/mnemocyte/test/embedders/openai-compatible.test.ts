@@ -379,37 +379,40 @@ describe("openaiCompatibleEmbedder", () => {
 		).rejects.toMatchObject({ code: "EMBEDDING" });
 	});
 
-	test("retries a 503 after its Retry-After and passes a final ProviderError through", async () => {
-		fetchMock
-			.mockResolvedValueOnce(
-				new Response('{"error":{"code":"overloaded"}}', {
-					status: 503,
-					headers: { "retry-after": "0" },
-				}),
-			)
-			.mockResolvedValueOnce(okResponse(1));
-		const memory = createMemory({
-			embedder: openaiCompatibleEmbedder(BASE),
-			provider: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
-		});
+	test.each([503, 529])(
+		"retries a %i after its Retry-After and passes a final ProviderError through",
+		async (status) => {
+			fetchMock
+				.mockResolvedValueOnce(
+					new Response('{"error":{"code":"overloaded"}}', {
+						status,
+						headers: { "retry-after": "0" },
+					}),
+				)
+				.mockResolvedValueOnce(okResponse(1));
+			const memory = createMemory({
+				embedder: openaiCompatibleEmbedder(BASE),
+				provider: { baseDelayMs: 60_000, maxDelayMs: 60_000 },
+			});
 
-		const started = Date.now();
-		await memory.add({ scope: testScope("alice"), content: "x" });
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-		// Retry-After: 0 replaces the one-minute backoff.
-		expect(Date.now() - started).toBeLessThan(5_000);
+			const started = Date.now();
+			await memory.add({ scope: testScope("alice"), content: "x" });
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			// Retry-After: 0 replaces the one-minute backoff.
+			expect(Date.now() - started).toBeLessThan(5_000);
 
-		fetchMock.mockResolvedValueOnce(
-			new Response('{"error":{"code":"invalid_api_key"}}', { status: 401 }),
-		);
-		const error = await expectMnemocyteError(
-			memory.add({ scope: testScope("alice"), content: "y" }),
-			"EMBEDDING",
-		);
-		expect(error).toBeInstanceOf(ProviderError);
-		expect(error.cause).toEqual({ error: { code: "invalid_api_key" } });
-		expect(fetchMock).toHaveBeenCalledTimes(3);
-	});
+			fetchMock.mockResolvedValueOnce(
+				new Response('{"error":{"code":"invalid_api_key"}}', { status: 401 }),
+			);
+			const error = await expectMnemocyteError(
+				memory.add({ scope: testScope("alice"), content: "y" }),
+				"EMBEDDING",
+			);
+			expect(error).toBeInstanceOf(ProviderError);
+			expect(error.cause).toEqual({ error: { code: "invalid_api_key" } });
+			expect(fetchMock).toHaveBeenCalledTimes(3);
+		},
+	);
 });
 
 describe("parseRetryAfterMs", () => {

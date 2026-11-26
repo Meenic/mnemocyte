@@ -302,9 +302,11 @@ doubling to 8 s), which also ignores server waits over 60 s.
 
 The built-in `defaultShouldRetry` reads fields, never message text:
 
-- a numeric `status` of 408, 429, 500, 502, 503 or 504 retries; any other
-  status does not (409 would blur with `"CONFLICT"`, 501 and 505 do not
-  pass on their own);
+- a numeric `status` of 408, 429, 500, 502, 503, 504 or 529 retries; any
+  other status does not (409 would blur with `"CONFLICT"`, 501 and 505 do
+  not pass on their own). 529 is not in RFC 9110; OpenRouter's embeddings
+  docs name it for an overloaded provider, so it retries like 503
+  (decision 82);
 - a `code` of `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `EPIPE`,
   `EAI_AGAIN`, `UND_ERR_SOCKET`, `UND_ERR_CONNECT_TIMEOUT`,
   `UND_ERR_HEADERS_TIMEOUT` or `UND_ERR_BODY_TIMEOUT` on the error or up to
@@ -322,7 +324,8 @@ value between `d / 2` and `d`, so clients that failed together do not retry
 together while every wait still backs off. An error with a numeric,
 non-negative `retryAfterMs` (any error, not only `ProviderError`) waits
 exactly that long instead, or is thrown at once when it is over
-`maxRetryAfterMs`. A custom `shouldRetry` decides whether to retry; the
+`maxRetryAfterMs`. A custom `shouldRetry` replaces `defaultShouldRetry`,
+which is not exported, so it decides alone whether to retry; the
 `retryAfterMs` wait and cutoff still apply.
 
 A caller `signal` cancels the current attempt and any backoff wait with

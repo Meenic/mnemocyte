@@ -76,6 +76,7 @@ describe("lazy Postgres package loading", () => {
 		"dist/embedders/voyage.mjs",
 		"dist/embedders/cohere.mjs",
 		"dist/embedders/google.mjs",
+		"dist/embedders/openrouter.mjs",
 		"dist/store.mjs",
 		"dist/store-test.mjs",
 	])("keeps ai out of the static import graph of %s", async (entry) => {

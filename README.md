@@ -77,8 +77,8 @@ moves them to Postgres in a few steps.
   through the `@mnemocyte/mcp` server, which searches and saves one
   user's memories
 - **[Embedders](docs/guide/embedders.md)**
-  from OpenAI, Voyage, Cohere and Gemini, any OpenAI-compatible server such
-  as Ollama, or your own
+  from OpenAI, Voyage, Cohere, Gemini and OpenRouter, any OpenAI-compatible
+  server such as Ollama, or your own
 - **[Your own store](docs/guide/custom-stores.md)**,
   written against the public store contract and checked with the same
   tests the built-in backends pass

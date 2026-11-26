@@ -21,7 +21,7 @@ const INTEGRATIONS: { paths: string[]; name: string; text: ReactNode }[] = [
   {
     paths: ["mnemocyte/embedders"],
     name: "Embedders",
-    text: "OpenAI, Voyage, Cohere and Gemini, any OpenAI-compatible server such as Ollama, or your own.",
+    text: "OpenAI, Voyage, Cohere, Gemini and OpenRouter, any OpenAI-compatible server such as Ollama, or your own.",
   },
 ];
 

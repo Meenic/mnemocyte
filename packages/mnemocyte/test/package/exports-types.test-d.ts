@@ -143,8 +143,12 @@ import {
 	googleEmbedder,
 	type OpenAICompatibleEmbedderOptions,
 	type OpenAIEmbedderOptions,
+	type OpenRouterApp,
+	type OpenRouterEmbedderOptions,
+	type OpenRouterRouting,
 	openaiCompatibleEmbedder,
 	openaiEmbedder,
+	openrouterEmbedder,
 	type PurposeHints,
 	type VoyageEmbedderOptions,
 	voyageEmbedder,
@@ -159,6 +163,7 @@ import {
 	openaiCompatibleEmbedder as directOpenAICompatibleEmbedder,
 	type PurposeHint,
 } from "mnemocyte/embedders/openai-compatible";
+import { openrouterEmbedder as directOpenRouterEmbedder } from "mnemocyte/embedders/openrouter";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
 import {
 	type LibsqlClient,
@@ -713,6 +718,29 @@ const google: Embedder = googleEmbedder(googleOptions);
 const directGoogle: Embedder = directGoogleEmbedder({
 	model: "gemini-embedding-2",
 });
+const routing: OpenRouterRouting = {
+	order: ["deepinfra"],
+	allow_fallbacks: false,
+	data_collection: "deny",
+	preferred_max_latency: { p90: 2 },
+};
+const app: OpenRouterApp = { url: "https://memory.example", name: "Memory" };
+const openrouterOptions: OpenRouterEmbedderOptions = {
+	model: "openai/text-embedding-3-small",
+	routing,
+	app,
+	purposes: hints,
+};
+const openrouter: Embedder = openrouterEmbedder(openrouterOptions);
+const directOpenRouter: Embedder = directOpenRouterEmbedder({
+	model: "qwen/qwen3-embedding-8b",
+});
+// @ts-expect-error routing sort takes price, throughput or latency
+openrouterEmbedder({ model: "x/y", dimensions: 8, routing: { sort: "cost" } });
+// @ts-expect-error app needs a url
+openrouterEmbedder({ model: "x/y", dimensions: 8, app: { name: "Memory" } });
+void openrouter;
+void directOpenRouter;
 // @ts-expect-error model is required
 voyageEmbedder({ dimensions: 1024 });
 // @ts-expect-error truncate is a boolean

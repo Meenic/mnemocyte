@@ -218,10 +218,147 @@ get `taskType`.
 They are also available as `mnemocyte/embedders/voyage`,
 `mnemocyte/embedders/cohere` and `mnemocyte/embedders/google`.
 
+## `openrouterEmbedder`
+
+For [OpenRouter](https://openrouter.ai), which serves embedding models from
+many vendors behind one API key. It calls OpenRouter's `/embeddings` with
+`fetch` and reads `OPENROUTER_API_KEY`.
+
+```ts
+import { openrouterEmbedder } from "mnemocyte/embedders";
+
+const embedder = openrouterEmbedder({
+  model: "openai/text-embedding-3-small",
+  app: { url: "https://myapp.example", name: "My App" },
+});
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `model` | required | OpenRouter's model id, with its vendor: `openai/text-embedding-3-small`. |
+| `apiKey` | `OPENROUTER_API_KEY` | A missing key throws `"CONFIG"`. |
+| `dimensions` | the model's | A smaller size, for models that offer one (below). Required for models the helper does not know. |
+| `routing` | none | Which hosts may serve the request, sent as OpenRouter's `provider` object (below). |
+| `app` | none | `{ url, name? }`, sent as `HTTP-Referer` and `X-OpenRouter-Title` so OpenRouter can credit your app. |
+| `purposes` | built in | `{ query?, document? }`, each `{ prefix?, body? }`, as for `openaiCompatibleEmbedder`. |
+| `baseURL` | `https://openrouter.ai/api/v1` | Another endpoint, such as a proxy. |
+| `headers` | none | Extra request headers (see [Proxies and gateways](#proxies-and-gateways)). |
+| `fetch` | the global `fetch` | Your own `fetch` (see [Custom fetch](#custom-fetch)). |
+| `maxBatch` | 100 | Most texts per request. |
+
+The embedder's `model` leaves out the vendor, so
+`openai/text-embedding-3-small` reports `text-embedding-3-small`, the same
+as `openaiEmbedder`. You can move an existing Postgres installation between
+them without embedding everything again.
+
+### Known models
+
+OpenRouter's model list does not give vector sizes, so these come from the
+vendors' docs. `dimensions` is required for any other model, and only states
+the length the model returns.
+
+| Model | `dimensions` | Other sizes |
+|---|---|---|
+| `openai/text-embedding-3-small` | 1536 | 1 to 1536 |
+| `openai/text-embedding-3-large` | 3072 | 1 to 3072 |
+| `google/gemini-embedding-001`, `google/gemini-embedding-2` | 3072 | 128 to 3072 |
+| `cohere/embed-5-pro`, `cohere/embed-5-fast` | 2048 | 256, 512, 768, 1024, 1536 |
+| `mongodb/voyage-4-large`, `mongodb/voyage-4`, `mongodb/voyage-4-lite` | 1024 | 256, 512, 2048 |
+| `amazon/titan-embed-text-v2` | 1024 | 256, 512 |
+| `perplexity/pplx-embed-v1-0.6b` | 1024 | 128 to 1024, in steps of 8 |
+| `perplexity/pplx-embed-v2-context-9b` | 2048 | 1024 |
+| `openai/text-embedding-ada-002`, `amazon/titan-embed-text-v1`, `mistralai/codestral-embed-2505` | 1536 | none |
+| `perplexity/pplx-embed-v1-4b`, `qwen/qwen3-embedding-4b` | 2560 | none |
+| `qwen/qwen3-embedding-8b` | 4096 | none |
+| `mistralai/mistral-embed-2312`, `perplexity/pplx-embed-v2-context-0.6b`, `baai/bge-m3`, `baai/bge-large-en-v1.5`, `intfloat/e5-large-v2`, `intfloat/multilingual-e5-large`, `thenlper/gte-large` | 1024 | none |
+| `baai/bge-base-en-v1.5`, `intfloat/e5-base-v2`, `thenlper/gte-base`, `sentence-transformers/all-mpnet-base-v2`, `sentence-transformers/multi-qa-mpnet-base-dot-v1` | 768 | none |
+| `sentence-transformers/all-minilm-l6-v2`, `sentence-transformers/all-minilm-l12-v2`, `sentence-transformers/paraphrase-minilm-l6-v2` | 384 | none |
+
+A size other than the default is sent as `dimensions`. Open models such as
+Qwen3 can be served by several hosts, and not every host is known to honour
+`dimensions`, so their size is fixed here.
+
+### Queries and documents
+
+| Model | Query | Document |
+|---|---|---|
+| `perplexity/pplx-embed-v2-*` | `input_type: "query"` | `input_type: "document"` |
+| `mongodb/voyage-*` | `input_type: "query"` | `input_type: "document"` |
+| `cohere/*` | `input_type: "search_query"` | `input_type: "search_document"` |
+| `google/gemini-embedding-2` | text prefix `task: search result \| query: ` | text prefix `title: none \| text: ` |
+
+Perplexity's v2 models fail without `input_type`, and its docs say to leave
+it out for v1. OpenRouter passes `input_type` on to Voyage and Cohere, which
+embed queries and documents differently; without it, Cohere embeds every
+text as a document. These are the values `voyageEmbedder` and
+`cohereEmbedder` send, and `gemini-embedding-2` gets the same prefixes as
+with `googleEmbedder`. Other models get nothing. For models that want a hint of their own, set
+`purposes`, which replaces the built-in ones. The e5 models, for example,
+expect text prefixes:
+
+```ts
+const embedder = openrouterEmbedder({
+  model: "intfloat/e5-large-v2",
+  purposes: {
+    query: { prefix: "query: " },
+    document: { prefix: "passage: " },
+  },
+});
+```
+
+### Pinning a host
+
+OpenRouter can serve an open model from several hosts and falls back to
+another when one fails. Two hosts can return slightly different vectors for
+the same model. Each response names the host that answered (a `provider`
+field, which OpenRouter's reference does not document), but Mnemocyte does
+not record it. To keep an installation's vectors consistent, pin one host
+with `routing`:
+
+```ts
+const embedder = openrouterEmbedder({
+  model: "qwen/qwen3-embedding-8b",
+  routing: { order: ["deepinfra"], allow_fallbacks: false },
+});
+```
+
+`routing` takes the fields of OpenRouter's
+[provider object](https://openrouter.ai/docs/guides/routing/provider-selection)
+with the same names, such as `only`, `ignore`, `data_collection: "deny"`,
+`zdr` or `sort`, and sends them as given. A field not on that list throws
+`"CONFIG"` when the embedder is created, because OpenRouter would ignore it:
+a typo such as `allow_fallback: false` would leave fallbacks on. Fields
+inside `max_price` and the latency and throughput objects are not checked.
+Closed models can have more than one host too: OpenRouter lists OpenAI and
+Azure for `openai/text-embedding-3-small`.
+
+### Limits
+
+- **Moving between embedders.** An installation can move between
+  `openrouterEmbedder` and a vendor's own embedder when both report the same
+  `model` and send the same hints. That holds for OpenAI's models, Voyage's
+  (`mongodb/voyage-4` reports `voyage-4`) and `gemini-embedding-2`. Some
+  models are named differently on OpenRouter (`cohere/embed-5-pro` against
+  Cohere's `embed-v5.0-pro`, `mistralai/mistral-embed-2312` against
+  `mistral-embed`), so they report a different `model`. `gemini-embedding-001`
+  matches by name but not by hint: `googleEmbedder` sends `taskType`, which
+  no OpenRouter field is documented to carry, so its vectors differ even
+  under the same `model`.
+- **Free variants.** An id such as `nvidia/nemotron-3-embed-1b:free` keeps
+  its `:free` suffix in `model`, so moving to the paid variant reports a
+  different model.
+- **Batches.** OpenRouter documents no limit on texts per request;
+  Perplexity takes at most 512. Lower `maxBatch` if a host rejects large
+  requests.
+- **Errors.** A provider error becomes a `ProviderError` (below). HTTP 529,
+  which OpenRouter returns when a host is overloaded, is retried like 503.
+
+It is also available as `mnemocyte/embedders/openrouter`.
+
 ## Proxies and gateways
 
 To send embedding requests through a proxy or an AI gateway, point
-`baseURL` at it and put the headers it needs in `headers`. All five
+`baseURL` at it and put the headers it needs in `headers`. All six
 embedders above take both.
 
 ```ts
@@ -239,7 +376,7 @@ the header that carries its API key, and those replace a copy in `headers`:
 
 | Embedder | API key header |
 |---|---|
-| `openaiEmbedder`, `voyageEmbedder`, `cohereEmbedder` | `authorization` |
+| `openaiEmbedder`, `voyageEmbedder`, `cohereEmbedder`, `openrouterEmbedder` | `authorization` |
 | `openaiCompatibleEmbedder` | `authorization`, only when `apiKey` is set |
 | `googleEmbedder` | `x-goog-api-key` |
 
@@ -255,7 +392,7 @@ a string, or a name or value HTTP does not allow, throws `"CONFIG"`.
 
 ## Custom fetch
 
-All five embedders above send their requests with the global `fetch`. Pass
+All six embedders above send their requests with the global `fetch`. Pass
 your own as `fetch` to test without a network, to log or change requests,
 or to go through a proxy agent. It has the same type as `fetch`, as in the
 AI SDK providers.
@@ -356,6 +493,28 @@ The embedder's `model` is the model id without the provider prefix, so
 `"openai/text-embedding-3-small"` all report `text-embedding-3-small`, and you
 can switch between them on an existing Postgres installation.
 
+An OpenRouter model from
+[`@openrouter/ai-sdk-provider`](https://github.com/OpenRouterTeam/ai-sdk-provider)
+takes its size from [`openrouterEmbedder`'s table](#known-models). Unlike
+`openrouterEmbedder`, it keeps the vendor in `model`
+(`openai/text-embedding-3-small`), as Mnemocyte 1.4 reported it, so
+installations made with it keep working. That changes in 2.0.
+
+```ts
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { aiSdkEmbedder } from "mnemocyte/ai-sdk";
+
+const openrouter = createOpenRouter({
+  appName: "My App",
+  appUrl: "https://myapp.example",
+});
+const embedder = aiSdkEmbedder({
+  model: openrouter.embeddingModel("qwen/qwen3-embedding-8b", {
+    provider: { order: ["deepinfra"], allow_fallbacks: false },
+  }),
+});
+```
+
 ### Queries and documents
 
 Google, Cohere and Voyage models embed queries and documents differently.
@@ -367,11 +526,17 @@ For them, `aiSdkEmbedder` sends the matching option by default:
 | Google, Vertex with `gemini-embedding-2` | text prefix `task: search result \| query: ` | text prefix `title: none \| text: ` |
 | Cohere | `cohere: { inputType: "search_query" }` | `cohere: { inputType: "search_document" }` |
 | Voyage | `voyage: { inputType: "query" }` | `voyage: { inputType: "document" }` |
+| OpenRouter, `perplexity/pplx-embed-v2-*` | `openrouter: { input_type: "query" }` | `openrouter: { input_type: "document" }` |
 
 The provider is read from the string's prefix (`google/…`) or the model
 object (`google.embedding(…)`). Other providers get nothing; OpenAI and
 Mistral models embed both the same way. Through the AI Gateway these options
-reach the upstream provider under the same keys.
+reach the upstream provider under the same keys. OpenRouter models take
+their options under the `openrouter` key, and until 2.0 only Perplexity's v2
+models get one. The Cohere and Voyage models and `google/gemini-embedding-2`
+get nothing here, though `openrouterEmbedder` gives them `input_type` and
+the Gemini prefixes, because adding them would change the vectors of
+installations Mnemocyte 1.4 embedded without them.
 
 `gemini-embedding-2` does not take `taskType`, so it gets the same text
 prefixes as with `googleEmbedder`. The prefix is only sent to the provider;

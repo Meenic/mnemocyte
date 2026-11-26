@@ -250,6 +250,13 @@ them.
 - **Voyage, Cohere and Gemini waits are not read.** None of them documents
   a `Retry-After` header, so a 429 waits for the client's backoff, not for
   the provider's quota window.
+- **Mnemocyte does not record which OpenRouter host answered.** An open
+  model can be served by several hosts, whose vectors can differ slightly,
+  and OpenRouter falls back to another host when one fails. Pin one with
+  `routing` ([embedders](embedders.md#pinning-a-host)). Moving an
+  installation between `openrouterEmbedder` and a vendor's own embedder
+  works only when both report the same `model` and send the same hints
+  ([embedders](embedders.md#limits-1)).
 - **Purpose hints are not part of the installation check.** Postgres checks
   the embedder's `model` and `dimensions`, not its `purposes`; changing the
   prefixes or body fields after memories are stored makes old and new

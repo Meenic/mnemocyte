@@ -19,12 +19,14 @@ import {
 	googleEmbedder,
 	openaiCompatibleEmbedder,
 	openaiEmbedder,
+	openrouterEmbedder,
 	voyageEmbedder,
 } from "mnemocyte/embedders";
 import { cohereEmbedder as directCohereEmbedder } from "mnemocyte/embedders/cohere";
 import { googleEmbedder as directGoogleEmbedder } from "mnemocyte/embedders/google";
 import { openaiEmbedder as directOpenAIEmbedder } from "mnemocyte/embedders/openai";
 import { openaiCompatibleEmbedder as directOpenAICompatibleEmbedder } from "mnemocyte/embedders/openai-compatible";
+import { openrouterEmbedder as directOpenRouterEmbedder } from "mnemocyte/embedders/openrouter";
 import { voyageEmbedder as directVoyageEmbedder } from "mnemocyte/embedders/voyage";
 import * as libsqlEntry from "mnemocyte/libsql";
 import manifest from "mnemocyte/package.json" with { type: "json" };
@@ -62,6 +64,13 @@ describe("package exports", () => {
 		expect(voyageEmbedder).toBe(directVoyageEmbedder);
 		expect(cohereEmbedder).toBe(directCohereEmbedder);
 		expect(googleEmbedder).toBe(directGoogleEmbedder);
+		expect(openrouterEmbedder).toBe(directOpenRouterEmbedder);
+		expect(
+			openrouterEmbedder({
+				apiKey: "k",
+				model: "openai/text-embedding-3-small",
+			}),
+		).toMatchObject({ model: "text-embedding-3-small", dimensions: 1536 });
 		expect(
 			googleEmbedder({ apiKey: "k", model: "models/gemini-embedding-001" }),
 		).toMatchObject({ model: "gemini-embedding-001", dimensions: 3072 });

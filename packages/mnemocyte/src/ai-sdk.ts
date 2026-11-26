@@ -1,4 +1,10 @@
 import { APICallError, type EmbeddingModel, embedMany } from "ai";
+import { resolveModelDimensions } from "./embedders/internal/http-embedder.js";
+import {
+	GEMINI_EMBEDDING_2_PREFIXES,
+	isPerplexityV2,
+	OPENROUTER_MODELS,
+} from "./embedders/internal/openrouter-models.js";
 import {
 	createProviderError,
 	parseErrorBody,
@@ -58,9 +64,9 @@ export interface AiSdkEmbedderOptions {
 	readonly providerOptions?: AiSdkProviderOptions | undefined;
 	/**
 	 * Provider options for queries and for documents, merged over
-	 * `providerOptions`. Replaces the built-in hints for Google, Cohere and
-	 * Voyage, including the text prefixes for `gemini-embedding-2`; a purpose
-	 * left out gets no hint.
+	 * `providerOptions`. Replaces the built-in hints for Google, Cohere,
+	 * Voyage and OpenRouter's Perplexity v2 models, including the text
+	 * prefixes for `gemini-embedding-2`; a purpose left out gets no hint.
 	 */
 	readonly purposes?: AiSdkPurposeHints | undefined;
 }
@@ -132,15 +138,7 @@ const DEFAULT_PURPOSES: ReadonlyMap<
 const DEFAULT_PREFIXES: ReadonlyMap<
 	string,
 	Readonly<Record<EmbeddingPurpose, string>>
-> = new Map([
-	[
-		"google/gemini-embedding-2",
-		{
-			query: "task: search result | query: ",
-			document: "title: none | text: ",
-		},
-	],
-]);
+> = new Map([["google/gemini-embedding-2", GEMINI_EMBEDDING_2_PREFIXES]]);
 
 const NO_PREFIXES: Readonly<Record<EmbeddingPurpose, string>> = {
 	query: "",
@@ -176,10 +174,18 @@ function assertPositiveInteger(value: unknown, field: string): number {
 }
 
 interface ModelIdentity {
-	/** Model id without a `provider/` prefix. */
+	/**
+	 * Model id as `Embedder.model` reports it: without a gateway's
+	 * `provider/` prefix, but with an OpenRouter model's vendor.
+	 */
 	readonly id: string;
 	/** Lower-case provider name, such as `google`, when it can be read. */
 	readonly provider: string | undefined;
+	/**
+	 * The id of an OpenRouter model (`@openrouter/ai-sdk-provider`), such as
+	 * `openai/text-embedding-3-small`, used to look up its size and hints.
+	 */
+	readonly openrouterId?: string | undefined;
 }
 
 function splitGatewayId(value: string): ModelIdentity {
@@ -220,10 +226,19 @@ function identifyModel(model: unknown): ModelIdentity {
 			);
 		}
 		const provider = model.provider.split(".")[0]?.toLowerCase();
-		identity =
-			provider === "gateway"
-				? splitGatewayId(model.modelId)
-				: { id: model.modelId, provider };
+		if (provider === "gateway") {
+			identity = splitGatewayId(model.modelId);
+		} else if (provider === "openrouter") {
+			// The id keeps its vendor through 1.x: 1.4 reported it that way,
+			// and Postgres installations recorded it.
+			identity = {
+				id: model.modelId,
+				provider,
+				openrouterId: model.modelId,
+			};
+		} else {
+			identity = { id: model.modelId, provider };
+		}
 	}
 	if (identity.id.trim().length === 0) {
 		throw configError("requires a model.");
@@ -232,9 +247,21 @@ function identifyModel(model: unknown): ModelIdentity {
 }
 
 function resolveDimensions(
-	id: string,
+	{ id, openrouterId }: ModelIdentity,
 	dimensions: unknown,
 ): { dimensions: number; request: number | undefined } {
+	if (openrouterId !== undefined) {
+		const size = resolveModelDimensions({
+			name: NAME,
+			model: openrouterId,
+			dimensions,
+			known: OPENROUTER_MODELS,
+		});
+		return {
+			dimensions: size.dimensions,
+			request: size.send ? size.dimensions : undefined,
+		};
+	}
 	const known = KNOWN_MODELS.get(id);
 	if (dimensions === undefined) {
 		if (known === undefined) {
@@ -297,9 +324,28 @@ interface ResolvedPurposeHints {
 	readonly prefixes: Readonly<Record<EmbeddingPurpose, string>>;
 }
 
+/**
+ * Built-in hints for an OpenRouter model, keyed `openrouter`: `input_type`
+ * for Perplexity's v2 models, which fail without it. The Cohere and Voyage
+ * `input_type` and `gemini-embedding-2` prefixes `openrouterEmbedder`
+ * sends are left out through 1.x, since they would change the vectors of
+ * an installation that 1.4 embedded without them.
+ */
+function openrouterHints(
+	openrouterId: string,
+): Readonly<Record<EmbeddingPurpose, AiSdkProviderOptions>> {
+	if (isPerplexityV2(openrouterId)) {
+		return {
+			query: { openrouter: { input_type: "query" } },
+			document: { openrouter: { input_type: "document" } },
+		};
+	}
+	return { query: {}, document: {} };
+}
+
 function resolvePurposeHints(
 	options: AiSdkEmbedderOptions,
-	{ id, provider }: ModelIdentity,
+	{ id, provider, openrouterId }: ModelIdentity,
 ): ResolvedPurposeHints {
 	const base = snapshotProviderOptions(
 		options.providerOptions,
@@ -308,7 +354,9 @@ function resolvePurposeHints(
 	const none = { query: {}, document: {} };
 	let hints: Readonly<Record<EmbeddingPurpose, AiSdkProviderOptions>>;
 	let prefixes = NO_PREFIXES;
-	if (options.purposes === undefined) {
+	if (options.purposes === undefined && openrouterId !== undefined) {
+		hints = openrouterHints(openrouterId);
+	} else if (options.purposes === undefined) {
 		const builtIn =
 			provider === undefined
 				? undefined
@@ -430,9 +478,9 @@ function toProviderError(error: unknown): ProviderError | undefined {
  *
  * The AI SDK's own retries are off; the client's `provider` settings retry
  * instead, and AI SDK errors with an HTTP status become a `ProviderError`.
- * Google, Cohere and Voyage models get query and document hints by default:
- * provider options, or for `gemini-embedding-2` the text prefixes Google
- * documents for it.
+ * Google, Cohere and Voyage models, and OpenRouter's Perplexity v2 models,
+ * get query and document hints by default: provider options, or for
+ * `gemini-embedding-2` the text prefixes Google documents for it.
  *
  * @example
  * ```ts
@@ -456,7 +504,7 @@ export function aiSdkEmbedder(options: AiSdkEmbedderOptions): Embedder {
 	const { model } = options;
 	const identity = identifyModel(model);
 	const { dimensions, request } = resolveDimensions(
-		identity.id,
+		identity,
 		options.dimensions,
 	);
 	const maxBatch =

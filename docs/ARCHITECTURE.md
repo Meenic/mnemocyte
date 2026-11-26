@@ -1760,8 +1760,8 @@ Dated 2026-10-26 unless noted.
     `shouldRetry` replaces the built-in rule, so the guide tells apps that
     list statuses to add 529 themselves; exporting `defaultShouldRetry`
     was left out as new public API.
-83. **OpenRouter model ids drop the vendor prefix** (2026-11-22, queued as
-    `feat/openrouter-embedder`): the maintainer chose to report
+83. **OpenRouter model ids drop the vendor prefix** (2026-11-22, landed
+    with `feat/openrouter-embedder`): the maintainer chose to report
     `openai/text-embedding-3-small` as `text-embedding-3-small`, as
     `aiSdkEmbedder` does for AI Gateway ids, so an installation can move
     between a provider's own API, OpenRouter and the AI SDK without
@@ -2369,3 +2369,72 @@ Dated 2026-10-26 unless noted.
       publish.
     - **`release:notes` says how to install a prerelease** (`npm install
       <pkg>@next`), which the release text used to get by hand.
+102. **How `openrouterEmbedder` is built** (2026-11-26, landed with
+    `feat/openrouter-embedder`): the maintainer took these
+    recommendations after a read of OpenRouter's embeddings reference,
+    routing and attribution pages, its model list, Perplexity's
+    embeddings docs and `@openrouter/ai-sdk-provider` 3.1.0, and a live
+    run against OpenRouter on 2026-11-26 (about 25 requests, $0.00001)
+    that changed the routing and hint choices below.
+    - **Known sizes are only those a vendor states,** keyed by the full
+      OpenRouter id, because the model list has no size field. Shortening
+      is allowed where the vendor documents it. Open models that several
+      hosts serve (Qwen3, bge, e5, gte, MiniLM) are fixed, since no host's
+      handling of `dimensions` was confirmed. Other models need
+      `dimensions`, which is not sent, as in Voyage and Cohere.
+    - **No default model:** `model` is required, as everywhere else.
+    - **Attribution is `HTTP-Referer` and `X-OpenRouter-Title`.**
+      OpenRouter keeps `X-Title` for backward compatibility only, and the
+      AI SDK provider sends the new name only. `app.url` is required,
+      because OpenRouter attributes nothing without a referer.
+    - **`routing` is typed and its keys are checked:** `OpenRouterRouting`
+      mirrors the embeddings schema's `provider` fields in snake_case, the
+      wire names, which the AI SDK provider uses too. The schema sets
+      `additionalProperties: false`, but the live API answered an unknown
+      field with a 200, so a typo such as `allow_fallback: false` would
+      silently leave fallbacks on. An unknown top-level key throws
+      `"CONFIG"` at creation; the cost is a Mnemocyte release before a
+      field OpenRouter adds later can be used. Nested objects are not
+      checked.
+    - **Built-in hints are those confirmed through OpenRouter, with the
+      vendor embedders' values:** `input_type` for Perplexity's v2 models
+      only (v2 returned a 400 without it; its docs say to leave it out for
+      v1, so the roadmap's "`perplexity/*`" was narrowed), `query` /
+      `document` for `mongodb/voyage-*`, `search_query` /
+      `search_document` for `cohere/*`, and the Gemini text prefixes for
+      `google/gemini-embedding-2`. The live run showed OpenRouter forwards
+      `input_type` to Cohere and Voyage, and that Cohere without it
+      returns the document vector, so queries would be embedded as
+      documents. Decision 83's moves then work for OpenAI, Voyage and
+      `gemini-embedding-2`. The cost: `gemini-embedding-001` gets no
+      `taskType` (no OpenRouter field is documented for it), so moving
+      from `googleEmbedder` changes its vectors under the same `model`,
+      and some vendors' ids differ on OpenRouter (`embed-5-pro`,
+      `mistral-embed-2312`); the guide lists both as limitations instead
+      of adding aliases.
+    - **`aiSdkEmbedder` learned OpenRouter models in the same item,
+      without breaking 1.4 installations.** It shares the size table and
+      sends `input_type` for Perplexity v2 under
+      `providerOptions.openrouter`, the key that provider reads; both only
+      make calls work that failed before. It keeps the vendor in
+      `Embedder.model` and sends no Cohere or Voyage `input_type` and no
+      `gemini-embedding-2` prefixes, because 1.4 already embedded
+      OpenRouter models that way: dropping the vendor would fail every
+      recorded installation with `"MODEL_MISMATCH"`, and the hints would
+      change its vectors. The maintainer chose this
+      over shipping the break in 1.5.0; the full decision 83 behaviour is
+      queued for 2.0 in ROADMAP.md, "Later". Its tests use a fake v4 model
+      with provider `openrouter`, so there is no new dev dependency.
+    - **Responses are read with or without `index`,** since OpenRouter's
+      schema makes it optional (every live response had it). The host is
+      not recorded. The schema has no field for it, but every live
+      response named it in `provider`, so decision 83's "does not say
+      which one answered" holds for the documented API only; recording it
+      would be a feature of its own.
+    - **Checked live:** `float` vectors from Perplexity (its own API
+      returns int8 or binary only), `dimensions` for OpenAI, Voyage,
+      Cohere, Gemini and Perplexity v2 9b, a pin to DeepInfra, and an
+      `add` and `search` through the built package. Not checked: whether
+      attribution counts on `/embeddings`, which only the maintainer's
+      OpenRouter activity page shows. The unit tests run against a mocked
+      `fetch`.

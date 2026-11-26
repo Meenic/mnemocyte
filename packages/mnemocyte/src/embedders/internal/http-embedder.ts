@@ -51,7 +51,7 @@ export interface HttpEmbedderConfig {
 	readonly purposes: PurposeHints | undefined;
 }
 
-interface ResolvedHint {
+export interface ResolvedHint {
 	readonly prefix: string;
 	readonly body: JsonObject;
 }
@@ -220,7 +220,8 @@ function resolveHint(
 	return { prefix: prefix ?? "", body: snapshot };
 }
 
-function resolvePurposes(
+/** Check and snapshot a caller's `purposes` option. */
+export function resolvePurposes(
 	purposes: unknown,
 	name: string,
 ): Record<EmbeddingPurpose, ResolvedHint> {

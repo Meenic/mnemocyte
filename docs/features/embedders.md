@@ -174,6 +174,68 @@ provider's request and response (decision 29 in
 - Cohere and Google responses are checked by `assertVectorList`: one array
   per input, in order. Element values are checked by the core.
 
+### `openrouterEmbedder`
+
+`mnemocyte/embedders/openrouter` (also re-exported from
+`mnemocyte/embedders`), a `createFetchEmbedder` for OpenRouter's
+OpenAI-shaped `POST {baseURL}/embeddings` (decisions 83 and 102 in
+[ARCHITECTURE.md](../ARCHITECTURE.md)).
+
+- `apiKey` defaults to `OPENROUTER_API_KEY` and is sent as
+  `authorization: Bearer …`; `baseURL` defaults to
+  `https://openrouter.ai/api/v1`.
+- The body is `model` (OpenRouter's full id), `input`, `encoding_format:
+  "float"`, `dimensions` when a known model is shortened, the purpose
+  hint's `body` fields, and `provider` from `routing`. OpenRouter's schema
+  makes each item's `index` optional, so a response without indexes is
+  read in order (`assertVectorList`), and one with indexes by
+  `parseIndexedEmbeddings`; indexes on only some items throw `"EMBEDDING"`.
+  The documented response has `model` (with the vendor) and `usage`. Live
+  responses also carry `provider`, the host's name (`DeepInfra`,
+  `Perplexity`), which the schema leaves out and
+  `@openrouter/ai-sdk-provider` reads; this embedder ignores it.
+- `Embedder.model` is the id after the first `/` (`withoutVendor`), so
+  `openai/text-embedding-3-small` reports `text-embedding-3-small`. A
+  `:free` suffix stays.
+- Sizes come from `OPENROUTER_MODELS` in
+  `src/embedders/internal/openrouter-models.ts`, keyed by the full id and
+  resolved by `resolveModelDimensions`. OpenRouter's model list
+  (`GET /api/v1/embeddings/models`) has no size field, so the table holds
+  sizes from vendor docs (OpenAI, Gemini, Cohere, Voyage, Bedrock, Mistral,
+  Perplexity) and the official model cards or OpenRouter descriptions of
+  the open models. Shortening is allowed only where the vendor documents
+  it; open models served by several hosts are fixed. Left out: Nemotron
+  (no confirmed size), `voyage-code-4` (Voyage's docs disagree, as in
+  `voyageEmbedder`), `gemini-embedding-2-preview`, `titan-embed-image-v1`
+  and `voyage-multimodal-3.5`.
+- Built-in hints (`openrouterPurposeHint`): `input_type` `query` /
+  `document` for ids starting `perplexity/pplx-embed-v2` (v2 returns a 400
+  without it; Perplexity's docs say to leave it out for v1) and
+  `mongodb/voyage-`, `search_query` / `search_document` for `cohere/`, and
+  the Gemini retrieval prefixes (`GEMINI_EMBEDDING_2_PREFIXES`) for
+  `google/gemini-embedding-2`. A live run on 2026-11-26 showed OpenRouter
+  forwards `input_type` to Cohere and Voyage (query and document vectors
+  of the same text differed), and that Cohere without it returns the
+  document vector. `purposes` replaces them and is checked by
+  the shared `resolvePurposes`, so a `body` may not set `model`, `input`,
+  `encoding_format` or `dimensions`.
+- `routing` must be an object whose top-level keys are in `ROUTING_KEYS`
+  (`"CONFIG"` otherwise), and is snapshotted with a JSON round trip.
+  OpenRouter's schema sets `additionalProperties: false` on `provider`,
+  but the live API answered an unknown field with a 200, so a typo would
+  pass unnoticed. Nested objects (`max_price`, the percentile objects) are
+  not checked. `OpenRouterRouting` types the fields of that schema with
+  their snake_case wire names, as `@openrouter/ai-sdk-provider` does; the
+  schema's `options` field is left out.
+- `app` takes `url` (required, absolute) and `name`, sent as `http-referer`
+  and `x-openrouter-title`. `X-Title` is not sent: OpenRouter keeps it only
+  for backward compatibility. Both values are checked with `new Headers` at
+  creation. Header order is the caller's `headers`, then `app`, then
+  `authorization`, then `content-type`, so the embedder's own replace a
+  caller's copy.
+- OpenRouter's error body is `{ error: { code, message } }` with a numeric
+  `code`, so the `ProviderError` message names only the status.
+
 ### `aiSdkEmbedder`
 
 `mnemocyte/ai-sdk` (`src/ai-sdk.ts`, its own build entry) wraps an AI SDK
@@ -200,7 +262,11 @@ provider. A model object's provider is `model.provider` up to the first dot
 (`google.generative-ai` → `google`, `google.vertex.embedding` → `google`,
 `cohere.textEmbedding` → `cohere`), and its id is `modelId`, except for a
 gateway model (`provider` `gateway`), whose `modelId` is split like a
-string. `Embedder.model` is the id, so the gateway string, a direct model
+string. An OpenRouter model (`provider` `openrouter`, from
+`@openrouter/ai-sdk-provider` 3.x, whose `modelId` keeps the vendor) keeps
+its full `modelId` as both the id and `openrouterId`: 1.4 reported it that
+way and Postgres installations recorded it, so dropping the vendor, as
+`openrouterEmbedder` does, waits for 2.0 (decision 102). `Embedder.model` is the id, so the gateway string, a direct model
 object and `openaiEmbedder` report the same model and can share an
 installation. The string itself is passed to `embedMany` unresolved, so
 the AI SDK resolves it through `globalThis.AI_SDK_DEFAULT_PROVIDER` (the
@@ -216,7 +282,9 @@ its gateway id (`titan-embed-text-v2`), 1024. Voyage and the other gateway
 models are left out because the docs state no default. A `dimensions` that
 differs from a known model's is sent as `embedMany`'s `dimensions`;
 `text-embedding-ada-002` rejects one (`"CONFIG"`). For unknown models
-`dimensions` is never sent.
+`dimensions` is never sent. An OpenRouter model is looked up by its full
+id in `OPENROUTER_MODELS`, shared with `openrouterEmbedder`, through
+`resolveModelDimensions`, so it follows that table's rules instead.
 
 **Purposes.** Without `purposes`, the provider picks built-in hints:
 Google `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT` under `google`
@@ -236,7 +304,12 @@ embeddings guide says it cannot take. `embed` puts the prefixes
 instead: `task: search result | query: ` and `title: none | text: `. The
 rule covers the Gemini API, Vertex AI and a `google/…` gateway id; the
 same id from another provider, or a string without a provider, gets
-nothing. `purposes` replaces the hints entirely, prefixes included.
+nothing. An OpenRouter model gets `input_type` under `openrouter` (the key
+that provider reads and passes into the request body) for Perplexity v2,
+and nothing else. The `google/gemini-embedding-2` prefixes
+`openrouterEmbedder` sends are left out through 1.x, since they would
+change the vectors of an installation 1.4 embedded without them. `purposes` replaces the hints
+entirely, prefixes included.
 
 **Calls.** `embedMany` runs with `maxRetries: 0`, `maxParallelCalls: 1` and
 the call's signal as `abortSignal`. Mnemocyte's chunks already go one at a
@@ -272,7 +345,7 @@ undefined). The message names the status and, when the body has one, a
 short `code` or `type` (OpenAI's `error.code`/`error.type`, Google's
 canonical `error.status` such as `RESOURCE_EXHAUSTED`, vLLM's top-level
 `type`). Voyage's `detail` and Cohere's `message` are free text and give no
-label. The body's free-text `message` stays out of the message
+label, and OpenRouter's numeric `error.code` gives none either. The body's free-text `message` stays out of the message
 because providers can echo part of the key in it (OpenAI's "Incorrect API
 key provided: sk-…").
 

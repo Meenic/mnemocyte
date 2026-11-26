@@ -688,7 +688,7 @@ release, since the guide is read from `main`.
   `Retry-After` handling as 503 (pinned over HTTP in
   `openai-compatible.test.ts`); the guide says a custom `shouldRetry`
   must list 529 itself. Ships in 1.5.0 with `feat/openrouter-embedder`.
-- [ ] `feat/openrouter-embedder`: `openrouterEmbedder` in
+- [x] `feat/openrouter-embedder`: `openrouterEmbedder` in
   `mnemocyte/embedders`, on `fetch` like the others: `OPENROUTER_API_KEY`,
   `https://openrouter.ai/api/v1`, OpenRouter's `provider` object as
   `routing` (`provider` already means retry settings in `createMemory`),
@@ -701,6 +701,15 @@ release, since the guide is read from `main`.
   the guide shows pinning with `routing`. `aiSdkEmbedder` learns OpenRouter
   model objects (`provider` is `'openrouter'`) the same way. Decided
   (decision 83): the reported model id drops the vendor prefix.
+  Landed (decision 102): `input_type` goes to Perplexity's v2 models
+  only, since its docs say to leave it out for v1, and to Voyage and
+  Cohere, which a live run showed OpenRouter forwards;
+  `google/gemini-embedding-2` gets the Gemini prefixes; `routing` is typed
+  and its keys are checked, since OpenRouter ignores unknown ones;
+  `app.url` is required. `aiSdkEmbedder` takes the sizes and Perplexity's
+  `input_type` but keeps the vendor in `model` and sends no other hints,
+  so 1.4 installations keep working; the rest waits for 2.0 (below,
+  "Later"). Not checked: whether attribution counts on `/embeddings`.
 - [ ] `chore/shared-scope-sql`: one copy of the scope predicates for both
   SQL backends. `visibilityConditions`, `selectorConditions` and
   `exactScopeConditions` in `src/db/queries/memories.ts` and their twins
@@ -925,6 +934,14 @@ deploys it on Vercel).
 ## Later
 
 Not queued. Each one comes back as an item when its condition holds.
+
+- In 2.0: `aiSdkEmbedder` reports OpenRouter model ids without the vendor
+  and sends the Cohere and Voyage `input_type` and the
+  `google/gemini-embedding-2` prefixes, as `openrouterEmbedder` does
+  (decisions 83 and 102). It breaks installations 1.x recorded with the
+  vendor (`"MODEL_MISMATCH"`), so the upgrading guide needs the SQL that
+  renames the recorded model, and the hints mean re-embedding those
+  memories or setting `purposes: {}`.
 
 - npm staged publishing, once a release has gone through
   `chore/release-on-main` (decision 99): `pnpm stage publish`, the

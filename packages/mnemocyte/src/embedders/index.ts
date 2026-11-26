@@ -10,5 +10,12 @@ export type {
 	PurposeHints,
 } from "./openai-compatible.js";
 export { openaiCompatibleEmbedder } from "./openai-compatible.js";
+export type {
+	OpenRouterApp,
+	OpenRouterEmbedderOptions,
+	OpenRouterPercentiles,
+	OpenRouterRouting,
+} from "./openrouter.js";
+export { openrouterEmbedder } from "./openrouter.js";
 export type { VoyageEmbedderOptions } from "./voyage.js";
 export { voyageEmbedder } from "./voyage.js";

@@ -120,6 +120,38 @@ describe("aiSdkEmbedder models", () => {
 		});
 	});
 
+	test("reads an OpenRouter model's size and keeps its vendor in the id", async () => {
+		const model = mockModel({
+			provider: "openrouter",
+			modelId: "openai/text-embedding-3-large",
+		});
+		const embedder = aiSdkEmbedder({ model, dimensions: 256 });
+		expect(embedder).toMatchObject({
+			model: "openai/text-embedding-3-large",
+			dimensions: 256,
+		});
+		await embedder.embed(["a"], { purpose: "document" });
+		expect(model.doEmbedCalls[0]?.dimensions).toBe(256);
+		expect(model.doEmbedCalls[0]?.providerOptions).toBeUndefined();
+
+		const fixed = mockModel({
+			provider: "openrouter",
+			modelId: "mistralai/mistral-embed-2312",
+		});
+		expect(aiSdkEmbedder({ model: fixed })).toMatchObject({
+			model: "mistralai/mistral-embed-2312",
+			dimensions: 1024,
+		});
+		expect(() => aiSdkEmbedder({ model: fixed, dimensions: 512 })).toThrow(
+			expect.objectContaining({ code: "CONFIG" }),
+		);
+		expect(() =>
+			aiSdkEmbedder({
+				model: mockModel({ provider: "openrouter", modelId: "acme/embed" }),
+			}),
+		).toThrow(expect.objectContaining({ code: "CONFIG" }));
+	});
+
 	test.each([
 		["an empty string", ""],
 		["a provider without a model", "openai/"],
@@ -267,6 +299,49 @@ describe("aiSdkEmbedder purposes", () => {
 		});
 		expect(gatewayModel.doEmbedCalls[0]?.providerOptions).toEqual({
 			google: { taskType: "RETRIEVAL_QUERY" },
+		});
+	});
+
+	test("sends input_type keyed openrouter for Perplexity v2 only", async () => {
+		const perplexity = mockModel({
+			provider: "openrouter",
+			modelId: "perplexity/pplx-embed-v2-context-9b",
+		});
+		const embedder = aiSdkEmbedder({ model: perplexity });
+		await embedder.embed(["d"], { purpose: "document" });
+		await embedder.embed(["q"], { purpose: "query" });
+		expect(perplexity.doEmbedCalls.map((call) => call.providerOptions)).toEqual(
+			[
+				{ openrouter: { input_type: "document" } },
+				{ openrouter: { input_type: "query" } },
+			],
+		);
+
+		// No Cohere or Voyage input_type and no Gemini prefixes through 1.x,
+		// unlike openrouterEmbedder.
+		for (const modelId of [
+			"google/gemini-embedding-2",
+			"perplexity/pplx-embed-v1-4b",
+			"cohere/embed-5-pro",
+			"mongodb/voyage-4",
+			"google/gemini-embedding-001",
+		]) {
+			const model = mockModel({ provider: "openrouter", modelId });
+			await aiSdkEmbedder({ model }).embed(["d"], { purpose: "document" });
+			expect(model.doEmbedCalls[0]?.values).toEqual(["d"]);
+			expect(model.doEmbedCalls[0]?.providerOptions).toBeUndefined();
+		}
+
+		const replaced = mockModel({
+			provider: "openrouter",
+			modelId: "perplexity/pplx-embed-v2-context-0.6b",
+		});
+		await aiSdkEmbedder({
+			model: replaced,
+			purposes: { query: { openrouter: { input_type: "search_query" } } },
+		}).embed(["q"], { purpose: "query" });
+		expect(replaced.doEmbedCalls[0]?.providerOptions).toEqual({
+			openrouter: { input_type: "search_query" },
 		});
 	});
 

@@ -37,6 +37,10 @@
 			"types": "./dist/embedders/openai-compatible.d.mts",
 			"default": "./dist/embedders/openai-compatible.mjs"
 		},
+		"./embedders/openrouter": {
+			"types": "./dist/embedders/openrouter.d.mts",
+			"default": "./dist/embedders/openrouter.mjs"
+		},
 		"./embedders/voyage": {
 			"types": "./dist/embedders/voyage.d.mts",
 			"default": "./dist/embedders/voyage.mjs"

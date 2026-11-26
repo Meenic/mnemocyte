@@ -12,6 +12,23 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ## [Unreleased]
 
+### Added
+
+- **`openrouterEmbedder` embeds through OpenRouter.** It is in
+  `mnemocyte/embedders`, reads `OPENROUTER_API_KEY`, knows the vector
+  sizes of the common models, pins hosts with `routing` (OpenRouter's
+  `provider` object), credits your app with `app: { url, name }`, and
+  reports the model without its vendor (`text-embedding-3-small`), so an
+  installation can move to and from `openaiEmbedder`. Perplexity v2,
+  Cohere and Voyage models get `input_type` and `google/gemini-embedding-2`
+  the Gemini text prefixes by default
+  ([embedders](docs/guide/embedders.md#openrouterembedder)).
+- **`aiSdkEmbedder` knows OpenRouter models.** Models from
+  `@openrouter/ai-sdk-provider` no longer need `dimensions` when
+  `openrouterEmbedder` knows their size, and Perplexity's v2 models get
+  `input_type`. Their `model` keeps the vendor, as before
+  ([embedders](docs/guide/embedders.md#aisdkembedder)).
+
 ### Changed
 
 - **HTTP 529 is retried like 503.** The built-in retry rule now also

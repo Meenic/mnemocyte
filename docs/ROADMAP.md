@@ -126,6 +126,33 @@ and 18.
   `features/retrieval.md`). Mark only the memories that made it into the
   context, on both backends, and test a tight budget.
 
+## Fixes from the 1.5 real-app run
+
+Found on 2026-11-27 by running `main` (after #156) in the 1.0 test app
+through OpenRouter: `openrouterEmbedder` and `aiSdkEmbedder` with
+`openai/text-embedding-3-small`, chat, tools and extraction with
+`openai/gpt-4.1-nano` through `@openrouter/ai-sdk-provider` 3.1.0. Every
+other area passed. The first item should land before 1.5.0 is cut.
+
+- [ ] `docs/openrouter-embedding-method`: the `aiSdkEmbedder` example in
+  `guide/embedders.md` calls `openrouter.embeddingModel(…)`, which
+  `@openrouter/ai-sdk-provider` 3.1.0 (the release for AI SDK 7) does not
+  have, so it throws a `TypeError`. The method is `textEmbeddingModel`
+  (`embedding` is its deprecated alias). Fix the example and check the
+  other OpenRouter snippets against the package's types.
+- [ ] `feat/init-openrouter`: `init --embedder openrouter` writes
+  `openrouterEmbedder({ model: "openai/text-embedding-3-small" })` and
+  appends `OPENROUTER_API_KEY=` to `.env`, like the `openai` path. Today
+  it fails with "Unknown embedder", and `guide/cli.md` says other
+  embedders are not offered yet.
+- [ ] `feat/forget-returns-content`: `forgetMemory` returns
+  `{ forgotten: true }` only, so a wrong id goes unnoticed. In the run,
+  gpt-4.1-nano asked to forget "vegetarian" passed the id of "Works as a
+  nurse." and told the user it was done. Return the deleted memory's
+  `content` too, so the next step can see the mistake, in `mnemocyte/ai-sdk`
+  and `@mnemocyte/mcp` alike. Choice: `content` only (recommended, the
+  model already saw it in the search) or the whole memory.
+
 ## Discoverability
 
 Make Mnemocyte easier to find on npm and GitHub, and easier for people and
@@ -830,7 +857,10 @@ The items, in order:
   `consolidate` in the exact bound scope. Choice: only `extracted:`
   memories by default, with an opt-in for app and `saveMemory` ones
   (recommended, since `guide/limitations.md` says extraction never
-  changes them), or every memory it was shown. Number: LongMemEval's
+  changes them), or every memory it was shown. The 1.5 real-app run hit
+  the `saveMemory` case: gpt-4.1-nano saved "Alice lives in Berlin."
+  unasked, and the move to Lisbon became a second memory beside it.
+  Number: LongMemEval's
   knowledge-update questions.
 - [ ] `feat/profiles`: a short description of an entity that `context`
   renders before the search results, kept current by extraction and an

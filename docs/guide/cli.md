@@ -164,7 +164,7 @@ and `--schema` may only repeat it; a different name exits 2.
 ## `init`
 
 ```bash
-pnpm exec mnemocyte init [--db <path>] [--embedder <openai|openai-compatible>] [--dry-run]
+pnpm exec mnemocyte init [--db <path>] [--embedder <openai|openai-compatible|openrouter>] [--dry-run]
 ```
 
 Writes the memory file that `migrate` and `check` then load, and adds
@@ -174,7 +174,8 @@ app does, or else to `.env`. Run it in the folder with your
 imports it ([Your Drizzle client](#your-drizzle-client)). In a Next.js app
 the file is `src/lib/memory.ts` ([Next.js](#nextjs)); otherwise it is
 `memory.ts` in the project root. For a local model, see
-[A local Ollama](#a-local-ollama).
+[A local Ollama](#a-local-ollama); for one API key across vendors, see
+[OpenRouter](#openrouter).
 
 ```txt
 Found drizzle-orm, postgres in package.json: using Drizzle on postgres.js.
@@ -206,7 +207,8 @@ above is from a pnpm project.
   your package's `name` (`"my-agent"` without one). Change the embedder
   before the first `migrate`: the schema is created for its dimensions.
 - **The env file.** When neither `.env.local` nor `.env` defines
-  `OPENAI_API_KEY` (an empty value counts as defined), `init` appends the
+  the embedder's key variable, `OPENAI_API_KEY` by default (an empty
+  value counts as defined), `init` appends the
   line to `.env.local` if it exists, else to `.env`, which it creates when
   needed. A key in `.env` counts even when `.env.local` exists, because an
   empty line in `.env.local` would hide it. Other lines are not touched.
@@ -214,8 +216,8 @@ above is from a pnpm project.
   to (`.env*` covers both).
 - **It never overwrites.** A memory file that already exists anywhere
   `migrate` looks (`memory.ts`, `.mts`, `.js` or `.mjs` in the root,
-  `lib/`, `src/` or `src/lib/`) is left as is, and so is a defined
-  `OPENAI_API_KEY`; a second run changes nothing.
+  `lib/`, `src/` or `src/lib/`) is left as is, and so is a defined key
+  variable; a second run changes nothing.
 - **`--dry-run`** prints the file and the env file change and writes
   nothing.
 - **`"type": "module"`.** Without it in `package.json`, Node still loads
@@ -329,8 +331,44 @@ For LM Studio, vLLM or another OpenAI-compatible server, change `baseURL`,
 `model` and `dimensions` in `memory.ts` before the first `migrate`, and add
 `apiKey` if the server needs one (see the
 [embedders guide](./embedders.md#openaicompatibleembedder)).
-`--embedder openai` is the default. Other embedders are not offered yet:
-write the default file and swap the embedder by hand.
+
+### OpenRouter
+
+`--embedder openrouter` writes the same file with
+[`openrouterEmbedder`](./embedders.md#openrouterembedder) and
+`openai/text-embedding-3-small`, and adds `OPENROUTER_API_KEY=` instead of
+`OPENAI_API_KEY=`:
+
+```bash
+pnpm exec mnemocyte init --embedder openrouter
+```
+
+```txt
+Found postgres in package.json: using postgres.js.
+Wrote memory.ts
+Created .env with OPENROUTER_API_KEY=
+
+Next:
+  Put your OpenRouter API key after OPENROUTER_API_KEY= in .env
+  Add DATABASE_URL=postgres://… to .env
+  Create the schema: pnpm exec mnemocyte migrate
+```
+
+The embedder reports the model as `text-embedding-3-small`, as
+`openaiEmbedder` does, so the installation can move between the two later
+without embedding everything again. OpenRouter can serve this model from
+more than one host; to keep one, add `routing` (see
+[Pinning a host](./embedders.md#pinning-a-host)). For another model, change
+`model` in `memory.ts` before the first `migrate`, and add `dimensions` if
+the [known models](./embedders.md#known-models) do not list it.
+
+### Other embedders
+
+`--embedder openai` is the default. For Voyage, Cohere, Gemini or your own
+embedder, run `init` with the default and swap the embedder in `memory.ts`
+by hand before the first `migrate` (see the
+[embedders guide](./embedders.md)). OpenRouter also serves Voyage, Cohere
+and Gemini models with one key.
 
 ## `migrate`
 

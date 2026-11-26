@@ -28,6 +28,10 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
   `openrouterEmbedder` knows their size, and Perplexity's v2 models get
   `input_type`. Their `model` keeps the vendor, as before
   ([embedders](docs/guide/embedders.md#aisdkembedder)).
+- **`mnemocyte init --embedder openrouter`.** Writes `memory.ts` with
+  `openrouterEmbedder({ model: "openai/text-embedding-3-small" })` and adds
+  `OPENROUTER_API_KEY=` to `.env.local` or `.env`, as the default does
+  with `OPENAI_API_KEY=` ([CLI](docs/guide/cli.md#openrouter)).
 
 ### Changed
 

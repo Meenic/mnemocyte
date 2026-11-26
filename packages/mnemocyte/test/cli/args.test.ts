@@ -70,6 +70,9 @@ describe("parseCliArgs", () => {
 			parseCliArgs(["init", "--embedder", "openai-compatible"]).embedder,
 		).toBe("openai-compatible");
 		expect(parseCliArgs(["init", "--embedder=openai"]).embedder).toBe("openai");
+		expect(parseCliArgs(["init", "--embedder", "openrouter"]).embedder).toBe(
+			"openrouter",
+		);
 		expect(parseCliArgs(["init", "--db", "src/db/index.ts"]).db).toBe(
 			"src/db/index.ts",
 		);
@@ -272,7 +275,7 @@ describe("parseCliArgs", () => {
 		],
 		[
 			["init", "--embedder", "ollama"],
-			'Unknown embedder "ollama". Embedders: openai, openai-compatible.',
+			'Unknown embedder "ollama". Embedders: openai, openai-compatible, openrouter.',
 		],
 		[["init", "--embedder="], 'Unknown embedder "".'],
 		[["init", "--embedder"], "--embedder"],

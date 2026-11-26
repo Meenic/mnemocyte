@@ -385,6 +385,10 @@ test.each([
 		"createMemory",
 		{ line: 'import { createMemory as db } from "../db";', local: "db" },
 	],
+	[
+		"openrouterEmbedder",
+		{ line: 'import { openrouterEmbedder as db } from "../db";', local: "db" },
+	],
 ])("clientImport(%j)", (name, expected) => {
 	expect(clientImport(name, "../db")).toEqual(expected);
 });

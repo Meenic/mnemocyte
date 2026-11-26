@@ -96,8 +96,8 @@ Options
                          text-search: rewrite without asking
       --dry-run          migrate, init, text-search: show what would run and
                          change nothing; generate: print the file
-      --embedder <name>  init: openai (default) or openai-compatible, such
-                         as a local Ollama
+      --embedder <name>  init: openai (default), openai-compatible, such
+                         as a local Ollama, or openrouter
       --db <path>        init: the file that exports the app's Drizzle
                          client, when init does not find it
       --json             check, migrate --dry-run, text-search --dry-run:

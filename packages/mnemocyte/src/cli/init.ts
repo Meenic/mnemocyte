@@ -119,7 +119,11 @@ export function usesDatabaseUrl(driver: InitDriver): boolean {
 }
 
 /** The embedders `init --embedder` writes, the default first. */
-export const INIT_EMBEDDERS = ["openai", "openai-compatible"] as const;
+export const INIT_EMBEDDERS = [
+	"openai",
+	"openai-compatible",
+	"openrouter",
+] as const;
 
 export type InitEmbedder = (typeof INIT_EMBEDDERS)[number];
 
@@ -144,7 +148,8 @@ const OPENAI_IMPORT = 'import { openaiEmbedder } from "mnemocyte/embedders";';
 
 // The OpenAI file is a getting-started `memory.ts` block; the
 // OpenAI-compatible one swaps in the guide's Ollama block. A unit test
-// holds both to the guide.
+// holds both to the guide. OpenRouter swaps in the same model through
+// OpenRouter, which reports the same `model` as `openaiEmbedder`.
 const EMBEDDERS: Readonly<Record<InitEmbedder, EmbedderTemplate>> = {
 	openai: {
 		import: OPENAI_IMPORT,
@@ -166,6 +171,13 @@ const EMBEDDERS: Readonly<Record<InitEmbedder, EmbedderTemplate>> = {
 }),`,
 		note: "Embedder: nomic-embed-text (768 dimensions) on a local Ollama at http://localhost:11434/v1.",
 		next: "Pull the model: ollama pull nomic-embed-text (for another server, change baseURL, model and dimensions in memory.ts first)",
+	},
+	openrouter: {
+		import: 'import { openrouterEmbedder } from "mnemocyte/embedders";',
+		property:
+			'embedder: openrouterEmbedder({ model: "openai/text-embedding-3-small" }),',
+		envVariable: "OPENROUTER_API_KEY",
+		keyName: "OpenRouter API key",
 	},
 };
 
@@ -527,7 +539,8 @@ function packageNames(pkg: PackageJson): Set<string> {
 /**
  * `mnemocyte init`: write a `memory.ts` for the driver in `package.json`
  * and the embedder `--embedder` names, and add the embedder's key variable
- * (`OPENAI_API_KEY=`; none for `openai-compatible`) to `.env.local` when the
+ * (`OPENAI_API_KEY=` or `OPENROUTER_API_KEY=`; none for
+ * `openai-compatible`) to `.env.local` when the
  * project has one, else to `.env`, when neither file defines it. It
  * never overwrites a file: an existing memory file anywhere the CLI looks
  * is left as is, and `memory.ts` is created with `O_EXCL` (`flag: "wx"`),

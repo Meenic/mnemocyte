@@ -22,6 +22,7 @@ import {
 	openrouterPurposeHint,
 	withoutVendor,
 } from "./internal/openrouter-models.js";
+import { createProviderError } from "./internal/provider-error.js";
 
 const NAME = "openrouterEmbedder";
 
@@ -215,11 +216,40 @@ function resolveApp(app: unknown): Record<string, string> {
 }
 
 /**
+ * The HTTP status in a success body that holds only OpenRouter's error
+ * object. OpenRouter sends the 200 before the provider answers, so a
+ * provider that fails after that comes back this way.
+ */
+function errorStatusOf(body: unknown): number | undefined {
+	if (!isRecord(body) || body.data !== undefined || !isRecord(body.error)) {
+		return undefined;
+	}
+	const { code } = body.error;
+	return typeof code === "number" &&
+		Number.isInteger(code) &&
+		code >= 400 &&
+		code <= 599
+		? code
+		: undefined;
+}
+
+/**
  * Read OpenRouter's `{ data: [{ embedding, index? }] }`. Its schema makes
  * `index` optional, so a response with no indexes is read in order; one
- * with indexes is checked and sorted like OpenAI's.
+ * with indexes is checked and sorted like OpenAI's. A body with only an
+ * error object throws a `ProviderError` with its code as the status, so
+ * the client retries it as it would that HTTP status.
  */
 function parseResponse(body: unknown, expectedCount: number): number[][] {
+	const status = errorStatusOf(body);
+	if (status !== undefined) {
+		throw createProviderError({
+			provider: "OpenRouter",
+			status,
+			headers: new Headers(),
+			body,
+		});
+	}
 	if (
 		isRecord(body) &&
 		Array.isArray(body.data) &&

@@ -437,6 +437,10 @@ describe("openrouterEmbedder", () => {
 			"a non-array embedding",
 			{ data: [{ embedding: "x" }, { embedding: [2] }] },
 		],
+		[
+			"an error whose code is not an HTTP status",
+			{ error: { code: "overloaded", message: "x" } },
+		],
 	])(
 		"rejects a malformed response (%s) with EMBEDDING",
 		async (_label, body) => {
@@ -466,6 +470,46 @@ describe("openrouterEmbedder", () => {
 			cause: body,
 			message: "OpenRouter embeddings request failed with status 401.",
 		});
+	});
+
+	test("turns a 200 that holds only an error into a ProviderError", async () => {
+		const body = {
+			error: { code: 502, message: "Provider returned error" },
+			user_id: "user_1",
+		};
+		respondJson(body);
+
+		const error = await rejection(
+			openrouterEmbedder({ apiKey: "k", model: MODEL }).embed(["a"], {
+				purpose: "document",
+			}),
+		);
+
+		expect(error).toBeInstanceOf(ProviderError);
+		expect(error).toMatchObject({
+			code: "EMBEDDING",
+			status: 502,
+			cause: body,
+			message: "OpenRouter embeddings request failed with status 502.",
+		});
+	});
+
+	test("retries a 200 that holds only a retryable error", async () => {
+		const embedder = openrouterEmbedder({
+			apiKey: "k",
+			model: "acme/custom-embed",
+			dimensions: 2,
+		});
+		respondJson({ error: { code: 503, message: "No provider available" } });
+		respondJson(openrouterResponse([[1, 2]]));
+		const memory = createMemory({
+			embedder,
+			provider: { baseDelayMs: 1, maxDelayMs: 1, timeoutMs: 10_000 },
+		});
+
+		await memory.add({ scope: testScope("alice"), content: "Likes tea." });
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	test("retries a 529 through the client", async () => {

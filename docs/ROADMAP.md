@@ -172,7 +172,7 @@ they fix code 1.5.0 introduces, so they land before it as well.
   "xml" }` gives the model the ids. Ships with 1.5.0 and mcp 0.3.0, which
   already change this output. Landed (decision 106); not checked with a
   live model.
-- [ ] `fix/openrouter-error-body`: OpenRouter's errors page documents a
+- [x] `fix/openrouter-error-body`: OpenRouter's errors page documents a
   `200 OK` whose body holds only an `error` object, sent when the
   provider fails after the headers went out, even after every fallback
   failed. The page shows chat requests; the embeddings reference gives
@@ -183,7 +183,8 @@ they fix code 1.5.0 introduces, so they land before it as well.
   `parseResponse` (`openrouter.ts`), turn it into a `ProviderError` with
   `error.code` as `status` and the body as `cause`, so 502, 503 and 529
   are retried like the same status sent as a header; a `code` that is not
-  an HTTP status keeps today's error.
+  an HTTP status keeps today's error. Landed (decision 102); not seen
+  live.
 - [ ] `fix/openrouter-routing-schema`: `OpenRouterRouting` has drifted
   from the embeddings schema's `provider` object. `options` (per-provider
   settings keyed by provider slug) throws `"CONFIG"`, `sort` lacks

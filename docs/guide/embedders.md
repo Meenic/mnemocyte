@@ -352,6 +352,10 @@ Azure for `openai/text-embedding-3-small`.
   requests.
 - **Errors.** A provider error becomes a `ProviderError` (below). HTTP 529,
   which OpenRouter returns when a host is overloaded, is retried like 503.
+  OpenRouter sends its 200 before the host answers, so a host that fails
+  after that comes back as a 200 with only an `error` in the body. That
+  is a `ProviderError` too, with the error's `code` as `status`, and is
+  retried the same way.
 
 It is also available as `mnemocyte/embedders/openrouter`.
 

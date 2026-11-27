@@ -235,6 +235,12 @@ OpenAI-shaped `POST {baseURL}/embeddings` (decisions 83 and 102 in
   caller's copy.
 - OpenRouter's error body is `{ error: { code, message } }` with a numeric
   `code`, so the `ProviderError` message names only the status.
+- A success body with an `error` object and no `data` is OpenRouter's
+  report of a provider that failed after the 200 went out (its errors
+  page). `parseResponse` throws a `ProviderError` with `error.code` as
+  `status` when it is an integer from 400 to 599, with the body as
+  `cause` and no `retryAfterMs`, since `parseResponse` sees no headers.
+  Any other `code` keeps the malformed-response `"EMBEDDING"` error.
 
 ### `aiSdkEmbedder`
 

@@ -2434,6 +2434,17 @@ Dated 2026-10-26 unless noted.
       response named it in `provider`, so decision 83's "does not say
       which one answered" holds for the documented API only; recording it
       would be a feature of its own.
+    - **A 200 with only an `error` is a `ProviderError`** (2026-11-27,
+      `fix/openrouter-error-body`): OpenRouter's errors page says a
+      provider that fails after the headers went out returns a `200 OK`
+      whose body holds only `{ error: { code, message } }`, even after
+      every fallback failed. It shows chat requests; the embeddings
+      reference gives every error that body. The embedder had thrown
+      `"EMBEDDING"` "malformed embedding response data", which is not
+      retried and dropped the code. Now `error.code`, when it is an
+      HTTP error status, becomes the `ProviderError`'s `status`, so the
+      client retries 502, 503 and 529 as it would those HTTP statuses.
+      Not seen live; a mocked `fetch` tests it.
     - **Checked live:** `float` vectors from Perplexity (its own API
       returns int8 or binary only), `dimensions` for OpenAI, Voyage,
       Cohere, Gemini and Perplexity v2 9b, a pin to DeepInfra, and an

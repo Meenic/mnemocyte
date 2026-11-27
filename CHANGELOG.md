@@ -28,7 +28,9 @@ as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
   reports the model without its vendor (`text-embedding-3-small`), so an
   installation can move to and from `openaiEmbedder`. Perplexity v2,
   Cohere and Voyage models get `input_type` and `google/gemini-embedding-2`
-  the Gemini text prefixes by default
+  the Gemini text prefixes by default. A failure OpenRouter reports in
+  the body of a 200 is a `ProviderError` with the failure's status, and
+  is retried like one
   ([embedders](docs/guide/embedders.md#openrouterembedder)).
 - **`aiSdkEmbedder` knows OpenRouter models.** Models from
   `@openrouter/ai-sdk-provider` no longer need `dimensions` when

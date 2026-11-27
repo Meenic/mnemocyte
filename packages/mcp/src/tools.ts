@@ -345,7 +345,12 @@ const FORGET_OUTPUT: JsonObject = {
 	properties: {
 		forgotten: {
 			type: "boolean",
-			description: "false when no memory with that id is visible.",
+			description:
+				"false when no memory with that id is visible; nothing was deleted.",
+		},
+		content: {
+			type: "string",
+			description: "The deleted memory's content, when forgotten is true.",
 		},
 	},
 	required: ["forgotten"],
@@ -437,7 +442,7 @@ export function forgetTool(
 		name: "forgetMemory",
 		title: "Forget a memory",
 		description:
-			"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns forgotten: false when no memory has that id.",
+			"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false, and deletes nothing, when no memory has that id.",
 		inputSchema: schema(FORGET_INPUT, validateForgetInput),
 		outputSchema: outputSchema(FORGET_OUTPUT),
 		annotations: {
@@ -448,10 +453,15 @@ export function forgetTool(
 		},
 		async run(input, signal) {
 			try {
+				// delete returns ids only, so read the content first.
+				const found = await memory.get({ id: input.id, signal });
+				if (!found) {
+					return result({ forgotten: false });
+				}
 				// Search shows only consolidation survivors, so forgetting one
 				// also deletes the duplicates merged into it.
 				await memory.delete({ id: input.id, dependents: "delete", signal });
-				return result({ forgotten: true });
+				return result({ forgotten: true, content: found.content });
 			} catch (error) {
 				if (isMnemocyteError(error) && error.code === "NOT_FOUND") {
 					return result({ forgotten: false });

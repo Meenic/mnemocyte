@@ -8,6 +8,8 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
 `forgetMemory` returns the content it deleted, so a model that passed the
 wrong id can see it, as the `mnemocyte` 1.5 AI SDK tool does. The peer
 range is unchanged (`mnemocyte` `^1.1.0`).
@@ -67,5 +69,6 @@ The first release: an MCP server for Mnemocyte memory.
   themselves.** It returns the same server over a bound client, without a
   transport.
 
+[0.3.0]: https://github.com/Meenic/mnemocyte/compare/mcp-v0.2.0...mcp-v0.3.0
 [0.2.0]: https://github.com/Meenic/mnemocyte/releases/tag/mcp-v0.2.0
 [0.1.0]: https://www.npmjs.com/package/@mnemocyte/mcp/v/0.1.0

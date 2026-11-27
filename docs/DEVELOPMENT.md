@@ -1260,8 +1260,9 @@ When to release (agreed 2026-11-15), with no fixed schedule:
    `Publish to npm` job waits in the `npm` environment: open the run,
    choose "Review deployments" and approve. Approving is the release,
    not merging, and agents never approve. GitHub cancels a run whose
-   approval waits more than 30 days; the next push to `main` starts a
-   new one.
+   approval waits more than 30 days
+   ([Actions limits](https://docs.github.com/en/actions/reference/limits),
+   "Gate approval time"); the next push to `main` starts a new one.
 4. The run publishes, tags the merge commit `vX.Y.Z` and creates the
    GitHub release `mnemocyte vX.Y.Z` from `pnpm release:notes mnemocyte`
    ("Release text"). If its `Remove stale next dist-tags` step warns,

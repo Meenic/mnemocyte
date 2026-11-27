@@ -194,14 +194,15 @@ they fix code 1.5.0 introduces, so they land before it as well.
   `sort` additions, `audio`, and `number | string` for the `max_price`
   values; update decision 102 and the guide's routing section. Landed
   (decision 102); not sent live.
-- [ ] `fix/release-nits`: the 1.5.0 CHANGELOG lead-in
+- [x] `fix/release-nits`: the 1.5.0 CHANGELOG lead-in
   "**`mnemocyte init --embedder openrouter`.**" is not a sentence; HTTP
   524 ("Infrastructure Timeout" at the edge), documented for OpenRouter's
   `/embeddings`, is not retried, although 504 is; DEVELOPMENT.md's
   "30 days" for an approval wait has no source. Rewrite the lead-in, add
   524 to the retried statuses (shared by every embedder, as 529 is) with
   the docs and the 1.5.0 intro, and link GitHub's Actions limits page,
-  whose "Gate approval time" is 30 days.
+  whose "Gate approval time" is 30 days. Landed
+  (decision 82 for 524).
 
 ## Discoverability
 

@@ -558,6 +558,15 @@ through the new path rather than migration 0005's 1.6.0.
   first version, linked to npm as mcp 0.1.0 was, fails it; decide that
   with the next new package. See
   [DEVELOPMENT.md](./DEVELOPMENT.md#releasing).
+- [x] `fix/release-intro-check`: found on 2026-11-27 in the pre-1.5.0
+  review. `release:notes` stops on a version without an intro paragraph,
+  `release:prepare` writes none, and `release:check` did not check for
+  one, so a release PR made by the documented steps passed CI and its
+  merge failed in `release.yml` at "Write the release text", before
+  anything was published. `release:check` now fails when the
+  `package.json` version's section has no intro, DEVELOPMENT.md
+  ("Releasing") says to write one, and both `[Unreleased]` sections have
+  theirs for 1.5.0 and mcp 0.3.0.
 
 ## Drivers, CLI and ORMs
 

@@ -12,6 +12,13 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 ## [Unreleased]
 
+The fifth minor release, for apps on OpenRouter: `openrouterEmbedder`
+embeds through it with one key, `aiSdkEmbedder` knows its models,
+`init --embedder openrouter` writes the memory file, and HTTP 529 is
+retried. The AI SDK's `forgetMemory` now returns the content it deleted,
+as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
+1.5 clients work with the same installation in either deploy order.
+
 ### Added
 
 - **`openrouterEmbedder` embeds through OpenRouter.** It is in

@@ -225,8 +225,10 @@ OpenAI-shaped `POST {baseURL}/embeddings` (decisions 83 and 102 in
   but the live API answered an unknown field with a 200, so a typo would
   pass unnoticed. Nested objects (`max_price`, the percentile objects) are
   not checked. `OpenRouterRouting` types the fields of that schema with
-  their snake_case wire names, as `@openrouter/ai-sdk-provider` does; the
-  schema's `options` field is left out.
+  their snake_case wire names, as `@openrouter/ai-sdk-provider` does,
+  `options` included (per-provider settings keyed by slug). `max_price`
+  values are `number | string`: the schema has strings, and the first
+  version typed numbers.
 - `app` takes `url` (required, absolute) and `name`, sent as `http-referer`
   and `x-openrouter-title`. `X-Title` is not sent: OpenRouter keeps it only
   for backward compatibility. Both values are checked with `new Headers` at

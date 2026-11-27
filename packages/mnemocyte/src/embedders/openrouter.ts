@@ -41,7 +41,11 @@ const ROUTING_KEYS = [
 	"max_price",
 	"preferred_min_throughput",
 	"preferred_max_latency",
+	"options",
 ];
+
+/** How OpenRouter's `sort` ranks providers. */
+type OpenRouterSortBy = "price" | "throughput" | "latency" | "exacto";
 
 /** Percentile cutoffs for OpenRouter's performance preferences. */
 export interface OpenRouterPercentiles {
@@ -75,15 +79,31 @@ export interface OpenRouterRouting {
 	readonly ignore?: readonly string[] | undefined;
 	/** Quantization levels to allow, such as `["fp16", "bf16"]`. */
 	readonly quantizations?: readonly string[] | undefined;
-	/** Prefer the cheapest, fastest or quickest-to-answer provider. */
-	readonly sort?: "price" | "throughput" | "latency" | undefined;
-	/** Highest price to pay, in dollars per million tokens or per request. */
+	/**
+	 * Prefer the cheapest, fastest or quickest-to-answer provider, or
+	 * `"exacto"`, the values OpenRouter's schema lists. The object form adds
+	 * `partition`: `"none"` sorts endpoints across models instead of within
+	 * each.
+	 */
+	readonly sort?:
+		| OpenRouterSortBy
+		| {
+				readonly by?: OpenRouterSortBy | undefined;
+				readonly partition?: "model" | "none" | undefined;
+		  }
+		| undefined;
+	/**
+	 * Highest price to pay, in dollars per million tokens or per request,
+	 * image or audio unit. OpenRouter's schema types the values as strings;
+	 * numbers are sent as given.
+	 */
 	readonly max_price?:
 		| {
-				readonly prompt?: number | undefined;
-				readonly completion?: number | undefined;
-				readonly request?: number | undefined;
-				readonly image?: number | undefined;
+				readonly prompt?: number | string | undefined;
+				readonly completion?: number | string | undefined;
+				readonly request?: number | string | undefined;
+				readonly image?: number | string | undefined;
+				readonly audio?: number | string | undefined;
 		  }
 		| undefined;
 	/** Preferred lowest throughput, in tokens per second. */
@@ -93,6 +113,12 @@ export interface OpenRouterRouting {
 		| undefined;
 	/** Preferred highest latency, in seconds. */
 	readonly preferred_max_latency?: number | OpenRouterPercentiles | undefined;
+	/**
+	 * Settings for one provider, keyed by its slug, such as
+	 * `{ openai: { … } }`. OpenRouter forwards only the settings of the
+	 * provider that serves the request and drops keys it does not know.
+	 */
+	readonly options?: Readonly<Record<string, JsonObject>> | undefined;
 }
 
 /** Your app, as OpenRouter shows it in its rankings and your activity. */

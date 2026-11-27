@@ -103,6 +103,24 @@ describe("openrouterEmbedder", () => {
 		});
 	});
 
+	test("sends the schema's options, sort object and max_price fields", async () => {
+		const routing = {
+			sort: { by: "price", partition: "none" },
+			max_price: { prompt: "0.02", audio: 0.5 },
+			options: { deepinfra: { priority: "high" } },
+		} as const;
+		const embedder = openrouterEmbedder({
+			apiKey: "k",
+			model: MODEL,
+			routing,
+		});
+		respondJson(openrouterResponse([Array(1536).fill(0)]));
+
+		await embedder.embed(["a"], { purpose: "document" });
+
+		expect(lastBody()).toMatchObject({ provider: routing });
+	});
+
 	test("sends only http-referer when app has no name", async () => {
 		const embedder = openrouterEmbedder({
 			apiKey: "k",

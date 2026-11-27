@@ -723,6 +723,9 @@ const routing: OpenRouterRouting = {
 	allow_fallbacks: false,
 	data_collection: "deny",
 	preferred_max_latency: { p90: 2 },
+	sort: { by: "exacto", partition: "model" },
+	max_price: { prompt: 0.02, audio: "0.5" },
+	options: { openai: { user: "memory" } },
 };
 const app: OpenRouterApp = { url: "https://memory.example", name: "Memory" };
 const openrouterOptions: OpenRouterEmbedderOptions = {
@@ -735,7 +738,7 @@ const openrouter: Embedder = openrouterEmbedder(openrouterOptions);
 const directOpenRouter: Embedder = directOpenRouterEmbedder({
 	model: "qwen/qwen3-embedding-8b",
 });
-// @ts-expect-error routing sort takes price, throughput or latency
+// @ts-expect-error routing sort takes price, throughput, latency or exacto
 openrouterEmbedder({ model: "x/y", dimensions: 8, routing: { sort: "cost" } });
 // @ts-expect-error app needs a url
 openrouterEmbedder({ model: "x/y", dimensions: 8, app: { name: "Memory" } });

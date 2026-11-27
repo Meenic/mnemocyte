@@ -2397,7 +2397,12 @@ Dated 2026-10-26 unless noted.
       silently leave fallbacks on. An unknown top-level key throws
       `"CONFIG"` at creation; the cost is a Mnemocyte release before a
       field OpenRouter adds later can be used. Nested objects are not
-      checked.
+      checked. A recheck of the schema on 2026-11-27
+      (`fix/openrouter-routing-schema`) found fields the type lacked:
+      `options`, `"exacto"` and a `{ by, partition }` object for `sort`,
+      and `audio` in `max_price`, whose values the schema types as
+      strings. All were added; `max_price` takes `number | string`, so
+      code written against the number types still compiles.
     - **Built-in hints are those confirmed through OpenRouter, with the
       vendor embedders' values:** `input_type` for Perplexity's v2 models
       only (v2 returned a 400 without it; its docs say to leave it out for

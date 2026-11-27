@@ -185,14 +185,15 @@ they fix code 1.5.0 introduces, so they land before it as well.
   are retried like the same status sent as a header; a `code` that is not
   an HTTP status keeps today's error. Landed (decision 102); not seen
   live.
-- [ ] `fix/openrouter-routing-schema`: `OpenRouterRouting` has drifted
+- [x] `fix/openrouter-routing-schema`: `OpenRouterRouting` has drifted
   from the embeddings schema's `provider` object. `options` (per-provider
   settings keyed by provider slug) throws `"CONFIG"`, `sort` lacks
   `"exacto"` and the `{ by, partition }` object form, and `max_price`
   lacks `audio` and types its values as numbers where the schema has
   strings (dollars). Add `options` to the type and `ROUTING_KEYS`, both
   `sort` additions, `audio`, and `number | string` for the `max_price`
-  values; update decision 102 and the guide's routing section.
+  values; update decision 102 and the guide's routing section. Landed
+  (decision 102); not sent live.
 - [ ] `fix/release-nits`: the 1.5.0 CHANGELOG lead-in
   "**`mnemocyte init --embedder openrouter`.**" is not a sentence; HTTP
   524 ("Infrastructure Timeout" at the edge), documented for OpenRouter's

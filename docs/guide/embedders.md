@@ -325,10 +325,11 @@ const embedder = openrouterEmbedder({
 `routing` takes the fields of OpenRouter's
 [provider object](https://openrouter.ai/docs/guides/routing/provider-selection)
 with the same names, such as `only`, `ignore`, `data_collection: "deny"`,
-`zdr` or `sort`, and sends them as given. A field not on that list throws
-`"CONFIG"` when the embedder is created, because OpenRouter would ignore it:
-a typo such as `allow_fallback: false` would leave fallbacks on. Fields
-inside `max_price` and the latency and throughput objects are not checked.
+`zdr`, `sort` or per-provider `options`, and sends them as given. A field
+not on that list throws `"CONFIG"` when the embedder is created, because
+OpenRouter would ignore it: a typo such as `allow_fallback: false` would
+leave fallbacks on. Fields inside `options`, `max_price` and the latency
+and throughput objects are not checked.
 Closed models can have more than one host too: OpenRouter lists OpenAI and
 Azure for `openai/text-embedding-3-small`.
 

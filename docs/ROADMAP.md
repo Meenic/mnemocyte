@@ -135,7 +135,8 @@ through OpenRouter: `openrouterEmbedder` and `aiSdkEmbedder` with
 other area passed. The first item should land before 1.5.0 is cut. The
 last four were found on 2026-11-27 too, in a re-run on `main` at
 `772a097` (after #160) and a review of 1.5.0 against OpenRouter's docs;
-they fix code 1.5.0 introduces, so they land before it as well.
+they fix code 1.5.0 introduces, so they land before it as well. The
+last item was found in the Luna runs and ships after 1.5.0.
 
 - [x] `docs/openrouter-embedding-method`: the `aiSdkEmbedder` example in
   `guide/embedders.md` calls `openrouter.embeddingModel(…)`, which
@@ -203,6 +204,25 @@ they fix code 1.5.0 introduces, so they land before it as well.
   the docs and the 1.5.0 intro, and link GitHub's Actions limits page,
   whose "Gate approval time" is 30 days. Landed
   (decision 82 for 524).
+- [ ] `fix/save-memory-one-fact`: in the Luna runs (`openai/gpt-6-luna`,
+  low reasoning, 13 runs on `b50cf94`), the model called `saveMemory`
+  unasked in the first turn in 5 of 13 runs, despite the app's
+  instructions. It saved one sentence holding name, city, job and diet.
+  Forgetting "vegetarian" then deleted all four facts in 4 runs, and the
+  model said so. In 3 runs, "Which city do I live in now?" got "my
+  memories conflict": the unkeyed sentence still said Berlin, while
+  extraction's keyed update replaced only `extracted:home_city`. The
+  description already says "Save one durable fact". Make it say one fact
+  per call, splitting a sentence that holds several, and only when the
+  user asks to remember something, in `mnemocyte/ai-sdk` and
+  `@mnemocyte/mcp`, and add a note to the AI SDK guide that with
+  `withMemory`'s `save` the tool is often not needed. Decide there
+  whether "only when asked" fits apps that use `saveMemory` without
+  extraction. Also seen: gpt-4.1-nano got `forgetMemory`'s "search
+  first" message but answered without searching or trying again in the
+  same turn (4 of 5 runs, markdown context); no change proposed. The
+  forget fix held: no false "deleted", and Luna searched first in 13 of
+  13 runs.
 
 ## Discoverability
 

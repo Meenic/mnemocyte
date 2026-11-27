@@ -1,7 +1,7 @@
 // `pnpm release:check`, run on pull requests and in release.yml's CI run:
-// each package's version has its heading and link, and every entry from
-// `checkedFrom` up opens with a bold lead-in that ends a sentence, since
-// the release text and the site show the lead-ins alone.
+// each package's version has its heading, intro and link, and every entry
+// from `checkedFrom` up opens with a bold lead-in that ends a sentence,
+// since the release text and the site show the lead-ins alone.
 import { REPOSITORY_URL, type ReleasePackage } from "./packages.ts";
 import {
 	findLink,
@@ -33,10 +33,16 @@ function checkPackage(root: string, pkg: ReleasePackage): Problem[] {
 	const version = readVersion(root, pkg);
 	const changelog = readChangelog(root, pkg);
 
-	if (!findRelease(changelog, version)) {
+	const release = findRelease(changelog, version);
+	if (!release) {
 		problems.push(
 			`${file}: ${pkg.name} is at ${version} in ${pkg.directory}/package.json, ` +
 				`but there is no "## ${releaseHeading(version, "YYYY-MM-DD")}" heading.`,
+		);
+	} else if (release.intro === undefined) {
+		// release:notes stops on it, after the release PR has merged.
+		problems.push(
+			`${file}:${release.line}: ${version} has no intro paragraph under its heading.`,
 		);
 	}
 	const link = findLink(changelog, version);

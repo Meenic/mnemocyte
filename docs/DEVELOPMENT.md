@@ -1235,8 +1235,8 @@ When to release (agreed 2026-11-15), with no fixed schedule:
    version or `@patch`, `@minor`, `@major` after the name also overrides
    the proposal, so a release candidate is `mnemocyte@1.5.0-rc.1`. It
    then:
-   - moves the entries under `## [X.Y.Z] - YYYY-MM-DD` (today's local
-     date), leaving `## [Unreleased]` empty above it;
+   - moves the intro and the entries under `## [X.Y.Z] - YYYY-MM-DD`
+     (today's local date), leaving `## [Unreleased]` empty above it;
    - points the `[Unreleased]` link at `compare/vX.Y.Z...HEAD` and adds
      `[X.Y.Z]: …/compare/vPREVIOUS...vX.Y.Z` below it;
    - runs `pnpm version X.Y.Z --no-git-tag-version --no-git-checks` in
@@ -1248,6 +1248,12 @@ When to release (agreed 2026-11-15), with no fixed schedule:
    title. It checks every package it is given before it writes anything,
    and an empty `[Unreleased]`, a version that is not newer or one the
    changelog already has stops it. Read the diff before committing.
+
+   The release text opens with the version's intro, the paragraph right
+   under its heading (a sentence or two on what the release is for, as
+   1.4.0's), and `prepare` does not write one. Write it under
+   `## [Unreleased]` before running `prepare`, or under the new heading
+   after; `release:check` fails the PR without it.
 2. Open a PR titled `chore(release): vX.Y.Z` and squash merge it once CI
    passes.
 3. The merge starts `release.yml`. After its CI passes, the
@@ -1503,9 +1509,12 @@ The text only reads well when each lead-in is a whole sentence, so
 without a bold lead-in or with one that does not end with `.`, `!` or
 `?`. It reads `[Unreleased]` and the releases from `checkedFrom` up
 (1.0.0 for `mnemocyte`, 0.1.0 for `@mnemocyte/mcp`), and also fails
-when a package's version has no `## [X.Y.Z] - YYYY-MM-DD` heading or
+when a package's version has no `## [X.Y.Z] - YYYY-MM-DD` heading, no
+intro paragraph under it, or no
 `[X.Y.Z]: https://github.com/Meenic/mnemocyte/…` link: the release
-text reads the heading, and the next release's text finds this
+text reads the heading and the intro (`release:notes` stops without
+one, which in `release.yml` is after the release PR merged), and the
+next release's text finds this
 version's tag through the link for its compare link. Write an entry
 as a lead-in sentence, then the details:
 

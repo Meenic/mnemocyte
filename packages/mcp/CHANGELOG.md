@@ -8,6 +8,10 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+`forgetMemory` returns the content it deleted, so a model that passed the
+wrong id can see it, as the `mnemocyte` 1.5 AI SDK tool does. The peer
+range is unchanged (`mnemocyte` `^1.1.0`).
+
 ### Added
 
 - **`forgetMemory` returns the content it deleted.** A forgotten memory

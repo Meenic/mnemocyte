@@ -30,6 +30,18 @@ describe("checkReleases", () => {
 		]);
 	});
 
+	it("fails when the package.json version has no intro paragraph", () => {
+		const root = makeRepo({
+			rootChangelog: ROOT_CHANGELOG.replace(
+				"The first minor, for teams on Drizzle; see\n[upgrading](docs/guide/upgrading.md#10--11).\n\n",
+				"",
+			),
+		});
+		expect(check(root)).toEqual([
+			`CHANGELOG.md:${lineOf("## [1.1.0]")}: 1.1.0 has no intro paragraph under its heading.`,
+		]);
+	});
+
 	it("fails on a heading with a dash instead of a hyphen", () => {
 		const root = makeRepo({
 			rootChangelog: ROOT_CHANGELOG.replace(

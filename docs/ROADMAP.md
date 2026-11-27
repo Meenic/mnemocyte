@@ -132,7 +132,10 @@ Found on 2026-11-27 by running `main` (after #156) in the 1.0 test app
 through OpenRouter: `openrouterEmbedder` and `aiSdkEmbedder` with
 `openai/text-embedding-3-small`, chat, tools and extraction with
 `openai/gpt-4.1-nano` through `@openrouter/ai-sdk-provider` 3.1.0. Every
-other area passed. The first item should land before 1.5.0 is cut.
+other area passed. The first item should land before 1.5.0 is cut. The
+last four were found on 2026-11-27 too, in a re-run on `main` at
+`772a097` (after #160) and a review of 1.5.0 against OpenRouter's docs;
+they fix code 1.5.0 introduces, so they land before it as well.
 
 - [x] `docs/openrouter-embedding-method`: the `aiSdkEmbedder` example in
   `guide/embedders.md` calls `openrouter.embeddingModel(…)`, which
@@ -154,6 +157,48 @@ other area passed. The first item should land before 1.5.0 is cut.
   `content` too, so the next step can see the mistake, in `mnemocyte/ai-sdk`
   and `@mnemocyte/mcp` alike. Content only, read with `get` before the
   delete (decision 105).
+- [ ] `fix/forget-unknown-id`: with `withMemory`, the default `markdown`
+  context shows memories without ids, so in the re-run gpt-4.1-nano
+  skipped `searchMemories` and passed a made-up id to `forgetMemory` in
+  5 of 5 runs. Three of those ids were made-up UUIDs, and in 2 of 5
+  runs, both with a UUID, it told the user the memory was deleted
+  although the tool returned `{ forgotten: false }`. Rejecting non-UUID
+  ids would not have caught those two, and an unknown id already deletes
+  nothing. Instead, in `mnemocyte/ai-sdk` and `@mnemocyte/mcp`, return
+  `{ forgotten: false, message }`, a sentence telling the model nothing
+  was deleted and to search first, and say in the description never to
+  guess an id, even for a memory already in its context. The AI SDK guide
+  says that with `withMemory` and small models, `context: { format:
+  "xml" }` gives the model the ids. Ships with 1.5.0 and mcp 0.3.0, which
+  already change this output.
+- [ ] `fix/openrouter-error-body`: OpenRouter's errors page documents a
+  `200 OK` whose body holds only an `error` object, sent when the
+  provider fails after the headers went out, even after every fallback
+  failed. The page shows chat requests; the embeddings reference gives
+  every error the same body, `{ error: { code, message, metadata? } }`
+  with a numeric `code`, so the embedder should expect it too.
+  `openrouterEmbedder` throws `"EMBEDDING"` "malformed embedding response
+  data" for it, which is not retried and drops the code. In
+  `parseResponse` (`openrouter.ts`), turn it into a `ProviderError` with
+  `error.code` as `status` and the body as `cause`, so 502, 503 and 529
+  are retried like the same status sent as a header; a `code` that is not
+  an HTTP status keeps today's error.
+- [ ] `fix/openrouter-routing-schema`: `OpenRouterRouting` has drifted
+  from the embeddings schema's `provider` object. `options` (per-provider
+  settings keyed by provider slug) throws `"CONFIG"`, `sort` lacks
+  `"exacto"` and the `{ by, partition }` object form, and `max_price`
+  lacks `audio` and types its values as numbers where the schema has
+  strings (dollars). Add `options` to the type and `ROUTING_KEYS`, both
+  `sort` additions, `audio`, and `number | string` for the `max_price`
+  values; update decision 102 and the guide's routing section.
+- [ ] `fix/release-nits`: the 1.5.0 CHANGELOG lead-in
+  "**`mnemocyte init --embedder openrouter`.**" is not a sentence; HTTP
+  524 ("Infrastructure Timeout" at the edge), documented for OpenRouter's
+  `/embeddings`, is not retried, although 504 is; DEVELOPMENT.md's
+  "30 days" for an approval wait has no source. Rewrite the lead-in, add
+  524 to the retried statuses (shared by every embedder, as 529 is) with
+  the docs and the 1.5.0 intro, and link GitHub's Actions limits page,
+  whose "Gate approval time" is 30 days.
 
 ## Discoverability
 

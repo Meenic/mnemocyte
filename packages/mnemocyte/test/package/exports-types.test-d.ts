@@ -1063,8 +1063,14 @@ const forgetOutput: ForgetMemoryOutput = {} as InferToolOutput<
 const forgottenContent: string | undefined = forgetOutput.forgotten
 	? forgetOutput.content
 	: undefined;
-// @ts-expect-error a result without the memory has no content.
-const missingContent: ForgetMemoryOutput = { forgotten: false, content: "x" };
+const missingContent: ForgetMemoryOutput = {
+	forgotten: false,
+	message: "x",
+	// @ts-expect-error a result without the memory has no content.
+	content: "x",
+};
+// @ts-expect-error a result without the memory has a message.
+const missingMessage: ForgetMemoryOutput = { forgotten: false };
 // @ts-expect-error memoryTools takes a bound client, not the client itself.
 memoryTools({ memory: defaulted });
 // @ts-expect-error saveMemory takes no key.
@@ -1166,6 +1172,7 @@ void saveOutput;
 void forgetInput;
 void forgetOutput;
 void forgottenContent;
+void missingMessage;
 void missingContent;
 void keyedSave;
 void scopedSearch;

@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createMemoryMcpServer } from "../src/index.js";
 import { boundTo, connect, createTestMemory, textOf } from "./helpers.js";
 
+/** What forgetMemory tells the model when no memory has the id. */
+const NOT_FOUND =
+	"Nothing was deleted: no memory has this id. Call searchMemories, then forgetMemory with an id from its results.";
+
 describe("tools/list", () => {
 	it("lists search and save by default", async () => {
 		const client = await connect({ memory: boundTo(createTestMemory()) });
@@ -74,7 +78,7 @@ describe("tools/list", () => {
 		const forget = byName.get("forgetMemory");
 		expect(Object.keys(forget?.inputSchema.properties ?? {})).toEqual(["id"]);
 		expect(forget?.outputSchema).toMatchObject({
-			properties: { forgotten: {}, content: {} },
+			properties: { forgotten: {}, content: {}, message: {} },
 			required: ["forgotten"],
 		});
 		expect(forget?.annotations).toMatchObject({
@@ -208,7 +212,10 @@ describe("tools/call", () => {
 			name: "forgetMemory",
 			arguments: { id: kept.id },
 		});
-		expect(second.structuredContent).toEqual({ forgotten: false });
+		expect(second.structuredContent).toEqual({
+			forgotten: false,
+			message: NOT_FOUND,
+		});
 	});
 
 	it("cannot forget another entity's memory", async () => {
@@ -225,7 +232,10 @@ describe("tools/call", () => {
 			name: "forgetMemory",
 			arguments: { id: other.id },
 		});
-		expect(result.structuredContent).toEqual({ forgotten: false });
+		expect(result.structuredContent).toEqual({
+			forgotten: false,
+			message: NOT_FOUND,
+		});
 		expect(
 			await memory.get({ scope: { entityId: "u2" }, id: other.id }),
 		).not.toBeNull();
@@ -250,7 +260,10 @@ describe("tools/call", () => {
 			name: "forgetMemory",
 			arguments: { id: kept.id },
 		});
-		expect(result.structuredContent).toEqual({ forgotten: false });
+		expect(result.structuredContent).toEqual({
+			forgotten: false,
+			message: NOT_FOUND,
+		});
 	});
 
 	it("does not run forgetMemory unless allowed", async () => {

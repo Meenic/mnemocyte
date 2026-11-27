@@ -157,7 +157,7 @@ they fix code 1.5.0 introduces, so they land before it as well.
   `content` too, so the next step can see the mistake, in `mnemocyte/ai-sdk`
   and `@mnemocyte/mcp` alike. Content only, read with `get` before the
   delete (decision 105).
-- [ ] `fix/forget-unknown-id`: with `withMemory`, the default `markdown`
+- [x] `fix/forget-unknown-id`: with `withMemory`, the default `markdown`
   context shows memories without ids, so in the re-run gpt-4.1-nano
   skipped `searchMemories` and passed a made-up id to `forgetMemory` in
   5 of 5 runs. Three of those ids were made-up UUIDs, and in 2 of 5
@@ -170,7 +170,8 @@ they fix code 1.5.0 introduces, so they land before it as well.
   guess an id, even for a memory already in its context. The AI SDK guide
   says that with `withMemory` and small models, `context: { format:
   "xml" }` gives the model the ids. Ships with 1.5.0 and mcp 0.3.0, which
-  already change this output.
+  already change this output. Landed (decision 106); not checked with a
+  live model.
 - [ ] `fix/openrouter-error-body`: OpenRouter's errors page documents a
   `200 OK` whose body holds only an `error` object, sent when the
   provider fails after the headers went out, even after every fallback

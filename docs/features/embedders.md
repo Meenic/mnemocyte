@@ -383,11 +383,11 @@ doubling to 8 s), which also ignores server waits over 60 s.
 
 The built-in `defaultShouldRetry` reads fields, never message text:
 
-- a numeric `status` of 408, 429, 500, 502, 503, 504 or 529 retries; any
-  other status does not (409 would blur with `"CONFLICT"`, 501 and 505 do
-  not pass on their own). 529 is not in RFC 9110; OpenRouter's embeddings
-  docs name it for an overloaded provider, so it retries like 503
-  (decision 82);
+- a numeric `status` of 408, 429, 500, 502, 503, 504, 524 or 529 retries;
+  any other status does not (409 would blur with `"CONFLICT"`, 501 and 505
+  do not pass on their own). 524 and 529 are not in RFC 9110; OpenRouter's
+  embeddings reference names 524 for a timeout at its edge and 529 for an
+  overloaded provider, so they retry like 504 and 503 (decision 82);
 - a `code` of `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `EPIPE`,
   `EAI_AGAIN`, `UND_ERR_SOCKET`, `UND_ERR_CONNECT_TIMEOUT`,
   `UND_ERR_HEADERS_TIMEOUT` or `UND_ERR_BODY_TIMEOUT` on the error or up to

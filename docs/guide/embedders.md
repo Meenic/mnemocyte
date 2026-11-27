@@ -352,7 +352,8 @@ Azure for `openai/text-embedding-3-small`.
   Perplexity takes at most 512. Lower `maxBatch` if a host rejects large
   requests.
 - **Errors.** A provider error becomes a `ProviderError` (below). HTTP 529,
-  which OpenRouter returns when a host is overloaded, is retried like 503.
+  which OpenRouter returns when a host is overloaded, is retried like 503,
+  and 524, its timeout at the edge, like 504.
   OpenRouter sends its 200 before the host answers, so a host that fails
   after that comes back as a 200 with only an `error` in the body. That
   is a `ProviderError` too, with the error's `code` as `status`, and is
@@ -633,8 +634,8 @@ const memory = createMemory({
 
 The built-in rule retries:
 
-- HTTP 408, 429, 500, 502, 503, 504 and 529 (OpenRouter's "provider
-  overloaded"), read from the error's `status`;
+- HTTP 408, 429, 500, 502, 503, 504, 524 and 529 (OpenRouter's edge
+  timeout and "provider overloaded"), read from the error's `status`;
 - network errors that can pass on their own, such as a reset or refused
   connection or a DNS lookup that timed out, read from the error's `code` or
   its `cause`'s;
@@ -642,7 +643,7 @@ The built-in rule retries:
 
 Other errors fail at once, including 4xx statuses such as a bad API key and
 malformed responses. Error messages are never read. A `shouldRetry` of your
-own replaces this rule, so if it lists statuses, list 529 too.
+own replaces this rule, so if it lists statuses, list 524 and 529 too.
 
 Each wait is a random value between half and all of the current delay, so
 many clients that failed together do not retry at the same moment. When the

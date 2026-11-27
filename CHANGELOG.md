@@ -14,10 +14,11 @@ in [packages/mcp/CHANGELOG.md](packages/mcp/CHANGELOG.md).
 
 The fifth minor release, for apps on OpenRouter: `openrouterEmbedder`
 embeds through it with one key, `aiSdkEmbedder` knows its models,
-`init --embedder openrouter` writes the memory file, and HTTP 529 is
-retried. The AI SDK's `forgetMemory` now returns the content it deleted,
-as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
-1.5 clients work with the same installation in either deploy order.
+`init --embedder openrouter` writes the memory file, and HTTP 524 and
+529 are retried. The AI SDK's `forgetMemory` now returns the content it
+deleted, as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so
+1.4 and 1.5 clients work with the same installation in either deploy
+order.
 
 ### Added
 
@@ -37,7 +38,8 @@ as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
   `openrouterEmbedder` knows their size, and Perplexity's v2 models get
   `input_type`. Their `model` keeps the vendor, as before
   ([embedders](docs/guide/embedders.md#aisdkembedder)).
-- **`mnemocyte init --embedder openrouter`.** Writes `memory.ts` with
+- **`mnemocyte init --embedder openrouter` sets up OpenRouter.** It
+  writes `memory.ts` with
   `openrouterEmbedder({ model: "openai/text-embedding-3-small" })` and adds
   `OPENROUTER_API_KEY=` to `.env.local` or `.env`, as the default does
   with `OPENAI_API_KEY=` ([CLI](docs/guide/cli.md#openrouter)).
@@ -56,11 +58,12 @@ as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
   a type instead of an interface: code that builds one itself, such as a
   test fake, needs the `content` or the `message`, and an interface can no
   longer extend it ([AI SDK](docs/guide/ai-sdk.md#forgetmemory)).
-- **HTTP 529 is retried like 503.** The built-in retry rule now also
-  retries 529, which OpenRouter returns when a provider is overloaded,
-  with the same backoff and `Retry-After` handling, for every embedder. A
-  custom `provider.shouldRetry` replaces the built-in rule, so add 529 to
-  it if you list statuses yourself
+- **HTTP 524 and 529 are retried like 504 and 503.** The built-in retry
+  rule now also retries 529, which OpenRouter returns when a provider is
+  overloaded, and 524, its timeout at the edge, with the same backoff and
+  `Retry-After` handling, for every embedder. A custom
+  `provider.shouldRetry` replaces the built-in rule, so add both to it if
+  you list statuses yourself
   ([embedders](docs/guide/embedders.md#timeouts-and-retries)).
 
 ## [1.4.0] - 2026-11-24

@@ -314,9 +314,10 @@ export interface ProviderResilienceConfig {
 	 * Optional predicate deciding whether `error` should trigger a retry.
 	 * Receives the thrown value and the 1-indexed `attempt` number that
 	 * just failed. When omitted, the built-in rule retries errors with an
-	 * HTTP `status` of 408, 429, 500, 502, 503, 504 or 529, network errors
-	 * with a transient `code` (such as `ECONNRESET`) on the error or its
-	 * `cause`, and `"TIMEOUT"` errors. A function here replaces that rule.
+	 * HTTP `status` of 408, 429, 500, 502, 503, 504, 524 or 529, network
+	 * errors with a transient `code` (such as `ECONNRESET`) on the error or
+	 * its `cause`, and `"TIMEOUT"` errors. A function here replaces that
+	 * rule.
 	 */
 	shouldRetry?: ((error: unknown, attempt: number) => boolean) | undefined;
 }

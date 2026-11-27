@@ -1761,7 +1761,11 @@ Dated 2026-10-26 unless noted.
     OpenAI, Voyage, Cohere and Gemini error pages do not list 529. A custom
     `shouldRetry` replaces the built-in rule, so the guide tells apps that
     list statuses to add 529 themselves; exporting `defaultShouldRetry`
-    was left out as new public API.
+    was left out as new public API. (2026-11-27, `fix/release-nits`) 524
+    joined it for every embedder too: OpenRouter's embeddings reference
+    lists it as a timeout at its edge network, the case 504 already
+    retries for. A retry after a timeout can be billed twice if the
+    provider finished the work, as with 504.
 83. **OpenRouter model ids drop the vendor prefix** (2026-11-22, landed
     with `feat/openrouter-embedder`): the maintainer chose to report
     `openai/text-embedding-3-small` as `text-embedding-3-small`, as

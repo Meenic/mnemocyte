@@ -2508,3 +2508,32 @@ Dated 2026-10-26 unless noted.
       `@mnemocyte/mcp` it is a 0.x minor (0.3.0), since its minors carry
       tool changes; the output schema gains an optional `content`, and
       the peer range stays `^1.1.0`, since `get` is older than that.
+106. **`forgetMemory` tells the model to search when it finds nothing**
+    (2026-11-27, landed with `fix/forget-unknown-id`): in the re-run after
+    decision 105, `withMemory`'s default `markdown` context showed the
+    memories without ids, so gpt-4.1-nano never called `searchMemories`
+    and passed a made-up id in 5 of 5 runs; in 2 of them it told the user
+    the memory was deleted although the tool returned
+    `{ forgotten: false }`. The maintainer took these recommendations:
+    - **No id format check.** Three of the five ids were made-up UUIDs,
+      including both runs with the wrong answer, so rejecting non-UUID
+      ids would have caught neither; an unknown id already deletes
+      nothing.
+    - **A `message` on `{ forgotten: false }`,** a fixed sentence saying
+      nothing was deleted and to call `searchMemories` for the id, since a
+      bare `false` did not stop the model. Not an error: a missing memory
+      stays a normal result (decision 105), and the second call of an
+      idempotent forget stays quiet. The same text in `mnemocyte/ai-sdk`
+      and `@mnemocyte/mcp`, whose output schema gains an optional
+      `message`.
+    - **The description says never to guess an id,** even for a memory
+      the model already sees in its context, and not to tell the user a
+      memory was deleted when the tool says it was not.
+    - **The markdown context keeps no ids.** Adding them would change
+      every `context()` prompt for one tool. The AI SDK guide says to pass
+      `context: { format: "xml" }`, which has ids, with small models.
+    - **It ships with 1.5.0 and mcp 0.3.0,** which already change this
+      output, so users see one change. `ForgetMemoryOutput`'s second
+      member becomes `{ forgotten: false; message: string }`. Whether the
+      model now searches first is not checked live; the unit tests cover
+      the output only.

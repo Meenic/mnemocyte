@@ -11,6 +11,10 @@ import { memoryTools } from "mnemocyte/ai-sdk";
 import { describe, expect, test } from "vitest";
 import { expectDefined, expectMnemocyteError } from "../helpers.js";
 
+/** What forgetMemory tells the model when no memory has the id. */
+const NOT_FOUND =
+	"Nothing was deleted: no memory has this id. Call searchMemories, then forgetMemory with an id from its results.";
+
 const VOCABULARY = ["tea", "coffee", "metric", "london", "cats", "dogs"];
 
 type OnEmbed = (signal: AbortSignal | undefined) => void;
@@ -192,9 +196,11 @@ describe("memoryTools", () => {
 		expect(await user.get({ id: tea.id })).toBeNull();
 		expect(await execute(tools.forgetMemory, { id: tea.id })).toEqual({
 			forgotten: false,
+			message: NOT_FOUND,
 		});
 		expect(await execute(tools.forgetMemory, { id: "not-a-uuid" })).toEqual({
 			forgotten: false,
+			message: NOT_FOUND,
 		});
 	});
 
@@ -246,6 +252,7 @@ describe("memoryTools", () => {
 
 		expect(await execute(bob.forgetMemory, { id: secret.id })).toEqual({
 			forgotten: false,
+			message: NOT_FOUND,
 		});
 		expect(await alice.get({ id: secret.id })).not.toBeNull();
 	});
@@ -370,6 +377,7 @@ describe("memoryTools", () => {
 
 		expect(await execute(racing.forgetMemory, { id: tea.id })).toEqual({
 			forgotten: false,
+			message: NOT_FOUND,
 		});
 	});
 

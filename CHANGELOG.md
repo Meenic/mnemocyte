@@ -45,12 +45,15 @@ as `@mnemocyte/mcp` 0.3.0 does. Postgres has no migration, so 1.4 and
 - **`forgetMemory` returns the content it deleted.** The AI SDK tool now
   returns `{ forgotten: true, content }`, so the model can see when it
   passed the wrong id, and its description asks it to check. An id with
-  no visible memory still returns `{ forgotten: false }` and deletes
-  nothing. `ForgetMemoryOutput` is now
-  `{ forgotten: true; content: string } | { forgotten: false }`, a type
-  instead of an interface: code that builds one itself, such as a test
-  fake, needs the `content` when `forgotten` is `true`, and an interface
-  can no longer extend it ([AI SDK](docs/guide/ai-sdk.md#forgetmemory)).
+  no visible memory still deletes nothing and returns
+  `{ forgotten: false, message }`, where the message tells the model to
+  search for the id. The description also tells the model never to guess
+  an id, which models did from `withMemory`'s context, where memories
+  have no ids. `ForgetMemoryOutput` is now
+  `{ forgotten: true; content: string } | { forgotten: false; message: string }`,
+  a type instead of an interface: code that builds one itself, such as a
+  test fake, needs the `content` or the `message`, and an interface can no
+  longer extend it ([AI SDK](docs/guide/ai-sdk.md#forgetmemory)).
 - **HTTP 529 is retried like 503.** The built-in retry rule now also
   retries 529, which OpenRouter returns when a provider is overloaded,
   with the same backoff and `Retry-After` handling, for every embedder. A

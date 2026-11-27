@@ -63,10 +63,11 @@ index signature.
   the default `"reject"` the model could not forget any memory that
   duplicates were merged into. Those duplicates are deleted with it. When
   `get` finds nothing (including a non-UUID id) the tool returns
-  `{ forgotten: false }` without deleting; a `"NOT_FOUND"` from `delete`,
-  when another call removed the memory in between, does the same. Any
-  other error is rethrown. Both calls use the bound client's visibility,
-  so shared memories of the entity are reachable.
+  `{ forgotten: false, message }` without deleting, the message telling
+  the model to search for the id (decision 106); a `"NOT_FOUND"` from
+  `delete`, when another call removed the memory in between, does the
+  same. Any other error is rethrown. Both calls use the bound client's
+  visibility, so shared memories of the entity are reachable.
 - Each `execute` passes `options.abortSignal` as the client's `signal`. The
   AI SDK merges the call's `abortSignal` with any per-tool timeout into that
   signal. Errors are not caught: the AI SDK turns a thrown error into a

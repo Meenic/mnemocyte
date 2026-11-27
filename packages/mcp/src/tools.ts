@@ -340,6 +340,10 @@ const FORGET_INPUT: JsonObject = {
 	additionalProperties: false,
 };
 
+/** What `forgetMemory` tells the model when no memory has the id. */
+const FORGET_NOT_FOUND =
+	"Nothing was deleted: no memory has this id. Call searchMemories, then forgetMemory with an id from its results.";
+
 const FORGET_OUTPUT: JsonObject = {
 	type: "object",
 	properties: {
@@ -351,6 +355,10 @@ const FORGET_OUTPUT: JsonObject = {
 		content: {
 			type: "string",
 			description: "The deleted memory's content, when forgotten is true.",
+		},
+		message: {
+			type: "string",
+			description: "What to do next, when forgotten is false.",
 		},
 	},
 	required: ["forgotten"],
@@ -442,7 +450,7 @@ export function forgetTool(
 		name: "forgetMemory",
 		title: "Forget a memory",
 		description:
-			"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false, and deletes nothing, when no memory has that id.",
+			"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Never guess an id, even for a memory you already see in your context: call searchMemories first and use an id from its results. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false with a message when no memory has that id; then nothing was deleted, so do not tell the user it was.",
 		inputSchema: schema(FORGET_INPUT, validateForgetInput),
 		outputSchema: outputSchema(FORGET_OUTPUT),
 		annotations: {
@@ -456,7 +464,7 @@ export function forgetTool(
 				// delete returns ids only, so read the content first.
 				const found = await memory.get({ id: input.id, signal });
 				if (!found) {
-					return result({ forgotten: false });
+					return result({ forgotten: false, message: FORGET_NOT_FOUND });
 				}
 				// Search shows only consolidation survivors, so forgetting one
 				// also deletes the duplicates merged into it.
@@ -464,7 +472,7 @@ export function forgetTool(
 				return result({ forgotten: true, content: found.content });
 			} catch (error) {
 				if (isMnemocyteError(error) && error.code === "NOT_FOUND") {
-					return result({ forgotten: false });
+					return result({ forgotten: false, message: FORGET_NOT_FOUND });
 				}
 				throw error;
 			}

@@ -74,11 +74,12 @@ export interface ForgetMemoryInput {
 /**
  * Output of the `forgetMemory` tool: the deleted memory's content, so the
  * model can check it forgot the right one, or `forgotten: false` when no
- * memory with that id is visible at the bound scope and nothing was deleted.
+ * memory with that id is visible at the bound scope and nothing was
+ * deleted, with a `message` telling the model to search for the id.
  */
 export type ForgetMemoryOutput =
 	| { forgotten: true; content: string }
-	| { forgotten: false };
+	| { forgotten: false; message: string };
 
 /**
  * The tools {@link memoryTools} returns, keyed by tool name. A type alias,
@@ -121,7 +122,11 @@ const SCOPE_FIELDS: ReadonlySet<string> = new Set([
 ]);
 
 const FORGET_DESCRIPTION =
-	"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false, and deletes nothing, when no memory has that id.";
+	"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Never guess an id, even for a memory you already see in your context: call searchMemories first and use an id from its results. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false with a message when no memory has that id; then nothing was deleted, so do not tell the user it was.";
+
+/** What `forgetMemory` tells the model when no memory has the id. */
+const FORGET_NOT_FOUND =
+	"Nothing was deleted: no memory has this id. Call searchMemories, then forgetMemory with an id from its results.";
 
 const KIND_DESCRIPTION =
 	"fact: a stable statement about the user; preference: how they like things done; instruction: a standing request for how to respond; backstory: long-lived background; episode: something that happened; session: context for this conversation only.";
@@ -425,7 +430,7 @@ export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 					// delete returns ids only, so read the content first.
 					const found = await memory.get({ id: input.id, ...signal });
 					if (!found) {
-						return { forgotten: false };
+						return { forgotten: false, message: FORGET_NOT_FOUND };
 					}
 					// Search shows only consolidation survivors, so forgetting one
 					// also deletes the duplicates merged into it.
@@ -437,7 +442,7 @@ export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 					return { forgotten: true, content: found.content };
 				} catch (error) {
 					if (isMnemocyteError(error) && error.code === "NOT_FOUND") {
-						return { forgotten: false };
+						return { forgotten: false, message: FORGET_NOT_FOUND };
 					}
 					throw error;
 				}

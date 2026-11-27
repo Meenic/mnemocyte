@@ -18,7 +18,9 @@ range is unchanged (`mnemocyte` `^1.1.0`).
   comes back as `{ forgotten: true, content }`, so the model can see when
   it passed the wrong id, and the tool's description asks it to check.
   The output schema gains an optional `content`. An id with no visible
-  memory still returns `{ forgotten: false }` and deletes nothing
+  memory still deletes nothing and returns `{ forgotten: false, message }`,
+  where the new `message` tells the model to search for the id, and the
+  description says never to guess one
   ([the guide](../../docs/guide/mcp.md#tools)).
 
 ## [0.2.0] - 2026-11-24

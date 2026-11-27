@@ -82,11 +82,20 @@ input limits are the same as for `add`.
 Returns `{ forgotten: true, content }` with the content of the memory it
 deleted, so the model can see when it picked the wrong id; the tool's
 description asks it to check and tell the user. When no memory with that
-id is visible at the bound scope, it returns `{ forgotten: false }` and
-deletes nothing. Like `delete`, it can remove a
-memory shared by every agent or session of the bound entity, not only one
-written at the exact scope. When duplicates were consolidated into the
-memory, they are deleted with it (`delete` with `dependents: "delete"`).
+id is visible at the bound scope, it returns
+`{ forgotten: false, message }` and deletes nothing; the message tells the
+model to search for the id first. Like `delete`, it can remove a memory
+shared by every agent or session of the bound entity, not only one written
+at the exact scope. When duplicates were consolidated into the memory,
+they are deleted with it (`delete` with `dependents: "delete"`).
+
+With [`withMemory`](#memory-in-every-prompt), the default `"markdown"`
+context shows memories without their ids. A model that already sees the
+memory may then skip `searchMemories` and make up an id: gpt-4.1-nano did
+in all five of our test runs, and twice told the user the memory was
+gone. The tool's description tells the model to search first. With a
+small model, also pass `context: { format: "xml" }`, which puts each
+memory's id in the context.
 
 <a id="errors-and-cancellation"></a>
 

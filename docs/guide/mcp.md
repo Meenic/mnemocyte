@@ -146,7 +146,7 @@ same names, inputs and outputs:
 |---|---|---|
 | `searchMemories` | always | Finds memories by `query`, with an optional `limit` (1–20, default 5) and `kinds`. Returns `{ memories }`, best match first, each with `id`, `content`, `kind`, `importance`, `tags`, `createdAt` and `score`. |
 | `saveMemory` | unless `--read-only` | Saves `content` with an optional `kind` and `importance`, with `source: "saveMemory"`. Returns `{ id }`. |
-| `forgetMemory` | with `--allow-forget` | Deletes the memory with that `id`, and duplicates merged into it, for good. Returns `{ forgotten: true, content }` with the deleted memory's content, or `{ forgotten: false }` when no memory has that `id`, and then deletes nothing. Like `delete`, it can remove a memory shared by every agent or session of the entity. |
+| `forgetMemory` | with `--allow-forget` | Deletes the memory with that `id`, and duplicates merged into it, for good. Returns `{ forgotten: true, content }` with the deleted memory's content, or `{ forgotten: false, message }` when no memory has that `id`, and then deletes nothing; the message tells the model to search for the id first. Like `delete`, it can remove a memory shared by every agent or session of the entity. |
 
 `forgetMemory` is off unless you pass `--allow-forget`, because a deletion
 cannot be undone and some clients run tools without asking. `--read-only`

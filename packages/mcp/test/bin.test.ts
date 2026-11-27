@@ -112,7 +112,10 @@ describe("mnemocyte-mcp over stdio", () => {
 				name: "forgetMemory",
 				arguments: { id },
 			});
-			expect(forgotten.structuredContent).toEqual({ forgotten: true });
+			expect(forgotten.structuredContent).toEqual({
+				forgotten: true,
+				content: "Drinks oat milk.",
+			});
 		} finally {
 			await client.close();
 		}

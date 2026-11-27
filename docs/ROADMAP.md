@@ -147,13 +147,13 @@ other area passed. The first item should land before 1.5.0 is cut.
   it fails with "Unknown embedder", and `guide/cli.md` says other
   embedders are not offered yet. No other hosted embedders for `init`
   (decision 104).
-- [ ] `feat/forget-returns-content`: `forgetMemory` returns
+- [x] `feat/forget-returns-content`: `forgetMemory` returns
   `{ forgotten: true }` only, so a wrong id goes unnoticed. In the run,
   gpt-4.1-nano asked to forget "vegetarian" passed the id of "Works as a
   nurse." and told the user it was done. Return the deleted memory's
   `content` too, so the next step can see the mistake, in `mnemocyte/ai-sdk`
-  and `@mnemocyte/mcp` alike. Choice: `content` only (recommended, the
-  model already saw it in the search) or the whole memory.
+  and `@mnemocyte/mcp` alike. Content only, read with `get` before the
+  delete (decision 105).
 
 ## Discoverability
 

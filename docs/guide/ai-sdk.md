@@ -79,8 +79,11 @@ input limits are the same as for `add`.
 |---|---|
 | `id` | Required. An id from `searchMemories`. |
 
-Returns `{ forgotten: true }`, or `{ forgotten: false }` when no memory
-with that id is visible at the bound scope. Like `delete`, it can remove a
+Returns `{ forgotten: true, content }` with the content of the memory it
+deleted, so the model can see when it picked the wrong id; the tool's
+description asks it to check and tell the user. When no memory with that
+id is visible at the bound scope, it returns `{ forgotten: false }` and
+deletes nothing. Like `delete`, it can remove a
 memory shared by every agent or session of the bound entity, not only one
 written at the exact scope. When duplicates were consolidated into the
 memory, they are deleted with it (`delete` with `dependents: "delete"`).

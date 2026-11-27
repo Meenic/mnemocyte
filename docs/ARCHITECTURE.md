@@ -550,7 +550,8 @@ Dated 2026-10-26 unless noted.
     overwrite a keyed memory the app wrote, and tags may drive app logic.
     `forgetMemory` deletes by id with the bound client's visibility, so
     shared memories of the entity are reachable, and returns
-    `{ forgotten: false }` for `"NOT_FOUND"`; other errors are thrown and
+    `{ forgotten: false }` for `"NOT_FOUND"` (decision 105 adds the
+    deleted memory's content); other errors are thrown and
     reach the model as AI SDK tool errors. Each tool forwards the call's
     `abortSignal`. There are no options besides `memory`: the result is a
     plain object, so apps drop or reword a tool by destructuring and
@@ -997,7 +998,8 @@ Dated 2026-10-26 unless noted.
     `deletedIds` lists the memory first, then the rest by id; `restoredIds`
     is by id. The Postgres store lower-cases the requested id, since
     `isUuid` accepts either case and the database returns lower case.
-    `forgetMemory` keeps returning `{ forgotten }`.
+    `forgetMemory` kept returning `{ forgotten }`; decision 105 adds the
+    content, read with `get` before the delete.
 46. **Context with its memories** (2026-11-16, landed): the maintainer
     chose, with `feat/context-memories`, a new method,
     `experimental.contextWithMemories`, returning
@@ -2475,3 +2477,34 @@ Dated 2026-10-26 unless noted.
     - **No other hosted embedders yet,** as decision 48 said. OpenRouter
       already reaches Voyage, Cohere and Gemini models with one key; a
       value of their own stays additive and waits until someone asks.
+105. **`forgetMemory` returns what it deleted** (2026-11-27, landed with
+    `feat/forget-returns-content`): in the 1.5 real-app run, gpt-4.1-nano
+    asked to forget "vegetarian" passed the id of "Works as a nurse.",
+    got `{ forgotten: true }` and told the user it was done. The
+    maintainer took these recommendations:
+    - **Content only.** A found memory returns
+      `{ forgotten: true, content }`, enough for the model to see a wrong
+      id; it saw the other fields in the search. The whole memory would
+      put metadata, the key, the source and the scope in the model's
+      context, which decision 26 keeps out. The description tells the
+      model to check the content and tell the user when it is wrong.
+    - **Read with `get`, then `delete`.** `delete` returns ids only
+      (decision 45), so the tool reads the memory first. Both use the same
+      visibility, shared memories included, so `get` finds exactly what
+      `delete` can remove. The two queries are not one transaction: if
+      another call deletes the memory in between, `delete`'s `"NOT_FOUND"`
+      still becomes `{ forgotten: false }`, and a concurrent update can
+      make the content a moment old. Changing the store's delete to return
+      rows would reverse decision 45 for one caller.
+    - **A missing id deletes nothing.** When `get` finds no memory (an
+      unknown id, another entity's, or not a UUID), the tool returns
+      `{ forgotten: false }` without calling `delete`.
+    - **`ForgetMemoryOutput` is a union**,
+      `{ forgotten: true; content: string } | { forgotten: false }`, so
+      `content` narrows to a string. In `mnemocyte` it ships in a 1.x
+      minor, as with decision 45: reading the output still compiles; code
+      that builds one itself without `content` (a test fake, say) or
+      extends it as an interface does not, which the CHANGELOG names. In
+      `@mnemocyte/mcp` it is a 0.x minor (0.3.0), since its minors carry
+      tool changes; the output schema gains an optional `content`, and
+      the peer range stays `^1.1.0`, since `get` is older than that.

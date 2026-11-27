@@ -71,11 +71,14 @@ export interface ForgetMemoryInput {
 	id: string;
 }
 
-/** Output of the `forgetMemory` tool. */
-export interface ForgetMemoryOutput {
-	/** `false` when no memory with that id is visible at the bound scope. */
-	forgotten: boolean;
-}
+/**
+ * Output of the `forgetMemory` tool: the deleted memory's content, so the
+ * model can check it forgot the right one, or `forgotten: false` when no
+ * memory with that id is visible at the bound scope and nothing was deleted.
+ */
+export type ForgetMemoryOutput =
+	| { forgotten: true; content: string }
+	| { forgotten: false };
 
 /**
  * The tools {@link memoryTools} returns, keyed by tool name. A type alias,
@@ -116,6 +119,9 @@ const SCOPE_FIELDS: ReadonlySet<string> = new Set([
 	"sessionId",
 	"allNamespaces",
 ]);
+
+const FORGET_DESCRIPTION =
+	"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns the content of the memory it deleted: check it is the one you meant, and if not, tell the user. Returns forgotten: false, and deletes nothing, when no memory has that id.";
 
 const KIND_DESCRIPTION =
 	"fact: a stable statement about the user; preference: how they like things done; instruction: a standing request for how to respond; backstory: long-lived background; episode: something that happened; session: context for this conversation only.";
@@ -409,21 +415,26 @@ export function memoryTools(options: MemoryToolsOptions): MemoryTools {
 			},
 		}),
 		forgetMemory: tool({
-			description:
-				"Delete one memory about the user by its id from searchMemories, for example when they ask you to forget something or a memory is wrong. Duplicates that were merged into it are deleted too. Returns forgotten: false when no memory has that id.",
+			description: FORGET_DESCRIPTION,
 			inputSchema: jsonSchema<ForgetMemoryInput>(FORGET_SCHEMA, {
 				validate: validateForgetInput,
 			}),
-			async execute(input, callOptions) {
+			async execute(input, callOptions): Promise<ForgetMemoryOutput> {
+				const signal = signalOf(callOptions);
 				try {
+					// delete returns ids only, so read the content first.
+					const found = await memory.get({ id: input.id, ...signal });
+					if (!found) {
+						return { forgotten: false };
+					}
 					// Search shows only consolidation survivors, so forgetting one
 					// also deletes the duplicates merged into it.
 					await memory.delete({
 						id: input.id,
 						dependents: "delete",
-						...signalOf(callOptions),
+						...signal,
 					});
-					return { forgotten: true };
+					return { forgotten: true, content: found.content };
 				} catch (error) {
 					if (isMnemocyteError(error) && error.code === "NOT_FOUND") {
 						return { forgotten: false };

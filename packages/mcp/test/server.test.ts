@@ -73,6 +73,10 @@ describe("tools/list", () => {
 
 		const forget = byName.get("forgetMemory");
 		expect(Object.keys(forget?.inputSchema.properties ?? {})).toEqual(["id"]);
+		expect(forget?.outputSchema).toMatchObject({
+			properties: { forgotten: {}, content: {} },
+			required: ["forgotten"],
+		});
 		expect(forget?.annotations).toMatchObject({
 			destructiveHint: true,
 			idempotentHint: true,
@@ -183,7 +187,19 @@ describe("tools/call", () => {
 			name: "forgetMemory",
 			arguments: { id: kept.id },
 		});
-		expect(first.structuredContent).toEqual({ forgotten: true });
+		expect(first.structuredContent).toEqual({
+			forgotten: true,
+			content: "Has a dog named Rex.",
+		});
+		expect(first.content).toEqual([
+			{
+				type: "text",
+				text: JSON.stringify({
+					forgotten: true,
+					content: "Has a dog named Rex.",
+				}),
+			},
+		]);
 		expect(
 			await memory.get({ scope: { entityId: "u1" }, id: kept.id }),
 		).toBeNull();
@@ -213,6 +229,28 @@ describe("tools/call", () => {
 		expect(
 			await memory.get({ scope: { entityId: "u2" }, id: other.id }),
 		).not.toBeNull();
+	});
+
+	it("reports forgotten: false when the memory goes before the delete", async () => {
+		const memory = createTestMemory();
+		const user = boundTo(memory);
+		const kept = await user.add({ content: "Has a dog named Rex." });
+		const client = await connect({
+			memory: {
+				...user,
+				// Another call deletes the memory between the read and the delete.
+				async delete(input) {
+					await user.delete({ id: input.id });
+					return user.delete(input);
+				},
+			},
+			allowForget: true,
+		});
+		const result = await client.callTool({
+			name: "forgetMemory",
+			arguments: { id: kept.id },
+		});
+		expect(result.structuredContent).toEqual({ forgotten: false });
 	});
 
 	it("does not run forgetMemory unless allowed", async () => {

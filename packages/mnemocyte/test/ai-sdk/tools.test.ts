@@ -187,6 +187,7 @@ describe("memoryTools", () => {
 
 		expect(await execute(tools.forgetMemory, { id: tea.id })).toEqual({
 			forgotten: true,
+			content: "Prefers tea over coffee.",
 		});
 		expect(await user.get({ id: tea.id })).toBeNull();
 		expect(await execute(tools.forgetMemory, { id: tea.id })).toEqual({
@@ -213,6 +214,7 @@ describe("memoryTools", () => {
 
 		expect(await execute(tools.forgetMemory, { id: survivorId })).toEqual({
 			forgotten: true,
+			content: "Prefers tea over coffee.",
 		});
 		expect(await user.get({ id: survivorId })).toBeNull();
 		expect(await user.get({ id: duplicateId })).toBeNull();
@@ -352,8 +354,28 @@ describe("memoryTools", () => {
 		expect((await user.list()).memories).toHaveLength(1);
 	});
 
+	test("reports forgotten: false when the memory goes before the delete", async () => {
+		const user = createClient().for({ entityId: "user_1" });
+		const tea = await user.add({ content: "Likes tea." });
+		const racing = memoryTools({
+			memory: {
+				...user,
+				// Another call deletes the memory between the read and the delete.
+				async delete(input) {
+					await user.delete({ id: input.id });
+					return user.delete(input);
+				},
+			},
+		});
+
+		expect(await execute(racing.forgetMemory, { id: tea.id })).toEqual({
+			forgotten: false,
+		});
+	});
+
 	test("rethrows errors other than a missing memory", async () => {
 		const user = createClient().for({ entityId: "user_1" });
+		const tea = await user.add({ content: "Likes tea." });
 		const failing = memoryTools({
 			memory: {
 				...user,
@@ -361,9 +383,10 @@ describe("memoryTools", () => {
 			},
 		});
 
-		await expect(execute(failing.forgetMemory, { id: "x" })).rejects.toThrow(
+		await expect(execute(failing.forgetMemory, { id: tea.id })).rejects.toThrow(
 			"database is down",
 		);
+		expect(await user.get({ id: tea.id })).not.toBeNull();
 	});
 });
 

@@ -67,9 +67,12 @@ them, since this package does not depend on `ai`.
   accepts anything, since the server builds the values.
 - **Errors.** A handler that throws becomes an `isError` result with the
   error's message (for example `Failed to embed text.`). `forgetMemory`
-  turns `"NOT_FOUND"` into `{ forgotten: false }`.
-- **Cancellation.** Handlers pass `ctx.mcpReq.signal` to `search`, `add`
-  and `delete`, so a client's `notifications/cancelled` aborts the call.
+  reads the memory with `get` first and returns
+  `{ forgotten: true, content }`, or `{ forgotten: false }` without
+  deleting when there is none; a `"NOT_FOUND"` from `delete` gives the
+  same (decision 105).
+- **Cancellation.** Handlers pass `ctx.mcpReq.signal` to `search`, `add`,
+  `get` and `delete`, so a client's `notifications/cancelled` aborts the call.
 - **Annotations.** `searchMemories`: `readOnlyHint`. `saveMemory`: not
   destructive, not idempotent. `forgetMemory`: `destructiveHint` and
   `idempotentHint` (deleting twice leaves the same state; the second call

@@ -8,6 +8,15 @@ marked **Breaking**. `mnemocyte`'s own changes are in the
 
 ## [Unreleased]
 
+### Added
+
+- **`forgetMemory` returns the content it deleted.** A forgotten memory
+  comes back as `{ forgotten: true, content }`, so the model can see when
+  it passed the wrong id, and the tool's description asks it to check.
+  The output schema gains an optional `content`. An id with no visible
+  memory still returns `{ forgotten: false }` and deletes nothing
+  ([the guide](../../docs/guide/mcp.md#tools)).
+
 ## [0.2.0] - 2026-11-24
 
 For Next.js apps: the server reads `.env.local` and loads memory files
